@@ -41,13 +41,23 @@ function Invoke-GoogleFont {
     $Command = $Arguments[0].ToLower()
     $CommandArgs = if ($Arguments.Count -gt 1) { $Arguments[1..($Arguments.Count-1)] } else { @() }
 
-    # Handle help command
-    if ($Command -eq 'help') {
-        $helpTopic = if ($CommandArgs.Count -gt 0) { $CommandArgs[0] } else { 'general' }
+    # Handle help flags for any command
+    $helpFlags = @('-?', '--help', '--?', '/?', '-h', '--h')
+    if ($Command -eq 'help' -or ($CommandArgs | Where-Object { $helpFlags -contains $_ })) {
+        $helpTopic = if ($Command -eq 'help') {
+            if ($CommandArgs.Count -gt 0) { $CommandArgs[0] } else { 'general' }
+        } else {
+            $Command
+        }
+
         switch ($helpTopic) {
             'install' {
                 Write-Host "Install Google Fonts`n"
                 Write-Host "Usage: fontget install <font-name> [--force]`n"
+                Write-Host "Examples:"
+                Write-Host "  fontget install 'Roboto'          # Install Roboto font"
+                Write-Host "  fontget install 'Open Sans'       # Install Open Sans font"
+                Write-Host "  fontget install 'Roboto' --force  # Force reinstall Roboto font`n"
                 Write-Host "Options:"
                 Write-Host "  --force    Force installation even if font exists"
                 return
@@ -55,11 +65,18 @@ function Invoke-GoogleFont {
             'uninstall' {
                 Write-Host "Uninstall Fonts`n"
                 Write-Host "Usage: fontget uninstall <font-name>`n"
+                Write-Host "Examples:"
+                Write-Host "  fontget uninstall 'Roboto'        # Remove Roboto font"
+                Write-Host "  fontget uninstall 'Open Sans'     # Remove Open Sans font"
                 return
             }
             'list' {
                 Write-Host "List Installed Fonts`n"
                 Write-Host "Usage: fontget list [--google] [--other]`n"
+                Write-Host "Examples:"
+                Write-Host "  fontget list                # List all fonts"
+                Write-Host "  fontget list --google       # List only Google fonts"
+                Write-Host "  fontget list --other        # List only non-Google fonts`n"
                 Write-Host "Options:"
                 Write-Host "  --google   Show only Google fonts"
                 Write-Host "  --other    Show only non-Google fonts"
@@ -68,12 +85,23 @@ function Invoke-GoogleFont {
             'search' {
                 Write-Host "Search Google Fonts`n"
                 Write-Host "Usage: fontget search <keyword>`n"
+                Write-Host "Examples:"
+                Write-Host "  fontget search 'Roboto'     # Search for Roboto font"
+                Write-Host "  fontget search 'sans'       # Search for fonts containing 'sans'"
                 return
             }
             default {
                 Write-Host "FontGet Google Fonts Manager v$script:fontGetVersion"
                 Write-Host "By @graphixa | MIT License: https://github.com/Graphixa/FontGet/License`n"
+                Write-Host "Usage: fontget <command> [options]`n"
+                Write-Host "Commands:"
+                Write-Host "  install    Install Google fonts"
+                Write-Host "  uninstall  Remove installed fonts"
+                Write-Host "  list       List installed fonts"
+                Write-Host "  search     Search available Google fonts"
+                Write-Host "  help       Show help information`n"
                 Write-Host "For command help, use: fontget help <command>"
+                Write-Host "                  or: fontget <command> --help"
                 return
             }
         }
