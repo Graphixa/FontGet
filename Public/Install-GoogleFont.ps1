@@ -13,6 +13,9 @@
 .PARAMETER Force
     Forces font installation even if the font is already installed.
 
+.PARAMETER AcceptLicenses
+    Accepts all licenses for the fonts being installed.
+
 .EXAMPLE
     Install-GoogleFont "Roboto"
     Installs the Roboto font family for all users.
@@ -20,6 +23,10 @@
 .EXAMPLE
     Install-GoogleFont "Roboto" -Force
     Forces reinstallation of the Roboto font family even if it's already installed.
+
+.EXAMPLE
+    Install-GoogleFont "Roboto" -AcceptLicenses
+    Installs the Roboto font family, automatically accepting all licenses.
 
 .NOTES
     Author: Graphixa
@@ -40,10 +47,16 @@ function Install-GoogleFont {
         [string]$Name,
 
         [Parameter()]
-        [switch]$Force
+        [switch]$Force,
+
+        [Parameter()]
+        [switch]$AcceptLicenses
     )
 
     begin {
+        # Track if user has chosen "yes to all" for licenses
+        $script:acceptAllLicenses = $AcceptLicenses.IsPresent
+        
         # Setup temp directory for downloads
         $tempDownloadFolder = Join-Path $env:TEMP 'GoogleFonts'
         
@@ -80,6 +93,63 @@ function Install-GoogleFont {
 
                 if ($PSCmdlet.ShouldProcess($fontName, "Install font")) {
                     Write-Log -Message "Starting installation of $fontName" -Level 'INFO'
+
+                    # Fetch font metadata and handle license acceptance
+                    Write-Progress -Activity "Installing Font" -Status "Fetching font information" -PercentComplete 10
+                    
+                    # Get the metadata URL for this font
+                    $metadataUrl = "https://raw.githubusercontent.com/google/fonts/main/ofl/$fontName/METADATA.pb"
+                    Write-Verbose "Fetching metadata from: $metadataUrl"
+                    
+                    try {
+                        $metadata = Invoke-RestMethod -Uri $metadataUrl -Headers $headers -Method Get
+                        
+                        # Extract the official font name from metadata
+                        if ($metadata -match 'name: "([^"]+)"') {
+                            $officialFontName = $matches[1]
+                            $licenseUrl = "https://github.com/google/fonts/blob/main/ofl/$fontName/OFL.txt"
+                            
+                            Write-Host "`nInstalling font: $officialFontName" -ForegroundColor Cyan
+                            Write-Host "License: $licenseUrl" -ForegroundColor DarkGray
+
+                            # Check if we need to prompt for license acceptance
+                            if (-not $script:acceptAllLicenses) {
+                                $caption = "License Agreement"
+                                $message = "Do you accept the font creator's license? View the license at: $licenseUrl"
+                                $choices = [System.Management.Automation.Host.ChoiceDescription[]] @(
+                                    New-Object System.Management.Automation.Host.ChoiceDescription "&Yes", "Accept license for this font"
+                                    New-Object System.Management.Automation.Host.ChoiceDescription "&No", "Skip this font"
+                                    New-Object System.Management.Automation.Host.ChoiceDescription "&All", "Accept all licenses"
+                                    New-Object System.Management.Automation.Host.ChoiceDescription "&Cancel", "Stop installation"
+                                )
+                                
+                                $choice = $host.UI.PromptForChoice($caption, $message, $choices, 0)
+                                
+                                switch ($choice) {
+                                    0 { 
+                                        Write-Verbose "User accepted license for $officialFontName"
+                                    }
+                                    1 { 
+                                        Write-Host "Skipping $officialFontName" -ForegroundColor Yellow
+                                        continue
+                                    }
+                                    2 { 
+                                        Write-Verbose "User accepted all licenses"
+                                        $script:acceptAllLicenses = $true
+                                    }
+                                    3 { 
+                                        Write-Host "Installation cancelled by user" -ForegroundColor Yellow
+                                        return
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch {
+                        Write-Verbose "Could not fetch metadata for $fontName : $_"
+                    }
+
+                    Write-Progress -Activity "Installing Font" -Status "Downloading font files" -PercentComplete 20
 
                     # Create temp directory for this font
                     $fontTempPath = Join-Path $tempDownloadFolder $fontName

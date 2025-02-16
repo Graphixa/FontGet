@@ -115,3 +115,43 @@ Next Steps:
   - Add GUID to module manifest
   - Fill in LicenseUri and ProjectUri
   - Update ReleaseNotes 
+
+Module Update Strategy:
+
+1. Version Checking:
+   - [ ] Add version check on module import
+   - [ ] Query GitHub releases API for latest version
+   - [ ] Compare local version ($script:fontGetVersion) with latest release
+
+2. Update Notification:
+   - [ ] Show update notification when newer version available
+   - [ ] Add --check-updates flag to show current/latest versions
+   - [ ] Add update command: fontget update
+
+3. Update Implementation:
+   - [ ] Add Update-FontGet function to handle updates
+   - [ ] Download new version from GitHub releases
+   - [ ] Backup existing module
+   - [ ] Replace module files
+   - [ ] Reload module in current session
+
+4. PowerShell Gallery Integration:
+   - [ ] Publish module to PowerShell Gallery
+   - [ ] Add PSGallery version checking
+   - [ ] Support Install-Module -Name FontGet -Force for updates
+   - [ ] Add documentation for both update methods
+
+5. User Settings:
+   - [ ] Add update check frequency setting
+   - [ ] Allow disabling automatic update checks
+   - [ ] Add --no-update-check flag
+
+6. Documentation:
+   - [ ] Document update process in README
+   - [ ] Add update troubleshooting guide
+   - [ ] Include rollback instructions
+
+7. Testing:
+   - [ ] Test update scenarios
+   - [ ] Test version comparisons
+   - [ ] Test failed update recovery 

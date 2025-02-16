@@ -62,36 +62,28 @@ function Invoke-FontGet {
                 Write-Host "Usage: fontget <command> [options]`n"
                 Write-Host "Aliases: gfont, fontget`n"
                 Write-Host "Commands:"
-                Write-Host "  install    Install Google fonts"
-                Write-Host "  uninstall  Remove installed fonts"
-                Write-Host "  list       List installed fonts"
-                Write-Host "  search     Search available Google fonts`n"
+                Write-Host "  install        Install Google fonts"
+                Write-Host "  uninstall      Remove installed fonts"
+                Write-Host "  list           List installed fonts"
+                Write-Host "  search         Search available Google fonts`n"
                 Write-Host "Options:"
-                Write-Host "  --info     Display info about the fontget tool"
-                Write-Host "  --logs     Open the logs directory`n"
+                Write-Host "  --info         Display info about the fontget tool"
+                Write-Host "  --logs         Open the logs directory`n"
                 Write-Host "For command help, use: fontget <command> --? or fontget <command> --help"
                 return
             }
         }
     }
-<#
-    # Handle empty command
-    if (-not $Arguments -or $Arguments.Count -eq 0) {
-        Write-Host "FontGet Google Fonts Manager v$script:fontGetVersion"
-        Write-Host "By @graphixa | MIT License: https://github.com/Graphixa/FontGet/License`n"
-        Write-Host "Usage: fontget <command> [options]`n"
-        Write-Host "Aliases: gfont, fontget`n"
-        Write-Host "Commands:"
-        Write-Host "  install    Install Google fonts"
-        Write-Host "  uninstall  Remove installed fonts"
-        Write-Host "  list       List installed fonts"
-        Write-Host "  search     Search available Google fonts`n"
-        Write-Host "For command help, use: fontget <command> --? or fontget <command> --help"
-        return
-    }
-#>
+
 
     $Command = $Arguments[0].ToLower()
+    # Add command alias mapping
+    $Command = switch ($Command) {
+        'add'    { 'install' }
+        'remove' { 'uninstall' }
+        'find'   { 'search' }
+        default  { $Command }
+    }
     $CommandArgs = if ($Arguments.Count -gt 1) { $Arguments[1..($Arguments.Count-1)] } else { @() }
 
     # Handle help flags for any command
@@ -104,12 +96,15 @@ function Invoke-FontGet {
                 Write-Host "The following aliases are available:"
                 Write-Host "  add`n"
                 Write-Host "Options:"
-                Write-Host "  --force       Force installation even if font exists"
-                Write-Host "  --help, --?   Show help information`n"
+                Write-Host "  --force              Force installation even if font exists"
+                Write-Host "  --accept-licenses    Accept all licenses for the fonts being installed"
+                Write-Host "  --verbose            Show detailed progress output"
+                Write-Host "  --help, --?          Show help information`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget install 'roboto'             # Installs roboto font family"
-                Write-Host "  fontget install 'opensans'           # Installs opensans font family"
-                Write-Host "  fontget install 'roboto' --force     # Forces reinstallation of roboto`n"
+                Write-Host "  fontget install 'roboto'               # Installs roboto font family"
+                Write-Host "  fontget install 'opensans'             # Installs opensans font family"
+                Write-Host "  fontget install 'roboto' --force       # Forces reinstallation of roboto"
+                Write-Host "  fontget install 'roboto' --verbose     # Shows detailed progress`n"
                 return
             }
             'uninstall' {
@@ -118,6 +113,7 @@ function Invoke-FontGet {
                 Write-Host "The following aliases are available:"
                 Write-Host "  remove`n"
                 Write-Host "Options:"
+                Write-Host "  --verbose     Show detailed progress output"
                 Write-Host "  --help, --?   Show help information`n"
                 Write-Host "Examples:"
                 Write-Host "  fontget uninstall 'roboto'       # Removes roboto font family"
@@ -145,8 +141,8 @@ function Invoke-FontGet {
                 Write-Host "Options:"
                 Write-Host "  --help, --?   Show help information`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget search 'roboto'     # Searches for fonts containing 'roboto'"
-                Write-Host "  fontget search 'sans'       # Searches for fonts containing 'sans'`n"
+                Write-Host "  fontget search 'roboto'        # Searches for fonts containing 'roboto'"
+                Write-Host "  fontget search 'noto sans'     # Searches for fonts containing 'sans'`n"
                 return
             }
             default {
@@ -175,8 +171,10 @@ function Invoke-FontGet {
                 Write-Host "The following aliases are available:"
                 Write-Host "  add`n"
                 Write-Host "Options:"
-                Write-Host "  --force       Force installation even if font exists"
-                Write-Host "  --help, --?   Show help information`n"
+                Write-Host "  --force                 Force installation even if font exists"
+                Write-Host "  --accept-licenses       Accept all licenses for the fonts being installed"
+                Write-Host "  --verbose               Show detailed progress output"
+                Write-Host "  --help, --?             Show help information`n"
                 return
             }
             'uninstall' {
@@ -185,6 +183,7 @@ function Invoke-FontGet {
                 Write-Host "The following aliases are available:"
                 Write-Host "  remove`n"
                 Write-Host "Options:"
+                Write-Host "  --verbose     Show detailed progress output"
                 Write-Host "  --help, --?   Show help information`n"
                 return
             }
@@ -208,10 +207,12 @@ function Invoke-FontGet {
     switch ($Command) {
         'install' {
             # Check for invalid flags first
-            $invalidFlags = $CommandArgs | Where-Object { $_ -like '--*' -and $_ -notin @('--force') }
+            $invalidFlags = $CommandArgs | Where-Object { 
+                $_ -like '--*' -and $_ -notin @('--force', '--verbose', '--accept-licenses') 
+            }
             if ($invalidFlags) {
                 Write-Host "Unrecognized option: $($invalidFlags[0])" -ForegroundColor Yellow
-                Write-Host "Valid options: --force" -ForegroundColor DarkGray
+                Write-Host "Valid options: --force, --verbose, --accept-licenses" -ForegroundColor DarkGray
                 return
             }
 
@@ -219,9 +220,13 @@ function Invoke-FontGet {
             if ($fontName) {
                 $params = @{
                     Name = $fontName.Trim('"''')
+                    Verbose = ($CommandArgs -contains '--verbose')
                 }
                 if ($CommandArgs -contains '--force') {
                     $params['Force'] = $true
+                }
+                if ($CommandArgs -contains '--accept-licenses') {
+                    $params['AcceptLicenses'] = $true
                 }
                 try {
                     Install-GoogleFont @params
@@ -245,8 +250,12 @@ function Invoke-FontGet {
 
             $fontName = ($CommandArgs | Where-Object { -not $_.StartsWith('-') } | Select-Object -First 1)
             if ($fontName) {
+                $params = @{
+                    Name = $fontName.Trim('"''')
+                    Verbose = ($CommandArgs -contains '--verbose')
+                }
                 try {
-                    Uninstall-GoogleFont -Name $fontName.Trim('"''')
+                    Uninstall-GoogleFont @params
                 } catch {
                     Write-Host "No installed font found matching input criteria." -ForegroundColor Yellow
                     Write-Host "Try 'fontget list' to see installed fonts." -ForegroundColor DarkGray
