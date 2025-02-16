@@ -111,11 +111,22 @@ function Invoke-GoogleFont {
     if ($CommandArgs.Count -eq 0) {
         switch ($Command) {
             'install' {
-                Write-Host "Usage: fontget install <font-name> [--force]"
+                Write-Host "Install Google Fonts`n"
+                Write-Host "Usage: fontget install <font-name> [--force]`n"
+                Write-Host "Examples:"
+                Write-Host "  fontget install 'Roboto'          # Install Roboto font"
+                Write-Host "  fontget install 'Open Sans'       # Install Open Sans font"
+                Write-Host "  fontget install 'Roboto' --force  # Force reinstall Roboto font`n"
+                Write-Host "Options:"
+                Write-Host "  --force    Force installation even if font exists"
                 return
             }
             'uninstall' {
-                Write-Host "Usage: fontget uninstall <font-name>"
+                Write-Host "Uninstall Fonts`n"
+                Write-Host "Usage: fontget uninstall <font-name>`n"
+                Write-Host "Examples:"
+                Write-Host "  fontget uninstall 'Roboto'        # Remove Roboto font"
+                Write-Host "  fontget uninstall 'Open Sans'     # Remove Open Sans font"
                 return
             }
             'list' {
@@ -123,7 +134,11 @@ function Invoke-GoogleFont {
                 return
             }
             'search' {
-                Write-Host "Usage: fontget search <keyword>"
+                Write-Host "Search Google Fonts`n"
+                Write-Host "Usage: fontget search <keyword>`n"
+                Write-Host "Examples:"
+                Write-Host "  fontget search 'Roboto'     # Search for Roboto font"
+                Write-Host "  fontget search 'sans'       # Search for fonts containing 'sans'"
                 return
             }
         }
