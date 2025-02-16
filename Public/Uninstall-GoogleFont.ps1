@@ -128,4 +128,12 @@ function Uninstall-GoogleFont {
         Write-Log "Error uninstalling font: $_" -Level ERROR
         throw $_
     }
+
+    # When font is not found
+    if (-not (Test-FontInstalled -Name $fontName)) {
+        Write-Log "Font '$fontName' is not installed on this system" -Level WARNING
+        Write-Host "No installed font found matching input criteria." -ForegroundColor Red
+        Write-Host "Try 'fontget list' to see installed fonts on this system." -ForegroundColor DarkGray
+        return
+    }
 } 

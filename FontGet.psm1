@@ -156,17 +156,39 @@ function Invoke-FontGet {
                 if ($CommandArgs -contains '--force') {
                     $params['Force'] = $true
                 }
-                Install-GoogleFont @params
+                try {
+                    Install-GoogleFont @params
+                } catch {
+                    # Error is already handled by Install-GoogleFont
+                    return
+                }
+            } else {
+                Write-Host "Font name is required." -ForegroundColor Yellow
+                Write-Host "Usage: fontget install <font-name>" -ForegroundColor DarkGray
             }
         }
         'uninstall' {
             $fontName = ($CommandArgs | Where-Object { -not $_.StartsWith('-') } | Select-Object -First 1)
             if ($fontName) {
-                Uninstall-GoogleFont -Name $fontName.Trim('"''')
+                try {
+                    Uninstall-GoogleFont -Name $fontName.Trim('"''')
+                } catch {
+                    Write-Host "No installed font found matching input criteria." -ForegroundColor Yellow
+                    Write-Host "Try 'fontget list' to see installed fonts." -ForegroundColor DarkGray
+                }
+            } else {
+                Write-Host "Font name is required." -ForegroundColor Yellow
+                Write-Host "Usage: fontget uninstall <font-name>" -ForegroundColor DarkGray
             }
         }
         'list' {
             $params = @{}
+            $invalidFlags = $CommandArgs | Where-Object { $_ -like '--*' -and $_ -notin @('--google', '--other') }
+            if ($invalidFlags) {
+                Write-Host "Unrecognized option: $($invalidFlags[0])" -ForegroundColor Yellow
+                Write-Host "Valid options: --google, --other" -ForegroundColor DarkGray
+                return
+            }
             if ($CommandArgs -contains '--google') { 
                 $params['GoogleOnly'] = $true 
             }
@@ -176,7 +198,18 @@ function Invoke-FontGet {
             Show-Fonts @params
         }
         'search' {
-            Search-GoogleFont -Keyword ($CommandArgs -join " ")
+            $searchTerm = ($CommandArgs | Where-Object { -not $_.StartsWith('-') } | Select-Object -First 1)
+            if ($searchTerm) {
+                try {
+                    Search-GoogleFont -Keyword $searchTerm
+                } catch {
+                    Write-Host "No fonts found matching search criteria." -ForegroundColor Yellow
+                    Write-Host "Try a different search term." -ForegroundColor DarkGray
+                }
+            } else {
+                Write-Host "Search term is required." -ForegroundColor Yellow
+                Write-Host "Usage: fontget search <keyword>" -ForegroundColor DarkGray
+            }
         }
         default {
             Write-Host "FontGet Google Fonts Manager v$script:fontGetVersion"
@@ -190,7 +223,7 @@ function Invoke-FontGet {
             Write-Host "  search     Search available Google fonts"
             Write-Host "  help       Show help information"
             Write-Host
-            Write-Host "Use 'fontget help' for usage information"
+            Write-Host "Use 'fontget help' for usage information" -ForegroundColor DarkGray
         }
     }
 }

@@ -125,12 +125,15 @@ function Install-GoogleFont {
                             }
                         } else {
                             Write-Log "No font files were downloaded for $fontName" -Level WARNING
+                            Write-Host "No font found matching input criteria." -ForegroundColor Red
+                            Write-Host "Try 'fontget search to find available fonts." -ForegroundColor DarkGray
                             return
                         }
                     }
                     catch {
                         Write-Log "Failed to download font files for $fontName`: $_" -Level ERROR
-                        Write-Error "Failed to download font files for $fontName`: $_"
+                        Write-Host "No font found matching input criteria." -ForegroundColor Red
+                        Write-Host "Try 'fontget search to find available fonts." -ForegroundColor DarkGray
                         return
                     }
 
