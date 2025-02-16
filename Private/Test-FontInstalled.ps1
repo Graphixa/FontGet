@@ -4,23 +4,15 @@
 
 .DESCRIPTION
     Internal function that verifies if a specified font is installed.
-    Checks the Windows registry for font entries in either the current user
-    or all users context. Supports partial name matching.
+    Checks the Windows registry for font entries.
+    Supports partial name matching.
 
-.PARAMETER FontName
+.PARAMETER Name
     The name of the font to check. Case-insensitive partial matches are supported.
 
-.PARAMETER Scope
-    Specifies whether to check in current user or all users context.
-    Valid values are 'CurrentUser' and 'AllUsers'. Default is 'AllUsers'.
-
 .EXAMPLE
-    Test-FontInstalled -FontName "Roboto" -Scope CurrentUser
-    Checks if any Roboto fonts are installed for the current user.
-
-.EXAMPLE
-    Test-FontInstalled "Arial" -Scope AllUsers
-    Checks if Arial is installed system-wide.
+    Test-FontInstalled -Name "Roboto"
+    Checks if any Roboto fonts are installed.
 
 .NOTES
     Internal function, not exported.

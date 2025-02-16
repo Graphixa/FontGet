@@ -4,17 +4,7 @@
 
 .DESCRIPTION
     The Show-Fonts cmdlet displays a list of fonts installed on the system.
-    It can show system fonts, user-installed fonts, or both.
-    The output includes font names and their installation location.
-
-.PARAMETER SystemFonts
-    When specified, shows only pre-installed system fonts from the Windows Fonts directory.
-
-.PARAMETER UserFonts
-    When specified, shows only user-installed fonts from the user's font directory.
-
-.PARAMETER All
-    Shows both system and user-installed fonts. This is the default if no parameter is specified.
+    Can filter to show only Google fonts or non-Google fonts.
 
 .PARAMETER GoogleOnly
     Shows only fonts that are available on Google Fonts.
@@ -24,15 +14,7 @@
 
 .EXAMPLE
     Show-Fonts
-    Lists all installed fonts (both system and user-installed).
-
-.EXAMPLE
-    Show-Fonts -SystemFonts
-    Lists only pre-installed system fonts.
-
-.EXAMPLE
-    Show-Fonts -UserFonts
-    Lists only user-installed fonts.
+    Lists all installed fonts.
 
 .EXAMPLE
     Show-Fonts -GoogleOnly

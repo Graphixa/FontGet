@@ -11,11 +11,11 @@
     Array of command-line arguments passed to the function.
 
 .EXAMPLE
-    Invoke-GoogleFont install "Roboto"
+    Invoke-FontGet install "Roboto"
     Routes to Install-GoogleFont with the specified parameters.
 
 .EXAMPLE
-    Invoke-GoogleFont list --google
+    Invoke-FontGet list --google
     Routes to Show-Fonts with the Google fonts filter.
 
 .NOTES
@@ -28,7 +28,7 @@
     https://github.com/Graphixa/FontGet
 #>
 
-function Invoke-GoogleFont {
+function Invoke-FontGet {
     [CmdletBinding()]
     param(
         [Parameter(Position = 0, ValueFromRemainingArguments)]

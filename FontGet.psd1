@@ -20,7 +20,7 @@
         'Uninstall-GoogleFont',
         'Show-Fonts',
         'Search-GoogleFont',
-        'Invoke-GoogleFont',
+        'Invoke-FontGet',
         'Test-FontInstalled',
         'Write-Log'
     )

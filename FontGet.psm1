@@ -16,7 +16,7 @@ foreach ($import in $AllFunctions) {
     }
 }
 
-function Invoke-GoogleFont {
+function Invoke-FontGet {
     [CmdletBinding()]
     param(
         [Parameter(Position = 0, ValueFromRemainingArguments)]
@@ -55,9 +55,9 @@ function Invoke-GoogleFont {
                 Write-Host "Install Google Fonts`n"
                 Write-Host "Usage: fontget install <font-name> [--force]`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget install 'Roboto'          # Install Roboto font"
-                Write-Host "  fontget install 'Open Sans'       # Install Open Sans font"
-                Write-Host "  fontget install 'Roboto' --force  # Force reinstall Roboto font`n"
+                Write-Host "  fontget install 'roboto'             # Installs roboto font family"
+                Write-Host "  fontget install 'opensans'           # Installs opensans font family"
+                Write-Host "  fontget install 'roboto' --force     # Forces reinstallation of roboto`n"
                 Write-Host "Options:"
                 Write-Host "  --force    Force installation even if font exists"
                 return
@@ -66,17 +66,17 @@ function Invoke-GoogleFont {
                 Write-Host "Uninstall Fonts`n"
                 Write-Host "Usage: fontget uninstall <font-name>`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget uninstall 'Roboto'        # Remove Roboto font"
-                Write-Host "  fontget uninstall 'Open Sans'     # Remove Open Sans font"
+                Write-Host "  fontget uninstall 'roboto'       # Removes roboto font"
+                Write-Host "  fontget uninstall 'opensans'     # Removes opensans font"
                 return
             }
             'list' {
                 Write-Host "List Installed Fonts`n"
                 Write-Host "Usage: fontget list [--google] [--other]`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget list                # List all fonts"
-                Write-Host "  fontget list --google       # List only Google fonts"
-                Write-Host "  fontget list --other        # List only non-Google fonts`n"
+                Write-Host "  fontget list              # Lists all installed fonts"
+                Write-Host "  fontget list --google     # Lists installed Google fonts only"
+                Write-Host "  fontget list --other      # Lists installed non-Google fonts only`n"
                 Write-Host "Options:"
                 Write-Host "  --google   Show only Google fonts"
                 Write-Host "  --other    Show only non-Google fonts"
@@ -86,8 +86,8 @@ function Invoke-GoogleFont {
                 Write-Host "Search Google Fonts`n"
                 Write-Host "Usage: fontget search <keyword>`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget search 'Roboto'     # Search for Roboto font"
-                Write-Host "  fontget search 'sans'       # Search for fonts containing 'sans'"
+                Write-Host "  fontget search 'roboto'     # Searches for fonts that contain 'roboto'"
+                Write-Host "  fontget search 'sans'       # Searches for fonts that contain 'sans'"
                 return
             }
             default {
@@ -95,11 +95,12 @@ function Invoke-GoogleFont {
                 Write-Host "By @graphixa | MIT License: https://github.com/Graphixa/FontGet/License`n"
                 Write-Host "Usage: fontget <command> [options]`n"
                 Write-Host "Commands:"
-                Write-Host "  install    Install Google fonts"
-                Write-Host "  uninstall  Remove installed fonts"
-                Write-Host "  list       List installed fonts"
-                Write-Host "  search     Search available Google fonts"
-                Write-Host "  help       Show help information`n"
+                Write-Host "  install       Install Google fonts"
+                Write-Host "  uninstall     Remove installed fonts"
+                Write-Host "  list          List installed fonts"
+                Write-Host "  search        Search available Google fonts"
+                Write-Host "  help          Show help information`n"
+                Write-Host
                 Write-Host "For command help, use: fontget help <command>"
                 Write-Host "                  or: fontget <command> --help"
                 return
@@ -114,9 +115,9 @@ function Invoke-GoogleFont {
                 Write-Host "Install Google Fonts`n"
                 Write-Host "Usage: fontget install <font-name> [--force]`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget install 'Roboto'          # Install Roboto font"
-                Write-Host "  fontget install 'Open Sans'       # Install Open Sans font"
-                Write-Host "  fontget install 'Roboto' --force  # Force reinstall Roboto font`n"
+                Write-Host "  fontget install 'roboto'             # Installs roboto font family on the system"
+                Write-Host "  fontget install 'opensans'           # Installs opensans font family on the system"
+                Write-Host "  fontget install 'roboto' --force     # Force reinstall roboto font on the system`n"
                 Write-Host "Options:"
                 Write-Host "  --force    Force installation even if font exists"
                 return
@@ -125,8 +126,8 @@ function Invoke-GoogleFont {
                 Write-Host "Uninstall Fonts`n"
                 Write-Host "Usage: fontget uninstall <font-name>`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget uninstall 'Roboto'        # Remove Roboto font"
-                Write-Host "  fontget uninstall 'Open Sans'     # Remove Open Sans font"
+                Write-Host "  fontget uninstall 'roboto'       # Removes roboto font family from the system"
+                Write-Host "  fontget uninstall 'opensans'     # Removes opensans font family from the system"
                 return
             }
             'list' {
@@ -137,8 +138,8 @@ function Invoke-GoogleFont {
                 Write-Host "Search Google Fonts`n"
                 Write-Host "Usage: fontget search <keyword>`n"
                 Write-Host "Examples:"
-                Write-Host "  fontget search 'Roboto'     # Search for Roboto font"
-                Write-Host "  fontget search 'sans'       # Search for fonts containing 'sans'"
+                Write-Host "  fontget search 'roboto'     # Searches for fonts that contain 'roboto'"
+                Write-Host "  fontget search 'sans'       # Searches for fonts that contain 'sans'"
                 return
             }
         }
@@ -178,15 +179,25 @@ function Invoke-GoogleFont {
             Search-GoogleFont -Keyword ($CommandArgs -join " ")
         }
         default {
-            Write-Host "Unknown command: $Command"
+            Write-Host "FontGet Google Fonts Manager v$script:fontGetVersion"
+            Write-Host "By @graphixa | MIT License: https://github.com/Graphixa/FontGet/License`n"
+            Write-Host "Unknown command: $Command" -ForegroundColor Red
+            Write-Host
+            Write-Host "Available commands:"
+            Write-Host "  install    Install Google fonts"
+            Write-Host "  uninstall  Remove installed fonts"
+            Write-Host "  list       List installed fonts"
+            Write-Host "  search     Search available Google fonts"
+            Write-Host "  help       Show help information"
+            Write-Host
             Write-Host "Use 'fontget help' for usage information"
         }
     }
 }
 
 # Create and export the aliases
-Set-Alias -Name 'gfont' -Value 'Invoke-GoogleFont'
-Set-Alias -Name 'fontget' -Value 'Invoke-GoogleFont'
+Set-Alias -Name 'gfont' -Value 'Invoke-FontGet'
+Set-Alias -Name 'fontget' -Value 'Invoke-FontGet'
 
 # Export module members
 Export-ModuleMember -Function @(
@@ -194,7 +205,7 @@ Export-ModuleMember -Function @(
     'Uninstall-GoogleFont',
     'Show-Fonts',
     'Search-GoogleFont',
-    'Invoke-GoogleFont',
+    'Invoke-FontGet',
     'Test-FontInstalled',
     'Write-Log'
 ) -Alias @('gfont', 'fontget') 
