@@ -23,6 +23,58 @@ function Invoke-FontGet {
         [string[]]$Arguments
     )
 
+    # Handle empty command or special flags
+    if (-not $Arguments -or $Arguments.Count -eq 0 -or $Arguments[0].StartsWith('--')) {
+        $flag = if ($Arguments.Count -gt 0) { $Arguments[0].ToLower() } else { '' }
+        
+        switch ($flag) {
+            '--logs' {
+                $logPath = Join-Path $env:LOCALAPPDATA 'FontGet'
+                if (Test-Path $logPath) {
+                    Start-Process "explorer.exe" -ArgumentList $logPath
+                } else {
+                    Write-Host "Log directory not found: $logPath" -ForegroundColor Yellow
+                }
+                return
+            }
+            '--info' {
+                Write-Host "FontGet Package Manager v$script:fontGetVersion"
+                Write-Host "Copyright (c) Graphixa. All rights reserved.`n"
+                
+                Write-Host "FontGet Directories"
+                Write-Host "".PadRight(100, '-')
+                Write-Host "Log File Location                 $env:LOCALAPPDATA\FontGet"
+                Write-Host "Temp Font Download Directory      $env:TEMP\GoogleFonts"
+                Write-Host "Windows Fonts Directory           $env:windir\Fonts`n"
+                
+                Write-Host "Links"
+                Write-Host "".PadRight(100, '-')
+                Write-Host "Homepage                          https://github.com/Graphixa/FontGet"
+                Write-Host "PowerShell Gallery                [Coming Soon]"
+                Write-Host "License                           https://github.com/Graphixa/FontGet/LICENSE"
+                Write-Host "Documentation                     https://github.com/Graphixa/FontGet/README.md"
+                return
+            }
+            default {
+                # Show default help
+                Write-Host "FontGet Google Fonts Manager v$script:fontGetVersion"
+                Write-Host "By @graphixa | MIT License: https://github.com/Graphixa/FontGet/License`n"
+                Write-Host "Usage: fontget <command> [options]`n"
+                Write-Host "Aliases: gfont, fontget`n"
+                Write-Host "Commands:"
+                Write-Host "  install    Install Google fonts"
+                Write-Host "  uninstall  Remove installed fonts"
+                Write-Host "  list       List installed fonts"
+                Write-Host "  search     Search available Google fonts`n"
+                Write-Host "Options:"
+                Write-Host "  --info     Display info about the fontget tool"
+                Write-Host "  --logs     Open the logs directory`n"
+                Write-Host "For command help, use: fontget <command> --? or fontget <command> --help"
+                return
+            }
+        }
+    }
+<#
     # Handle empty command
     if (-not $Arguments -or $Arguments.Count -eq 0) {
         Write-Host "FontGet Google Fonts Manager v$script:fontGetVersion"
@@ -37,6 +89,7 @@ function Invoke-FontGet {
         Write-Host "For command help, use: fontget <command> --? or fontget <command> --help"
         return
     }
+#>
 
     $Command = $Arguments[0].ToLower()
     $CommandArgs = if ($Arguments.Count -gt 1) { $Arguments[1..($Arguments.Count-1)] } else { @() }
