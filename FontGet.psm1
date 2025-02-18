@@ -3,6 +3,8 @@ $Public = @(Get-ChildItem -Path $PSScriptRoot\Public\*.ps1 -ErrorAction Silently
 $Private = @(Get-ChildItem -Path $PSScriptRoot\Private\*.ps1 -ErrorAction SilentlyContinue)
 
 $script:fontGetVersion = "0.1.0"
+$script:lastUpdateCheck = $null
+$script:updateCheckInterval = New-TimeSpan -Days 1
 
 # Dot source all functions
 $AllFunctions = $Public + $Private
@@ -13,6 +15,20 @@ foreach ($import in $AllFunctions) {
     }
     catch {
         Write-Error "Failed to import function $($import.FullName): $_"
+    }
+}
+
+# Check for updates on module import
+if (-not $script:lastUpdateCheck -or 
+    ((Get-Date) - $script:lastUpdateCheck) -gt $script:updateCheckInterval) {
+    
+    $script:lastUpdateCheck = Get-Date
+    $latestVersion = Get-FontGetLatestVersion
+    
+    if ($latestVersion -and $latestVersion -ne $script:fontGetVersion) {
+        Write-Host "`nFontGet update available: v$latestVersion" -ForegroundColor Yellow
+        Write-Host "Run 'fontget --update' to update to the latest version" -ForegroundColor DarkGray
+        Write-Host "Current version: v$script:fontGetVersion`n" -ForegroundColor DarkGray
     }
 }
 
@@ -53,6 +69,21 @@ function Invoke-FontGet {
                 Write-Host "PowerShell Gallery                [Coming Soon]"
                 Write-Host "License                           https://github.com/Graphixa/FontGet/LICENSE"
                 Write-Host "Documentation                     https://github.com/Graphixa/FontGet/README.md"
+                return
+            }
+            '--update' {
+                Write-Host "Checking for FontGet updates..." -ForegroundColor Cyan
+                Update-FontGetModule -Force
+                return
+            }
+            '--version' {
+                $currentVersion = $script:fontGetVersion
+                $latestVersion = Get-FontGetLatestVersion
+                Write-Host "FontGet v$currentVersion"
+                if ($latestVersion -and $latestVersion -ne $currentVersion) {
+                    Write-Host "Update available: v$latestVersion" -ForegroundColor Yellow
+                    Write-Host "Run 'fontget --update' to update" -ForegroundColor DarkGray
+                }
                 return
             }
             default {
@@ -332,4 +363,59 @@ Export-ModuleMember -Function @(
     'Invoke-FontGet',
     'Test-FontInstalled',
     'Write-Log'
-) -Alias @('gfont', 'fontget') 
+) -Alias @('gfont', 'fontget')
+
+function Get-FontGetLatestVersion {
+    try {
+        # Try PSGallery first
+        $psGalleryModule = Find-Module -Name FontGet -ErrorAction SilentlyContinue
+        if ($psGalleryModule) {
+            return $psGalleryModule.Version
+        }
+
+        # Fallback to GitHub releases
+        $releaseUrl = "https://api.github.com/repos/Graphixa/FontGet/releases/latest"
+        $release = Invoke-RestMethod -Uri $releaseUrl -ErrorAction Stop
+        if ($release.tag_name) {
+            return $release.tag_name.TrimStart('v')
+        }
+    }
+    catch {
+        Write-Verbose "Could not check for updates: $_"
+        return $null
+    }
+}
+
+function Update-FontGetModule {
+    [CmdletBinding()]
+    param(
+        [switch]$Force
+    )
+
+    $currentVersion = $script:fontGetVersion
+    $latestVersion = Get-FontGetLatestVersion
+
+    if (-not $latestVersion) {
+        Write-Host "Could not check for updates" -ForegroundColor Red
+        return
+    }
+
+    if ($latestVersion -eq $currentVersion -and -not $Force) {
+        Write-Host "FontGet is up to date (v$currentVersion)" -ForegroundColor Green
+        return
+    }
+
+    Write-Host "Updating FontGet from v$currentVersion to v$latestVersion..." -ForegroundColor Cyan
+
+    try {
+        # Try updating via PSGallery
+        Update-Module -Name FontGet -Force -ErrorAction Stop
+        Write-Host "Update successful!" -ForegroundColor Green
+        Write-Host "Please restart your PowerShell session" -ForegroundColor Yellow
+    }
+    catch {
+        Write-Host "Could not update FontGet: $_" -ForegroundColor Red
+        Write-Host "Please try updating manually:" -ForegroundColor Yellow
+        Write-Host "Install-Module -Name FontGet -Force" -ForegroundColor DarkGray
+    }
+} 
