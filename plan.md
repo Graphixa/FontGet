@@ -1,124 +1,192 @@
-# fontget — Development Blueprint
-*A tiny, cross‑platform font package manager written in Go*
+# FontGet CLI Tool
 
----
+A command-line tool for installing fonts from the Google Fonts repository.
 
-## 1  Project Purpose
+## Project Purpose
 
-Deliver **fontget**, a single‑file CLI tool for Windows, macOS and Linux that lets users install fonts from the command line. Example:
+The `fontget` CLI tool queries the Google Fonts repository for each font on demand, allowing users to easily install fonts on their system. It supports both user-level and system-wide font installation.
 
-```
-fontget add "open‑sans"         # alias: install
-fontget remove "open‑sans"      # alias: uninstall
-fontget list                    # list installed fonts
-fontget search "noto"           # search the index for fonts based on the user query.
-fontget import                  # imports a .json file of fonts and adds all listed fonts
-fontget export                  # exports all installed fonts on the system to a json file
-  fontget export --google         # exports only fonts that are referenced in the google repo to .json file
-fontget repo                    # lists the repositories of FontGet (Google by default)
-  fontget repo --update           # refresh font index
-  fontget repo --add              # append a new index URL to the repositories file
-  fontget repo --remove           # remove an existing index URL the repositories file
-fontget prune                   # clear unused downloads
-```
-
-`fontget` queries the Google Fonts repository for each font on demand, verifies SHA‑256, copies fonts into the correct system or user directory, and keeps an on‑disk cache for offline installs.
-
----
-
-## 2  Technology Stack
-
-| Layer            | Choice & Rationale                                                        |
-|------------------|---------------------------------------------------------------------------|
-| Language         | **Go ≥ 1.22** — fast compile, tiny statically‑linked binaries             |
-| CLI Parsing      | **Cobra** — abundant examples, man/completion generators                  |
-| Config / Env     | **Viper** — YAML/TOML/JSON plus env‑var override                          |
-| Packaging        | **GoReleaser** — multi‑platform archives, .deb, .msi, Homebrew, winget    |
-| CI / Hosting     | **GitHub Actions** — test, lint, cross‑build, release                     |
-| Cache Directory  | `os.UserCacheDir()` → …/fontget/ per XDG / macOS / Windows                |
-
----
-
-## 3  Repository Layout
+## Repository Layout
 
 ```
 fontget/
-├── cmd/                 # Cobra commands
-│   ├── root.go          # global flags, config bootstrap
-│   ├── add.go           # install (alias: add)
-│   ├── remove.go        # uninstall
-│   ├── list.go
-│   ├── repo.go          # repo update/add/remove
-│   ├── import.go
-│   ├── export.go
-│   └── cache.go         # prune
+├── cmd/
+│   ├── root.go      # Root command and initialization
+│   ├── add.go       # Font installation command | alias: fontget install
+│   ├── remove.go    # Font removal command | alias: fontget uninstall
+│   ├── list.go      # List installed fonts
+│   ├── import.go    # Import font files from json file
+│   ├── export.go    # Export list of installed font files to json format | Works with --scope parameter
+│   └── search.go    # Search available fonts
 ├── internal/
-│   ├── cache/           # font blob cache
-│   ├── platform/        # windows.go, linux.go, macos.go
-│   └── repo/            # HTTP fetch, checksum, retries
-├── .goreleaser.yml
-├── .github/workflows/
-│   ├── ci.yaml
-│   └── release.yaml
+│   ├── platform/    # Platform-specific font management
+│   │   ├── windows.go
+│   │   ├── linux.go
+│   │   └── darwin.go
+│   └── repo/        # Font repository interaction
+│       └── font.go
 ├── go.mod
+├── go.sum
 └── README.md
 ```
 
-### Key internal packages
-
-| Package            | Responsibility                                                                    |
-|--------------------|-----------------------------------------------------------------------------------|
-| `internal/cache`   | Locate cache dir, content‑addressable storage, `Prune()`                          |
-| `internal/platform`| Copy font bytes to OS dir + post‑install refresh (`fc‑cache`, `AddFontResourceEx`)|
-| `internal/repo`    | Download font files, verify SHA‑256 on payloads                                   |
-
----
-
-## 4  Local Cache Layout
+## Local Cache Layout
 
 ```
-$CACHE/fontget/
-└── fonts/
-    └── <sha256>.ttf      # content‑addressable blobs
+.fontget/
+└── fonts/          # Downloaded font files
 ```
 
-* **Offline:** previously downloaded fonts install without internet.  
-* **Prune:** `fontget cache prune` deletes blobs not used for *N* days (default 90).
+## Font Installation Process
 
----
+1. Query GitHub API for a specific font:
+   - Endpoint: `https://api.github.com/repos/google/fonts/contents/ofl/{font-name}`
+   - Response: JSON array of font files with metadata
 
-## 5  Font Installation Process
+2. Download and verify font files:
+   - Download each font file
+   - Calculate SHA-256 hash
+   - Verify file integrity
 
-1. `GET https://api.github.com/repos/google/fonts/contents/ofl/{font-name}`  
-2. If the response is valid, extract the font files and download them.  
-3. Verify SHA‑256 and install the fonts.
+3. Install fonts:
+   - User scope (default): Install to user's font directory
+     - Windows: `%LOCALAPPDATA%\Microsoft\Windows\Fonts`
+     - Linux: `~/.local/share/fonts`
+     - macOS: `~/Library/Fonts`
+   - Machine scope: Install system-wide (requires elevation)
+     - Windows: `C:\Windows\Fonts`
+     - Linux: `/usr/local/share/fonts`
+     - macOS: `/Library/Fonts`
 
-### Platform-Specific Implementation
+4. Platform-specific elevation:
+   - Windows: UAC prompt for machine scope
+   - Linux: `sudo` for machine scope
+   - macOS: `sudo` for machine scope
 
-#### Windows
-- Uses `AddFontResource` and `RemoveFontResource` from GDI32
-- Sends `WM_FONTCHANGE` message to notify applications
-- Font directory: `%WINDIR%\Fonts`
+## Installation Scopes
 
-#### Linux
-- Uses `fc-cache` to update font cache
-- Font directory: `~/.local/share/fonts`
-- Requires `fontconfig` package
+### User Scope (Default)
+- Installs fonts for the current user only
+- No elevation required
+- Fonts are available only to the installing user
+- Default installation locations:
+  - Windows: `%LOCALAPPDATA%\Microsoft\Windows\Fonts`
+  - Linux: `~/.local/share/fonts`
+  - macOS: `~/Library/Fonts`
 
-#### macOS
-- Uses `atsutil` to manage font cache
-- Font directory: `~/Library/Fonts`
-- Requires administrative privileges for system-wide installation
+### Machine Scope
+- Installs fonts system-wide
+- Requires elevation
+- Fonts are available to all users
+- Installation locations:
+  - Windows: `C:\Windows\Fonts`
+  - Linux: `/usr/local/share/fonts`
+  - macOS: `/Library/Fonts`
 
----
+## Platform-Specific Elevation
 
-## 6  GitHub Actions
+### Windows
+- Uses UAC (User Account Control) for elevation
+- Detection:
+  - Check if running as administrator using `windows.IsElevated()`
+  - If not elevated and machine scope requested:
+    - Print clear message about elevation requirement
+    - Optionally attempt to relaunch with elevation using `runas`
+- Implementation:
+  - Use `windows.IsElevated()` to check current privileges
+  - Use `windows.RunAsElevated()` to relaunch if needed
+  - Handle UAC prompt gracefully
 
-### `ci.yaml`
+### Linux
+- Uses `sudo` for elevation
+- Detection:
+  - Check if running as root using `os.Geteuid() == 0`
+  - If not root and machine scope requested:
+    - Print clear message about `sudo` requirement
+    - Provide example command with `sudo`
+- Implementation:
+  - Use `os.Geteuid()` to check current privileges
+  - Provide clear error messages and instructions
+
+### macOS
+- Uses `sudo` for elevation
+- Detection:
+  - Check if running as root using `os.Geteuid() == 0`
+  - If not root and machine scope requested:
+    - Print clear message about `sudo` requirement
+    - Provide example command with `sudo`
+- Implementation:
+  - Use `os.Geteuid()` to check current privileges
+  - Provide clear error messages and instructions
+
+## Commands
+
+### `fontget add <font-name> [--scope <user|machine>]`
+
+Install a font from Google Fonts.
+
+Options:
+- `--scope`: Installation scope (default: user)
+  - `user`: Install for current user only
+  - `machine`: Install system-wide (requires elevation)
+
+### `fontget remove <font-name> [--scope <user|machine>]`
+
+Remove an installed font.
+
+### `fontget list [--scope <user|machine>]`
+
+List installed fonts.
+
+### `fontget search <query>`
+
+Search for available fonts.
+
+## Milestones
+
+1. **Basic Setup**
+   - [x] Initialize Go module
+   - [x] Set up Cobra CLI structure
+   - [x] Create basic command structure
+
+2. **Font Repository Integration**
+   - [x] Implement GitHub API client
+   - [x] Add font metadata parsing
+   - [x] Implement font download with SHA-256 verification
+
+3. **Platform-Specific Implementation**
+   - [x] Create platform-agnostic interface
+   - [x] Implement Windows font manager
+   - [x] Implement Linux font manager
+   - [x] Implement macOS font manager
+   - [ ] Add elevation support:
+     - [ ] Windows UAC prompt
+     - [ ] Linux sudo
+     - [ ] macOS sudo
+
+4. **Core Commands**
+   - [x] Implement `add` command
+   - [ ] Add scope parameter
+   - [ ] Implement `remove` command
+   - [ ] Implement `list` command
+   - [ ] Implement `search` command
+
+5. **Testing and Documentation**
+   - [ ] Add unit tests
+   - [ ] Add integration tests
+   - [ ] Create comprehensive README
+   - [ ] Add usage examples
+
+## CI Configuration
 
 ```yaml
-name: ci
-on: [push, pull_request]
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
   test:
@@ -127,110 +195,33 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: '1.22' }
-      - name: Install dependencies
-        run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            sudo apt-get update
-            sudo apt-get install -y fontconfig
-          fi
-      - run: go test ./...
-      - run: go vet ./...
-      - uses: golangci/golangci-lint-action@v3
+      - uses: actions/checkout@v2
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.21
+      - name: Test
+        run: go test -v ./...
+      - name: Build
+        run: go build -v ./...
 ```
 
-### `release.yaml`
+## Testing Requirements
 
-```yaml
-name: release
-on:
-  push:
-    tags: ['v*.*.*']
+### Windows
+- Test user scope installation
+- Test machine scope installation with UAC
+- Verify font cache updates
+- Test font removal
 
-jobs:
-  goreleaser:
-    runs-on: ubuntu-latest
-    permissions: { contents: write }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: goreleaser/goreleaser-action@v5
-        with: { version: latest, args: release --clean }
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-```
+### Linux
+- Test user scope installation
+- Test machine scope installation with sudo
+- Verify font cache updates
+- Test font removal
 
-### `.goreleaser.yml` (excerpt)
-
-```yaml
-project_name: fontget
-
-builds:
-  - main: ./cmd/fontget
-    goos: [windows, linux, darwin]
-    goarch: [amd64, arm64]
-    flags: ['-trimpath']
-
-archives:
-  - format: tar.gz
-    builds: [default]
-
-checksum:
-  name_template: 'checksums.txt'
-
-brews:
-  - github:
-      owner: yourname
-      name: homebrew-tap
-    test: "fontget --help"
-
-winget:
-  package_identifier: yourname.fontget
-  publisher: Your Name
-  description: "Cross-platform font installer"
-```
-
----
-
-## 7  Milestones & Example Cursor Prompts
-
-| Phase | Goal | Prompt |
-|-------|------|--------|
-| 0 | Scaffold project | "Create a Go module 'fontget' with Cobra root command and empty sub‑commands listed in section 3." |
-| 1 | Font installation | "Implement cmd/add.go to query the GitHub API for a specific font and download it." |
-| 2 | Cache package | "Add internal/cache with functions GetFont, Prune. Use os.UserCacheDir()." |
-| 3 | Platform install | "Write internal/platform/{windows,linux,macos}.go that copies font bytes to the correct dir and refreshes cache. Use build tags." |
-| 4 | Release pipeline | "Add .goreleaser.yml and workflows in section 6; make 'goreleaser check' pass." |
-
----
-
-## 8  Done Criteria
-
-* Binaries run `fontget --help` on Windows 10, macOS 13+, Ubuntu 22.04.  
-* `add` installs a font and it appears in the font picker without reboot.  
-* Cache supports offline re‑installs; `fontget prune` frees space.  
-* Tag ⇒ GitHub Release with checksums, archives; Homebrew & winget PRs open automatically.  
-* Documentation includes README, man‑pages, usage examples.
-
-### Testing Requirements
-
-#### Windows
-- Test on Windows 10/11
-- Verify font installation in `%WINDIR%\Fonts`
-- Check font appears in applications without reboot
-- Test font removal and cache updates
-
-#### Linux
-- Test on Ubuntu 22.04
-- Verify font installation in `~/.local/share/fonts`
-- Check `fc-cache` updates
-- Test font removal and cache updates
-- Verify font appears in applications
-
-#### macOS
-- Test on macOS 13+
-- Verify font installation in `~/Library/Fonts`
-- Check `atsutil` cache updates
-- Test font removal and cache updates
-- Verify font appears in applications
+### macOS
+- Test user scope installation
+- Test machine scope installation with sudo
+- Verify font cache updates
+- Test font removal
