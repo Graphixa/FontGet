@@ -6,14 +6,26 @@ import (
 	"path/filepath"
 )
 
+// InstallationScope defines where fonts should be installed
+type InstallationScope string
+
+const (
+	// UserScope installs fonts for the current user only
+	UserScope InstallationScope = "user"
+	// MachineScope installs fonts system-wide
+	MachineScope InstallationScope = "machine"
+)
+
 // FontManager defines the interface for platform-specific font operations
 type FontManager interface {
 	// InstallFont installs a font file to the system
-	InstallFont(fontPath string) error
+	InstallFont(fontPath string, scope InstallationScope) error
 	// RemoveFont removes a font from the system
-	RemoveFont(fontName string) error
-	// GetFontDir returns the system's font directory
-	GetFontDir() string
+	RemoveFont(fontName string, scope InstallationScope) error
+	// GetFontDir returns the system's font directory for the given scope
+	GetFontDir(scope InstallationScope) string
+	// RequiresElevation returns whether the given scope requires elevation
+	RequiresElevation(scope InstallationScope) bool
 }
 
 // Common helper functions

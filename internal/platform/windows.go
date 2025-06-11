@@ -12,28 +12,47 @@ import (
 )
 
 type windowsFontManager struct {
-	fontDir string
+	systemFontDir string
+	userFontDir   string
 }
 
 // NewFontManager creates a new FontManager for Windows
 func NewFontManager() (FontManager, error) {
-	// Get the Windows font directory
-	fontDir := filepath.Join(os.Getenv("WINDIR"), "Fonts")
-	if err := ensureDir(fontDir); err != nil {
-		return nil, fmt.Errorf("failed to ensure font directory exists: %w", err)
+	// Get the Windows system font directory
+	systemFontDir := filepath.Join(os.Getenv("WINDIR"), "Fonts")
+	if err := ensureDir(systemFontDir); err != nil {
+		return nil, fmt.Errorf("failed to ensure system font directory exists: %w", err)
+	}
+
+	// Get the user font directory
+	userFontDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "Microsoft", "Windows", "Fonts")
+	if err := ensureDir(userFontDir); err != nil {
+		return nil, fmt.Errorf("failed to ensure user font directory exists: %w", err)
 	}
 
 	return &windowsFontManager{
-		fontDir: fontDir,
+		systemFontDir: systemFontDir,
+		userFontDir:   userFontDir,
 	}, nil
 }
 
-// InstallFont installs a font file to the Windows font directory
-func (m *windowsFontManager) InstallFont(fontPath string) error {
+// InstallFont installs a font file to the specified font directory
+func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope) error {
 	fontName := getFontName(fontPath)
-	targetPath := filepath.Join(m.fontDir, fontName)
+	var targetDir string
 
-	// Copy the font file to the Windows font directory
+	switch scope {
+	case UserScope:
+		targetDir = m.userFontDir
+	case MachineScope:
+		targetDir = m.systemFontDir
+	default:
+		return fmt.Errorf("invalid installation scope: %s", scope)
+	}
+
+	targetPath := filepath.Join(targetDir, fontName)
+
+	// Copy the font file to the target directory
 	if err := copyFile(fontPath, targetPath); err != nil {
 		return fmt.Errorf("failed to copy font file: %w", err)
 	}
@@ -53,9 +72,20 @@ func (m *windowsFontManager) InstallFont(fontPath string) error {
 	return nil
 }
 
-// RemoveFont removes a font from the Windows font directory
-func (m *windowsFontManager) RemoveFont(fontName string) error {
-	fontPath := filepath.Join(m.fontDir, fontName)
+// RemoveFont removes a font from the specified font directory
+func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope) error {
+	var targetDir string
+
+	switch scope {
+	case UserScope:
+		targetDir = m.userFontDir
+	case MachineScope:
+		targetDir = m.systemFontDir
+	default:
+		return fmt.Errorf("invalid installation scope: %s", scope)
+	}
+
+	fontPath := filepath.Join(targetDir, fontName)
 
 	// Remove the font resource
 	if err := m.removeFontResource(fontPath); err != nil {
@@ -75,9 +105,21 @@ func (m *windowsFontManager) RemoveFont(fontName string) error {
 	return nil
 }
 
-// GetFontDir returns the Windows font directory
-func (m *windowsFontManager) GetFontDir() string {
-	return m.fontDir
+// GetFontDir returns the font directory for the specified scope
+func (m *windowsFontManager) GetFontDir(scope InstallationScope) string {
+	switch scope {
+	case UserScope:
+		return m.userFontDir
+	case MachineScope:
+		return m.systemFontDir
+	default:
+		return m.userFontDir // Default to user scope
+	}
+}
+
+// RequiresElevation returns whether the given scope requires elevation
+func (m *windowsFontManager) RequiresElevation(scope InstallationScope) bool {
+	return scope == MachineScope
 }
 
 // Windows API functions
