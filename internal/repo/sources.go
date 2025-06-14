@@ -298,3 +298,59 @@ func GetFontFiles(fontFamily string) (map[string]string, error) {
 
 	return files, nil
 }
+
+// Repository represents a font repository
+type Repository struct {
+	manifest *FontManifest
+}
+
+// GetRepository returns a new repository instance
+func GetRepository() (*Repository, error) {
+	manifest, err := GetManifest(nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get manifest: %w", err)
+	}
+	return &Repository{manifest: manifest}, nil
+}
+
+// GetManifest returns the current font manifest
+func (r *Repository) GetManifest() (*FontManifest, error) {
+	return r.manifest, nil
+}
+
+// SearchFonts searches for fonts matching the query
+func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
+	var results []SearchResult
+
+	// Search through each source
+	for sourceID, source := range r.manifest.Sources {
+		for id, font := range source.Fonts {
+			// Check both the font name and ID
+			fontName := strings.ToLower(font.Name)
+			fontID := strings.ToLower(id)
+			query = strings.ToLower(query)
+
+			// Check for matches
+			if strings.Contains(fontName, query) || strings.Contains(fontID, query) {
+				// If category filter is specified, check if font matches
+				if category != "" {
+					found := false
+					for _, cat := range font.Categories {
+						if strings.EqualFold(cat, category) {
+							found = true
+							break
+						}
+					}
+					if !found {
+						continue
+					}
+				}
+
+				result := createSearchResult(id, font, sourceID, source.Name)
+				results = append(results, result)
+			}
+		}
+	}
+
+	return results, nil
+}
