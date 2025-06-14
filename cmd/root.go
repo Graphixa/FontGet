@@ -12,9 +12,10 @@ const (
 
 var rootCmd = &cobra.Command{
 	Use:   "fontget",
-	Short: "A command-line tool for installing fonts from the Google Fonts repository",
-	Long:  fmt.Sprintf(`FontGet v%s - The Universal CLI Font Manager.`, version),
-	Args:  cobra.NoArgs,
+	Short: "A command-line tool for managing fonts",
+	Long: `Fontget is a command-line tool for managing fonts on your system.
+It allows you to add, remove, and list fonts, with support for both user and system-wide installation.`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -98,7 +99,7 @@ PowerShell:
 	rootCmd.AddCommand(completionCmd)
 }
 
-// Execute executes the root command and returns an error
+// Execute runs the root command
 func Execute() error {
 	return rootCmd.Execute()
 }

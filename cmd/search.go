@@ -19,7 +19,24 @@ var searchCmd = &cobra.Command{
   fontget search "fira" -category "Sans Serif"
   fontget search -c "Sans Serif"
   `,
-	Args: cobra.MaximumNArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		// Get flags
+		category, _ := cmd.Flags().GetString("category")
+
+		// Get query from args
+		var query string
+		if len(args) > 0 {
+			query = args[0]
+		}
+
+		// Validate query
+		if query == "" && category == "" {
+			red := color.New(color.FgRed).SprintFunc()
+			fmt.Printf("\n%s\n\n", red("Either a search query or category is required"))
+			return cmd.Help()
+		}
+		return nil
+	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		// Get repository
 		r, err := repo.GetRepository()
@@ -44,20 +61,14 @@ var searchCmd = &cobra.Command{
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Get flags
+		// Double check args to prevent panic
 		category, _ := cmd.Flags().GetString("category")
-
-		// Get query from args
 		var query string
 		if len(args) > 0 {
 			query = args[0]
 		}
-
-		// Validate query
 		if query == "" && category == "" {
-			red := color.New(color.FgRed).SprintFunc()
-			fmt.Printf("\n%s\n\n", red("Either a search query or category is required"))
-			return cmd.Help()
+			return nil // Args validator will have already shown the help
 		}
 
 		// Get repository

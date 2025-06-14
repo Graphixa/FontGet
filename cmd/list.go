@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"runtime"
-
-	"fontget/internal/errors"
 	"fontget/internal/platform"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -26,6 +23,9 @@ You can specify the installation scope using the --scope flag:
 			return fmt.Errorf("failed to initialize font manager: %w", err)
 		}
 
+		// Get scope from flag
+		scope, _ := cmd.Flags().GetString("scope")
+
 		// Convert scope string to InstallationScope
 		installScope := platform.UserScope
 		if scope != "user" {
@@ -35,16 +35,9 @@ You can specify the installation scope using the --scope flag:
 			}
 		}
 
-		// Check if elevation is required
-		if fontManager.RequiresElevation(installScope) {
-			elevated, err := fontManager.IsElevated()
-			if err != nil {
-				return fmt.Errorf("failed to check elevation status: %w", err)
-			}
-			if !elevated {
-				errors.PrintElevationHelp(cmd, runtime.GOOS)
-				return errors.ElevationRequired(runtime.GOOS)
-			}
+		// Check elevation
+		if err := checkElevation(cmd, fontManager, installScope); err != nil {
+			return err
 		}
 
 		// Get font directory for the specified scope
@@ -67,11 +60,12 @@ You can specify the installation scope using the --scope flag:
 				fmt.Printf("  - %s\n", file.Name())
 			}
 		}
+
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(listCmd)
-	listCmd.Flags().StringVar(&scope, "scope", "user", "Installation scope (user or machine)")
+	listCmd.Flags().String("scope", "user", "Installation scope (user or machine)")
 }

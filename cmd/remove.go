@@ -4,10 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"runtime"
+	"path/filepath"
 	"strings"
 
-	"fontget/internal/errors"
 	"fontget/internal/platform"
 
 	"github.com/spf13/cobra"
@@ -15,7 +14,6 @@ import (
 
 var (
 	scope string
-	force bool
 )
 
 // promptYesNo asks the user a yes/no question and returns true for yes, false for no
@@ -40,22 +38,22 @@ func promptYesNo(message string) (bool, error) {
 
 var removeCmd = &cobra.Command{
 	Use:   "remove <font-name>",
-	Short: "Remove an installed font",
-	Long: `Remove a font from your system.
-You can specify the installation scope using the --scope flag:
-  - user (default): Remove from current user's fonts
-  - machine: Remove from system-wide fonts (requires elevation)
-
-Use --force to skip interactive prompts.`,
+	Short: "Remove a font from your system",
+	Long: `Remove a font from your system. You can specify the installation scope using the --scope flag:
+  - user (default): Remove font from current user
+  - machine: Remove font system-wide (requires elevation)`,
+	Example: `  fontget remove "Roboto"
+  fontget remove "Open Sans" --scope machine`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fontName := args[0]
-
 		// Create font manager
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
 			return fmt.Errorf("failed to initialize font manager: %w", err)
 		}
+
+		// Get scope from flag
+		scope, _ := cmd.Flags().GetString("scope")
 
 		// Convert scope string to InstallationScope
 		installScope := platform.UserScope
@@ -66,90 +64,52 @@ Use --force to skip interactive prompts.`,
 			}
 		}
 
-		// Check if font exists in the requested scope
+		// Check elevation
+		if err := checkElevation(cmd, fontManager, installScope); err != nil {
+			return err
+		}
+
+		// Get font directory for the specified scope
 		fontDir := fontManager.GetFontDir(installScope)
-		installedFonts, err := platform.ListInstalledFonts(fontDir)
-		if err != nil {
-			return fmt.Errorf("error checking installed fonts: %w", err)
-		}
 
-		fontFound := false
-		for _, installedFont := range installedFonts {
-			if installedFont == fontName {
-				fontFound = true
-				break
-			}
-		}
+		// Get font name from args
+		fontName := args[0]
 
-		if !fontFound {
-			// If not found in requested scope, check other scope
-			otherScope := platform.MachineScope
-			if installScope == platform.MachineScope {
-				otherScope = platform.UserScope
-			}
-			otherFontDir := fontManager.GetFontDir(otherScope)
-			otherFonts, err := platform.ListInstalledFonts(otherFontDir)
+		// Find all matching font files
+		var matchingFiles []string
+		err = filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
-				return fmt.Errorf("error checking fonts in %s scope: %w", otherScope, err)
+				return err
 			}
-
-			for _, otherFont := range otherFonts {
-				if otherFont == fontName {
-					if force {
-						// If force flag is set, automatically use the other scope
-						installScope = otherScope
-						fontFound = true
-						break
-					}
-					// Ask user if they want to remove from the other scope
-					shouldRemove, err := promptYesNo(fmt.Sprintf("Font '%s' is not installed in %s scope, but is installed in %s scope. Would you like to remove it from %s scope instead?",
-						fontName, installScope, otherScope, otherScope))
-					if err != nil {
-						return err
-					}
-
-					if shouldRemove {
-						// Update scope to the other scope
-						installScope = otherScope
-						fontFound = true
-						break
-					} else {
-						return fmt.Errorf("font '%s' is not installed in %s scope", fontName, installScope)
-					}
+			if !info.IsDir() {
+				// Check if the file name contains the font name (case-insensitive)
+				if strings.Contains(strings.ToLower(info.Name()), strings.ToLower(fontName)) {
+					matchingFiles = append(matchingFiles, path)
 				}
 			}
-
-			if !fontFound {
-				return fmt.Errorf("font '%s' is not installed in any scope", fontName)
-			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed to search for font files: %w", err)
 		}
 
-		// Check if elevation is required
-		if fontManager.RequiresElevation(installScope) {
-			elevated, err := fontManager.IsElevated()
-			if err != nil {
-				return fmt.Errorf("failed to check elevation status: %w", err)
-			}
-			if !elevated {
-				errors.PrintElevationHelp(cmd, runtime.GOOS)
-				return errors.ElevationRequired(runtime.GOOS)
-			}
+		if len(matchingFiles) == 0 {
+			return fmt.Errorf("no fonts found matching '%s'", fontName)
 		}
 
-		fmt.Printf("Removing font '%s' from %s scope...\n", fontName, installScope)
-
-		// Remove the font
-		if err := fontManager.RemoveFont(fontName, installScope); err != nil {
-			return fmt.Errorf("failed to remove font: %w", err)
+		// Remove each matching font file
+		for _, file := range matchingFiles {
+			if err := os.Remove(file); err != nil {
+				return fmt.Errorf("failed to remove font file %s: %w", file, err)
+			}
+			fmt.Printf("Removed: %s\n", filepath.Base(file))
 		}
 
-		fmt.Printf("Successfully removed font '%s' from %s scope\n", fontName, installScope)
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
-	removeCmd.Flags().StringVar(&scope, "scope", "user", "Installation scope (user or machine)")
-	removeCmd.Flags().BoolVarP(&force, "force", "f", false, "Skip interactive prompts")
+	removeCmd.Flags().String("scope", "user", "Installation scope (user or machine)")
 }

@@ -8,7 +8,6 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 var infoCmd = &cobra.Command{
@@ -20,7 +19,14 @@ var infoCmd = &cobra.Command{
   fontget info "Open Sans" -f
   fontget info "Fira Sans" --metadata
   `,
-	Args: cobra.MaximumNArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+			red := color.New(color.FgRed).SprintFunc()
+			fmt.Printf("\n%s\n\n", red("A font ID is required"))
+			return cmd.Help()
+		}
+		return nil
+	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		// Get repository
 		r, err := repo.GetRepository()
@@ -45,27 +51,9 @@ var infoCmd = &cobra.Command{
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Check for font ID
-		if len(args) == 0 || args[0] == "" {
-			red := color.New(color.FgRed).SprintFunc()
-			fmt.Printf("\n%s\n\n", red("A font ID is required"))
-			fmt.Println(cmd.Long)
-			fmt.Println()
-			fmt.Println("Usage:")
-			fmt.Printf("  %s\n\n", cmd.UseLine())
-			fmt.Println("Flags:")
-			cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-				if flag.Shorthand != "" {
-					fmt.Printf("  -%s, --%s\t%s\n", flag.Shorthand, flag.Name, flag.Usage)
-				} else {
-					fmt.Printf("  --%s\t%s\n", flag.Name, flag.Usage)
-				}
-			})
-			if cmd.Example != "" {
-				fmt.Println("\nExamples:")
-				fmt.Println(cmd.Example)
-			}
-			return nil
+		// Double check args to prevent panic
+		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+			return nil // Args validator will have already shown the help
 		}
 
 		fontID := args[0]

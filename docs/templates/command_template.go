@@ -12,7 +12,6 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // Template for new commands. Replace "command" with your command name
@@ -30,7 +29,24 @@ var commandCmd = &cobra.Command{
 	// cobra.MinimumNArgs(n) - Command requires at least n arguments
 	// cobra.MaximumNArgs(n) - Command accepts at most n arguments
 	// cobra.RangeArgs(min, max) - Command accepts between min and max arguments
-	Args: cobra.MaximumNArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		// Get flags
+		flagValue, _ := cmd.Flags().GetString("flag-name")
+
+		// Get arguments
+		var argValue string
+		if len(args) > 0 {
+			argValue = args[0]
+		}
+
+		// Validate input
+		if argValue == "" && flagValue == "" {
+			red := color.New(color.FgRed).SprintFunc()
+			fmt.Printf("\n%s\n\n", red("A required argument is missing"))
+			return cmd.Help()
+		}
+		return nil
+	},
 	// Optional: Add argument completion
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		// Get repository
@@ -56,51 +72,29 @@ var commandCmd = &cobra.Command{
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// 1. Get flags
+		// Double check args to prevent panic
 		flagValue, _ := cmd.Flags().GetString("flag-name")
-
-		// 2. Get arguments
 		var argValue string
 		if len(args) > 0 {
 			argValue = args[0]
 		}
-
-		// 3. Validate input
-		if argValue == "" {
-			red := color.New(color.FgRed).SprintFunc()
-			fmt.Printf("\n%s\n\n", red("A required argument is missing"))
-			fmt.Println(cmd.Long)
-			fmt.Println()
-			fmt.Println("Usage:")
-			fmt.Printf("  %s\n\n", cmd.UseLine())
-			fmt.Println("Flags:")
-			cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-				if flag.Shorthand != "" {
-					fmt.Printf("  -%s, --%s\t%s\n", flag.Shorthand, flag.Name, flag.Usage)
-				} else {
-					fmt.Printf("  --%s\t%s\n", flag.Name, flag.Usage)
-				}
-			})
-			if cmd.Example != "" {
-				fmt.Println("\nExamples:")
-				fmt.Println(cmd.Example)
-			}
-			return nil
+		if argValue == "" && flagValue == "" {
+			return nil // Args validator will have already shown the help
 		}
 
-		// 4. Get repository
+		// Get repository
 		r, err := repo.GetRepository()
 		if err != nil {
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
-		// 5. Get manifest
+		// Get manifest
 		manifest, err := r.GetManifest()
 		if err != nil {
 			return fmt.Errorf("failed to get manifest: %w", err)
 		}
 
-		// 6. Print results in a table format
+		// Print results in a table format
 		fmt.Printf("\nFound %d items matching '%s'", 0, argValue)
 		if flagValue != "" {
 			fmt.Printf(" with flag '%s'", flagValue)
@@ -192,12 +186,20 @@ var addCmd = &cobra.Command{
 	Example: `  fontget add "Fira Sans"
   fontget add "Roboto" --style "Regular"
   fontget add "Open Sans" -s "Bold"`,
-	Args: cobra.ExactArgs(1),
-	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Font name completion logic
-		return []string{}, cobra.ShellCompDirectiveNoFileComp
+	Args: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+			red := color.New(color.FgRed).SprintFunc()
+			fmt.Printf("\n%s\n\n", red("A font name is required"))
+			return cmd.Help()
+		}
+		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Double check args to prevent panic
+		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+			return nil // Args validator will have already shown the help
+		}
+
 		style, _ := cmd.Flags().GetString("style")
 		fontName := args[0]
 		// Add font logic here
