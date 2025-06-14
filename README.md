@@ -4,6 +4,41 @@ A tiny, cross-platform font package manager written in Go.
 
 ## Installation
 
+1. Download the latest release for your platform from the [releases page](https://github.com/yourusername/fontget/releases)
+2. Extract the binary to a location in your PATH
+3. Enable shell completions (optional but recommended):
+
+### Shell Completions
+
+#### PowerShell
+```powershell
+# Enable completions for current session
+fontget completion powershell | Out-String | Invoke-Expression
+
+# To make it permanent, add to your PowerShell profile:
+Add-Content $PROFILE "fontget completion powershell | Out-String | Invoke-Expression"
+```
+
+#### Bash
+```bash
+# Enable completions for current session
+source <(fontget completion bash)
+
+# To make it permanent, add to your ~/.bashrc:
+echo "source <(fontget completion bash)" >> ~/.bashrc
+```
+
+#### Zsh
+```zsh
+# Enable completions for current session
+source <(fontget completion zsh)
+
+# To make it permanent, add to your ~/.zshrc:
+echo "source <(fontget completion zsh)" >> ~/.zshrc
+```
+
+> Note: For a comprehensive guide on setting up completions in different terminal emulators (Windows Terminal, Kitty, etc.), please refer to our [Terminal Setup Guide](docs/terminal-setup.md).
+
 ```bash
 # Using Go
 go install fontget@latest

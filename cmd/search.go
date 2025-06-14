@@ -156,16 +156,19 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 	searchCmd.Flags().StringP("category", "c", "", `Options: "Sans Serif", "Serif", "Display", "Handwriting", "Monospace", "Other"`)
 
-	// Register completion for category flag
+	// Register completion for both short and long category flags
+	categories := []string{
+		"Sans Serif",
+		"Serif",
+		"Display",
+		"Handwriting",
+		"Monospace",
+		"Other",
+	}
 	searchCmd.RegisterFlagCompletionFunc("category", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		categories := []string{
-			"Sans Serif",
-			"Serif",
-			"Display",
-			"Handwriting",
-			"Monospace",
-			"Other",
-		}
+		return categories, cobra.ShellCompDirectiveNoFileComp
+	})
+	searchCmd.RegisterFlagCompletionFunc("c", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return categories, cobra.ShellCompDirectiveNoFileComp
 	})
 }
