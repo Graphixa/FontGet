@@ -24,24 +24,24 @@ func SearchFonts(query string, exactMatch bool) ([]SearchResult, error) {
 		return nil, fmt.Errorf("failed to get manifest: %w", err)
 	}
 
-	query = normalizeFontName(query)
+	query = strings.ToLower(query)
 	var results []SearchResult
 
 	// Search through each source
 	for sourceID, source := range manifest.Sources {
 		for id, font := range source.Fonts {
 			// Check both the font name and ID
-			normalizedName := normalizeFontName(font.Name)
-			normalizedID := normalizeFontName(id)
+			fontName := strings.ToLower(font.Name)
+			fontID := strings.ToLower(id)
 
 			if exactMatch {
-				if normalizedName == query || normalizedID == query {
+				if fontName == query || fontID == query {
 					result := createSearchResult(id, font, sourceID, source.Name)
 					result.Score = 100 // Highest score for exact matches
 					results = append(results, result)
 				}
 			} else {
-				score := calculateMatchScore(query, normalizedName, normalizedID, font)
+				score := calculateMatchScore(query, fontName, fontID, font)
 				if score > 0 {
 					result := createSearchResult(id, font, sourceID, source.Name)
 					result.Score = score
@@ -58,29 +58,24 @@ func SearchFonts(query string, exactMatch bool) ([]SearchResult, error) {
 }
 
 // calculateMatchScore calculates a score for how well a font matches the query
-func calculateMatchScore(query, normalizedName, normalizedID string, font FontInfo) int {
+func calculateMatchScore(query, fontName, fontID string, font FontInfo) int {
 	score := 0
 
 	// Check for exact match of the base font name
-	if normalizedName == query {
+	if fontName == query {
 		score += 100 // Highest score for exact base name match
 	} else {
 		// Check name matches
-		if strings.HasPrefix(normalizedName, query) {
-			// Check if it's a base font or a variant
-			if strings.Contains(normalizedName, query+" ") {
-				score += 80 // High score for base font with variants
-			} else {
-				score += 50 // Medium score for other prefix matches
-			}
-		} else if strings.Contains(normalizedName, query) {
-			score += 30 // Lower score for contains matches
+		if strings.HasPrefix(fontName, query) {
+			score += 80 // High score for prefix matches
+		} else if strings.Contains(fontName, query) {
+			score += 50 // Medium score for contains matches
 		}
 
 		// Check ID matches
-		if strings.HasPrefix(normalizedID, query) {
+		if strings.HasPrefix(fontID, query) {
 			score += 40 // High score for ID prefix matches
-		} else if strings.Contains(normalizedID, query) {
+		} else if strings.Contains(fontID, query) {
 			score += 20 // Lower score for ID contains matches
 		}
 
@@ -122,7 +117,7 @@ func sortResultsByScore(results []SearchResult) {
 // createSearchResult creates a SearchResult from FontInfo
 func createSearchResult(id string, font FontInfo, sourceID, sourceName string) SearchResult {
 	return SearchResult{
-		Name:       font.Name,
+		Name:       font.Name, // Use the name directly from metadata
 		ID:         id,
 		Source:     sourceName,
 		License:    font.License,

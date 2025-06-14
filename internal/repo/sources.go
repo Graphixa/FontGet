@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -23,10 +22,6 @@ const (
 	// Font manifest URL in our repository
 	fontManifestURL = "https://raw.githubusercontent.com/graphixa/FontGet/main/sources/google-fonts.json"
 	googleFontsCSS  = "https://fonts.googleapis.com/css2?family=%s&display=swap"
-
-	manifestCacheDir       = ".fontget/sources"
-	manifestCacheFile      = "google-fonts.json"
-	manifestUpdateInterval = 24 * time.Hour
 )
 
 // GoogleFontsResponse represents the response from Google Fonts API
@@ -129,26 +124,19 @@ func needsUpdate() (bool, error) {
 }
 
 func updateManifest() error {
-	// Get user's home directory
-	homeDir, err := os.UserHomeDir()
+	// Get sources directory
+	sourcesDir, err := ensureSourcesDir()
 	if err != nil {
-		return fmt.Errorf("failed to get user home directory: %v", err)
-	}
-
-	// Create cache directory if it doesn't exist
-	cacheDir := filepath.Join(homeDir, manifestCacheDir)
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cache directory: %v", err)
+		return fmt.Errorf("failed to get sources directory: %v", err)
 	}
 
 	// Check if manifest needs update
-	cacheFile := filepath.Join(cacheDir, manifestCacheFile)
-
-	if info, err := os.Stat(cacheFile); err == nil {
+	manifestPath := filepath.Join(sourcesDir, manifestFile)
+	if info, err := os.Stat(manifestPath); err == nil {
 		// Check if file is less than 24 hours old
-		if time.Since(info.ModTime()) < manifestUpdateInterval {
+		if time.Since(info.ModTime()) < updateInterval {
 			// Read cached manifest
-			cachedData, err := os.ReadFile(cacheFile)
+			cachedData, err := os.ReadFile(manifestPath)
 			if err == nil {
 				var cachedManifest FontManifest
 				if err := json.Unmarshal(cachedData, &cachedManifest); err == nil {
@@ -163,7 +151,6 @@ func updateManifest() error {
 								if err := json.Unmarshal(body, &latestManifest); err == nil {
 									// Compare manifests
 									if cachedManifest.LastUpdated.Equal(latestManifest.LastUpdated) {
-										log.Printf("Using cached manifest (up to date)")
 										return nil
 									}
 								}
@@ -176,7 +163,6 @@ func updateManifest() error {
 	}
 
 	// Fetch latest manifest
-	log.Printf("Fetching latest manifest from %s", fontManifestURL)
 	resp, err := http.Get(fontManifestURL)
 	if err != nil {
 		return fmt.Errorf("failed to fetch manifest: %v", err)
@@ -193,55 +179,61 @@ func updateManifest() error {
 		return fmt.Errorf("failed to read manifest: %v", err)
 	}
 
+	// Parse the manifest
 	var manifest FontManifest
 	if err := json.Unmarshal(body, &manifest); err != nil {
 		return fmt.Errorf("failed to parse manifest: %v", err)
 	}
 
-	// Save manifest to cache
-	if err := os.WriteFile(cacheFile, body, 0644); err != nil {
-		return fmt.Errorf("failed to cache manifest: %v", err)
+	// Save manifest
+	processedData, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal manifest: %v", err)
 	}
 
-	log.Printf("Successfully updated manifest cache")
+	if err := os.WriteFile(manifestPath, processedData, 0644); err != nil {
+		return fmt.Errorf("failed to save manifest: %v", err)
+	}
+
 	return nil
 }
 
 // GetManifest returns the current font manifest, updating if necessary
 func GetManifest(progress ProgressCallback) (*FontManifest, error) {
-	sourcesDir, err := getSourcesDir()
+	// Get sources directory
+	sourcesDir, err := ensureSourcesDir()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get sources directory: %v", err)
 	}
+
+	// Check if manifest needs update
 	needsUpdate, err := needsUpdate()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to check manifest update: %v", err)
 	}
 
 	if needsUpdate {
-		fmt.Println("Manifest needs update, fetching latest font information...")
-		if err := updateManifest(); err != nil {
-			return nil, err
+		if progress != nil {
+			progress(0, 1, "Updating font catalog...")
 		}
-		fmt.Println("Manifest update complete")
-	} else {
-		fmt.Println("Using cached manifest")
+		if err := updateManifest(); err != nil {
+			return nil, fmt.Errorf("failed to update manifest: %v", err)
+		}
+		if progress != nil {
+			progress(1, 1, "Font catalog updated")
+		}
 	}
 
+	// Read manifest
 	manifestPath := filepath.Join(sourcesDir, manifestFile)
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read manifest: %w", err)
+		return nil, fmt.Errorf("failed to read manifest: %v", err)
 	}
 
 	var manifest FontManifest
 	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("failed to parse manifest: %w", err)
-	}
-
-	fmt.Printf("Loaded manifest with %d sources\n", len(manifest.Sources))
-	for sourceID, source := range manifest.Sources {
-		fmt.Printf("Source %s has %d fonts\n", sourceID, len(source.Fonts))
+		return nil, fmt.Errorf("failed to parse manifest: %v", err)
 	}
 
 	return &manifest, nil

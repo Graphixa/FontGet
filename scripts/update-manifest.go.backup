@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -69,26 +68,6 @@ type FontMetadata struct {
 	Description  string   `json:"description"`
 	Subsets      []string `json:"subsets"`
 	LastModified string   `json:"last_modified"`
-}
-
-// FontProcessingResult represents the result of processing a font family
-type FontProcessingResult struct {
-	FontID    string
-	FontEntry struct {
-		Name         string            `json:"name"`
-		License      string            `json:"license"`
-		Variants     []string          `json:"variants"`
-		Subsets      []string          `json:"subsets"`
-		Version      string            `json:"version"`
-		Description  string            `json:"description"`
-		LastModified time.Time         `json:"last_modified"`
-		MetadataURL  string            `json:"metadata_url"`
-		SourceURL    string            `json:"source_url"`
-		Categories   []string          `json:"categories"`
-		Popularity   int               `json:"popularity"`
-		Files        map[string]string `json:"files"`
-	}
-	Error error
 }
 
 func main() {
@@ -175,8 +154,7 @@ func main() {
 			}
 
 			// Skip files in test directories
-			if strings.Contains(path, "/test/") || strings.Contains(path, "beta") || strings.Contains(path, "alpha") {
-				fmt.Printf("Skipping experimental/test font: %s\n", path)
+			if strings.Contains(path, "/test/") {
 				continue
 			}
 
@@ -199,57 +177,81 @@ func main() {
 		}
 	}
 
-	// Create a worker pool
-	numWorkers := 10 // Adjust based on your system's capabilities
-	jobs := make(chan struct {
-		family       string
-		variants     map[string]string
-		metadataPath string
-	}, len(fontFamilies))
-	results := make(chan FontProcessingResult, len(fontFamilies))
+	// Process each font family
+	for family, variants := range fontFamilies {
+		fmt.Printf("Processing %s...\n", family)
 
-	// Start workers
-	var wg sync.WaitGroup
-	for i := 0; i < numWorkers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for job := range jobs {
-				result := processFontFamily(job.family, job.variants, job.metadataPath)
-				results <- result
-			}
-		}()
-	}
+		// Create font entry
+		fontID := strings.ToLower(strings.ReplaceAll(family, " ", ""))
+		files := make(map[string]string)
+		for variant, path := range variants {
+			files[variant] = rawContentBaseURL + path
+		}
 
-	// Send jobs to workers
-	go func() {
-		for family, variants := range fontFamilies {
-			jobs <- struct {
-				family       string
-				variants     map[string]string
-				metadataPath string
-			}{
-				family:       family,
-				variants:     variants,
-				metadataPath: metadataFiles[family],
+		// Get metadata if available
+		metadataPath := metadataFiles[family]
+		var metadata FontMetadata
+		var err error
+		if metadataPath != "" {
+			metadata, err = fetchMetadata(rawContentBaseURL + metadataPath)
+			if err != nil {
+				fmt.Printf("Warning: Failed to fetch metadata for %s: %v\n", family, err)
+				// Continue with default values
 			}
 		}
-		close(jobs)
-	}()
 
-	// Close results channel when all workers are done
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	// Process results
-	for result := range results {
-		if result.Error != nil {
-			fmt.Printf("Warning: %v\n", result.Error)
-			continue
+		// Parse last modified time
+		lastModified := time.Now()
+		if metadata.LastModified != "" {
+			if t, err := time.Parse("2006-01-02", metadata.LastModified); err == nil {
+				lastModified = t
+			}
 		}
-		manifest.Sources.GoogleFonts.Fonts[result.FontID] = result.FontEntry
+
+		// Determine license
+		license := "OFL" // Default to OFL
+		if metadata.License != "" {
+			license = metadata.License
+		}
+
+		// Determine categories
+		categories := []string{}
+		if metadata.Category != "" {
+			// Format category to match the old format
+			category := strings.Title(strings.ToLower(strings.ReplaceAll(metadata.Category, "_", " ")))
+			categories = append(categories, category)
+		}
+
+		// Format the font name
+		formattedName := formatFontName(family)
+
+		manifest.Sources.GoogleFonts.Fonts[fontID] = struct {
+			Name         string            `json:"name"`
+			License      string            `json:"license"`
+			Variants     []string          `json:"variants"`
+			Subsets      []string          `json:"subsets"`
+			Version      string            `json:"version"`
+			Description  string            `json:"description"`
+			LastModified time.Time         `json:"last_modified"`
+			MetadataURL  string            `json:"metadata_url"`
+			SourceURL    string            `json:"source_url"`
+			Categories   []string          `json:"categories"`
+			Popularity   int               `json:"popularity"`
+			Files        map[string]string `json:"files"`
+		}{
+			Name:         formattedName,
+			License:      license,
+			Variants:     getKeys(variants),
+			Subsets:      metadata.Subsets,
+			Version:      metadata.Version,
+			Description:  metadata.Description,
+			LastModified: lastModified,
+			MetadataURL:  rawContentBaseURL + metadataPath,
+			SourceURL:    fmt.Sprintf("https://fonts.google.com/specimen/%s", strings.ReplaceAll(family, " ", "+")),
+			Categories:   categories,
+			Popularity:   0, // TODO: Implement popularity tracking
+			Files:        files,
+		}
 	}
 
 	// Ensure the directory exists
@@ -364,134 +366,22 @@ func getKeys(m map[string]string) []string {
 }
 
 func formatFontName(name string) string {
-	// First, split by common separators (hyphens, underscores)
-	parts := strings.FieldsFunc(name, func(r rune) bool {
-		return r == '-' || r == '_'
-	})
-
-	// For each part, handle camelCase
-	var result []string
-	for _, part := range parts {
-		// Split by camelCase
-		subParts := regexp.MustCompile(`([A-Z][a-z]+|[0-9]+|[a-z]+)`).FindAllString(part, -1)
-		if len(subParts) > 0 {
-			// Capitalize first letter of each subpart
-			for i, subPart := range subParts {
-				if len(subPart) > 0 {
-					subParts[i] = strings.ToUpper(subPart[:1]) + strings.ToLower(subPart[1:])
-				}
-			}
-			result = append(result, strings.Join(subParts, " "))
-		} else {
-			// If no camelCase found, just capitalize the first letter
+	// Split by common separators (hyphens, underscores, camelCase)
+	parts := regexp.MustCompile(`([A-Z][a-z]+|[0-9]+|[a-z]+)`).FindAllString(name, -1)
+	if len(parts) > 0 {
+		// Capitalize first letter of each part
+		for i, part := range parts {
 			if len(part) > 0 {
-				result = append(result, strings.ToUpper(part[:1])+strings.ToLower(part[1:]))
+				parts[i] = strings.ToUpper(part[:1]) + strings.ToLower(part[1:])
 			}
 		}
+		return strings.Join(parts, " ")
 	}
 
-	// Join all parts with spaces
-	return strings.Join(result, " ")
-}
-
-// processFontFamily processes a single font family and returns the result
-func processFontFamily(family string, variants map[string]string, metadataPath string) FontProcessingResult {
-	result := FontProcessingResult{
-		FontID: strings.ToLower(strings.ReplaceAll(family, " ", "")),
+	// If no patterns match, just capitalize the first letter
+	if len(name) > 0 {
+		return strings.ToUpper(name[:1]) + strings.ToLower(name[1:])
 	}
 
-	// Create files map
-	files := make(map[string]string)
-	for variant, path := range variants {
-		files[variant] = rawContentBaseURL + path
-	}
-
-	// Get metadata
-	metadata, err := fetchMetadata(rawContentBaseURL + metadataPath)
-	if err != nil {
-		// If metadata fetch fails, use directory name as fallback
-		fmt.Printf("Note: Using directory name for %s (metadata not available)\n", family)
-		return FontProcessingResult{
-			FontID: result.FontID,
-			FontEntry: struct {
-				Name         string            `json:"name"`
-				License      string            `json:"license"`
-				Variants     []string          `json:"variants"`
-				Subsets      []string          `json:"subsets"`
-				Version      string            `json:"version"`
-				Description  string            `json:"description"`
-				LastModified time.Time         `json:"last_modified"`
-				MetadataURL  string            `json:"metadata_url"`
-				SourceURL    string            `json:"source_url"`
-				Categories   []string          `json:"categories"`
-				Popularity   int               `json:"popularity"`
-				Files        map[string]string `json:"files"`
-			}{
-				Name:         formatFontName(family),
-				License:      "OFL", // Default license
-				Variants:     getKeys(variants),
-				Subsets:      nil,
-				Version:      "",
-				Description:  "",
-				LastModified: time.Now(),
-				MetadataURL:  rawContentBaseURL + metadataPath,
-				SourceURL:    fmt.Sprintf("https://fonts.google.com/specimen/%s", strings.ReplaceAll(family, " ", "+")),
-				Categories:   []string{"Other"}, // Default category
-				Popularity:   0,
-				Files:        files,
-			},
-		}
-	}
-
-	// Parse last modified time
-	lastModified := time.Now()
-	if metadata.LastModified != "" {
-		if t, err := time.Parse("2006-01-02", metadata.LastModified); err == nil {
-			lastModified = t
-		}
-	}
-
-	// Determine license
-	license := "OFL" // Default to OFL
-	if metadata.License != "" {
-		license = metadata.License
-	}
-
-	// Determine categories
-	categories := []string{}
-	if metadata.Category != "" {
-		// Format category to match the old format
-		category := strings.Title(strings.ToLower(strings.ReplaceAll(metadata.Category, "_", " ")))
-		categories = append(categories, category)
-	}
-
-	result.FontEntry = struct {
-		Name         string            `json:"name"`
-		License      string            `json:"license"`
-		Variants     []string          `json:"variants"`
-		Subsets      []string          `json:"subsets"`
-		Version      string            `json:"version"`
-		Description  string            `json:"description"`
-		LastModified time.Time         `json:"last_modified"`
-		MetadataURL  string            `json:"metadata_url"`
-		SourceURL    string            `json:"source_url"`
-		Categories   []string          `json:"categories"`
-		Popularity   int               `json:"popularity"`
-		Files        map[string]string `json:"files"`
-	}{
-		Name:         metadata.Name,
-		License:      license,
-		Variants:     getKeys(variants),
-		Subsets:      metadata.Subsets,
-		Version:      metadata.Version,
-		Description:  metadata.Description,
-		LastModified: lastModified,
-		MetadataURL:  rawContentBaseURL + metadataPath,
-		SourceURL:    fmt.Sprintf("https://fonts.google.com/specimen/%s", strings.ReplaceAll(family, " ", "+")),
-		Categories:   categories,
-		Popularity:   0, // TODO: Implement popularity tracking
-		Files:        files,
-	}
-
-	return result
+	return name
 }

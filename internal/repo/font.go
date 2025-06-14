@@ -192,3 +192,31 @@ func ListInstalledFonts(dir string) ([]string, error) {
 
 	return fonts, nil
 }
+
+// GetAllFonts returns all fonts from the manifest, sorted alphabetically by name
+func GetAllFonts() []SearchResult {
+	manifest, err := GetManifest(nil)
+	if err != nil {
+		return nil
+	}
+
+	var results []SearchResult
+	for sourceID, source := range manifest.Sources {
+		for id, font := range source.Fonts {
+			result := createSearchResult(id, font, sourceID, source.Name)
+			result.Score = 0 // No score for listing all fonts
+			results = append(results, result)
+		}
+	}
+
+	// Sort results alphabetically by name
+	for i := 0; i < len(results)-1; i++ {
+		for j := i + 1; j < len(results); j++ {
+			if results[i].Name > results[j].Name {
+				results[i], results[j] = results[j], results[i]
+			}
+		}
+	}
+
+	return results
+}
