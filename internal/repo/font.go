@@ -151,7 +151,44 @@ func GetFont(fontName string) ([]Font, error) {
 	return fonts, nil
 }
 
-func isFontFile(name string) bool {
-	ext := filepath.Ext(name)
-	return ext == ".ttf" || ext == ".ttc"
+// isFontFile checks if the file extension indicates a font file
+func isFontFile(filename string) bool {
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".ttf", ".otf", ".ttc", ".otc", ".pfb", ".pfm", ".pfa", ".bdf", ".pcf", ".psf", ".psfu":
+		return true
+	default:
+		return false
+	}
+}
+
+// ListInstalledFonts returns a list of font files in the specified directory
+func ListInstalledFonts(dir string) ([]string, error) {
+	var fonts []string
+
+	// Walk through the directory
+	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Check if the file is a font file
+		ext := strings.ToLower(filepath.Ext(path))
+		if isFontFile(ext) {
+			fonts = append(fonts, filepath.Base(path))
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list fonts: %w", err)
+	}
+
+	return fonts, nil
 }

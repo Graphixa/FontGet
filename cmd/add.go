@@ -2,126 +2,157 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"runtime"
+	"strings"
 
+	"fontget/internal/errors"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 
 	"github.com/spf13/cobra"
 )
 
-const (
-	fontsDir = "fonts"
-)
-
-var (
-	scope string
-)
-
 var addCmd = &cobra.Command{
-	Use:     "add [font-name]",
-	Aliases: []string{"install"},
-	Short:   "Install a font from Google Fonts",
-	Long: `Install a font from Google Fonts by querying the GitHub API and downloading the font files.
+	Use:   "add <font-name>",
+	Short: "Install a font from Google Fonts",
+	Long: `Install a font from the Google Fonts repository.
+You can specify the installation scope using the --scope flag:
+  - user (default): Install for current user only
+  - machine: Install system-wide (requires elevation)
 
-The --scope flag determines where the font will be installed:
-  user    - Install for current user only (default)
-  machine - Install system-wide (requires elevation)`,
+Use --force to skip interactive prompts.`,
 	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		// Validate scope
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fontName := args[0]
+
+		// Create font manager
+		fontManager, err := platform.NewFontManager()
+		if err != nil {
+			return fmt.Errorf("failed to initialize font manager: %w", err)
+		}
+
+		// Convert scope string to InstallationScope
 		installScope := platform.UserScope
-		if scope != "" {
+		if scope != "user" {
 			installScope = platform.InstallationScope(scope)
 			if installScope != platform.UserScope && installScope != platform.MachineScope {
-				fmt.Fprintf(os.Stderr, "Error: invalid scope '%s'. Must be 'user' or 'machine'\n", scope)
-				os.Exit(1)
+				return fmt.Errorf("invalid scope '%s'. Must be 'user' or 'machine'", scope)
 			}
 		}
 
-		// Create fonts directory if it doesn't exist
-		if err := os.MkdirAll(fontsDir, 0755); err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating fonts directory: %v\n", err)
-			os.Exit(1)
+		// Get font information from repository first
+		fmt.Printf("Checking font '%s'...\n", fontName)
+		fonts, err := repo.GetFont(fontName)
+		if err != nil {
+			return fmt.Errorf("failed to get font information: %w", err)
 		}
 
-		// Get platform-specific font manager
-		fontManager, err := platform.NewFontManager()
+		// Check if any of the font files are already installed in the requested scope
+		fontDir := fontManager.GetFontDir(installScope)
+		installedFonts, err := platform.ListInstalledFonts(fontDir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error initializing font manager: %v\n", err)
-			os.Exit(1)
+			return fmt.Errorf("error checking installed fonts: %w", err)
+		}
+
+		// Create a map of installed fonts for faster lookup
+		installedFontMap := make(map[string]bool)
+		for _, installedFont := range installedFonts {
+			installedFontMap[strings.ToLower(installedFont)] = true
+		}
+
+		// Check each font file
+		var alreadyInstalled []string
+		for _, font := range fonts {
+			if installedFontMap[strings.ToLower(font.Name)] {
+				alreadyInstalled = append(alreadyInstalled, font.Name)
+			}
+		}
+
+		if len(alreadyInstalled) > 0 {
+			if !force {
+				return fmt.Errorf("Font files already installed in %s scope: %s", installScope, strings.Join(alreadyInstalled, ", "))
+			}
+			fmt.Printf("Font files already installed in %s scope: %s. Proceeding with installation as --force is set.\n",
+				installScope, strings.Join(alreadyInstalled, ", "))
+		}
+
+		// If installing for user scope, check if it's already installed system-wide
+		if installScope == platform.UserScope {
+			systemFontDir := fontManager.GetFontDir(platform.MachineScope)
+			systemFonts, err := platform.ListInstalledFonts(systemFontDir)
+			if err != nil {
+				return fmt.Errorf("error checking system fonts: %w", err)
+			}
+
+			// Create a map of system fonts for faster lookup
+			systemFontMap := make(map[string]bool)
+			for _, systemFont := range systemFonts {
+				systemFontMap[strings.ToLower(systemFont)] = true
+			}
+
+			// Check each font file
+			var systemInstalled []string
+			for _, font := range fonts {
+				if systemFontMap[strings.ToLower(font.Name)] {
+					systemInstalled = append(systemInstalled, font.Name)
+				}
+			}
+
+			if len(systemInstalled) > 0 {
+				if !force {
+					return fmt.Errorf("Font files already available system-wide: %s. No need to install for user",
+						strings.Join(systemInstalled, ", "))
+				}
+				fmt.Printf("Font files already available system-wide: %s. Proceeding with user installation as --force is set.\n",
+					strings.Join(systemInstalled, ", "))
+			}
 		}
 
 		// Check if elevation is required
 		if fontManager.RequiresElevation(installScope) {
-			if runtime.GOOS == "windows" {
-				// Check if already elevated
-				elevated, err := platform.IsElevated()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error checking elevation status: %v\n", err)
-					os.Exit(1)
-				}
-
-				if !elevated {
-					fmt.Println("Installing fonts system-wide requires administrator privileges.")
-					fmt.Println("Attempting to relaunch with elevation...")
-
-					// Relaunch with elevation
-					if err := platform.RunAsElevated(); err != nil {
-						fmt.Fprintf(os.Stderr, "Error relaunching with elevation: %v\n", err)
-						fmt.Println("Please run this command as administrator.")
-						os.Exit(1)
-					}
-
-					// Exit current process as it will be replaced by the elevated one
-					os.Exit(0)
-				}
-			} else {
-				// For non-Windows platforms, just print a message
-				fmt.Println("Installing fonts system-wide requires administrator privileges.")
-				fmt.Println("Please run this command with sudo.")
-				os.Exit(1)
-			}
-		}
-
-		fontName := args[0]
-		fonts, err := repo.GetFont(fontName)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error fetching font: %v\n", err)
-			os.Exit(1)
-		}
-
-		installedFiles := []string{}
-		for _, font := range fonts {
-			fmt.Printf("Downloading %s...\n", font.Name)
-			path, err := repo.DownloadFont(&font, fontsDir)
+			elevated, err := fontManager.IsElevated()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error downloading %s: %v\n", font.Name, err)
-				continue
+				return fmt.Errorf("failed to check elevation status: %w", err)
 			}
-
-			fmt.Printf("Installing %s...\n", font.Name)
-			if err := fontManager.InstallFont(path, installScope); err != nil {
-				fmt.Fprintf(os.Stderr, "Error installing %s: %v\n", font.Name, err)
-				continue
+			if !elevated {
+				errors.PrintElevationHelp(cmd, runtime.GOOS)
+				return errors.ElevationRequired(runtime.GOOS)
 			}
-
-			installedFiles = append(installedFiles, font.Name)
 		}
 
-		if len(installedFiles) > 0 {
-			fmt.Printf("\nSuccessfully installed %d fonts:\n", len(installedFiles))
-			for _, file := range installedFiles {
-				fmt.Printf("  - %s\n", file)
-			}
-		} else {
-			fmt.Printf("No fonts were installed.\n")
+		// Get temporary fonts directory
+		tempFontsDir, err := platform.GetTempFontsDir()
+		if err != nil {
+			return fmt.Errorf("failed to get temporary directory: %w", err)
 		}
+		defer platform.CleanupTempFontsDir()
+
+		// Download font files
+		fmt.Printf("Downloading font '%s'...\n", fontName)
+		var downloadedPaths []string
+		for _, font := range fonts {
+			path, err := repo.DownloadFont(&font, tempFontsDir)
+			if err != nil {
+				return fmt.Errorf("failed to download font: %w", err)
+			}
+			downloadedPaths = append(downloadedPaths, path)
+		}
+
+		// Install the font
+		fmt.Printf("Installing font '%s' to %s scope...\n", fontName, installScope)
+		for _, fontPath := range downloadedPaths {
+			if err := fontManager.InstallFont(fontPath, installScope); err != nil {
+				return fmt.Errorf("failed to install font: %w", err)
+			}
+		}
+
+		fmt.Printf("Successfully installed font '%s' to %s scope\n", fontName, installScope)
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(addCmd)
-	addCmd.Flags().StringVar(&scope, "scope", "", "Installation scope (user or machine)")
+	addCmd.Flags().StringVar(&scope, "scope", "user", "Installation scope (user or machine)")
+	addCmd.Flags().BoolVarP(&force, "force", "f", false, "Skip interactive prompts")
 }
