@@ -10,10 +10,9 @@ type SearchResult struct {
 	Name       string   `json:"name"`
 	ID         string   `json:"id"`
 	Source     string   `json:"source"`
+	SourceName string   `json:"source_name"`
 	License    string   `json:"license"`
-	Variants   []string `json:"variants"`
 	Categories []string `json:"categories,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
 	Score      int      `json:"-"` // Internal score for sorting
 }
 
@@ -119,11 +118,10 @@ func createSearchResult(id string, font FontInfo, sourceID, sourceName string) S
 	return SearchResult{
 		Name:       font.Name, // Use the name directly from metadata
 		ID:         id,
-		Source:     sourceName,
+		Source:     sourceID,
+		SourceName: sourceName,
 		License:    font.License,
-		Variants:   font.Variants,
 		Categories: font.Categories,
-		Tags:       font.Tags,
 	}
 }
 

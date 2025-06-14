@@ -14,8 +14,7 @@ import (
 
 const (
 	// Directory structure
-	metadataDir    = "metadata"
-	licensesDir    = "licenses"
+	sourcesDir     = "sources"
 	manifestFile   = "google-fonts.json"
 	updateInterval = 24 * time.Hour
 
@@ -39,13 +38,45 @@ type GoogleFontsResponse struct {
 	} `json:"items"`
 }
 
-// getSourcesDir returns the path to the user's ~/.fontget/sources directory
-func getSourcesDir() (string, error) {
+// getFontGetDir returns the path to the user's ~/.fontget directory
+func getFontGetDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
-	return filepath.Join(home, ".fontget", "sources"), nil
+	return filepath.Join(home, ".fontget"), nil
+}
+
+// getSourcesDir returns the path to the user's ~/.fontget/sources directory
+func getSourcesDir() (string, error) {
+	fontGetDir, err := getFontGetDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(fontGetDir, sourcesDir), nil
+}
+
+// ensureSourcesDir ensures the sources directory exists
+func ensureSourcesDir() (string, error) {
+	// First ensure .fontget directory exists
+	fontGetDir, err := getFontGetDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(fontGetDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create .fontget directory: %w", err)
+	}
+
+	// Then ensure sources directory exists
+	sourcesDir, err := getSourcesDir()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(sourcesDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create sources directory: %w", err)
+	}
+
+	return sourcesDir, nil
 }
 
 // ProgressCallback is a function type for reporting progress
@@ -82,27 +113,6 @@ type FontInfo struct {
 	Tags         []string          `json:"tags,omitempty"`
 	Popularity   int               `json:"popularity,omitempty"`
 	Files        map[string]string `json:"files,omitempty"`
-}
-
-// ensureSourcesDir ensures the sources directory exists
-func ensureSourcesDir() (string, error) {
-	sourcesDir, err := getSourcesDir()
-	if err != nil {
-		return "", err
-	}
-	dirs := []string{
-		sourcesDir,
-		filepath.Join(sourcesDir, metadataDir),
-		filepath.Join(sourcesDir, licensesDir),
-	}
-
-	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return "", fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
-	}
-
-	return sourcesDir, nil
 }
 
 // needsUpdate checks if the manifest needs to be updated
@@ -320,36 +330,28 @@ func (r *Repository) GetManifest() (*FontManifest, error) {
 
 // SearchFonts searches for fonts matching the query
 func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
-	var results []SearchResult
+	// Use the better search implementation from search.go
+	results, err := SearchFonts(query, false)
+	if err != nil {
+		return nil, err
+	}
 
-	// Search through each source
-	for sourceID, source := range r.manifest.Sources {
-		for id, font := range source.Fonts {
-			// Check both the font name and ID
-			fontName := strings.ToLower(font.Name)
-			fontID := strings.ToLower(id)
-			query = strings.ToLower(query)
-
-			// Check for matches
-			if strings.Contains(fontName, query) || strings.Contains(fontID, query) {
-				// If category filter is specified, check if font matches
-				if category != "" {
-					found := false
-					for _, cat := range font.Categories {
-						if strings.EqualFold(cat, category) {
-							found = true
-							break
-						}
-					}
-					if !found {
-						continue
-					}
+	// Filter by category if specified
+	if category != "" {
+		var filteredResults []SearchResult
+		for _, result := range results {
+			found := false
+			for _, cat := range result.Categories {
+				if strings.EqualFold(cat, category) {
+					found = true
+					break
 				}
-
-				result := createSearchResult(id, font, sourceID, source.Name)
-				results = append(results, result)
+			}
+			if found {
+				filteredResults = append(filteredResults, result)
 			}
 		}
+		results = filteredResults
 	}
 
 	return results, nil

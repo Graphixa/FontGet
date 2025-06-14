@@ -17,7 +17,8 @@ var searchCmd = &cobra.Command{
 	Example: `  fontget search fira
   fontget search "Fira Sans"
   fontget search "fira" -category "Sans Serif"
-  fontget search -c "Sans Serif"`,
+  fontget search -c "Sans Serif"
+  `,
 	Args: cobra.MaximumNArgs(1),
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		// Get repository
@@ -127,7 +128,7 @@ var searchCmd = &cobra.Command{
 				columns["ID"], id,
 				columns["License"], license,
 				columns["Categories"], categories,
-				columns["Source"], result.Source)
+				columns["Source"], result.SourceName)
 		}
 
 		// Print manifest info
@@ -137,7 +138,7 @@ var searchCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\nManifest last updated: %s\n", manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
-		fmt.Printf("Total fonts available: %d\n", len(manifest.Sources["google-fonts"].Fonts))
+		fmt.Printf("Total fonts available: %d\n", countTotalFonts(manifest))
 
 		return nil
 	},
