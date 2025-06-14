@@ -143,10 +143,35 @@ func updateManifest() error {
 
 	// Check if manifest needs update
 	cacheFile := filepath.Join(cacheDir, manifestCacheFile)
+
 	if info, err := os.Stat(cacheFile); err == nil {
+		// Check if file is less than 24 hours old
 		if time.Since(info.ModTime()) < manifestUpdateInterval {
-			log.Printf("Using cached manifest")
-			return nil
+			// Read cached manifest
+			cachedData, err := os.ReadFile(cacheFile)
+			if err == nil {
+				var cachedManifest FontManifest
+				if err := json.Unmarshal(cachedData, &cachedManifest); err == nil {
+					// Fetch latest manifest to compare
+					resp, err := http.Get(fontManifestURL)
+					if err == nil {
+						defer resp.Body.Close()
+						if resp.StatusCode == http.StatusOK {
+							body, err := io.ReadAll(resp.Body)
+							if err == nil {
+								var latestManifest FontManifest
+								if err := json.Unmarshal(body, &latestManifest); err == nil {
+									// Compare manifests
+									if cachedManifest.LastUpdated.Equal(latestManifest.LastUpdated) {
+										log.Printf("Using cached manifest (up to date)")
+										return nil
+									}
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 
