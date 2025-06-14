@@ -117,38 +117,26 @@ Categories:
 		fmt.Println("\n")
 
 		// Calculate column widths
-		nameWidth := 35 // Increased for long font names
-		sourceWidth := 15
+		nameWidth := 40 // For display name
+		idWidth := 38   // Increased for longer font IDs
 		licenseWidth := 15
 		categoriesWidth := 20
-		variantsWidth := 30
+		sourceWidth := 15
 
 		// Print header
-		fmt.Printf("%-*s %-*s %-*s %-*s %s\n",
+		fmt.Printf("%-*s %-*s %-*s %-*s %-*s\n",
 			nameWidth, "Name",
-			sourceWidth, "Source",
+			idWidth, "ID",
 			licenseWidth, "License",
 			categoriesWidth, "Categories",
-			"Variants")
-		fmt.Println(strings.Repeat("-", nameWidth+sourceWidth+licenseWidth+categoriesWidth+variantsWidth+4))
+			sourceWidth, "Source")
+		fmt.Println(strings.Repeat("-", nameWidth+idWidth+licenseWidth+categoriesWidth+sourceWidth+4))
 
 		for _, result := range results {
 			// Format categories
 			categories := "N/A"
 			if len(result.Categories) > 0 {
 				categories = strings.Join(result.Categories, ", ")
-			}
-
-			// Format variants (limit to 3)
-			variants := "N/A"
-			if len(result.Variants) > 0 {
-				if len(result.Variants) > 3 {
-					variants = fmt.Sprintf("%s, ... (%d more)",
-						strings.Join(result.Variants[:3], ", "),
-						len(result.Variants)-3)
-				} else {
-					variants = strings.Join(result.Variants, ", ")
-				}
 			}
 
 			// Format license
@@ -163,12 +151,18 @@ Categories:
 				name = name[:nameWidth-3] + "..."
 			}
 
-			fmt.Printf("%-*s %-*s %-*s %-*s %s\n",
+			// Truncate long IDs with ellipsis
+			id := result.ID
+			if len(id) > idWidth-3 {
+				id = id[:idWidth-3] + "..."
+			}
+
+			fmt.Printf("%-*s %-*s %-*s %-*s %-*s\n",
 				nameWidth, name,
-				sourceWidth, result.Source,
+				idWidth, id,
 				licenseWidth, license,
 				categoriesWidth, categories,
-				variants)
+				sourceWidth, result.Source)
 		}
 		fmt.Println()
 
