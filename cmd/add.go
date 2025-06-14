@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -46,26 +48,58 @@ To see available fonts, use the 'list' command.`,
 
 			// Process each font
 			for _, fontName := range args {
-				// Find font in manifest
-				_, found := manifest.Sources["google-fonts"].Fonts[fontName]
-				if !found {
-					return fmt.Errorf("font '%s' not found in catalog. Use 'list' command to see available fonts", fontName)
-				}
+				// Split by comma if multiple fonts
+				fontNames := strings.Split(fontName, ",")
+				for _, name := range fontNames {
+					name = strings.TrimSpace(name)
+					if name == "" {
+						continue
+					}
 
-				// Get font files
-				files, err := repo.GetFontFiles(fontName)
-				if err != nil {
-					return fmt.Errorf("failed to get font files for %s: %v", fontName, err)
-				}
+					// Find font in manifest
+					var fontInfo *repo.FontInfo
+					var sourceName string
+					for _, source := range manifest.Sources {
+						if info, found := source.Fonts[name]; found {
+							fontInfo = &info
+							sourceName = source.Name
+							break
+						}
+					}
 
-				// Install each font file
-				for _, file := range files {
-					if err := fontManager.InstallFont(file, platform.UserScope); err != nil {
-						return fmt.Errorf("failed to install font file %s: %v", file, err)
+					if fontInfo == nil {
+						red := color.New(color.FgRed).SprintFunc()
+						fmt.Printf("%s: Font '%s' not found in catalog. Use 'list' command to see available fonts\n", red("Error"), name)
+						continue
+					}
+
+					// Get font files
+					files, err := repo.GetFontFiles(fontInfo.Name)
+					if err != nil {
+						red := color.New(color.FgRed).SprintFunc()
+						fmt.Printf("%s: Failed to get font files for %s: %v\n", red("Error"), name, err)
+						continue
+					}
+
+					// Show progress
+					yellow := color.New(color.FgYellow).SprintFunc()
+					fmt.Printf("Installing %s from %s...\n", yellow(fontInfo.Name), yellow(sourceName))
+
+					// Install each font file
+					success := true
+					for variant, file := range files {
+						if err := fontManager.InstallFont(file, platform.UserScope); err != nil {
+							red := color.New(color.FgRed).SprintFunc()
+							fmt.Printf("%s: Failed to install %s variant: %v\n", red("Error"), variant, err)
+							success = false
+						}
+					}
+
+					if success {
+						green := color.New(color.FgGreen).SprintFunc()
+						fmt.Printf("%s: Successfully installed %s\n", green("Success"), fontInfo.Name)
 					}
 				}
-
-				fmt.Printf("Successfully installed %s\n", fontName)
 			}
 
 			return nil
