@@ -14,11 +14,11 @@ fontget/
 │   ├── root.go      # Root command and initialization
 │   ├── add.go       # Font installation command | alias: fontget install
 │   ├── remove.go    # Font removal command | alias: fontget uninstall
-│   ├── info.go      # Retreives info about a font from repository without downloading font
+│   ├── info.go      # Retrieves info about a font from repository without downloading font
 │   ├── list.go      # List installed fonts
 │   ├── import.go    # Import font files from json file
 │   ├── export.go    # Export list of installed font files to json format | Works with --scope parameter
-│   └── search.go    # Search available fonts   | Updates every when running first time in 24 hours (keeps manifest fresh)
+│   └── search.go    # Search available fonts | Updates manifest when running first time in 24 hours
 ├── internal/
 │   ├── platform/    # Platform-specific font management
 │   │   ├── windows.go
@@ -28,6 +28,9 @@ fontget/
 │   │   └── errors.go
 │   └── repo/        # Font repository interaction
 │       └── font.go
+├── docs/
+│   └── templates/   # Command templates and documentation
+│       └── command_template.go
 ├── go.mod
 ├── go.sum
 └── README.md
@@ -74,22 +77,30 @@ Where {TEMP_DIR} is:
    - Handle cleanup errors gracefully
    - No persistent storage needed
 
-## Platform-Specific Considerations
+## Error Handling Improvements
 
-### Windows
-- Use `os.TempDir()` to get `%TEMP%` or `%TMP%`
-- Handle long paths if needed
-- Ensure proper file permissions
+### Command Error Handling
+- [x] Implement consistent error handling pattern:
+  - [x] Validate args in `Args` function
+  - [x] Show formatted error messages in red
+  - [x] Return `cmd.Help()` for empty queries
+  - [x] Double-check args in `RunE` to prevent panics
+  - [x] Let other errors flow through cobra's error handling
 
-### Linux
-- Use `os.TempDir()` to get `/tmp`
-- Handle file permissions
-- Consider systemd-tmpfiles if available
+### Font Installation Errors
+- [ ] Improve font existence checks:
+  - [ ] Normalize font names for case-insensitive comparison
+  - [ ] Query repository for all font files first
+  - [ ] Check each font file against installed fonts
+  - [ ] Add detailed logging of font file matches
+  - [ ] Implement font name mapping system
 
-### macOS
-- Use `os.TempDir()` to get `/var/folders/.../T/`
-- Handle file permissions
-- Consider sandbox restrictions
+### Force Flag Behavior
+- [ ] Fix --force flag implementation:
+  - [ ] Override all existence checks
+  - [ ] Add force flag handling in platform-specific managers
+  - [ ] Update documentation
+  - [ ] Add warning messages for force installs
 
 ## Installation Scopes
 
@@ -180,6 +191,13 @@ Options:
 - `fish`: Generate fish completion script
 - `powershell`: Generate PowerShell completion script
 
+### Font Removal Enhancement
+- [ ] Improve font removal:
+  - [ ] Implement font family detection
+  - [ ] Add font name normalization
+  - [ ] Add verbose mode for debugging
+  - [ ] Consider implementing font registry
+
 ## Milestones
 
 1. **Basic Setup**
@@ -209,14 +227,13 @@ Options:
 
 4. **Core Commands**
    - [x] Implement `add` command
-     - [x] Add functionality to check if font installed before downloading or attempting install of font
+     - [x] Add functionality to check if font installed before downloading
    - [x] Add scope parameter
    - [ ] Implement `remove` command
    - [x] Implement `list` command
-   - [ ] Implement `search` command
+   - [x] Implement `search` command
    - [ ] Implement `import` command
    - [ ] Implement `export` command
-   - [ ] Evaluate commands for required parameters
    - [x] Implement shell completion support:
      - [x] Bash completion
      - [x] Zsh completion
@@ -231,6 +248,29 @@ Options:
    - [ ] Create comprehensive README
    - [ ] Add usage examples
    - [ ] Add platform-specific documentation
+
+## Implementation Priority
+
+1. **Phase 1: Error Handling & Safety**
+   - [x] Implement consistent error handling pattern
+   - [ ] Improve font existence checks
+   - [ ] Fix force flag behavior
+   - [ ] Enhance font removal
+
+2. **Phase 2: Platform Support**
+   - [ ] Implement platform-specific font tracking
+   - [ ] Add platform-specific installation
+   - [ ] Handle font cache updates
+
+3. **Phase 3: User Experience**
+   - [ ] Add progress indicators
+   - [ ] Improve output formatting
+   - [ ] Add interactive features
+
+4. **Phase 4: Testing & Documentation**
+   - [ ] Add comprehensive tests
+   - [ ] Improve documentation
+   - [ ] Add examples
 
 ## CI Configuration
 
