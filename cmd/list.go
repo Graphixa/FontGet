@@ -32,56 +32,35 @@ func parseFontName(filename string) (family, style string) {
 		name = name[:idx]
 	}
 
-	// Common style mappings for known cases
-	styleMap := map[string]string{
-		"regular":         "Regular",
-		"italic":          "Italic",
-		"bold":            "Bold",
-		"bolditalic":      "BoldItalic",
-		"light":           "Light",
-		"lightitalic":     "LightItalic",
-		"medium":          "Medium",
-		"mediumitalic":    "MediumItalic",
-		"semibold":        "SemiBold",
-		"semibolditalic":  "SemiBoldItalic",
-		"extrabold":       "ExtraBold",
-		"extrabolditalic": "ExtraBoldItalic",
-		"black":           "Black",
-		"blackitalic":     "BlackItalic",
-		"thin":            "Thin",
-		"thinitalic":      "ThinItalic",
+	// Remove "webfont" suffix if present
+	name = strings.TrimSuffix(name, "-webfont")
+
+	// For fonts with spaces in their names (like Orbitron, Walkway)
+	if strings.Contains(name, " ") {
+		// Extract the base family name
+		parts := strings.Split(name, " ")
+		if len(parts) > 0 {
+			family = parts[0]
+			// The rest is the style
+			if len(parts) > 1 {
+				style = strings.Join(parts[1:], " ")
+			} else {
+				style = "Regular"
+			}
+			return family, style
+		}
 	}
 
-	// Split by hyphens to separate family and style
+	// For other fonts, split by hyphens
 	parts := strings.Split(name, "-")
 	if len(parts) == 1 {
 		return parts[0], "Regular"
 	}
 
-	// Get the last part as potential style
-	potentialStyle := strings.ToLower(parts[len(parts)-1])
-
-	// Check if it's a known style
-	if knownStyle, exists := styleMap[potentialStyle]; exists {
-		// Reconstruct family name from all parts except the last one
-		family = strings.Join(parts[:len(parts)-1], "-")
-		return family, knownStyle
-	}
-
-	// For unknown styles, try to detect common patterns
-	if strings.HasSuffix(potentialStyle, "italic") {
-		// Handle cases like "CondensedItalic", "SemiCondensedItalic", etc.
-		baseStyle := strings.TrimSuffix(potentialStyle, "italic")
-		if knownStyle, exists := styleMap[baseStyle]; exists {
-			family = strings.Join(parts[:len(parts)-1], "-")
-			return family, knownStyle + "Italic"
-		}
-	}
-
-	// If no known style is found, use the last part as is but capitalize it
-	// This handles cases like "Condensed", "SemiCondensed", etc.
+	// If we have multiple parts, assume the last part is the style
+	// and everything else is the family name
 	family = strings.Join(parts[:len(parts)-1], "-")
-	style = strings.Title(potentialStyle)
+	style = strings.Title(parts[len(parts)-1])
 	return family, style
 }
 
