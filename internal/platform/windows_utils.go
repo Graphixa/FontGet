@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	ERROR_SUCCESS      = 0
 	HWND_BROADCAST     = 0xFFFF
 	WM_FONTCHANGE      = 0x001D
 	HKEY_LOCAL_MACHINE = 0x80000002
@@ -29,7 +28,7 @@ var (
 	isUserAnAdmin      = shell32.NewProc("IsUserAnAdmin")
 	addFontResource    = gdi32.NewProc("AddFontResourceW")
 	removeFontResource = gdi32.NewProc("RemoveFontResourceW")
-	sendMessage        = user32.NewProc("SendMessageW")
+	postMessage        = user32.NewProc("PostMessageW")
 	regCreateKeyEx     = advapi32.NewProc("RegCreateKeyExW")
 	regSetValueEx      = advapi32.NewProc("RegSetValueExW")
 	regCloseKey        = advapi32.NewProc("RegCloseKey")

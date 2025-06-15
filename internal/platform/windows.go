@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -39,10 +40,14 @@ func NewFontManager() (FontManager, error) {
 
 // InstallFont installs a font file to the specified font directory
 func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope, force bool) error {
+	fmt.Printf("Starting font installation for: %s (scope: %s)\n", fontPath, scope)
+
 	// Validate font file
+	fmt.Println("Validating font file...")
 	if err := validateFontFile(fontPath); err != nil {
 		return fmt.Errorf("font validation failed: %w", err)
 	}
+	fmt.Println("Font validation successful")
 
 	fontName := getFontName(fontPath)
 	var targetDir string
@@ -55,14 +60,18 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 	default:
 		return fmt.Errorf("invalid installation scope: %s", scope)
 	}
+	fmt.Printf("Target directory: %s\n", targetDir)
 
 	targetPath := filepath.Join(targetDir, fontName)
+	fmt.Printf("Target path: %s\n", targetPath)
 
 	// Check if font is already installed
+	fmt.Println("Checking if font is already installed...")
 	if _, err := os.Stat(targetPath); err == nil {
 		if !force {
 			return fmt.Errorf("font already installed: %s", fontName)
 		}
+		fmt.Println("Font exists, removing due to force flag...")
 		// Remove the existing file if force is true
 		if err := os.Remove(targetPath); err != nil {
 			return fmt.Errorf("failed to overwrite existing font: %w", err)
@@ -70,30 +79,43 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 	}
 
 	// Copy the font file to the target directory
+	fmt.Println("Copying font file to target directory...")
 	if err := copyFile(fontPath, targetPath); err != nil {
 		return fmt.Errorf("failed to copy font file: %w", err)
 	}
+	fmt.Println("Font file copied successfully")
 
-	// Add the font to the system using AddFontResource
+	// Add the font to the system
+	fmt.Println("Adding font resource...")
 	if err := m.addFontResource(targetPath); err != nil {
-		// Clean up the file if installation fails
+		fmt.Printf("Failed to add font resource: %v\n", err)
+		// Clean up on error
+		fmt.Println("Cleaning up after failed font resource addition...")
 		os.Remove(targetPath)
 		return fmt.Errorf("failed to add font resource: %w", err)
 	}
+	fmt.Println("Font resource added successfully")
 
 	// Add font to registry if machine scope
 	if scope == MachineScope {
+		fmt.Println("Adding font to registry...")
 		if err := m.addFontToRegistry(fontName, targetPath); err != nil {
-			// Clean up if registry update fails
+			fmt.Printf("Failed to add font to registry: %v\n", err)
+			// Clean up on error
+			fmt.Println("Cleaning up after failed registry addition...")
 			m.removeFontResource(targetPath)
 			os.Remove(targetPath)
 			return fmt.Errorf("failed to add font to registry: %w", err)
 		}
+		fmt.Println("Font added to registry successfully")
 	}
 
 	// Notify other applications about the new font
+	fmt.Println("Notifying system about font change...")
 	if err := m.notifyFontChange(); err != nil {
-		// Try to clean up if notification fails
+		fmt.Printf("Failed to notify font change: %v\n", err)
+		// Clean up on error
+		fmt.Println("Cleaning up after failed notification...")
 		m.removeFontResource(targetPath)
 		if scope == MachineScope {
 			m.removeFontFromRegistry(fontName)
@@ -101,7 +123,9 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		os.Remove(targetPath)
 		return fmt.Errorf("failed to notify font change: %w", err)
 	}
+	fmt.Println("Font change notification sent successfully")
 
+	fmt.Println("Font installation completed successfully")
 	return nil
 }
 
@@ -221,17 +245,21 @@ func validateFontFile(fontPath string) error {
 }
 
 func (m *windowsFontManager) addFontResource(fontPath string) error {
+	fmt.Printf("Adding font resource for: %s\n", fontPath)
 	pathPtr, err := syscall.UTF16PtrFromString(fontPath)
 	if err != nil {
 		return fmt.Errorf("failed to convert path to UTF-16: %w", err)
 	}
 
+	fmt.Println("Calling AddFontResource...")
 	ret, _, _ := addFontResource.Call(uintptr(unsafe.Pointer(pathPtr)))
 	if ret == 0 {
 		// Get the last error code
 		errCode := syscall.GetLastError()
+		fmt.Printf("AddFontResource failed with error code: %d\n", errCode)
 		return fmt.Errorf("AddFontResource failed with error code: %d", errCode)
 	}
+	fmt.Println("AddFontResource call successful")
 
 	return nil
 }
@@ -253,19 +281,41 @@ func (m *windowsFontManager) removeFontResource(fontPath string) error {
 }
 
 func (m *windowsFontManager) notifyFontChange() error {
-	ret, _, _ := sendMessage.Call(
-		HWND_BROADCAST,
-		WM_FONTCHANGE,
-		0,
-		0,
-	)
-	if ret == 0 {
-		// Get the last error code
-		errCode := syscall.GetLastError()
-		return fmt.Errorf("SendMessage failed with error code: %d", errCode)
-	}
+	fmt.Println("Sending font change notification...")
 
-	return nil
+	// Create a channel to receive the result
+	result := make(chan error, 1)
+
+	// Run PostMessage in a goroutine
+	go func() {
+		ret, _, _ := postMessage.Call(
+			HWND_BROADCAST,
+			WM_FONTCHANGE,
+			0,
+			0,
+		)
+		if ret == 0 {
+			// Get the last error code
+			errCode := syscall.GetLastError()
+			fmt.Printf("PostMessage failed with error code: %d\n", errCode)
+			result <- fmt.Errorf("PostMessage failed with error code: %d", errCode)
+			return
+		}
+		result <- nil
+	}()
+
+	// Wait for the result with a timeout
+	select {
+	case err := <-result:
+		if err != nil {
+			return err
+		}
+		fmt.Println("Font change notification sent successfully")
+		return nil
+	case <-time.After(2 * time.Second):
+		fmt.Println("Warning: Font change notification timed out, but continuing...")
+		return nil
+	}
 }
 
 // addFontToRegistry adds a font to the Windows registry

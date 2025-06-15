@@ -27,22 +27,46 @@ func parseFontName(filename string) (family, style string) {
 	// Remove extension
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 
-	// Common style suffixes
-	styles := []string{
-		"Regular", "Italic", "Bold", "BoldItalic",
-		"Light", "LightItalic", "Medium", "MediumItalic",
-		"Black", "BlackItalic", "Thin", "ThinItalic",
-		"ExtraLight", "ExtraLightItalic", "ExtraBold", "ExtraBoldItalic",
-		"SemiBold", "SemiBoldItalic",
+	// Remove variation parameters (e.g., [wght], [wdth,wght])
+	if idx := strings.Index(name, "["); idx != -1 {
+		name = name[:idx]
 	}
 
-	// Try to find a style suffix
-	for _, s := range styles {
-		if strings.HasSuffix(name, "-"+s) {
-			family = strings.TrimSuffix(name, "-"+s)
-			style = s
-			return
-		}
+	// Style mapping for case-insensitive matching
+	styleMap := map[string]string{
+		"regular":          "Regular",
+		"italic":           "Italic",
+		"bold":             "Bold",
+		"bolditalic":       "BoldItalic",
+		"light":            "Light",
+		"lightitalic":      "LightItalic",
+		"medium":           "Medium",
+		"mediumitalic":     "MediumItalic",
+		"black":            "Black",
+		"blackitalic":      "BlackItalic",
+		"thin":             "Thin",
+		"thinitalic":       "ThinItalic",
+		"extralight":       "ExtraLight",
+		"extralightitalic": "ExtraLightItalic",
+		"extrabold":        "ExtraBold",
+		"extrabolditalic":  "ExtraBoldItalic",
+		"semibold":         "SemiBold",
+		"semibolditalic":   "SemiBoldItalic",
+	}
+
+	// Split the name into parts
+	parts := strings.Split(name, "-")
+	if len(parts) == 1 {
+		// No style suffix, this is the base family
+		return parts[0], "Regular"
+	}
+
+	// The last part is the style
+	stylePart := strings.ToLower(parts[len(parts)-1])
+	if canonicalStyle, ok := styleMap[stylePart]; ok {
+		// Reconstruct the family name from all parts except the last one
+		family = strings.Join(parts[:len(parts)-1], "-")
+		return family, canonicalStyle
 	}
 
 	// If no style found, the whole name is the family
@@ -190,7 +214,7 @@ var listCmd = &cobra.Command{
 		// Define column widths
 		columns := map[string]int{
 			"Name":  45, // For display name
-			"Style": 15, // For font style
+			"Style": 18, // For font style
 			"Type":  10, // For file type
 			"Date":  20, // For installation date
 			"Scope": 10, // For installation scope
