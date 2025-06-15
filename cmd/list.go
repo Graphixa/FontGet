@@ -24,7 +24,7 @@ type FontFile struct {
 
 // parseFontName extracts family and style from a font filename
 func parseFontName(filename string) (family, style string) {
-	// Remove extension
+	// Remove file extension
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 
 	// Remove variation parameters (e.g., [wght], [wdth,wght])
@@ -32,45 +32,57 @@ func parseFontName(filename string) (family, style string) {
 		name = name[:idx]
 	}
 
-	// Style mapping for case-insensitive matching
+	// Common style mappings for known cases
 	styleMap := map[string]string{
-		"regular":          "Regular",
-		"italic":           "Italic",
-		"bold":             "Bold",
-		"bolditalic":       "BoldItalic",
-		"light":            "Light",
-		"lightitalic":      "LightItalic",
-		"medium":           "Medium",
-		"mediumitalic":     "MediumItalic",
-		"black":            "Black",
-		"blackitalic":      "BlackItalic",
-		"thin":             "Thin",
-		"thinitalic":       "ThinItalic",
-		"extralight":       "ExtraLight",
-		"extralightitalic": "ExtraLightItalic",
-		"extrabold":        "ExtraBold",
-		"extrabolditalic":  "ExtraBoldItalic",
-		"semibold":         "SemiBold",
-		"semibolditalic":   "SemiBoldItalic",
+		"regular":         "Regular",
+		"italic":          "Italic",
+		"bold":            "Bold",
+		"bolditalic":      "BoldItalic",
+		"light":           "Light",
+		"lightitalic":     "LightItalic",
+		"medium":          "Medium",
+		"mediumitalic":    "MediumItalic",
+		"semibold":        "SemiBold",
+		"semibolditalic":  "SemiBoldItalic",
+		"extrabold":       "ExtraBold",
+		"extrabolditalic": "ExtraBoldItalic",
+		"black":           "Black",
+		"blackitalic":     "BlackItalic",
+		"thin":            "Thin",
+		"thinitalic":      "ThinItalic",
 	}
 
-	// Split the name into parts
+	// Split by hyphens to separate family and style
 	parts := strings.Split(name, "-")
 	if len(parts) == 1 {
-		// No style suffix, this is the base family
 		return parts[0], "Regular"
 	}
 
-	// The last part is the style
-	stylePart := strings.ToLower(parts[len(parts)-1])
-	if canonicalStyle, ok := styleMap[stylePart]; ok {
-		// Reconstruct the family name from all parts except the last one
+	// Get the last part as potential style
+	potentialStyle := strings.ToLower(parts[len(parts)-1])
+
+	// Check if it's a known style
+	if knownStyle, exists := styleMap[potentialStyle]; exists {
+		// Reconstruct family name from all parts except the last one
 		family = strings.Join(parts[:len(parts)-1], "-")
-		return family, canonicalStyle
+		return family, knownStyle
 	}
 
-	// If no style found, the whole name is the family
-	return name, "Regular"
+	// For unknown styles, try to detect common patterns
+	if strings.HasSuffix(potentialStyle, "italic") {
+		// Handle cases like "CondensedItalic", "SemiCondensedItalic", etc.
+		baseStyle := strings.TrimSuffix(potentialStyle, "italic")
+		if knownStyle, exists := styleMap[baseStyle]; exists {
+			family = strings.Join(parts[:len(parts)-1], "-")
+			return family, knownStyle + "Italic"
+		}
+	}
+
+	// If no known style is found, use the last part as is but capitalize it
+	// This handles cases like "Condensed", "SemiCondensed", etc.
+	family = strings.Join(parts[:len(parts)-1], "-")
+	style = strings.Title(potentialStyle)
+	return family, style
 }
 
 // listFonts lists fonts in the specified directory and scope
