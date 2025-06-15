@@ -173,9 +173,27 @@ Options:
 
 Remove an installed font.
 
-### `fontget list [--scope <user|machine>]`
+### `fontget list [--scope <user|machine|all>]`
 
 List installed fonts.
+
+Options:
+- `-s, --scope`: Installation scope (default: user)
+  - `user`: List fonts for current user only
+  - `machine`: List system-wide fonts (requires elevation)
+  - `all`: List fonts from both user and machine scopes
+- `-f, --family`: Filter by font family name
+- `-t, --type`: Filter by font type (TTF, OTF, etc.)
+
+Examples:
+```bash
+fontget list
+fontget list -s machine
+fontget list -s all
+fontget list -f "Roboto"
+fontget list -t TTF
+fontget list -s all -t TTF
+```
 
 ### `fontget search <query>`
 
