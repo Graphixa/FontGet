@@ -38,7 +38,7 @@ func NewFontManager() (FontManager, error) {
 }
 
 // InstallFont installs a font file to the specified font directory
-func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope) error {
+func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope, force bool) error {
 	// Validate font file
 	if err := validateFontFile(fontPath); err != nil {
 		return fmt.Errorf("font validation failed: %w", err)
@@ -60,7 +60,13 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 
 	// Check if font is already installed
 	if _, err := os.Stat(targetPath); err == nil {
-		return fmt.Errorf("font already installed: %s", fontName)
+		if !force {
+			return fmt.Errorf("font already installed: %s", fontName)
+		}
+		// Remove the existing file if force is true
+		if err := os.Remove(targetPath); err != nil {
+			return fmt.Errorf("failed to overwrite existing font: %w", err)
+		}
 	}
 
 	// Copy the font file to the target directory

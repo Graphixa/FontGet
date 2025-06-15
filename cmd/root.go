@@ -101,5 +101,15 @@ PowerShell:
 
 // Execute runs the root command
 func Execute() error {
-	return rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err != nil {
+		// Check if it's our custom error type
+		if _, ok := err.(*FontInstallationError); ok {
+			// Just return the error without showing help
+			return err
+		}
+		// For other errors, let Cobra handle them
+		return err
+	}
+	return nil
 }

@@ -2,7 +2,7 @@
 // It is not used in the project.
 // It is only used to help you build new commands.
 
-package cmd
+package templates
 
 import (
 	"fmt"
@@ -139,7 +139,8 @@ func countTotalItems(manifest *repo.FontManifest) int {
 
 func init() {
 	// 1. Add the command to the root command
-	rootCmd.AddCommand(commandCmd)
+	// Note: Replace rootCmd with the actual root command variable from your cmd package
+	// rootCmd.AddCommand(commandCmd)
 
 	// 2. Add flags
 	// String flag with short version

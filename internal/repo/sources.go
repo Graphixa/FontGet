@@ -1,13 +1,9 @@
 package repo
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -115,198 +111,38 @@ type FontInfo struct {
 	Files        map[string]string `json:"files,omitempty"`
 }
 
-// needsUpdate checks if the manifest needs to be updated
-func needsUpdate() (bool, error) {
-	sourcesDir, err := getSourcesDir()
-	if err != nil {
-		return false, err
-	}
-	manifestPath := filepath.Join(sourcesDir, manifestFile)
-	info, err := os.Stat(manifestPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return true, nil
-		}
-		return false, fmt.Errorf("failed to stat manifest: %w", err)
-	}
-
-	return time.Since(info.ModTime()) > updateInterval, nil
-}
-
-func updateManifest() error {
-	// Get sources directory
-	sourcesDir, err := ensureSourcesDir()
-	if err != nil {
-		return fmt.Errorf("failed to get sources directory: %v", err)
-	}
-
-	// Check if manifest needs update
-	manifestPath := filepath.Join(sourcesDir, manifestFile)
-	if info, err := os.Stat(manifestPath); err == nil {
-		// Check if file is less than 24 hours old
-		if time.Since(info.ModTime()) < updateInterval {
-			// Read cached manifest
-			cachedData, err := os.ReadFile(manifestPath)
-			if err == nil {
-				var cachedManifest FontManifest
-				if err := json.Unmarshal(cachedData, &cachedManifest); err == nil {
-					// Fetch latest manifest to compare
-					resp, err := http.Get(fontManifestURL)
-					if err == nil {
-						defer resp.Body.Close()
-						if resp.StatusCode == http.StatusOK {
-							body, err := io.ReadAll(resp.Body)
-							if err == nil {
-								var latestManifest FontManifest
-								if err := json.Unmarshal(body, &latestManifest); err == nil {
-									// Compare manifests
-									if cachedManifest.LastUpdated.Equal(latestManifest.LastUpdated) {
-										return nil
-									}
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Fetch latest manifest
-	resp, err := http.Get(fontManifestURL)
-	if err != nil {
-		return fmt.Errorf("failed to fetch manifest: %v", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch manifest: HTTP %d", resp.StatusCode)
-	}
-
-	// Read and parse manifest
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read manifest: %v", err)
-	}
-
-	// Parse the manifest
-	var manifest FontManifest
-	if err := json.Unmarshal(body, &manifest); err != nil {
-		return fmt.Errorf("failed to parse manifest: %v", err)
-	}
-
-	// Save manifest
-	processedData, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal manifest: %v", err)
-	}
-
-	if err := os.WriteFile(manifestPath, processedData, 0644); err != nil {
-		return fmt.Errorf("failed to save manifest: %v", err)
-	}
-
-	return nil
-}
-
-// GetManifest returns the current font manifest, updating if necessary
-func GetManifest(progress ProgressCallback) (*FontManifest, error) {
-	// Get sources directory
-	sourcesDir, err := ensureSourcesDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sources directory: %v", err)
-	}
-
-	// Check if manifest needs update
-	needsUpdate, err := needsUpdate()
-	if err != nil {
-		return nil, fmt.Errorf("failed to check manifest update: %v", err)
-	}
-
-	if needsUpdate {
-		if progress != nil {
-			progress(0, 1, "Updating font catalog...")
-		}
-		if err := updateManifest(); err != nil {
-			return nil, fmt.Errorf("failed to update manifest: %v", err)
-		}
-		if progress != nil {
-			progress(1, 1, "Font catalog updated")
-		}
-	}
-
-	// Read manifest
-	manifestPath := filepath.Join(sourcesDir, manifestFile)
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read manifest: %v", err)
-	}
-
-	var manifest FontManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("failed to parse manifest: %v", err)
-	}
-
-	return &manifest, nil
-}
-
-// GetFontInfo retrieves information about a specific font
+// GetFontInfo retrieves information about a font from the repository
 func GetFontInfo(fontID string) (*FontInfo, error) {
-	manifest, err := GetManifest(nil)
+	manifest, err := GetManifest(nil, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get manifest: %w", err)
 	}
 
-	// Check each source
+	// Look for font in all sources
 	for _, source := range manifest.Sources {
-		if info, ok := source.Fonts[fontID]; ok {
-			return &info, nil
+		if font, ok := source.Fonts[fontID]; ok {
+			return &font, nil
 		}
 	}
 
 	return nil, fmt.Errorf("font not found: %s", fontID)
 }
 
-// GetFontFiles returns the font files for a specific font family
+// GetFontFiles retrieves the font files for a given font family
 func GetFontFiles(fontFamily string) (map[string]string, error) {
-	url := fmt.Sprintf(googleFontsCSS, strings.ReplaceAll(fontFamily, " ", "+"))
-	resp, err := http.Get(url)
+	manifest, err := GetManifest(nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch CSS: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to fetch CSS: %s", resp.Status)
+		return nil, fmt.Errorf("failed to get manifest: %w", err)
 	}
 
-	css, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read CSS: %w", err)
-	}
-
-	// Extract font URLs from CSS
-	urlRegex := regexp.MustCompile(`url\((https://[^)]+)\)`)
-	matches := urlRegex.FindAllStringSubmatch(string(css), -1)
-
-	files := make(map[string]string)
-	for _, match := range matches {
-		if len(match) > 1 {
-			url := match[1]
-			// Extract variant from URL
-			variant := "regular"
-			if strings.Contains(url, "italic") {
-				variant = "italic"
-			} else if strings.Contains(url, "wght@") {
-				weight := regexp.MustCompile(`wght@(\d+)`).FindStringSubmatch(url)
-				if len(weight) > 1 {
-					variant = weight[1]
-				}
-			}
-			files[variant] = url
+	// Look for font in all sources
+	for _, source := range manifest.Sources {
+		if font, ok := source.Fonts[fontFamily]; ok {
+			return font.Files, nil
 		}
 	}
 
-	return files, nil
+	return nil, fmt.Errorf("font not found: %s", fontFamily)
 }
 
 // Repository represents a font repository
@@ -314,16 +150,16 @@ type Repository struct {
 	manifest *FontManifest
 }
 
-// GetRepository returns a new repository instance
+// GetRepository returns a new Repository instance
 func GetRepository() (*Repository, error) {
-	manifest, err := GetManifest(nil)
+	manifest, err := GetManifest(nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get manifest: %w", err)
+		return nil, err
 	}
 	return &Repository{manifest: manifest}, nil
 }
 
-// GetManifest returns the current font manifest
+// GetManifest returns the current manifest
 func (r *Repository) GetManifest() (*FontManifest, error) {
 	return r.manifest, nil
 }

@@ -59,7 +59,7 @@ func (m *linuxFontManager) GetElevationCommand() (string, []string, error) {
 }
 
 // InstallFont installs a font file to the specified font directory
-func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope) error {
+func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope, force bool) error {
 	fontName := getFontName(fontPath)
 	var targetDir string
 
@@ -73,6 +73,17 @@ func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope)
 	}
 
 	targetPath := filepath.Join(targetDir, fontName)
+
+	// Check if font is already installed
+	if _, err := os.Stat(targetPath); err == nil {
+		if !force {
+			return fmt.Errorf("font already installed: %s", fontName)
+		}
+		// Remove the existing file if force is true
+		if err := os.Remove(targetPath); err != nil {
+			return fmt.Errorf("failed to overwrite existing font: %w", err)
+		}
+	}
 
 	// Copy the font file to the target directory
 	if err := copyFile(fontPath, targetPath); err != nil {

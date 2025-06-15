@@ -21,7 +21,7 @@ const (
 // FontManager defines the interface for platform-specific font operations
 type FontManager interface {
 	// InstallFont installs a font file to the system
-	InstallFont(fontPath string, scope InstallationScope) error
+	InstallFont(fontPath string, scope InstallationScope, force bool) error
 	// RemoveFont removes a font from the system
 	RemoveFont(fontName string, scope InstallationScope) error
 	// GetFontDir returns the system's font directory for the given scope

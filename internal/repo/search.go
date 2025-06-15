@@ -18,7 +18,7 @@ type SearchResult struct {
 
 // SearchFonts searches for fonts matching the query with priority-based matching
 func SearchFonts(query string, exactMatch bool) ([]SearchResult, error) {
-	manifest, err := GetManifest(nil)
+	manifest, err := GetManifest(nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get manifest: %w", err)
 	}
