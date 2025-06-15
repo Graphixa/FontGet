@@ -26,6 +26,9 @@ fontget/
 │   │   └── darwin.go
 │   ├── errors/      # Error handling and user guidance
 │   │   └── errors.go
+│   ├── logging/     # Logging functionality
+│   │   ├── logger.go
+│   │   └── config.go
 │   └── repo/        # Font repository interaction
 │       └── font.go
 ├── docs/
@@ -88,39 +91,39 @@ Where {TEMP_DIR} is:
   - [x] Let other errors flow through cobra's error handling
 
 ### Font Installation Errors
-- [ ] Improve font existence checks:
-  - [ ] Normalize font names for case-insensitive comparison
-  - [ ] Query repository for all font files first
-  - [ ] Check each font file against installed fonts
-  - [ ] Add detailed logging of font file matches
-  - [ ] Implement font name mapping system
+- [x] Improve font existence checks:
+  - [x] Normalize font names for case-insensitive comparison
+  - [x] Query repository for all font files first
+  - [x] Check each font file against installed fonts
+  - [x] Add detailed logging of font file matches
+  - [x] Implement font name mapping system
 
 ### Force Flag Behavior
-- [ ] Fix --force flag implementation:
-  - [ ] Override all existence checks
-  - [ ] Add force flag handling in platform-specific managers
-  - [ ] Update documentation
-  - [ ] Add warning messages for force installs
+- [x] Fix --force flag implementation:
+  - [x] Override all existence checks
+  - [x] Add force flag handling in platform-specific managers
+  - [x] Update documentation
+  - [x] Add warning messages for force installs
 
 ## Installation Scopes
 
 ### User Scope (Default)
-- Installs fonts for the current user only
-- No elevation required
-- Fonts are available only to the installing user
-- Default installation locations:
-  - Windows: `%LOCALAPPDATA%\Microsoft\Windows\Fonts`
-  - Linux: `~/.local/share/fonts`
-  - macOS: `~/Library/Fonts`
+- [x] Installs fonts for the current user only
+- [x] No elevation required
+- [x] Fonts are available only to the installing user
+- [x] Default installation locations:
+  - [x] Windows: `%LOCALAPPDATA%\Microsoft\Windows\Fonts`
+  - [x] Linux: `~/.local/share/fonts`
+  - [x] macOS: `~/Library/Fonts`
 
 ### Machine Scope
-- Installs fonts system-wide
-- Requires elevation
-- Fonts are available to all users
-- Installation locations:
-  - Windows: `C:\Windows\Fonts`
-  - Linux: `/usr/local/share/fonts`
-  - macOS: `/Library/Fonts`
+- [x] Installs fonts system-wide
+- [x] Requires elevation
+- [x] Fonts are available to all users
+- [x] Installation locations:
+  - [x] Windows: `C:\Windows\Fonts`
+  - [x] Linux: `/usr/local/share/fonts`
+  - [x] macOS: `/Library/Fonts`
 
 ## Platform-Specific Elevation
 
@@ -269,26 +272,25 @@ Options:
 
 ## Implementation Priority
 
-1. **Phase 1: Error Handling & Safety**
-   - [x] Implement consistent error handling pattern
-   - [ ] Improve font existence checks
-   - [ ] Fix force flag behavior
-   - [ ] Enhance font removal
+1. **Phase 1: Logging System**
+   - [ ] Create logging package
+   - [ ] Implement log file handling
+   - [ ] Add --verbose flag to commands
+   - [ ] Clean up debug prints
 
-2. **Phase 2: Platform Support**
-   - [ ] Implement platform-specific font tracking
-   - [ ] Add platform-specific installation
-   - [ ] Handle font cache updates
+2. **Phase 2: Command Completion**
+   - [ ] Implement `remove` command
+   - [ ] Add proper logging to all commands
+   - [ ] Add verbose mode to all commands
 
-3. **Phase 3: User Experience**
+3. **Phase 3: Testing & Documentation**
+   - [ ] Improve documentation
+   - [ ] Add examples
+
+4. **Phase 4: User Experience**
    - [ ] Add progress indicators
    - [ ] Improve output formatting
    - [ ] Add interactive features
-
-4. **Phase 4: Testing & Documentation**
-   - [ ] Add comprehensive tests
-   - [ ] Improve documentation
-   - [ ] Add examples
 
 ## CI Configuration
 
@@ -556,3 +558,59 @@ jobs:
    - [ ] Add comprehensive tests
    - [ ] Improve documentation
    - [ ] Add examples
+
+## Logging System
+
+### Log File Structure
+- [ ] Implement structured logging system:
+  - [ ] Create logging package in `internal/logging`
+  - [ ] Define log levels (INFO, DEBUG, ERROR)
+  - [ ] Add timestamps to all log entries
+  - [ ] Support log rotation
+
+### Log File Location
+- [ ] Configure default log location:
+  - [ ] Windows: `%LOCALAPPDATA%\FontGet\logs\`
+  - [ ] Linux: `~/.local/share/fontget/logs/`
+  - [ ] macOS: `~/Library/Logs/fontget/`
+- [ ] Add configuration options:
+  - [ ] Allow custom log directory via config file
+  - [ ] Add command to change log location
+  - [ ] Support environment variable override
+  - [ ] Ensure proper permissions for log directory
+  - [ ] Handle path creation if directory doesn't exist
+
+### Logging Features
+- [ ] Add --verbose flag to commands:
+  - [ ] Show detailed operation information
+  - [ ] Include debug-level messages
+  - [ ] Display timing information
+- [ ] Implement log rotation:
+  - [ ] Rotate when log file reaches 10MB
+  - [ ] Keep last 5 rotated log files
+  - [ ] Use timestamp-based naming (e.g., fontget-2024-03-20.log)
+  - [ ] Add rotation number for same-day logs (e.g., fontget-2024-03-20.1.log)
+- [ ] Implement log cleanup:
+  - [ ] Delete logs older than 30 days
+  - [ ] Compress logs older than 7 days
+  - [ ] Run cleanup routine on startup
+  - [ ] Add cleanup command for manual maintenance
+  - [ ] Log cleanup operations for audit trail
+- [ ] Add log configuration options:
+  - [ ] Configurable rotation size (default: 10MB)
+  - [ ] Configurable number of kept logs (default: 5)
+  - [ ] Configurable retention period (default: 30 days)
+  - [ ] Configurable compression threshold (default: 7 days)
+
+### Log Content
+- [ ] Define standard log format:
+  - [ ] Timestamp
+  - [ ] Log level
+  - [ ] Command name
+  - [ ] Operation being performed
+  - [ ] Success/failure status
+  - [ ] Error details (if any)
+- [ ] Remove debug print statements:
+  - [ ] Clean up add.go debug logs
+  - [ ] Replace with proper logging calls
+  - [ ] Add context to log messages
