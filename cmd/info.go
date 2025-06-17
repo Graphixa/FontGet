@@ -88,42 +88,66 @@ var infoCmd = &cobra.Command{
 		}
 
 		// Find font in manifest
-		font, exists := manifest.Sources["google-fonts"].Fonts[fontID]
-		if !exists {
+		var fontSource string
+		var font repo.FontInfo
+		found := false
+		for sourceKey, source := range manifest.Sources {
+			if f, ok := source.Fonts[fontID]; ok {
+				font = f
+				fontSource = sourceKey
+				found = true
+				break
+			}
+		}
+		if !found {
 			red := color.New(color.FgRed).SprintFunc()
 			GetLogger().Error("Font '%s' not found", fontID)
 			return fmt.Errorf("%s", red(fmt.Sprintf("Font '%s' not found", fontID)))
 		}
 
+		// Helper for colored headers
+		cyanHeader := color.New(color.Bold, color.FgCyan).SprintFunc()
+
 		// Print font information
-		fmt.Printf("\nFont Information for '%s'\n", fontID)
-		fmt.Println(strings.Repeat("-", 40))
+		fmt.Printf("\n%s %s\n", cyanHeader("Font Name:"), font.Name)
 
 		// Always show category as it's a single value
 		if len(font.Categories) > 0 {
-			fmt.Printf("\nCategory: %s\n", font.Categories[0])
+			fmt.Printf("\n%s %s\n", cyanHeader("Category:"), font.Categories[0])
 		}
 
 		if showLicense {
-			fmt.Printf("\nLicense: %s\n", font.License)
+			licenseURL := ""
+			// Always show the raw license URL for Google Fonts OFL fonts
+			if fontSource == "google-fonts" && strings.ToLower(font.License) == "ofl" {
+				id := strings.ToLower(strings.ReplaceAll(fontID, " ", ""))
+				licenseURL = "https://raw.githubusercontent.com/google/fonts/main/ofl/" + id + "/OFL.txt"
+			} else if font.SourceURL != "" && strings.Contains(font.SourceURL, "fonts.google.com") {
+				licenseURL = font.SourceURL + "#license"
+			}
+			if licenseURL != "" {
+				fmt.Printf("\n%s %s - %s\n", cyanHeader("License:"), font.License, licenseURL)
+			} else {
+				fmt.Printf("\n%s %s\n", cyanHeader("License:"), font.License)
+			}
 		}
 
 		if showFiles {
-			fmt.Printf("\nFiles:\n")
+			fmt.Printf("\n%s\n", cyanHeader("Files:"))
 			for variant, url := range font.Files {
 				fmt.Printf("  - %s: %s\n", variant, url)
 			}
 		}
 
 		if showMetadata {
-			fmt.Printf("\nMetadata:\n")
-			fmt.Printf("  Last Modified: %s\n", font.LastModified)
+			fmt.Printf("\n%s\n", cyanHeader("Metadata:"))
+			fmt.Printf(" - Last Modified: %s\n", font.LastModified)
 			if font.Description != "" {
-				fmt.Printf("  Description: %s\n", font.Description)
+				fmt.Printf(" - Description: %s\n", font.Description)
 			}
-			fmt.Printf("  Source URL: %s\n", font.SourceURL)
-			fmt.Printf("  Metadata URL: %s\n", font.MetadataURL)
-			fmt.Printf("  Popularity: %d\n", font.Popularity)
+			fmt.Printf(" - Source URL: %s\n", font.SourceURL)
+			fmt.Printf(" - Metadata URL: %s\n", font.MetadataURL)
+			fmt.Printf(" - Popularity: %d\n", font.Popularity)
 		}
 
 		fmt.Println()

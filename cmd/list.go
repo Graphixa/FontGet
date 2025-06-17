@@ -27,7 +27,7 @@ func parseFontName(filename string) (family, style string) {
 	// Remove file extension
 	name := strings.TrimSuffix(filename, filepath.Ext(filename))
 
-	// Remove variation parameters (e.g., [wght], [wdth,wght])
+	// Remove variation parameters
 	if idx := strings.Index(name, "["); idx != -1 {
 		name = name[:idx]
 	}
