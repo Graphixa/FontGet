@@ -35,7 +35,7 @@ func parseFontName(filename string) (family, style string) {
 	// Remove "webfont" suffix if present
 	name = strings.TrimSuffix(name, "-webfont")
 
-	// For fonts with spaces in their names (like Orbitron, Walkway)
+	// For fonts with spaces in their names
 	if strings.Contains(name, " ") {
 		// Extract the base family name
 		parts := strings.Split(name, " ")
@@ -66,9 +66,12 @@ func parseFontName(filename string) (family, style string) {
 
 // listFonts lists fonts in the specified directory and scope
 func listFonts(fontDir string, installScope platform.InstallationScope) ([]FontFile, error) {
+	GetLogger().Debug("Listing fonts in directory: %s (scope: %s)", fontDir, installScope)
+
 	// List all font files in the directory
 	files, err := os.ReadDir(fontDir)
 	if err != nil {
+		GetLogger().Error("Failed to read font directory %s: %v", fontDir, err)
 		return nil, fmt.Errorf("failed to read font directory: %w", err)
 	}
 
@@ -81,6 +84,7 @@ func listFonts(fontDir string, installScope platform.InstallationScope) ([]FontF
 		// Get file info
 		fileInfo, err := file.Info()
 		if err != nil {
+			GetLogger().Warn("Failed to get file info for %s: %v", file.Name(), err)
 			continue
 		}
 
@@ -98,6 +102,7 @@ func listFonts(fontDir string, installScope platform.InstallationScope) ([]FontF
 		})
 	}
 
+	GetLogger().Debug("Found %d fonts in %s", len(fontFiles), fontDir)
 	return fontFiles, nil
 }
 
@@ -113,9 +118,12 @@ var listCmd = &cobra.Command{
   fontget list -s all -t TTF`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting font list operation")
+
 		// Create font manager
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
+			GetLogger().Error("Failed to initialize font manager: %v", err)
 			return fmt.Errorf("failed to initialize font manager: %w", err)
 		}
 
@@ -124,19 +132,24 @@ var listCmd = &cobra.Command{
 		family, _ := cmd.Flags().GetString("family")
 		fontType, _ := cmd.Flags().GetString("type")
 
+		GetLogger().Info("List command parameters - Scope: %s, Family: %s, Type: %s", scope, family, fontType)
+
 		// Convert scope string to InstallationScope
 		var scopes []platform.InstallationScope
 		if scope == "all" {
 			scopes = []platform.InstallationScope{platform.UserScope, platform.MachineScope}
+			GetLogger().Debug("Listing fonts from all scopes")
 		} else {
 			installScope := platform.UserScope
 			if scope != "user" {
 				installScope = platform.InstallationScope(scope)
 				if installScope != platform.UserScope && installScope != platform.MachineScope {
+					GetLogger().Error("Invalid scope '%s'", scope)
 					return fmt.Errorf("invalid scope '%s'. Must be 'user', 'machine', or 'all'", scope)
 				}
 			}
 			scopes = []platform.InstallationScope{installScope}
+			GetLogger().Debug("Listing fonts from scope: %s", installScope)
 		}
 
 		// Collect fonts from all specified scopes
@@ -144,7 +157,9 @@ var listCmd = &cobra.Command{
 		for _, installScope := range scopes {
 			// Check elevation for machine scope
 			if installScope == platform.MachineScope {
+				GetLogger().Debug("Checking elevation for machine scope")
 				if err := checkElevation(cmd, fontManager, installScope); err != nil {
+					GetLogger().Error("Elevation check failed: %v", err)
 					return err
 				}
 			}
@@ -161,6 +176,7 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(allFonts) == 0 {
+			GetLogger().Info("No fonts found in the specified scope(s)")
 			fmt.Printf("No fonts found in the specified scope(s)\n")
 			return nil
 		}
@@ -182,6 +198,7 @@ var listCmd = &cobra.Command{
 		}
 
 		if len(filteredFonts) == 0 {
+			GetLogger().Info("No fonts found matching the specified filters")
 			fmt.Printf("No fonts found matching the specified filters\n")
 			return nil
 		}
@@ -198,6 +215,8 @@ var listCmd = &cobra.Command{
 			familyNames = append(familyNames, family)
 		}
 		sort.Strings(familyNames)
+
+		GetLogger().Info("Found %d font families", len(familyNames))
 
 		// Print header
 		fmt.Printf("\nInstalled fonts:\n\n")
@@ -248,19 +267,18 @@ var listCmd = &cobra.Command{
 					columns["Date"], font.InstallDate.Format("2006-01-02 15:04"),
 					columns["Scope"], font.Scope)
 			}
-			fmt.Println() // Empty line between families
 		}
 
-		// Print summary
-		fmt.Printf("Total font families: %d\n", len(families))
-		fmt.Printf("Total font files: %d\n", len(filteredFonts))
+		GetLogger().Info("Font list operation completed successfully")
 		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(listCmd)
-	listCmd.Flags().StringP("scope", "s", "user", "Installation scope [user, machine, or all]")
+
+	// Add flags
+	listCmd.Flags().StringP("scope", "s", "user", "Installation scope (user, machine, or all)")
 	listCmd.Flags().StringP("family", "f", "", "Filter by font family name")
-	listCmd.Flags().StringP("type", "t", "", "Filter by font type [TTF, OTF, etc.]")
+	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
 }

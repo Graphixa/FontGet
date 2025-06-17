@@ -9,8 +9,20 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 	"unsafe"
+
+	"fontget/internal/logging"
+)
+
+// Windows API constants
+const (
+	WM_FONTCHANGE = 0x001D
+)
+
+// Windows API functions
+var (
+	findWindowEx = syscall.NewLazyDLL("user32.dll").NewProc("FindWindowExW")
+	sendMessage  = syscall.NewLazyDLL("user32.dll").NewProc("SendMessageW")
 )
 
 type windowsFontManager struct {
@@ -40,14 +52,16 @@ func NewFontManager() (FontManager, error) {
 
 // InstallFont installs a font file to the specified font directory
 func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope, force bool) error {
-	fmt.Printf("Starting font installation for: %s (scope: %s)\n", fontPath, scope)
+	logger := logging.GetLogger()
+	logger.Debug("Starting font installation for: %s (scope: %s)", fontPath, scope)
 
 	// Validate font file
-	fmt.Println("Validating font file...")
+	logger.Debug("Validating font file...")
 	if err := validateFontFile(fontPath); err != nil {
+		logger.Error("Font validation failed for %s: %v", fontPath, err)
 		return fmt.Errorf("font validation failed: %w", err)
 	}
-	fmt.Println("Font validation successful")
+	logger.Debug("Font validation successful")
 
 	fontName := getFontName(fontPath)
 	var targetDir string
@@ -55,84 +69,94 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 	switch scope {
 	case UserScope:
 		targetDir = m.userFontDir
+		logger.Debug("Using user font directory: %s", targetDir)
 	case MachineScope:
 		targetDir = m.systemFontDir
+		logger.Debug("Using system font directory: %s", targetDir)
 	default:
+		logger.Error("Invalid installation scope: %s", scope)
 		return fmt.Errorf("invalid installation scope: %s", scope)
 	}
-	fmt.Printf("Target directory: %s\n", targetDir)
 
 	targetPath := filepath.Join(targetDir, fontName)
-	fmt.Printf("Target path: %s\n", targetPath)
+	logger.Debug("Target path: %s", targetPath)
 
 	// Check if font is already installed
-	fmt.Println("Checking if font is already installed...")
+	logger.Debug("Checking if font is already installed...")
 	if _, err := os.Stat(targetPath); err == nil {
 		if !force {
+			logger.Warn("Font already installed at %s", targetPath)
 			return fmt.Errorf("font already installed: %s", fontName)
 		}
-		fmt.Println("Font exists, removing due to force flag...")
+		logger.Debug("Font exists, removing due to force flag...")
 		// Remove the existing file if force is true
 		if err := os.Remove(targetPath); err != nil {
+			logger.Error("Failed to overwrite existing font at %s: %v", targetPath, err)
 			return fmt.Errorf("failed to overwrite existing font: %w", err)
 		}
+		logger.Debug("Existing font removed successfully")
 	}
 
 	// Copy the font file to the target directory
-	fmt.Println("Copying font file to target directory...")
+	logger.Debug("Copying font file to target directory...")
 	if err := copyFile(fontPath, targetPath); err != nil {
+		logger.Error("Failed to copy font file from %s to %s: %v", fontPath, targetPath, err)
 		return fmt.Errorf("failed to copy font file: %w", err)
 	}
-	fmt.Println("Font file copied successfully")
+	logger.Debug("Font file copied successfully")
 
 	// Add the font to the system
-	fmt.Println("Adding font resource...")
-	if err := m.addFontResource(targetPath); err != nil {
-		fmt.Printf("Failed to add font resource: %v\n", err)
+	logger.Debug("Adding font resource...")
+	if err := AddFontResource(targetPath); err != nil {
+		logger.Error("Failed to add font resource at %s: %v", targetPath, err)
 		// Clean up on error
-		fmt.Println("Cleaning up after failed font resource addition...")
-		os.Remove(targetPath)
+		logger.Debug("Cleaning up after failed font resource addition...")
+		if removeErr := os.Remove(targetPath); removeErr != nil {
+			logger.Error("Failed to clean up font file after resource addition failure: %v", removeErr)
+		}
 		return fmt.Errorf("failed to add font resource: %w", err)
 	}
-	fmt.Println("Font resource added successfully")
+	logger.Debug("Font resource added successfully")
 
 	// Add font to registry if machine scope
 	if scope == MachineScope {
-		fmt.Println("Adding font to registry...")
+		logger.Debug("Adding font to registry...")
 		if err := m.addFontToRegistry(fontName, targetPath); err != nil {
-			fmt.Printf("Failed to add font to registry: %v\n", err)
+			logger.Error("Failed to add font to registry: %v", err)
 			// Clean up on error
-			fmt.Println("Cleaning up after failed registry addition...")
-			m.removeFontResource(targetPath)
+			logger.Debug("Cleaning up after failed registry addition...")
+			RemoveFontResource(targetPath)
 			os.Remove(targetPath)
 			return fmt.Errorf("failed to add font to registry: %w", err)
 		}
-		fmt.Println("Font added to registry successfully")
+		logger.Debug("Font added to registry successfully")
 	}
 
 	// Notify other applications about the new font
-	fmt.Println("Notifying system about font change...")
-	if err := m.notifyFontChange(); err != nil {
-		fmt.Printf("Failed to notify font change: %v\n", err)
+	logger.Debug("Notifying system about font change...")
+	if err := NotifyFontChange(); err != nil {
+		logger.Error("Failed to notify font change: %v", err)
 		// Clean up on error
-		fmt.Println("Cleaning up after failed notification...")
-		m.removeFontResource(targetPath)
+		logger.Debug("Cleaning up after failed notification...")
+		RemoveFontResource(targetPath)
 		if scope == MachineScope {
 			m.removeFontFromRegistry(fontName)
 		}
 		os.Remove(targetPath)
 		return fmt.Errorf("failed to notify font change: %w", err)
 	}
-	fmt.Println("Font change notification sent successfully")
+	logger.Debug("Font change notification sent successfully")
 
-	fmt.Println("Font installation completed successfully")
+	logger.Info("Font installation completed successfully")
 	return nil
 }
 
 // RemoveFont removes a font from the specified font directory
 func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope) error {
-	var targetDir string
+	logger := logging.GetLogger()
+	logger.Debug("Starting font removal for: %s (scope: %s)", fontName, scope)
 
+	var targetDir string
 	switch scope {
 	case UserScope:
 		targetDir = m.userFontDir
@@ -143,29 +167,63 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 	}
 
 	fontPath := filepath.Join(targetDir, fontName)
+	logger.Debug("Target path: %s", fontPath)
 
 	// Check if font exists
 	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
+		logger.Error("Font not found at path: %s", fontPath)
 		return fmt.Errorf("font not found: %s", fontName)
 	}
 
 	// Remove the font resource
-	if err := m.removeFontResource(fontPath); err != nil {
+	logger.Debug("Removing font resource...")
+	if err := RemoveFontResource(fontPath); err != nil {
+		logger.Error("Failed to remove font resource from path %s: %v", fontPath, err)
 		return fmt.Errorf("failed to remove font resource: %w", err)
+	}
+	logger.Debug("Font resource removed successfully")
+
+	// Remove from registry if machine scope
+	if scope == MachineScope {
+		logger.Debug("Removing font from registry...")
+		if err := m.removeFontFromRegistry(fontName); err != nil {
+			logger.Error("Failed to remove font from registry: %v", err)
+			// Continue with file removal even if registry removal fails
+		} else {
+			logger.Debug("Font removed from registry successfully")
+		}
 	}
 
 	// Delete the font file
+	logger.Debug("Removing font file...")
 	if err := os.Remove(fontPath); err != nil {
+		logger.Error("Failed to remove font file at path %s: %v", fontPath, err)
 		// Try to restore the font resource if file deletion fails
-		m.addFontResource(fontPath)
+		if restoreErr := AddFontResource(fontPath); restoreErr != nil {
+			logger.Error("Failed to restore font resource after file deletion failure: %v", restoreErr)
+		}
 		return fmt.Errorf("failed to remove font file: %w", err)
 	}
+	logger.Debug("Font file removed successfully")
 
 	// Notify other applications about the font removal
-	if err := m.notifyFontChange(); err != nil {
+	logger.Debug("Notifying system about font change...")
+	if err := NotifyFontChange(); err != nil {
+		logger.Error("Failed to notify system about font change: %v", err)
 		return fmt.Errorf("failed to notify font change: %w", err)
 	}
+	logger.Debug("Font change notification sent successfully")
 
+	// Force a refresh of the font cache
+	logger.Debug("Refreshing font cache...")
+	if err := m.refreshFontCache(); err != nil {
+		logger.Error("Failed to refresh font cache: %v", err)
+		// Continue even if cache refresh fails
+	} else {
+		logger.Debug("Font cache refreshed successfully")
+	}
+
+	logger.Info("Font removal completed successfully")
 	return nil
 }
 
@@ -235,184 +293,147 @@ func validateFontFile(fontPath string) error {
 	// Check file size (minimum 1KB to avoid empty files)
 	stat, err := file.Stat()
 	if err != nil {
-		return fmt.Errorf("failed to get font file info: %w", err)
+		return fmt.Errorf("failed to get file info: %w", err)
 	}
+
 	if stat.Size() < 1024 {
-		return fmt.Errorf("font file is too small to be valid")
+		return fmt.Errorf("font file is too small (minimum 1KB required)")
 	}
 
 	return nil
-}
-
-func (m *windowsFontManager) addFontResource(fontPath string) error {
-	fmt.Printf("Adding font resource for: %s\n", fontPath)
-	pathPtr, err := syscall.UTF16PtrFromString(fontPath)
-	if err != nil {
-		return fmt.Errorf("failed to convert path to UTF-16: %w", err)
-	}
-
-	fmt.Println("Calling AddFontResource...")
-	ret, _, _ := addFontResource.Call(uintptr(unsafe.Pointer(pathPtr)))
-	if ret == 0 {
-		// Get the last error code
-		errCode := syscall.GetLastError()
-		fmt.Printf("AddFontResource failed with error code: %d\n", errCode)
-		return fmt.Errorf("AddFontResource failed with error code: %d", errCode)
-	}
-	fmt.Println("AddFontResource call successful")
-
-	return nil
-}
-
-func (m *windowsFontManager) removeFontResource(fontPath string) error {
-	pathPtr, err := syscall.UTF16PtrFromString(fontPath)
-	if err != nil {
-		return fmt.Errorf("failed to convert path to UTF-16: %w", err)
-	}
-
-	ret, _, _ := removeFontResource.Call(uintptr(unsafe.Pointer(pathPtr)))
-	if ret == 0 {
-		// Get the last error code
-		errCode := syscall.GetLastError()
-		return fmt.Errorf("RemoveFontResource failed with error code: %d", errCode)
-	}
-
-	return nil
-}
-
-func (m *windowsFontManager) notifyFontChange() error {
-	fmt.Println("Sending font change notification...")
-
-	// Create a channel to receive the result
-	result := make(chan error, 1)
-
-	// Run PostMessage in a goroutine
-	go func() {
-		ret, _, _ := postMessage.Call(
-			HWND_BROADCAST,
-			WM_FONTCHANGE,
-			0,
-			0,
-		)
-		if ret == 0 {
-			// Get the last error code
-			errCode := syscall.GetLastError()
-			fmt.Printf("PostMessage failed with error code: %d\n", errCode)
-			result <- fmt.Errorf("PostMessage failed with error code: %d", errCode)
-			return
-		}
-		result <- nil
-	}()
-
-	// Wait for the result with a timeout
-	select {
-	case err := <-result:
-		if err != nil {
-			return err
-		}
-		fmt.Println("Font change notification sent successfully")
-		return nil
-	case <-time.After(2 * time.Second):
-		fmt.Println("Warning: Font change notification timed out, but continuing...")
-		return nil
-	}
 }
 
 // addFontToRegistry adds a font to the Windows registry
 func (m *windowsFontManager) addFontToRegistry(fontName, fontPath string) error {
-	// Convert strings to UTF-16
-	fontNamePtr, err := syscall.UTF16PtrFromString(fontName)
-	if err != nil {
-		return fmt.Errorf("failed to convert font name to UTF-16: %w", err)
-	}
-
-	fontPathPtr, err := syscall.UTF16PtrFromString(fontPath)
-	if err != nil {
-		return fmt.Errorf("failed to convert font path to UTF-16: %w", err)
-	}
+	logger := logging.GetLogger()
+	logger.Debug("Adding font to registry: %s (path: %s)", fontName, fontPath)
 
 	// Open the registry key
-	var hKey syscall.Handle
-	keyPath, err := syscall.UTF16PtrFromString("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts")
-	if err != nil {
-		return fmt.Errorf("failed to convert key path to UTF-16: %w", err)
-	}
-
+	var key syscall.Handle
 	ret, _, err := regCreateKeyEx.Call(
 		uintptr(HKEY_LOCAL_MACHINE),
-		uintptr(unsafe.Pointer(keyPath)),
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"))),
 		0,
 		0,
 		0,
 		uintptr(KEY_WRITE),
 		0,
-		uintptr(unsafe.Pointer(&hKey)),
+		uintptr(unsafe.Pointer(&key)),
 		0,
 	)
 	if ret != 0 {
+		logger.Error("Failed to open registry key for font %s: %v", fontName, err)
 		return fmt.Errorf("failed to open registry key: %w", err)
 	}
-	defer regCloseKey.Call(uintptr(hKey))
+	defer regCloseKey.Call(uintptr(key))
+	logger.Debug("Registry key opened successfully")
 
 	// Set the font value
+	valueName := fontName + " (TrueType)"
+	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
+	if err != nil {
+		logger.Error("Failed to convert value name to UTF16 for font %s: %v", fontName, err)
+		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
+	}
+
+	fontPathPtr, err := syscall.UTF16PtrFromString(fontPath)
+	if err != nil {
+		logger.Error("Failed to convert font path to UTF16 for font %s: %v", fontName, err)
+		return fmt.Errorf("failed to convert font path to UTF16: %w", err)
+	}
+
 	ret, _, err = regSetValueEx.Call(
-		uintptr(hKey),
-		uintptr(unsafe.Pointer(fontNamePtr)),
+		uintptr(key),
+		uintptr(unsafe.Pointer(valueNamePtr)),
 		0,
 		uintptr(REG_SZ),
 		uintptr(unsafe.Pointer(fontPathPtr)),
 		uintptr((len(fontPath)+1)*2),
 	)
 	if ret != 0 {
+		logger.Error("Failed to set registry value for font %s: %v", fontName, err)
 		return fmt.Errorf("failed to set registry value: %w", err)
 	}
 
+	logger.Debug("Font added to registry successfully: %s", fontName)
 	return nil
 }
 
 // removeFontFromRegistry removes a font from the Windows registry
 func (m *windowsFontManager) removeFontFromRegistry(fontName string) error {
-	// Convert string to UTF-16
-	fontNamePtr, err := syscall.UTF16PtrFromString(fontName)
-	if err != nil {
-		return fmt.Errorf("failed to convert font name to UTF-16: %w", err)
-	}
+	logger := logging.GetLogger()
+	logger.Debug("Removing font from registry: %s", fontName)
 
 	// Open the registry key
-	var hKey syscall.Handle
-	keyPath, err := syscall.UTF16PtrFromString("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts")
-	if err != nil {
-		return fmt.Errorf("failed to convert key path to UTF-16: %w", err)
-	}
-
+	var key syscall.Handle
 	ret, _, err := regCreateKeyEx.Call(
 		uintptr(HKEY_LOCAL_MACHINE),
-		uintptr(unsafe.Pointer(keyPath)),
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"))),
 		0,
 		0,
 		0,
 		uintptr(KEY_WRITE),
 		0,
-		uintptr(unsafe.Pointer(&hKey)),
+		uintptr(unsafe.Pointer(&key)),
 		0,
 	)
 	if ret != 0 {
 		return fmt.Errorf("failed to open registry key: %w", err)
 	}
-	defer regCloseKey.Call(uintptr(hKey))
+	defer regCloseKey.Call(uintptr(key))
 
-	// Delete the font value
-	ret, _, err = regSetValueEx.Call(
-		uintptr(hKey),
-		uintptr(unsafe.Pointer(fontNamePtr)),
-		0,
-		uintptr(REG_SZ),
-		0,
-		0,
+	// Delete the font value using RegDeleteValueW
+	valueName := fontName + " (TrueType)"
+	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
+	if err != nil {
+		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
+	}
+
+	regDeleteValue := syscall.NewLazyDLL("advapi32.dll").NewProc("RegDeleteValueW")
+	ret, _, err = regDeleteValue.Call(
+		uintptr(key),
+		uintptr(unsafe.Pointer(valueNamePtr)),
 	)
 	if ret != 0 {
 		return fmt.Errorf("failed to delete registry value: %w", err)
 	}
 
+	logger.Debug("Font removed from registry successfully")
 	return nil
+}
+
+// refreshFontCache forces a refresh of the Windows font cache
+func (m *windowsFontManager) refreshFontCache() error {
+	// Send WM_FONTCHANGE message to all top-level windows
+	hwnd := uintptr(0)
+	for {
+		hwnd = FindWindowEx(0, hwnd, nil, nil)
+		if hwnd == 0 {
+			break
+		}
+		SendMessage(hwnd, WM_FONTCHANGE, 0, 0)
+	}
+	return nil
+}
+
+// FindWindowEx wraps the Windows FindWindowEx function
+func FindWindowEx(hwndParent, hwndChildAfter uintptr, lpszClass, lpszWindow *uint16) uintptr {
+	ret, _, _ := findWindowEx.Call(
+		hwndParent,
+		hwndChildAfter,
+		uintptr(unsafe.Pointer(lpszClass)),
+		uintptr(unsafe.Pointer(lpszWindow)),
+	)
+	return ret
+}
+
+// SendMessage wraps the Windows SendMessage function
+func SendMessage(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
+	ret, _, _ := sendMessage.Call(
+		hwnd,
+		uintptr(msg),
+		wParam,
+		lParam,
+	)
+	return ret
 }

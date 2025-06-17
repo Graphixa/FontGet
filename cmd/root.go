@@ -2,12 +2,18 @@ package cmd
 
 import (
 	"fmt"
+	"fontget/internal/logging"
 
 	"github.com/spf13/cobra"
 )
 
 const (
 	version = "1.0"
+)
+
+var (
+	verbose bool
+	logger  *logging.Logger
 )
 
 var rootCmd = &cobra.Command{
@@ -19,9 +25,34 @@ It allows you to add, remove, and list fonts, with support for both user and sys
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Initialize logger with appropriate level based on verbose flag
+		config := logging.DefaultConfig()
+		if verbose {
+			config.Level = logging.DebugLevel
+			config.ConsoleOutput = true // Enable console output for debug/info logs when verbose is set
+		}
+
+		var err error
+		logger, err = logging.New(config)
+		if err != nil {
+			return fmt.Errorf("failed to initialize logger: %w", err)
+		}
+
+		return nil
+	},
+	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+		if logger != nil {
+			return logger.Close()
+		}
+		return nil
+	},
 }
 
 func init() {
+	// Add verbose flag
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+
 	// Hide the completion command from the main help output
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
@@ -112,4 +143,9 @@ func Execute() error {
 		return err
 	}
 	return nil
+}
+
+// GetLogger returns the global logger instance
+func GetLogger() *logging.Logger {
+	return logger
 }

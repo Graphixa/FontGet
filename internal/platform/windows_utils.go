@@ -9,11 +9,12 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"fontget/internal/logging"
 )
 
 const (
 	HWND_BROADCAST     = 0xFFFF
-	WM_FONTCHANGE      = 0x001D
 	HKEY_LOCAL_MACHINE = 0x80000002
 	KEY_WRITE          = 0x20006
 	REG_SZ             = 1
@@ -32,7 +33,94 @@ var (
 	regCreateKeyEx     = advapi32.NewProc("RegCreateKeyExW")
 	regSetValueEx      = advapi32.NewProc("RegSetValueExW")
 	regCloseKey        = advapi32.NewProc("RegCloseKey")
+	getDesktopWindow   = user32.NewProc("GetDesktopWindow")
 )
+
+// AddFontResource adds a font resource to the system
+func AddFontResource(fontPath string) error {
+	logger := logging.GetLogger()
+	logger.Debug("Adding font resource for: %s", fontPath)
+	pathPtr, err := syscall.UTF16PtrFromString(fontPath)
+	if err != nil {
+		return fmt.Errorf("failed to convert path to UTF16: %w", err)
+	}
+
+	// Add the font resource
+	ret, _, err := addFontResource.Call(uintptr(unsafe.Pointer(pathPtr)))
+	if ret == 0 {
+		return fmt.Errorf("AddFontResource failed: %w", err)
+	}
+
+	return nil
+}
+
+// RemoveFontResource removes a font resource from the system
+func RemoveFontResource(fontPath string) error {
+	logger := logging.GetLogger()
+	logger.Debug("Removing font resource for: %s", fontPath)
+	pathPtr, err := syscall.UTF16PtrFromString(fontPath)
+	if err != nil {
+		return fmt.Errorf("failed to convert path to UTF16: %w", err)
+	}
+
+	// Remove the font resource
+	ret, _, err := removeFontResource.Call(uintptr(unsafe.Pointer(pathPtr)))
+	if ret == 0 {
+		return fmt.Errorf("RemoveFontResource failed: %w", err)
+	}
+
+	return nil
+}
+
+// NotifyFontChange notifies the system about font changes
+func NotifyFontChange() error {
+	logger := logging.GetLogger()
+	logger.Debug("Sending font change notification...")
+
+	// Send WM_FONTCHANGE to all top-level windows
+	hwnd := uintptr(0)
+	for {
+		hwnd = FindWindowEx(0, hwnd, nil, nil)
+		if hwnd == 0 {
+			break
+		}
+		ret := SendMessage(hwnd, WM_FONTCHANGE, 0, 0)
+		if ret == 0 {
+			// Log the error but continue with other windows
+			logger.Warn("Failed to notify window %v about font change", hwnd)
+		}
+	}
+
+	// Also send to the desktop window
+	desktopHwnd, _, _ := getDesktopWindow.Call()
+	if desktopHwnd != 0 {
+		ret := SendMessage(desktopHwnd, WM_FONTCHANGE, 0, 0)
+		if ret == 0 {
+			logger.Warn("Failed to notify desktop window about font change")
+		}
+	}
+
+	// Force a refresh of the font cache
+	if err := refreshFontCache(); err != nil {
+		logger.Warn("Failed to refresh font cache: %v", err)
+	}
+
+	logger.Debug("Font change notification sent successfully")
+	return nil
+}
+
+// refreshFontCache forces a refresh of the Windows font cache
+func refreshFontCache() error {
+	// Send WM_FONTCHANGE to the desktop window
+	desktopHwnd, _, _ := getDesktopWindow.Call()
+	if desktopHwnd != 0 {
+		ret := SendMessage(desktopHwnd, WM_FONTCHANGE, 0, 0)
+		if ret == 0 {
+			return fmt.Errorf("failed to refresh font cache")
+		}
+	}
+	return nil
+}
 
 // IsElevated checks if the current process is running with administrator privileges
 func IsElevated() (bool, error) {

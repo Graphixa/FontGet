@@ -51,12 +51,15 @@ var infoCmd = &cobra.Command{
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting font info operation")
+
 		// Double check args to prevent panic
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			return nil // Args validator will have already shown the help
 		}
 
 		fontID := args[0]
+		GetLogger().Info("Retrieving info for font: %s", fontID)
 
 		// Get flags
 		showLicense, _ := cmd.Flags().GetBool("license")
@@ -73,12 +76,14 @@ var infoCmd = &cobra.Command{
 		// Get repository
 		r, err := repo.GetRepository()
 		if err != nil {
+			GetLogger().Error("Failed to initialize repository: %v", err)
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
 		// Get manifest
 		manifest, err := r.GetManifest()
 		if err != nil {
+			GetLogger().Error("Failed to get manifest: %v", err)
 			return fmt.Errorf("failed to get manifest: %w", err)
 		}
 
@@ -86,6 +91,7 @@ var infoCmd = &cobra.Command{
 		font, exists := manifest.Sources["google-fonts"].Fonts[fontID]
 		if !exists {
 			red := color.New(color.FgRed).SprintFunc()
+			GetLogger().Error("Font '%s' not found", fontID)
 			return fmt.Errorf("%s", red(fmt.Sprintf("Font '%s' not found", fontID)))
 		}
 
@@ -121,6 +127,7 @@ var infoCmd = &cobra.Command{
 		}
 
 		fmt.Println()
+		GetLogger().Info("Font info operation completed successfully")
 		return nil
 	},
 }

@@ -61,6 +61,8 @@ var searchCmd = &cobra.Command{
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting font search operation")
+
 		// Double check args to prevent panic
 		category, _ := cmd.Flags().GetString("category")
 		var query string
@@ -71,15 +73,19 @@ var searchCmd = &cobra.Command{
 			return nil // Args validator will have already shown the help
 		}
 
+		GetLogger().Info("Search parameters - Query: %s, Category: %s", query, category)
+
 		// Get repository
 		r, err := repo.GetRepository()
 		if err != nil {
+			GetLogger().Error("Failed to initialize repository: %v", err)
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
 		// Search fonts
 		results, err := r.SearchFonts(query, category)
 		if err != nil {
+			GetLogger().Error("Failed to search fonts: %v", err)
 			return fmt.Errorf("failed to search fonts: %w", err)
 		}
 
@@ -145,12 +151,14 @@ var searchCmd = &cobra.Command{
 		// Print manifest info
 		manifest, err := r.GetManifest()
 		if err != nil {
+			GetLogger().Error("Failed to get manifest: %v", err)
 			return fmt.Errorf("failed to get manifest: %w", err)
 		}
 
 		fmt.Printf("\nManifest last updated: %s\n", manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
 		fmt.Printf("Total fonts available: %d\n", countTotalFonts(manifest))
 
+		GetLogger().Info("Font search operation completed successfully")
 		return nil
 	},
 }
