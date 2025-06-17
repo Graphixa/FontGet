@@ -46,7 +46,7 @@ type RemovalStatus struct {
 	Details []string
 }
 
-// List of critical system fonts (filenames and families, case-insensitive, no extension)
+// List of critical system fonts to not remove (filenames and families, case-insensitive, no extension)
 var criticalSystemFonts = map[string]bool{
 	// Windows core fonts
 	"arial":             true,
@@ -191,10 +191,12 @@ var removeCmd = &cobra.Command{
 	Short: "Remove a font from your system",
 	Long: `Remove a font from your system. You can specify the installation scope using the --scope flag:
   - user (default): Remove font from current user
-  - machine: Remove font system-wide (requires elevation)`,
+  - machine: Remove font system-wide (requires elevation)
+  - all: Remove from both user and machine scopes`,
 	Example: `  fontget remove "Roboto"
   fontget remove "Open Sans" --scope machine
-  fontget remove "roboto, firasans, notosans"`,
+  fontget remove "roboto, firasans, notosans"
+  fontget remove "Roboto" --scope all`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			red := color.New(color.FgRed).SprintFunc()
@@ -206,36 +208,33 @@ var removeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font removal operation")
 
-		// Double check args to prevent panic
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			return nil // Args validator will have already shown the help
+			return nil
 		}
 
-		// Create font manager
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
 			GetLogger().Error("Failed to initialize font manager: %v", err)
 			return fmt.Errorf("failed to initialize font manager: %w", err)
 		}
 
-		// Get scope from flag
-		scope, _ := cmd.Flags().GetString("scope")
-		GetLogger().Info("Removal parameters - Scope: %s", scope)
+		scopeFlag, _ := cmd.Flags().GetString("scope")
+		GetLogger().Info("Removal parameters - Scope: %s", scopeFlag)
 
-		// Convert scope string to InstallationScope
-		installScope := platform.UserScope
-		if scope != "user" {
-			installScope = platform.InstallationScope(scope)
-			if installScope != platform.UserScope && installScope != platform.MachineScope {
-				GetLogger().Error("Invalid scope '%s'", scope)
-				return fmt.Errorf("invalid scope '%s'. Must be 'user' or 'machine'", scope)
+		// Determine which scopes to check
+		var scopes []platform.InstallationScope
+		var scopeLabel []string
+		if scopeFlag == "all" || scopeFlag == "" {
+			scopes = []platform.InstallationScope{platform.UserScope, platform.MachineScope}
+			scopeLabel = []string{"user", "machine"}
+		} else {
+			s := platform.InstallationScope(scopeFlag)
+			if s != platform.UserScope && s != platform.MachineScope {
+				GetLogger().Error("Invalid scope '%s'", scopeFlag)
+				return fmt.Errorf("invalid scope '%s'. Must be 'user', 'machine', or 'all'", scopeFlag)
 			}
-		}
-
-		// Check elevation
-		if err := checkElevation(cmd, fontManager, installScope); err != nil {
-			GetLogger().Error("Elevation check failed: %v", err)
-			return err
+			scopes = []platform.InstallationScope{s}
+			scopeLabel = []string{scopeFlag}
 		}
 
 		// Get font names from args and split by comma
@@ -246,102 +245,108 @@ var removeCmd = &cobra.Command{
 
 		GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
 
-		// Initialize status tracking
-		status := RemovalStatus{
-			Details: make([]string, 0),
-		}
-
-		// Create color functions
+		status := RemovalStatus{Details: make([]string, 0)}
 		green := color.New(color.FgGreen).SprintFunc()
 		yellow := color.New(color.FgYellow).SprintFunc()
 		red := color.New(color.FgRed).SprintFunc()
 		bold := color.New(color.Bold).SprintFunc()
 		cyan := color.New(color.FgCyan).SprintFunc()
 
-		// Get repository for font ID lookup
 		r, err := repo.GetRepository()
 		if err != nil {
 			GetLogger().Error("Failed to initialize repository: %v", err)
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
-		// Process each font
+		// Track per-scope results
+		perScopeResults := make(map[string][]string)
+
 		for _, fontName := range fontNames {
 			GetLogger().Info("Processing font: %s", fontName)
 			fmt.Printf("\n%s\n", bold(fontName))
 
-			// Step 1: Try to find fonts by family name
-			matchingFonts := findFontFamilyFiles(fontName, fontManager, installScope)
+			removedInAnyScope := false
+			for i, scope := range scopes {
+				label := scopeLabel[i]
+				GetLogger().Info("Checking scope: %s", label)
 
-			// Step 2: If no matches found, try to find by font ID in manifest
-			if len(matchingFonts) == 0 {
-				// Search for the font in the manifest
-				results, err := r.SearchFonts(fontName, "false")
-				if err != nil {
-					GetLogger().Error("Failed to search manifest: %v", err)
-					continue
-				}
-
-				// If we found a match in the manifest, try to find the installed files
-				if len(results) > 0 {
-					// Use the first match's family name to find installed files
-					matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, installScope)
-				}
-			}
-
-			// If still no matches, show suggestions
-			if len(matchingFonts) == 0 {
-				status.Skipped++
-				msg := fmt.Sprintf("  - \"%s\" is not installed (Skipped)", fontName)
-				GetLogger().Info("Font not installed: %s", fontName)
-				fmt.Println(yellow(msg))
-
-				// Try to find similar installed fonts
-				similar := findSimilarInstalledFonts(fontName, fontManager, installScope)
-				if len(similar) > 0 {
-					GetLogger().Info("Found %d similar installed fonts for %s", len(similar), fontName)
-					fmt.Println(cyan("\nDid you mean one of these installed fonts?"))
-					for _, s := range similar {
-						fmt.Printf("  - %s\n", s)
+				// Elevation check for machine scope
+				if scope == platform.MachineScope {
+					if err := checkElevation(cmd, fontManager, scope); err != nil {
+						GetLogger().Error("Elevation check failed: %v", err)
+						fmt.Println(red("  - Skipped machine scope due to missing elevation"))
+						continue
 					}
-					fmt.Println() // Add a blank line after suggestions
 				}
-				continue
-			}
 
-			// Remove each matching font
-			success := true
-			for _, matchingFont := range matchingFonts {
-				if isCriticalSystemFont(matchingFont) || isCriticalSystemFont(fontName) {
-					status.Skipped++
-					msg := fmt.Sprintf("  - \"%s\" is a critical system font and will not be removed (Skipped)", matchingFont)
-					GetLogger().Warn("Attempted to remove critical system font: %s", matchingFont)
+				matchingFonts := findFontFamilyFiles(fontName, fontManager, scope)
+				if len(matchingFonts) == 0 {
+					results, err := r.SearchFonts(fontName, "false")
+					if err == nil && len(results) > 0 {
+						matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
+					}
+				}
+
+				if len(matchingFonts) == 0 {
+					msg := fmt.Sprintf("  - \"%s\" is not installed in %s scope (Skipped)", fontName, label)
+					GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
 					fmt.Println(yellow(msg))
+					perScopeResults[label] = append(perScopeResults[label], msg)
 					continue
 				}
-				err := fontManager.RemoveFont(matchingFont, installScope)
-				if err != nil {
-					success = false
+
+				success := true
+				for _, matchingFont := range matchingFonts {
+					if isCriticalSystemFont(matchingFont) || isCriticalSystemFont(fontName) {
+						msg := fmt.Sprintf("  - \"%s\" is a critical system font and will not be removed (Skipped)", matchingFont)
+						GetLogger().Warn("Attempted to remove critical system font: %s", matchingFont)
+						fmt.Println(yellow(msg))
+						perScopeResults[label] = append(perScopeResults[label], msg)
+						continue
+					}
+					err := fontManager.RemoveFont(matchingFont, scope)
+					if err != nil {
+						success = false
+						msg := fmt.Sprintf("  - \"%s\" (Failed to remove from %s scope) - %v", matchingFont, label, err)
+						GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
+						fmt.Println(red(msg))
+						perScopeResults[label] = append(perScopeResults[label], msg)
+					} else {
+						removedInAnyScope = true
+						msg := fmt.Sprintf("  - \"%s\" (Removed from %s scope)", matchingFont, label)
+						GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
+						fmt.Println(green(msg))
+						perScopeResults[label] = append(perScopeResults[label], msg)
+					}
+				}
+				if !success {
 					status.Failed++
-					msg := fmt.Sprintf("  - \"%s\" (Failed to remove) - %v", matchingFont, err)
-					GetLogger().Error("Failed to remove font %s: %v", matchingFont, err)
-					fmt.Println(red(msg))
-				} else {
-					status.Removed++
-					msg := fmt.Sprintf("  - \"%s\" (Removed)", matchingFont)
-					GetLogger().Info("Successfully removed font: %s", matchingFont)
-					fmt.Println(green(msg))
 				}
 			}
 
-			if !success {
-				status.Failed++
+			if !removedInAnyScope {
+				// Suggest the other scope if not found
+				if len(scopes) == 1 {
+					otherScope := "user"
+					if scopes[0] == platform.UserScope {
+						otherScope = "machine"
+					}
+					fmt.Println(cyan(fmt.Sprintf("  - Not found in %s scope. Try --scope %s if you installed it there.", scopeLabel[0], otherScope)))
+				}
 			}
 		}
 
 		// Print status report
 		fmt.Printf("\n%s\n", bold("Status Report"))
 		fmt.Println("---------------------------------------------")
+		for _, label := range scopeLabel {
+			if msgs, ok := perScopeResults[label]; ok {
+				fmt.Printf("%s scope:\n", strings.Title(label))
+				for _, msg := range msgs {
+					fmt.Println(msg)
+				}
+			}
+		}
 		fmt.Printf("%s: %d  |  %s: %d  |  %s: %d\n\n",
 			green("Removed"), status.Removed,
 			yellow("Skipped"), status.Skipped,
@@ -350,7 +355,6 @@ var removeCmd = &cobra.Command{
 		GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
 			status.Removed, status.Skipped, status.Failed)
 
-		// Only return error if there were actual removal failures
 		if status.Failed > 0 {
 			return fmt.Errorf("one or more fonts failed to remove")
 		}
@@ -361,5 +365,5 @@ var removeCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
-	removeCmd.Flags().String("scope", "user", "Installation scope (user or machine)")
+	removeCmd.Flags().String("scope", "all", "Installation scope (user, machine, or all)")
 }
