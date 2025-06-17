@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -241,6 +242,7 @@ var listCmd = &cobra.Command{
 		fmt.Println(strings.Repeat("-", len(header)))
 
 		// Print each family
+		yellowHeader := color.New(color.FgYellow, color.Bold).SprintFunc()
 		for _, family := range familyNames {
 			fonts := families[family]
 
@@ -249,9 +251,10 @@ var listCmd = &cobra.Command{
 				return fonts[i].Style < fonts[j].Style
 			})
 
-			// Print family header
-			fmt.Printf("%-*s %-*s %-*s %-*s %-*s\n",
-				columns["Name"], "Font Family: "+family,
+			// Print family header: only color 'Font Family:' label, not the family name
+			fmt.Printf("%-*s%s %-*s %-*s %-*s %-*s\n",
+				len("Font Family: "), yellowHeader("Font Family: "),
+				family,
 				columns["Style"], "",
 				columns["Type"], "",
 				columns["Date"], "",
@@ -259,7 +262,6 @@ var listCmd = &cobra.Command{
 
 			// Print each font in the family
 			for _, font := range fonts {
-				// Format the line with bullet point
 				fmt.Printf(" - %-*s %-*s %-*s %-*s %-*s\n",
 					columns["Name"]-3, font.Name,
 					columns["Style"], font.Style,
@@ -267,6 +269,9 @@ var listCmd = &cobra.Command{
 					columns["Date"], font.InstallDate.Format("2006-01-02 15:04"),
 					columns["Scope"], font.Scope)
 			}
+
+			// Add a blank line after each family
+			fmt.Println("")
 		}
 
 		GetLogger().Info("Font list operation completed successfully")
