@@ -213,11 +213,11 @@ Options:
 - `powershell`: Generate PowerShell completion script
 
 ### Font Removal Enhancement
-- [ ] Improve font removal:
-  - [ ] Implement font family detection
-  - [ ] Add font name normalization
-  - [ ] Add verbose mode for debugging
-  - [ ] Consider implementing font registry
+- [x] Improve font removal:
+  - [x] Implement font family detection
+  - [x] Add font name normalization
+  - [x] Add verbose mode for debugging
+  - [ ] Consider implementing font registry (pending)
 
 ## Milestones
 
@@ -240,21 +240,21 @@ Options:
      - [x] Windows UAC prompt
      - [x] Linux sudo
      - [x] macOS sudo
-   - [ ] Implement platform-agnostic temp directory handling:
-     - [ ] Windows temp directory support
-     - [ ] Linux temp directory support
-     - [ ] macOS temp directory support
-     - [ ] Proper cleanup on all platforms
+   - [x] Implement platform-agnostic temp directory handling:
+     - [x] Windows temp directory support
+     - [x] Linux temp directory support
+     - [x] macOS temp directory support
+     - [x] Proper cleanup on all platforms
 
 4. **Core Commands**
    - [x] Implement `add` command
      - [x] Add functionality to check if font installed before downloading
    - [x] Add scope parameter
-   - [ ] Implement `remove` command
+   - [x] Implement `remove` command
    - [x] Implement `list` command
    - [x] Implement `search` command
-   - [ ] Implement `import` command
-   - [ ] Implement `export` command
+   - [ ] Implement `import` command (pending)
+   - [ ] Implement `export` command (pending)
    - [x] Implement shell completion support:
      - [x] Bash completion
      - [x] Zsh completion
@@ -264,353 +264,69 @@ Options:
 5. **Testing and Documentation**
    - [x] Add unit tests for platform-specific implementations
    - [x] Add unit tests for error handling
-   - [ ] Add integration tests for font operations
-   - [ ] Add tests for command handlers
-   - [ ] Create comprehensive README
-   - [ ] Add usage examples
-   - [ ] Add platform-specific documentation
+   - [ ] Add integration tests for font operations (pending)
+   - [ ] Add tests for command handlers (pending)
+   - [ ] Create comprehensive README (pending)
+   - [ ] Add usage examples (pending)
+   - [ ] Add platform-specific documentation (pending)
 
 ## Implementation Priority
 
 1. **Phase 1: Logging System**
-   - [ ] Create logging package
-   - [ ] Implement log file handling
-   - [ ] Add --verbose flag to commands
-   - [ ] Clean up debug prints
+   - [x] Create logging package (basic logging, --verbose, debug prints)
+   - [x] Implement log file handling (basic)
+   - [x] Add --verbose flag to commands
+   - [x] Clean up debug prints
+   - [ ] Implement log rotation, cleanup, advanced config (pending)
 
 2. **Phase 2: Command Completion**
-   - [ ] Implement `remove` command
-   - [ ] Add proper logging to all commands
-   - [ ] Add verbose mode to all commands
+   - [x] Implement `remove` command
+   - [x] Add proper logging to all commands
+   - [x] Add verbose mode to all commands
+   - [ ] Implement `import` and `export` commands (pending)
 
 3. **Phase 3: Testing & Documentation**
-   - [ ] Improve documentation
-   - [ ] Add examples
+   - [ ] Improve documentation (pending)
+   - [ ] Add examples (pending)
 
 4. **Phase 4: User Experience**
-   - [ ] Add progress indicators
-   - [ ] Improve output formatting
-   - [ ] Add interactive features
+   - [ ] Add progress indicators (pending)
+   - [ ] Improve output formatting (pending)
+   - [ ] Add interactive features (pending)
 
-## CI Configuration
+## Platform-Specific Improvements
 
-```yaml
-name: CI
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-
-jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.21
-      - name: Test
-        run: go test -v ./...
-      - name: Build
-        run: go build -v ./...
-```
-
-## Testing Requirements
-
-### Windows
-- Test user scope installation
-- Test machine scope installation with UAC
-- Verify font cache updates
-- Test font removal
-
-### Linux
-- Test user scope installation
-- Test machine scope installation with sudo
-- Verify font cache updates
-- Test font removal
-
-### macOS
-- Test user scope installation
-- Test machine scope installation with sudo
-- Verify font cache updates
-- Test font removal
-
-## Bugfixes
-
-### Font Installation Pre-checks
-- [ ] Improve font existence check before download:
-  - Current issue: Font download starts before checking if font files are already installed
-  - Problem: Case sensitivity mismatch between repository query ("firasans") and installed files ("FiraSans-Black.ttf")
-  - Solution:
-    1. Normalize font names for comparison (case-insensitive)
-    2. Query repository for all font files first
-    3. Check each font file against installed fonts before downloading
-    4. Add detailed logging of font file matches
-    5. Consider implementing a font name mapping system
-
-### Force Flag Implementation
-- [ ] Fix --force flag behavior:
-  - Current issue: Force flag not working as expected for machine scope installation
-  - Problem: Force flag only skips interactive prompts but doesn't override existing font checks
-  - Solution:
-    1. Modify force flag to override all existence checks
-    2. Add force flag handling in platform-specific font managers
-    3. Update documentation to clarify force flag behavior
-    4. Add warning messages when force installing over existing fonts
-
-### Font Removal Enhancement
-- [ ] Improve font removal functionality:
-  - Current issue: Font removal fails to find installed fonts
-  - Problem: Mismatch between repository font names and installed file names
-  - Solution:
-    1. Implement font family detection:
-       - Query repository for all font files in a family
-       - Match installed files against family members
-       - Handle partial family removal
-    2. Add font name normalization:
-       - Strip file extensions for comparison
-       - Handle case sensitivity
-       - Consider font family prefixes/suffixes
-    3. Add verbose mode for debugging font matches
-    4. Consider implementing a font registry to track installed fonts
-
-### General Improvements
-- [ ] Add better error messages:
-  - Include font family information
-  - Show available font variants
-  - Provide suggestions for similar font names
-- [ ] Implement font family awareness:
-  - Track font families during installation
-  - Support family-wide operations
-  - Add family-specific commands
-- [ ] Add font metadata caching:
-  - Cache repository queries
-  - Store font family relationships
-  - Improve performance for repeated operations
-
-## Google Fonts Integration Improvements
-
-### 1. Font Repository Structure
-- [x] Implement proper repository structure:
-  ```
-  .fontget/
-  ├── sources/
-  │   ├── google-fonts.json     # Main font manifest
-  │   ├── metadata/            # Cached METADATA.pb files
-  │   │   ├── ofl/            # Open Font License fonts
-  │   │   ├── apache/         # Apache License fonts
-  │   │   └── ufl/            # Ubuntu Font License fonts
-  │   └── licenses/           # Cached license files
-  │       ├── OFL.txt         # Open Font License
-  │       ├── Apache.txt      # Apache License
-  │       └── UFL.txt         # Ubuntu Font License
-  └── cache/                  # Temporary download cache
-  ```
-
-### 2. Font Metadata Handling
-- [x] Add Protocol Buffer support:
-  - [x] Add protobuf dependency
-  - [x] Define font metadata schema
-  - [x] Implement METADATA.pb parser
-- [x] Enhance FontInfo structure:
-  ```go
-  type FontInfo struct {
-      Name        string       `json:"name"`
-      ID          string       `json:"id"`
-      Source      string       `json:"source"`
-      License     FontLicense  `json:"license"`      // New field for license type
-      Category    FontCategory `json:"category"`
-      Variants    []string     `json:"variants"`
-      Subsets     []string     `json:"subsets"`
-      Version     string       `json:"version"`
-      Description string       `json:"description"`
-      LastModified time.Time   `json:"last_modified"`
-  }
-
-  type FontLicense struct {
-      Type        string    `json:"type"`         // "OFL", "Apache", "UFL"
-      Version     string    `json:"version"`      // License version
-      URL         string    `json:"url"`          // License URL
-      Description string    `json:"description"`  // Brief description of license terms
-  }
-  ```
-
-### 3. License Management
-- [x] Implement license handling:
-  - [x] Cache license files locally
-  - [x] Verify license compliance during installation
-  - [x] Display license information in search results
-  - [x] Add license filtering to search
-- [x] Add license-specific features:
-  - [x] License summary in font info
-  - [x] License requirements display
-  - [x] License compliance checks
-  - [x] License update notifications
-
-### 4. Search Improvements
-- [x] Implement advanced search:
-  - [x] Category-based filtering
-  - [x] License-based filtering
-  - [x] Variant-based filtering
-  - [x] Subset-based filtering
-- [x] Add search result sorting:
-  - [x] By popularity
-  - [x] By last modified
-  - [x] By name
-  - [x] By category
-
-### 5. Font Installation
-- [x] Enhance font installation:
-  - [x] Verify license compliance
-  - [x] Support variable fonts
-  - [x] Handle font subsets
-  - [x] Validate font files
-- [x] Add installation options:
-  - [x] Select specific variants
-  - [x] Select specific subsets
-  - [x] Force reinstall
-  - [x] Skip existing
-
-### 6. Platform-Specific Improvements
-- [ ] Windows:
-  - [ ] Use registry for font tracking
-  - [ ] Handle font cache updates
-  - [ ] Support font embedding
-- [ ] Linux:
-  - [ ] Use fontconfig for font tracking
-  - [ ] Handle font cache updates
-  - [ ] Support system-wide installation
-- [ ] macOS:
-  - [ ] Use CoreText for font tracking
-  - [ ] Handle font cache updates
-  - [ ] Support system-wide installation
-
-### 7. Performance Optimizations
-- [ ] Implement efficient caching:
-  - [ ] Cache font metadata
-  - [ ] Cache font files
-  - [ ] Cache search results
-- [ ] Add parallel processing:
-  - [ ] Parallel font downloads
-  - [ ] Parallel metadata parsing
-  - [ ] Parallel font installation
-
-### 8. Error Handling
-- [ ] Improve error messages:
-  - [ ] Font-specific errors
-  - [ ] Installation errors
-  - [ ] Network errors
-  - [ ] Permission errors
-- [ ] Add recovery mechanisms:
-  - [ ] Automatic retry
-  - [ ] Fallback options
-  - [ ] Cleanup on failure
-
-### 9. Testing
-- [ ] Add comprehensive tests:
-  - [ ] Unit tests for metadata parsing
-  - [ ] Integration tests for font installation
-  - [ ] Platform-specific tests
-  - [ ] Performance tests
-- [ ] Add CI/CD:
-  - [ ] Automated testing
-  - [ ] Cross-platform builds
-  - [ ] Release automation
-
-### 10. Documentation
-- [ ] Improve documentation:
-  - [ ] Command-line usage
-  - [ ] API documentation
-  - [ ] Platform-specific guides
-  - [ ] Troubleshooting guide
-- [ ] Add examples:
-  - [ ] Basic usage
-  - [ ] Advanced features
-  - [ ] Common scenarios
-  - [ ] Best practices
-
-## Implementation Priority
-
-1. **Phase 1: Core Improvements**
-   - [ ] Implement proper repository structure
-   - [ ] Add Protocol Buffer support
-   - [ ] Enhance FontInfo structure
-   - [ ] Implement license management
-   - [ ] Improve search functionality
-
-2. **Phase 2: Platform Support**
-   - [ ] Implement platform-specific font tracking
-   - [ ] Add platform-specific installation
-   - [ ] Handle font cache updates
-
-3. **Phase 3: User Experience**
-   - [ ] Add progress indicators
-   - [ ] Improve output formatting
-   - [ ] Add interactive features
-
-4. **Phase 4: Testing & Documentation**
-   - [ ] Add comprehensive tests
-   - [ ] Improve documentation
-   - [ ] Add examples
+### Windows:
+  - [x] Use registry for font tracking (basic add/remove)
+  - [x] Handle font cache updates
+  - [ ] Support font embedding (pending)
+### Linux:
+  - [x] Use fontconfig for font cache update
+  - [x] Handle font cache updates
+  - [ ] Support system-wide installation (pending advanced features)
+### macOS:
+  - [x] Use CoreText/atsutil for font cache update
+  - [x] Handle font cache updates
+  - [ ] Support system-wide installation (pending advanced features)
 
 ## Logging System
 
 ### Log File Structure
-- [ ] Implement structured logging system:
-  - [ ] Create logging package in `internal/logging`
-  - [ ] Define log levels (INFO, DEBUG, ERROR)
-  - [ ] Add timestamps to all log entries
-  - [ ] Support log rotation
+- [x] Implement structured logging system (basic)
+  - [x] Create logging package in `internal/logging`
+  - [x] Define log levels (INFO, DEBUG, ERROR)
+  - [x] Add timestamps to all log entries
+- [ ] Support log rotation, cleanup, and advanced config (pending)
 
 ### Log File Location
-- [ ] Configure default log location:
-  - [ ] Windows: `%LOCALAPPDATA%\FontGet\logs\`
-  - [ ] Linux: `~/.local/share/fontget/logs/`
-  - [ ] macOS: `~/Library/Logs/fontget/`
-- [ ] Add configuration options:
-  - [ ] Allow custom log directory via config file
-  - [ ] Add command to change log location
-  - [ ] Support environment variable override
-  - [ ] Ensure proper permissions for log directory
-  - [ ] Handle path creation if directory doesn't exist
+- [x] Configure default log location (basic)
+- [ ] Add configuration options, cleanup command, and audit trail (pending)
 
 ### Logging Features
-- [ ] Add --verbose flag to commands:
-  - [ ] Show detailed operation information
-  - [ ] Include debug-level messages
-  - [ ] Display timing information
-- [ ] Implement log rotation:
-  - [ ] Rotate when log file reaches 10MB
-  - [ ] Keep last 5 rotated log files
-  - [ ] Use timestamp-based naming (e.g., fontget-2024-03-20.log)
-  - [ ] Add rotation number for same-day logs (e.g., fontget-2024-03-20.1.log)
-- [ ] Implement log cleanup:
-  - [ ] Delete logs older than 30 days
-  - [ ] Compress logs older than 7 days
-  - [ ] Run cleanup routine on startup
-  - [ ] Add cleanup command for manual maintenance
-  - [ ] Log cleanup operations for audit trail
-- [ ] Add log configuration options:
-  - [ ] Configurable rotation size (default: 10MB)
-  - [ ] Configurable number of kept logs (default: 5)
-  - [ ] Configurable retention period (default: 30 days)
-  - [ ] Configurable compression threshold (default: 7 days)
+- [x] Add --verbose flag to commands
+- [ ] Implement log rotation, cleanup, and advanced config (pending)
 
 ### Log Content
-- [ ] Define standard log format:
-  - [ ] Timestamp
-  - [ ] Log level
-  - [ ] Command name
-  - [ ] Operation being performed
-  - [ ] Success/failure status
-  - [ ] Error details (if any)
-- [ ] Remove debug print statements:
-  - [ ] Clean up add.go debug logs
-  - [ ] Replace with proper logging calls
-  - [ ] Add context to log messages
+- [x] Define standard log format
+- [x] Remove debug print statements
+- [x] Add context to log messages

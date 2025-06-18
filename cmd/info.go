@@ -106,14 +106,14 @@ var infoCmd = &cobra.Command{
 		}
 
 		// Helper for colored headers
-		cyanHeader := color.New(color.Bold, color.FgCyan).SprintFunc()
+		coloredHeader := color.New(color.Bold, color.FgCyan).SprintFunc()
 
 		// Print font information
-		fmt.Printf("\n%s %s\n", cyanHeader("Font Name:"), font.Name)
+		fmt.Printf("\n%s %s\n", coloredHeader("Font Name:"), font.Name)
 
 		// Always show category as it's a single value
 		if len(font.Categories) > 0 {
-			fmt.Printf("\n%s %s\n", cyanHeader("Category:"), font.Categories[0])
+			fmt.Printf("\n%s %s\n", coloredHeader("Category:"), font.Categories[0])
 		}
 
 		if showLicense {
@@ -126,21 +126,21 @@ var infoCmd = &cobra.Command{
 				licenseURL = font.SourceURL + "#license"
 			}
 			if licenseURL != "" {
-				fmt.Printf("\n%s %s - %s\n", cyanHeader("License:"), font.License, licenseURL)
+				fmt.Printf("\n%s %s - %s\n", coloredHeader("License:"), font.License, licenseURL)
 			} else {
-				fmt.Printf("\n%s %s\n", cyanHeader("License:"), font.License)
+				fmt.Printf("\n%s %s\n", coloredHeader("License:"), font.License)
 			}
 		}
 
 		if showFiles {
-			fmt.Printf("\n%s\n", cyanHeader("Files:"))
+			fmt.Printf("\n%s\n", coloredHeader("Files:"))
 			for variant, url := range font.Files {
 				fmt.Printf("  - %s: %s\n", variant, url)
 			}
 		}
 
 		if showMetadata {
-			fmt.Printf("\n%s\n", cyanHeader("Metadata:"))
+			fmt.Printf("\n%s\n", coloredHeader("Metadata:"))
 			fmt.Printf(" - Last Modified: %s\n", font.LastModified)
 			if font.Description != "" {
 				fmt.Printf(" - Description: %s\n", font.Description)
