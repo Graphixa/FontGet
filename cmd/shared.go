@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"runtime"
 
 	"fontget/internal/platform"
@@ -49,14 +48,7 @@ func checkElevation(cmd *cobra.Command, fontManager platform.FontManager, scope 
 		if !elevated {
 			// Print help message
 			printElevationHelp(cmd, runtime.GOOS)
-
-			// Try to relaunch with elevation
-			if err := elevationManager.RunAsElevated(); err != nil {
-				return fmt.Errorf("failed to relaunch with elevation: %w", err)
-			}
-
-			// Exit the current process since we're relaunching
-			os.Exit(0)
+			return fmt.Errorf("this command requires elevated privileges; please re-run as administrator/root")
 		}
 	}
 	return nil
