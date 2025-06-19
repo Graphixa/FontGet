@@ -11,22 +11,22 @@ import (
 
 // printElevationHelp prints platform-specific elevation instructions
 func printElevationHelp(cmd *cobra.Command, platform string) {
+	fmt.Println()
 	switch platform {
 	case "windows":
-		cmd.Println("To run with administrator privileges:")
-		cmd.Println("1. Right-click on the command prompt or PowerShell")
-		cmd.Println("2. Select 'Run as administrator'")
-		cmd.Println("3. Run the command again")
-	case "macos":
-		cmd.Println("To run with root privileges:")
-		cmd.Println("1. Open Terminal")
-		cmd.Println("2. Run 'sudo fontget'")
-		cmd.Println("3. Enter your password when prompted")
-		cmd.Println("4. Run the command again")
-	case "linux", "darwin":
-		cmd.Println("To run with root privileges:")
-		cmd.Printf("sudo %s\n", cmd.CommandPath())
+		cmd.Println("This operation requires administrator privileges.")
+		cmd.Println("To run as administrator:")
+		cmd.Println("  1. Right-click on Command Prompt or PowerShell.")
+		cmd.Println("  2. Select 'Run as administrator'.")
+		cmd.Printf("  3. Run: %s\n", cmd.CommandPath())
+	case "darwin", "linux":
+		cmd.Println("This operation requires root privileges.")
+		cmd.Println("To run as root, prepend 'sudo' to your command, for example:")
+		cmd.Printf("  sudo %s\n", cmd.CommandPath())
+	default:
+		cmd.Println("This operation requires elevated privileges. Please re-run as administrator or root.")
 	}
+	fmt.Println()
 }
 
 // checkElevation checks if the current process has elevated privileges
@@ -48,7 +48,7 @@ func checkElevation(cmd *cobra.Command, fontManager platform.FontManager, scope 
 		if !elevated {
 			// Print help message
 			printElevationHelp(cmd, runtime.GOOS)
-			return fmt.Errorf("this command requires elevated privileges; please re-run as administrator/root")
+			return fmt.Errorf("this command requires elevated privileges. Please follow the instructions above to re-run as administrator/root")
 		}
 	}
 	return nil
