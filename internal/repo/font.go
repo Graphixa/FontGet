@@ -9,7 +9,36 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// FetchURLContent fetches content from a URL with cross-platform compatibility
+func FetchURLContent(url string) (string, error) {
+	// Create HTTP client with timeout
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	// Make request
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to fetch content: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("content not found (HTTP %d)", resp.StatusCode)
+	}
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read content: %w", err)
+	}
+
+	return string(body), nil
+}
 
 // FontFileInfo represents metadata about a font file from the Google Fonts repository
 type FontFileInfo struct {

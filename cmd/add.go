@@ -55,6 +55,7 @@ func findSimilarFonts(fontName string, allFonts []string) []string {
 
 var addCmd = &cobra.Command{
 	Use:          "add <font-id>",
+	Aliases:      []string{"install"},
 	Short:        "Add a font to your system",
 	SilenceUsage: true,
 	Long: `Add a font to your system. You can specify the installation scope using the --scope flag:
@@ -167,7 +168,8 @@ var addCmd = &cobra.Command{
 				} else {
 					GetLogger().Info("No similar fonts found for %s", fontName)
 					fmt.Println(yellow("\nNo similar fonts found. Try using the search command to find available fonts:"))
-					fmt.Println("  fontget search <query>")
+					fmt.Println()
+					fmt.Println("fontget search <query>")
 					fmt.Println()
 				}
 				continue // Skip to next font

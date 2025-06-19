@@ -187,8 +187,9 @@ func findSimilarInstalledFonts(fontName string, fontManager platform.FontManager
 }
 
 var removeCmd = &cobra.Command{
-	Use:   "remove <font-name>",
-	Short: "Remove a font from your system",
+	Use:     "remove <font-name>",
+	Aliases: []string{"uninstall"},
+	Short:   "Remove a font from your system",
 	Long: `Remove a font from your system. You can specify the installation scope using the --scope flag:
   - user (default): Remove font from current user
   - machine: Remove font system-wide (requires elevation)

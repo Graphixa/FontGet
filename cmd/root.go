@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"fontget/internal/license"
 	"fontget/internal/logging"
 
 	"github.com/spf13/cobra"
@@ -37,6 +38,19 @@ It allows you to add, remove, and list fonts, with support for both user and sys
 		logger, err = logging.New(config)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger: %w", err)
+		}
+
+		// Skip license check for certain commands
+		skipLicenseCommands := map[string]bool{
+			"help":       true,
+			"completion": true,
+		}
+
+		if !skipLicenseCommands[cmd.Name()] {
+			// Check first run and license acceptance
+			if err := license.CheckFirstRunAndPrompt(); err != nil {
+				return err
+			}
 		}
 
 		return nil

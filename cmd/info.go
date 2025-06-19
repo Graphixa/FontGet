@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"fontget/internal/license"
 	"fontget/internal/repo"
 
 	"github.com/fatih/color"
@@ -16,7 +17,6 @@ var infoCmd = &cobra.Command{
 	Long:  "Shows comprehensive information about a font including its variants, license, metadata, and categories.",
 	Example: `  fontget info "Noto Sans"
   fontget info "Roboto" --license
-  fontget info "Open Sans" -f
   fontget info "Fira Sans" --metadata
   `,
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -63,13 +63,12 @@ var infoCmd = &cobra.Command{
 
 		// Get flags
 		showLicense, _ := cmd.Flags().GetBool("license")
-		showFiles, _ := cmd.Flags().GetBool("files")
 		showMetadata, _ := cmd.Flags().GetBool("metadata")
 
 		// If no specific flags are set, show all info
-		if !showLicense && !showFiles && !showMetadata {
+		showAll := !showLicense && !showMetadata
+		if showAll {
 			showLicense = true
-			showFiles = true
 			showMetadata = true
 		}
 
@@ -105,6 +104,41 @@ var infoCmd = &cobra.Command{
 			return fmt.Errorf("%s", red(fmt.Sprintf("Font '%s' not found", fontID)))
 		}
 
+		// If only --license is set, just cat the license text and return
+		if showLicense && !showMetadata {
+			// Find license URL
+			licenseURLFromPackage := license.GetLicenseURL(fontID, fontSource)
+			if licenseURLFromPackage != "" {
+				licenseText, err := license.FetchLicenseText(licenseURLFromPackage)
+				if err != nil {
+					license.HandleLicenseError(fontID, err)
+					return nil
+				}
+				fmt.Println() // Add blank line for visual separation
+				_ = license.DisplayLicenseText(licenseText)
+				return nil
+			}
+			license.HandleLicenseError(fontID, nil)
+			return nil
+		}
+
+		// If only --metadata is set, just cat the metadata and return
+		if showMetadata && !showLicense {
+			// Fetch metadata from the metadata URL
+			if font.MetadataURL != "" {
+				metadataText, err := license.FetchLicenseText(font.MetadataURL) // Reuse the same HTTP fetching function
+				if err != nil {
+					fmt.Printf("Metadata not found for \"%s\". Error: %v\n", fontID, err)
+					return nil
+				}
+				fmt.Println() // Add blank line for visual separation
+				_ = license.DisplayLicenseText(metadataText)
+				return nil
+			}
+			fmt.Printf("Metadata URL not available for \"%s\"\n", fontID)
+			return nil
+		}
+
 		// Helper for colored headers
 		coloredHeader := color.New(color.Bold, color.FgCyan).SprintFunc()
 
@@ -132,7 +166,8 @@ var infoCmd = &cobra.Command{
 			}
 		}
 
-		if showFiles {
+		// Always show files when showing all info
+		if showAll {
 			fmt.Printf("\n%s\n", coloredHeader("Files:"))
 			for variant, url := range font.Files {
 				fmt.Printf("  - %s: %s\n", variant, url)
@@ -161,6 +196,5 @@ func init() {
 
 	// Add flags
 	infoCmd.Flags().BoolP("license", "l", false, "Show license information")
-	infoCmd.Flags().BoolP("files", "f", false, "Show font files")
 	infoCmd.Flags().BoolP("metadata", "m", false, "Show metadata information")
 }
