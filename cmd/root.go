@@ -18,11 +18,10 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fontget",
+	Use:   "fontget <command> [flags]",
 	Short: "A command-line tool for managing fonts",
-	Long: `Fontget is a command-line tool for managing fonts on your system.
-It allows you to add, remove, and list fonts, with support for both user and system-wide installation.`,
-	Args: cobra.NoArgs,
+	Long:  `FontGet is a powerful command-line font manager for installing and managing fonts on your system.`,
+	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return cmd.Help()
 	},
@@ -71,34 +70,38 @@ func init() {
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 
 	// Set custom help template
-	rootCmd.SetHelpTemplate(`{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+	rootCmd.SetHelpTemplate(`
+{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
 
 {{end}}{{if .Runnable}}Usage:
-  {{.UseLine}}{{end}}
-
-{{if .HasAvailableFlags}}Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
-
-{{if .HasExample}}Examples:
-{{.Example}}{{end}}
-
-{{if .HasHelpSubCommands}}Additional Commands:
+  {{.UseLine}}
+{{end}}{{if .HasAvailableFlags}}
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasExample}}
+Examples:
+{{.Example}}
+{{end}}{{if .HasAvailableSubCommands}}
+Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
 {{end}}{{end}}{{end}}`)
 
 	// Set custom usage template with extra spacing
-	rootCmd.SetUsageTemplate(`{{if .Runnable}}Usage:
-  {{.UseLine}}{{end}}
-
-{{if .HasAvailableFlags}}Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
-
-{{if .HasExample}}Examples:
-{{.Example}}{{end}}
-
-{{if .HasHelpSubCommands}}Additional Commands:
+	rootCmd.SetUsageTemplate(`
+{{if .Runnable}}Usage:
+  {{.UseLine}}
+{{end}}{{if .HasAvailableFlags}}
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasExample}}
+Examples:
+{{.Example}}
+{{end}}{{if .HasAvailableSubCommands}}
+Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
-{{end}}{{end}}{{end}}`)
+{{end}}{{end}}
+{{end}}
+`)
 
 	// Add completion command
 	completionCmd := &cobra.Command{
