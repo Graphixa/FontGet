@@ -330,3 +330,57 @@ Options:
 - [x] Define standard log format
 - [x] Remove debug print statements
 - [x] Add context to log messages
+
+## License Management
+
+### First-Time Setup Flow
+- [ ] Implement first-time user detection
+- [ ] Add license acceptance prompt for Google Fonts
+- [ ] Store acceptance in user config
+- [ ] Silent operation after acceptance
+
+### Sources Command
+- [ ] Implement `fontget sources` command
+- [ ] Add `--add` flag for adding new sources
+- [ ] Add `--list` flag for viewing accepted sources
+- [ ] Add `--reset-licenses` flag for re-accepting licenses
+- [ ] Trigger license acceptance when adding new sources
+
+### Multiple Sources Support
+- [ ] Support for multiple font sources
+- [ ] Individual license acceptance tracking per source
+- [ ] Auto-detect new sources in manifest
+- [ ] Handle source-specific license requirements
+
+### User Config Storage
+```json
+{
+  "first_run_completed": true,
+  "accepted_sources": {
+    "google-fonts": {
+      "accepted": true,
+      "accepted_date": "2024-01-15T10:30:00Z"
+    }
+  }
+}
+```
+
+### Implementation Priority
+
+1. **Phase 1: First-Time Setup**
+   - [ ] Add first-time user detection
+   - [ ] Implement Google Fonts license acceptance prompt
+   - [ ] Store acceptance in user config
+   - [ ] Silent operation after acceptance
+
+2. **Phase 2: Sources Command**
+   - [ ] Create `fontget sources` command
+   - [ ] Implement `--add` flag with license acceptance
+   - [ ] Add `--list` and `--reset-licenses` flags
+   - [ ] Handle new source license acceptance
+
+3. **Phase 3: Multiple Sources**
+   - [ ] Support multiple sources in manifest
+   - [ ] Individual source acceptance tracking
+   - [ ] Auto-detect and prompt for new sources
+   - [ ] Source-specific license handling
