@@ -79,7 +79,6 @@ var criticalSystemFonts = map[string]bool{
 	"menlo":         true,
 	"helvetica":     true,
 	"helveticaneue": true,
-	"georgia":       true,
 	// Linux common fonts
 	"dejavusans":       true,
 	"dejavusansmono":   true,

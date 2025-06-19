@@ -66,9 +66,6 @@ func init() {
 	// Add verbose flag
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 
-	// Hide the completion command from the main help output
-	rootCmd.CompletionOptions.HiddenDefaultCmd = true
-
 	// Set custom help template
 	rootCmd.SetHelpTemplate(`
 {{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
@@ -84,7 +81,8 @@ Examples:
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
-{{end}}{{end}}{{end}}`)
+{{end}}{{end}}{{end}}
+`)
 
 	// Set custom usage template with extra spacing
 	rootCmd.SetUsageTemplate(`
