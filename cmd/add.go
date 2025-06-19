@@ -54,18 +54,27 @@ func findSimilarFonts(fontName string, allFonts []string) []string {
 }
 
 var addCmd = &cobra.Command{
-	Use:          "add <font-id>",
+	Use:          "add <font-id> [<font-id2> <font-id3> ...]",
 	Aliases:      []string{"install"},
-	Short:        "Add a font to your system",
+	Short:        "Install fonts on your system",
 	SilenceUsage: true,
-	Long: `Add a font to your system. You can specify the installation scope using the --scope flag:
-  - user (default): Add font for current user only
-  - machine: Add font system-wide (requires elevation)`,
+	Long: `Install fonts from available font repositories.
+
+You can specify multiple fonts by separating them with spaces. 
+Font names with spaces should be wrapped in quotes. Comma-separated lists are also supported.
+
+You can specify the installation scope using the --scope flag:
+  - user (default): Install font for current user
+  - machine: Install font system-wide (requires elevation)
+  
+Fonts are installed under the user scope by default.
+`,
 	Example: `  fontget add "Roboto"
-  fontget add "opensans" --scope machine
-  fontget add "roboto" --force
+  fontget add "Open Sans" "Fira Sans" "Noto Sans"
+  fontget add roboto firasans notosans
   fontget add "roboto, firasans, notosans"
-  `,
+  fontget add "Open Sans" -s machine
+  fontget add "roboto" -f`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Only handle empty query case
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
@@ -112,10 +121,17 @@ var addCmd = &cobra.Command{
 			return err
 		}
 
-		// Get font names from args and split by comma
-		fontNames := strings.Split(args[0], ",")
-		for i, name := range fontNames {
-			fontNames[i] = strings.TrimSpace(name)
+		// Process font names from arguments
+		var fontNames []string
+		for _, arg := range args {
+			// Split each argument by comma in case user provides comma-separated list
+			names := strings.Split(arg, ",")
+			for _, name := range names {
+				name = strings.TrimSpace(name)
+				if name != "" {
+					fontNames = append(fontNames, name)
+				}
+			}
 		}
 
 		GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
@@ -259,6 +275,6 @@ func (e *FontInstallationError) Error() string {
 
 func init() {
 	rootCmd.AddCommand(addCmd)
-	addCmd.Flags().String("scope", "user", "Installation scope (user or machine)")
-	addCmd.Flags().Bool("force", false, "Force installation even if font is already installed")
+	addCmd.Flags().StringP("scope", "s", "user", "Installation scope (user or machine)")
+	addCmd.Flags().BoolP("force", "f", false, "Force installation even if font is already installed")
 }

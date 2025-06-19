@@ -186,21 +186,32 @@ func findSimilarInstalledFonts(fontName string, fontManager platform.FontManager
 }
 
 var removeCmd = &cobra.Command{
-	Use:     "remove <font-name>",
-	Aliases: []string{"uninstall"},
-	Short:   "Remove a font from your system",
-	Long: `Remove a font from your system. You can specify the installation scope using the --scope flag:
+	Use:          "remove <font-id> [<font-id2> <font-id3> ...]",
+	Aliases:      []string{"uninstall"},
+	Short:        "Remove fonts from your system",
+	SilenceUsage: true,
+	Long: `Remove fonts from your system. 
+	
+You can specify multiple fonts by separating them with spaces.
+Font names with spaces should be wrapped in quotes. Comma-separated lists are also supported.
+
+You can specify the removal scope using the --scope flag:
   - user (default): Remove font from current user
   - machine: Remove font system-wide (requires elevation)
-  - all: Remove from both user and machine scopes`,
+  - all: Remove from both user and machine scopes
+  
+Fonts are removed under both the user and machine scopes by default.
+`,
 	Example: `  fontget remove "Roboto"
-  fontget remove "Open Sans" --scope machine
+  fontget remove "Open Sans" "Fira Sans" "Noto Sans"
+  fontget remove roboto firasans notosans
   fontget remove "roboto, firasans, notosans"
-  fontget remove "Roboto" --scope all`,
+  fontget remove "Open Sans" -s machine --force
+  fontget remove "Roboto" -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			red := color.New(color.FgRed).SprintFunc()
-			fmt.Printf("\n%s\n\n", red("A font name is required"))
+			fmt.Printf("\n%s\n\n", red("A font ID is required"))
 			return cmd.Help()
 		}
 		return nil
@@ -237,10 +248,17 @@ var removeCmd = &cobra.Command{
 			scopeLabel = []string{scopeFlag}
 		}
 
-		// Get font names from args and split by comma
-		fontNames := strings.Split(args[0], ",")
-		for i, name := range fontNames {
-			fontNames[i] = strings.TrimSpace(name)
+		// Process font names from arguments
+		var fontNames []string
+		for _, arg := range args {
+			// Split each argument by comma in case user provides comma-separated list
+			names := strings.Split(arg, ",")
+			for _, name := range names {
+				name = strings.TrimSpace(name)
+				if name != "" {
+					fontNames = append(fontNames, name)
+				}
+			}
 		}
 
 		GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
@@ -288,16 +306,23 @@ var removeCmd = &cobra.Command{
 				}
 
 				if len(matchingFonts) == 0 {
-					msg := fmt.Sprintf("  - \"%s\" is not installed in %s scope (Skipped)", fontName, label)
-					GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
-					fmt.Println(yellow(msg))
-					perScopeResults[label] = append(perScopeResults[label], msg)
+					// Only show "not installed" message if user specifically requested a single scope
+					if len(scopes) == 1 {
+						msg := fmt.Sprintf("  - \"%s\" is not installed in %s scope (Skipped)", fontName, label)
+						GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
+						fmt.Println(yellow(msg))
+						perScopeResults[label] = append(perScopeResults[label], msg)
+					} else {
+						// For --all scope, just log it but don't show to user
+						GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
+					}
 					continue
 				}
 
 				success := true
 				for _, matchingFont := range matchingFonts {
 					if isCriticalSystemFont(matchingFont) || isCriticalSystemFont(fontName) {
+						status.Skipped++
 						msg := fmt.Sprintf("  - \"%s\" is a critical system font and will not be removed (Skipped)", matchingFont)
 						GetLogger().Warn("Attempted to remove critical system font: %s", matchingFont)
 						fmt.Println(yellow(msg))
@@ -307,12 +332,14 @@ var removeCmd = &cobra.Command{
 					err := fontManager.RemoveFont(matchingFont, scope)
 					if err != nil {
 						success = false
+						status.Failed++
 						msg := fmt.Sprintf("  - \"%s\" (Failed to remove from %s scope) - %v", matchingFont, label, err)
 						GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
 						fmt.Println(red(msg))
 						perScopeResults[label] = append(perScopeResults[label], msg)
 					} else {
 						removedInAnyScope = true
+						status.Removed++
 						msg := fmt.Sprintf("  - \"%s\" (Removed from %s scope)", matchingFont, label)
 						GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
 						fmt.Println(green(msg))
@@ -339,14 +366,6 @@ var removeCmd = &cobra.Command{
 		// Print status report
 		fmt.Printf("\n%s\n", bold("Status Report"))
 		fmt.Println("---------------------------------------------")
-		for _, label := range scopeLabel {
-			if msgs, ok := perScopeResults[label]; ok {
-				fmt.Printf("%s scope:\n", strings.Title(label))
-				for _, msg := range msgs {
-					fmt.Println(msg)
-				}
-			}
-		}
 		fmt.Printf("%s: %d  |  %s: %d  |  %s: %d\n\n",
 			green("Removed"), status.Removed,
 			yellow("Skipped"), status.Skipped,
@@ -355,12 +374,26 @@ var removeCmd = &cobra.Command{
 		GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
 			status.Removed, status.Skipped, status.Failed)
 
+		// Only return error if there were actual removal failures
 		if status.Failed > 0 {
-			return fmt.Errorf("one or more fonts failed to remove")
+			return &FontRemovalError{
+				FailedCount: status.Failed,
+				TotalCount:  len(fontNames),
+			}
 		}
 
 		return nil
 	},
+}
+
+// FontRemovalError represents an error that occurred during font removal
+type FontRemovalError struct {
+	FailedCount int
+	TotalCount  int
+}
+
+func (e *FontRemovalError) Error() string {
+	return fmt.Sprintf("failed to remove %d out of %d fonts", e.FailedCount, e.TotalCount)
 }
 
 func init() {

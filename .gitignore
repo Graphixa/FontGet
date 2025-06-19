@@ -10,6 +10,7 @@
 
 # Go workspace file
 *.code-workspace
+docs/command-improvements.md
 
 # IDE/editor files
 .vscode/
