@@ -105,6 +105,30 @@ Fonts are installed under the user scope by default.
 
 		GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scope, force)
 
+		// Create color functions early for auto-detection messages
+		green := color.New(color.FgGreen).SprintFunc()
+		yellow := color.New(color.FgYellow).SprintFunc()
+		red := color.New(color.FgRed).SprintFunc()
+		bold := color.New(color.Bold).SprintFunc()
+		cyan := color.New(color.FgCyan).SprintFunc()
+
+		// Auto-detect scope if not explicitly provided
+		if scope == "" {
+			isElevated, err := fontManager.IsElevated()
+			if err != nil {
+				GetLogger().Warn("Failed to detect elevation status: %v", err)
+				// Default to user scope if we can't detect elevation
+				scope = "user"
+			} else if isElevated {
+				scope = "machine"
+				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'machine' scope")
+				fmt.Println(cyan("Auto-detected administrator privileges - installing system-wide"))
+			} else {
+				scope = "user"
+				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
+			}
+		}
+
 		// Convert scope string to InstallationScope
 		installScope := platform.UserScope
 		if scope != "user" {
@@ -144,13 +168,6 @@ Fonts are installed under the user scope by default.
 		status := InstallationStatus{
 			Details: make([]string, 0),
 		}
-
-		// Create color functions
-		green := color.New(color.FgGreen).SprintFunc()
-		yellow := color.New(color.FgYellow).SprintFunc()
-		red := color.New(color.FgRed).SprintFunc()
-		bold := color.New(color.Bold).SprintFunc()
-		cyan := color.New(color.FgCyan).SprintFunc()
 
 		// Get all available fonts for suggestions
 		allFonts := repo.GetAllFonts()
@@ -233,8 +250,8 @@ Fonts are installed under the user scope by default.
 				// Clean up temp file
 				os.Remove(fontPath)
 				status.Installed++
-				msg := fmt.Sprintf("  - \"%s\" (Installed)", font.Name)
-				GetLogger().Info("Successfully installed font: %s", font.Name)
+				msg := fmt.Sprintf("  - \"%s\" (Installed to %s scope)", font.Name, scope)
+				GetLogger().Info("Successfully installed font: %s to %s scope", font.Name, scope)
 				fmt.Println(green(msg))
 			}
 		}
@@ -275,6 +292,6 @@ func (e *FontInstallationError) Error() string {
 
 func init() {
 	rootCmd.AddCommand(addCmd)
-	addCmd.Flags().StringP("scope", "s", "user", "Installation scope (user or machine)")
+	addCmd.Flags().StringP("scope", "s", "", "Installation scope (user or machine)")
 	addCmd.Flags().BoolP("force", "f", false, "Force installation even if font is already installed")
 }

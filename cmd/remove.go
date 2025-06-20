@@ -237,10 +237,42 @@ Use --force to override critical system font protection.
 		forceFlag, _ := cmd.Flags().GetBool("force")
 		GetLogger().Info("Removal parameters - Scope: %s, Force: %v", scopeFlag, forceFlag)
 
+		GetLogger().Info("Processing %d font(s): %v", len(args), args)
+
+		status := RemovalStatus{Details: make([]string, 0)}
+		green := color.New(color.FgGreen).SprintFunc()
+		yellow := color.New(color.FgYellow).SprintFunc()
+		red := color.New(color.FgRed).SprintFunc()
+		bold := color.New(color.Bold).SprintFunc()
+		cyan := color.New(color.FgCyan).SprintFunc()
+
+		r, err := repo.GetRepository()
+		if err != nil {
+			GetLogger().Error("Failed to initialize repository: %v", err)
+			return fmt.Errorf("failed to initialize repository: %w", err)
+		}
+
+		// Auto-detect scope if not explicitly provided
+		if scopeFlag == "" {
+			isElevated, err := fontManager.IsElevated()
+			if err != nil {
+				GetLogger().Warn("Failed to detect elevation status: %v", err)
+				// Default to user scope if we can't detect elevation
+				scopeFlag = "user"
+			} else if isElevated {
+				scopeFlag = "all"
+				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
+				fmt.Println(cyan("Auto-detected administrator privileges - removing from all scopes"))
+			} else {
+				scopeFlag = "user"
+				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
+			}
+		}
+
 		// Determine which scopes to check
 		var scopes []platform.InstallationScope
 		var scopeLabel []string
-		if scopeFlag == "all" || scopeFlag == "" {
+		if scopeFlag == "all" {
 			scopes = []platform.InstallationScope{platform.UserScope, platform.MachineScope}
 			scopeLabel = []string{"user", "machine"}
 		} else {
@@ -267,19 +299,6 @@ Use --force to override critical system font protection.
 		}
 
 		GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
-
-		status := RemovalStatus{Details: make([]string, 0)}
-		green := color.New(color.FgGreen).SprintFunc()
-		yellow := color.New(color.FgYellow).SprintFunc()
-		red := color.New(color.FgRed).SprintFunc()
-		bold := color.New(color.Bold).SprintFunc()
-		cyan := color.New(color.FgCyan).SprintFunc()
-
-		r, err := repo.GetRepository()
-		if err != nil {
-			GetLogger().Error("Failed to initialize repository: %v", err)
-			return fmt.Errorf("failed to initialize repository: %w", err)
-		}
 
 		// For --all scope, require elevation upfront
 		if len(scopes) == 2 {
@@ -577,6 +596,6 @@ func (e *FontRemovalError) Error() string {
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
-	removeCmd.Flags().StringP("scope", "s", "user", "Installation scope (user, machine, or all)")
+	removeCmd.Flags().StringP("scope", "s", "", "Installation scope (user, machine, or all)")
 	removeCmd.Flags().BoolP("force", "f", false, "Force removal of critical system fonts")
 }
