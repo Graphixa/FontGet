@@ -202,6 +202,32 @@ fontget list -s all -t TTF
 
 Search for available fonts.
 
+Options:
+- `-c, --category`: Filter by font category (Sans Serif, Serif, Display, Handwriting, Monospace, Other)
+
+Examples:
+```bash
+fontget search fira
+fontget search "Fira Sans"
+fontget search -c "Sans Serif"
+fontget search "roboto" -c "Sans Serif"
+```
+
+### `fontget info <font-id>`
+
+Display detailed information about a font.
+
+Options:
+- `-l, --license`: Show license information only
+- `-m, --metadata`: Show metadata information only
+
+Examples:
+```bash
+fontget info "Noto Sans"
+fontget info "Roboto" -l
+fontget info "Fira Sans" -m
+```
+
 ### `fontget completion [bash|zsh|fish|powershell]`
 
 Generate shell completion scripts.
@@ -408,12 +434,14 @@ Options:
 - [x] Add auto-scope detection
 - [x] Update examples to use short flags consistently
 
-### Search Command
-- [ ] Fix alias conflicts
-- [ ] Improve description and examples
-- [ ] Add auto-scope detection
+### Search Command ✅
+- [x] No alias conflicts (already using -c for --category)
+- [x] Improve description and examples
+- [x] Improve flag descriptions
+- [x] No auto-scope detection needed (searches repository, not installed fonts)
 
-### Info Command
-- [ ] Fix alias conflicts
-- [ ] Improve description and examples
-- [ ] Add auto-scope detection
+### Info Command ✅
+- [x] No alias conflicts (already using -l for --license, -m for --metadata)
+- [x] Improve description and examples
+- [x] Improve flag descriptions
+- [x] No auto-scope detection needed (queries repository, not installed fonts)

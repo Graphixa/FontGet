@@ -13,12 +13,11 @@ import (
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
 	Short: "Search for fonts that are downloadable with FontGet",
-	Long:  "Searches for fonts from the Google Fonts repository or other added sources.",
+	Long:  "Searches for fonts from Google Fonts and other added sources.",
 	Example: `  fontget search fira
   fontget search "Fira Sans"
-  fontget search "fira" -category "Sans Serif"
   fontget search -c "Sans Serif"
-  `,
+  fontget search "roboto" -c "Sans Serif"`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Get flags
 		category, _ := cmd.Flags().GetString("category")
@@ -90,22 +89,26 @@ var searchCmd = &cobra.Command{
 		}
 
 		// Print results in a table format
-		fmt.Printf("\nFound %d fonts matching '%s'", len(results), query)
+		yellow := color.New(color.FgYellow, color.Bold).SprintFunc()
+		cyan := color.New(color.FgCyan).SprintFunc()
+
+		// Print search summary
+		fmt.Printf("\nFound %d fonts matching '%s'", len(results), yellow(query))
 		if category != "" {
-			fmt.Printf(" in category '%s'", category)
+			fmt.Printf(" in category '%s'", yellow(category))
 		}
 		fmt.Println("\n")
 
-		// Define column widths
+		// Define column widths (match list command style)
 		columns := map[string]int{
-			"Name":       40, // For display name
-			"ID":         38, // For longer font IDs
-			"License":    15,
-			"Categories": 20,
-			"Source":     15,
+			"Name":       30, // For display name
+			"ID":         30, // For longer font IDs
+			"License":    12, // For license type
+			"Categories": 15, // For categories
+			"Source":     12, // For source name
 		}
 
-		// Print header
+		// Print header (plain, no color)
 		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
 			columns["Name"], "Name",
 			columns["ID"], "ID",
@@ -140,23 +143,29 @@ var searchCmd = &cobra.Command{
 				id = id[:columns["ID"]-3] + "..."
 			}
 
-			fmt.Printf("%-*s %-*s %-*s %-*s %-*s\n",
-				columns["Name"], name,
+			// Truncate categories if too long
+			if len(categories) > columns["Categories"]-3 {
+				categories = categories[:columns["Categories"]-3] + "..."
+			}
+
+			// Print row: pad first, then apply color only to font name (like list command)
+			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+				yellow(fmt.Sprintf("%-*s", columns["Name"], name)),
 				columns["ID"], id,
 				columns["License"], license,
 				columns["Categories"], categories,
 				columns["Source"], result.SourceName)
 		}
 
-		// Print manifest info
+		// Print manifest info with colors
 		manifest, err := r.GetManifest()
 		if err != nil {
 			GetLogger().Error("Failed to get manifest: %v", err)
 			return fmt.Errorf("failed to get manifest: %w", err)
 		}
 
-		fmt.Printf("\nManifest last updated: %s\n", manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
-		fmt.Printf("Total fonts available: %d\n", countTotalFonts(manifest))
+		fmt.Printf("\n%s: %s\n", cyan("Manifest last updated"), manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
+		fmt.Printf("%s: %d\n\n", cyan("Total fonts available"), countTotalFonts(manifest))
 
 		GetLogger().Info("Font search operation completed successfully")
 		return nil
@@ -174,7 +183,7 @@ func countTotalFonts(manifest *repo.FontManifest) int {
 
 func init() {
 	rootCmd.AddCommand(searchCmd)
-	searchCmd.Flags().StringP("category", "c", "", `Options: "Sans Serif", "Serif", "Display", "Handwriting", "Monospace", "Other"`)
+	searchCmd.Flags().StringP("category", "c", "", "Filter by font category (Sans Serif, Serif, Display, Handwriting, Monospace, Other)")
 
 	// Register completion for both short and long category flags
 	categories := []string{
