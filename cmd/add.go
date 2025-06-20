@@ -66,8 +66,7 @@ Font names with spaces should be wrapped in quotes. Comma-separated lists are al
 You can specify the installation scope using the --scope flag:
   - user (default): Install font for current user
   - machine: Install font system-wide (requires elevation)
-  
-Fonts are installed under the user scope by default.
+
 `,
 	Example: `  fontget add "Roboto"
   fontget add "Open Sans" "Fira Sans" "Noto Sans"

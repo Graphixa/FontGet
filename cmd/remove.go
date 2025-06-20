@@ -199,9 +199,7 @@ Font names with spaces should be wrapped in quotes. Comma-separated lists are al
 You can specify the removal scope using the --scope flag:
   - user (default): Remove font from current user
   - machine: Remove font system-wide (requires elevation)
-  - all: Remove from both user and machine scopes
-  
-Fonts are removed under both the user and machine scopes by default.
+  - all: Remove from both user and machine scopes (requires elevation)
 
 Use --force to override critical system font protection.
 `,
