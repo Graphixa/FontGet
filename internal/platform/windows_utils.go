@@ -29,7 +29,6 @@ var (
 	isUserAnAdmin      = shell32.NewProc("IsUserAnAdmin")
 	addFontResource    = gdi32.NewProc("AddFontResourceW")
 	removeFontResource = gdi32.NewProc("RemoveFontResourceW")
-	postMessage        = user32.NewProc("PostMessageW")
 	regCreateKeyEx     = advapi32.NewProc("RegCreateKeyExW")
 	regSetValueEx      = advapi32.NewProc("RegSetValueExW")
 	regCloseKey        = advapi32.NewProc("RegCloseKey")
@@ -48,7 +47,9 @@ func AddFontResource(fontPath string) error {
 	// Add the font resource
 	ret, _, err := addFontResource.Call(uintptr(unsafe.Pointer(pathPtr)))
 	if ret == 0 {
-		return fmt.Errorf("AddFontResource failed: %w", err)
+		// Get the actual Windows error code
+		errCode := syscall.GetLastError()
+		return fmt.Errorf("AddFontResource failed (error code: %d): %w", errCode, err)
 	}
 
 	return nil
@@ -66,7 +67,9 @@ func RemoveFontResource(fontPath string) error {
 	// Remove the font resource
 	ret, _, err := removeFontResource.Call(uintptr(unsafe.Pointer(pathPtr)))
 	if ret == 0 {
-		return fmt.Errorf("RemoveFontResource failed: %w", err)
+		// Get the actual Windows error code
+		errCode := syscall.GetLastError()
+		return fmt.Errorf("RemoveFontResource failed (error code: %d): %w", errCode, err)
 	}
 
 	return nil
@@ -77,21 +80,8 @@ func NotifyFontChange() error {
 	logger := logging.GetLogger()
 	logger.Debug("Sending font change notification...")
 
-	// Send WM_FONTCHANGE to all top-level windows
-	hwnd := uintptr(0)
-	for {
-		hwnd = FindWindowEx(0, hwnd, nil, nil)
-		if hwnd == 0 {
-			break
-		}
-		ret := SendMessage(hwnd, WM_FONTCHANGE, 0, 0)
-		if ret == 0 {
-			// Log the error but continue with other windows
-			logger.Warn("Failed to notify window %v about font change", hwnd)
-		}
-	}
-
-	// Also send to the desktop window
+	// Only send WM_FONTCHANGE to the desktop window for safety.
+	// Enumerating all windows can hang or be extremely slow on some systems.
 	desktopHwnd, _, _ := getDesktopWindow.Call()
 	if desktopHwnd != 0 {
 		ret := SendMessage(desktopHwnd, WM_FONTCHANGE, 0, 0)
@@ -100,25 +90,7 @@ func NotifyFontChange() error {
 		}
 	}
 
-	// Force a refresh of the font cache
-	if err := refreshFontCache(); err != nil {
-		logger.Warn("Failed to refresh font cache: %v", err)
-	}
-
 	logger.Debug("Font change notification sent successfully")
-	return nil
-}
-
-// refreshFontCache forces a refresh of the Windows font cache
-func refreshFontCache() error {
-	// Send WM_FONTCHANGE to the desktop window
-	desktopHwnd, _, _ := getDesktopWindow.Call()
-	if desktopHwnd != 0 {
-		ret := SendMessage(desktopHwnd, WM_FONTCHANGE, 0, 0)
-		if ret == 0 {
-			return fmt.Errorf("failed to refresh font cache")
-		}
-	}
 	return nil
 }
 
@@ -197,32 +169,4 @@ func RunAsElevated() error {
 	}
 
 	return nil
-}
-
-// IsProcessElevated checks if a specific process is running with administrator privileges
-func IsProcessElevated(pid int) (bool, error) {
-	// Open the process
-	handle, err := syscall.OpenProcess(syscall.PROCESS_QUERY_INFORMATION, false, uint32(pid))
-	if err != nil {
-		return false, fmt.Errorf("failed to open process: %w", err)
-	}
-	defer syscall.CloseHandle(handle)
-
-	// Get the process token
-	var token syscall.Token
-	err = syscall.OpenProcessToken(handle, syscall.TOKEN_QUERY, &token)
-	if err != nil {
-		return false, fmt.Errorf("failed to open process token: %w", err)
-	}
-	defer token.Close()
-
-	// Get the elevation information
-	var elevation uint32
-	var size uint32
-	err = syscall.GetTokenInformation(token, syscall.TokenElevation, (*byte)(unsafe.Pointer(&elevation)), uint32(unsafe.Sizeof(elevation)), &size)
-	if err != nil {
-		return false, fmt.Errorf("failed to get token elevation information: %w", err)
-	}
-
-	return elevation != 0, nil
 }

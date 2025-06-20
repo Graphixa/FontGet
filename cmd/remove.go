@@ -16,6 +16,7 @@ import (
 
 var (
 	scope string
+	force bool
 )
 
 // promptYesNo asks the user a yes/no question and returns true for yes, false for no
@@ -201,13 +202,16 @@ You can specify the removal scope using the --scope flag:
   - all: Remove from both user and machine scopes
   
 Fonts are removed under both the user and machine scopes by default.
+
+Use --force to override critical system font protection.
 `,
 	Example: `  fontget remove "Roboto"
   fontget remove "Open Sans" "Fira Sans" "Noto Sans"
   fontget remove roboto firasans notosans
   fontget remove "roboto, firasans, notosans"
-  fontget remove "Open Sans" -s machine --force
-  fontget remove "Roboto" -s user`,
+  fontget remove "Open Sans" -s machine -f
+  fontget remove "Roboto" -s user
+  fontget remove "opensans" --force`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			red := color.New(color.FgRed).SprintFunc()
@@ -230,7 +234,8 @@ Fonts are removed under both the user and machine scopes by default.
 		}
 
 		scopeFlag, _ := cmd.Flags().GetString("scope")
-		GetLogger().Info("Removal parameters - Scope: %s", scopeFlag)
+		forceFlag, _ := cmd.Flags().GetBool("force")
+		GetLogger().Info("Removal parameters - Scope: %s, Force: %v", scopeFlag, forceFlag)
 
 		// Determine which scopes to check
 		var scopes []platform.InstallationScope
@@ -276,84 +281,258 @@ Fonts are removed under both the user and machine scopes by default.
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
-		// Track per-scope results
-		perScopeResults := make(map[string][]string)
+		// For --all scope, require elevation upfront
+		if len(scopes) == 2 {
+			// Check elevation first
+			if err := checkElevation(cmd, fontManager, platform.MachineScope); err != nil {
+				GetLogger().Error("Elevation check failed for --scope all: %v", err)
+				fmt.Println(red("This operation requires administrator privileges."))
+				fmt.Println("To run as administrator:")
+				fmt.Println("  1. Right-click on Command Prompt or PowerShell.")
+				fmt.Println("  2. Select 'Run as administrator'.")
+				fmt.Printf("  3. Run: fontget remove --scope all %s\n", strings.Join(fontNames, " "))
+				return fmt.Errorf("elevation required for --scope all")
+			}
 
+			// Process fonts with simple single-status-report approach
+			for _, fontName := range fontNames {
+				GetLogger().Info("Processing font: %s", fontName)
+				fmt.Printf("\n%s\n", bold(fontName))
+
+				for i, scope := range scopes {
+					label := scopeLabel[i]
+					GetLogger().Info("Checking scope: %s", label)
+
+					matchingFonts := findFontFamilyFiles(fontName, fontManager, scope)
+					if len(matchingFonts) == 0 {
+						results, err := r.SearchFonts(fontName, "false")
+						if err == nil && len(results) > 0 {
+							matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
+						}
+					}
+
+					if len(matchingFonts) == 0 {
+						if isCriticalSystemFont(fontName) {
+							msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", fontName)
+							GetLogger().Error("Attempted to remove protected system font: %s", fontName)
+							fmt.Println(red(msg))
+							status.Skipped++
+							continue
+						}
+						msg := fmt.Sprintf("  - Not found in %s scope", label)
+						GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
+						fmt.Println(yellow(msg))
+						status.Skipped++
+						continue
+					}
+
+					success := true
+					for _, matchingFont := range matchingFonts {
+						if isCriticalSystemFont(matchingFont) {
+							status.Skipped++
+							msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", matchingFont)
+							GetLogger().Error("Attempted to remove protected system font: %s", matchingFont)
+							fmt.Println(red(msg))
+							continue
+						}
+						err := fontManager.RemoveFont(matchingFont, scope)
+						if err != nil {
+							success = false
+							status.Failed++
+							msg := fmt.Sprintf("  - \"%s\" (Failed to remove from %s scope) - %v", matchingFont, label, err)
+							GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
+							fmt.Println(red(msg))
+						} else {
+							status.Removed++
+							msg := fmt.Sprintf("  - \"%s\" (Removed from %s scope)", matchingFont, label)
+							GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
+							fmt.Println(green(msg))
+						}
+					}
+					if !success {
+						status.Failed++
+					}
+				}
+			}
+
+			// Print simple status report
+			fmt.Printf("\n%s\n", bold("Status Report"))
+			fmt.Println("---------------------------------------------")
+			fmt.Printf("%s: %d  |  %s: %d  |  %s: %d\n\n",
+				green("Removed"), status.Removed,
+				yellow("Skipped"), status.Skipped,
+				red("Failed"), status.Failed)
+
+			GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
+				status.Removed, status.Skipped, status.Failed)
+
+			// Only return error if there were actual removal failures
+			if status.Failed > 0 {
+				return &FontRemovalError{
+					FailedCount: status.Failed,
+					TotalCount:  len(fontNames),
+				}
+			}
+
+			return nil
+		}
+
+		// Handle single scope operations (user or machine)
+		removedInAnyScope := false
 		for _, fontName := range fontNames {
 			GetLogger().Info("Processing font: %s", fontName)
 			fmt.Printf("\n%s\n", bold(fontName))
 
-			removedInAnyScope := false
-			for i, scope := range scopes {
-				label := scopeLabel[i]
-				GetLogger().Info("Checking scope: %s", label)
+			// Track if this font was identified as a protected system font
+			protectedFontEncountered := false
 
-				// Elevation check for machine scope
-				if scope == platform.MachineScope {
-					if err := checkElevation(cmd, fontManager, scope); err != nil {
-						GetLogger().Error("Elevation check failed: %v", err)
-						fmt.Println(red("  - Skipped machine scope due to missing elevation"))
-						continue
-					}
-				}
-
-				matchingFonts := findFontFamilyFiles(fontName, fontManager, scope)
-				if len(matchingFonts) == 0 {
+			// Special handling for user scope only: check both scopes for better UX
+			if len(scopes) == 1 && scopes[0] == platform.UserScope {
+				// Check if font exists in machine scope for better user feedback
+				machineFonts := findFontFamilyFiles(fontName, fontManager, platform.MachineScope)
+				if len(machineFonts) == 0 {
+					// Try with search results
 					results, err := r.SearchFonts(fontName, "false")
 					if err == nil && len(results) > 0 {
-						matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
+						machineFonts = findFontFamilyFiles(results[0].Name, fontManager, platform.MachineScope)
 					}
 				}
 
-				if len(matchingFonts) == 0 {
-					// Only show "not installed" message if user specifically requested a single scope
-					if len(scopes) == 1 {
-						msg := fmt.Sprintf("  - \"%s\" is not installed in %s scope (Skipped)", fontName, label)
-						GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
-						fmt.Println(yellow(msg))
-						perScopeResults[label] = append(perScopeResults[label], msg)
-					} else {
-						// For --all scope, just log it but don't show to user
-						GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
+				// Check user scope
+				userFonts := findFontFamilyFiles(fontName, fontManager, platform.UserScope)
+				if len(userFonts) == 0 {
+					// Try with search results
+					results, err := r.SearchFonts(fontName, "false")
+					if err == nil && len(results) > 0 {
+						userFonts = findFontFamilyFiles(results[0].Name, fontManager, platform.UserScope)
 					}
+				}
+
+				// Handle different scenarios
+				if len(userFonts) == 0 && len(machineFonts) == 0 {
+					// Font not found in either scope
+					msg := fmt.Sprintf("  - \"%s\" is not installed in any scope (Skipped)", fontName)
+					GetLogger().Info("Font not installed in any scope: %s", fontName)
+					fmt.Println(yellow(msg))
+					status.Skipped++
 					continue
+				} else if len(userFonts) == 0 && len(machineFonts) > 0 {
+					// Font only exists in machine scope
+					msg := fmt.Sprintf("  - \"%s\" is only installed in machine scope (Skipped)", fontName)
+					GetLogger().Info("Font only installed in machine scope: %s", fontName)
+					fmt.Println(yellow(msg))
+					fmt.Println(cyan("  - Use --scope machine or run as administrator to remove system-wide fonts"))
+					status.Skipped++
+					continue
+				} else if len(userFonts) > 0 && len(machineFonts) > 0 {
+					// Font exists in both scopes - remove from user and inform about machine
+					fmt.Println(cyan("  - Font also installed in machine scope"))
 				}
 
+				// Remove from user scope
 				success := true
-				for _, matchingFont := range matchingFonts {
-					if isCriticalSystemFont(matchingFont) || isCriticalSystemFont(fontName) {
+				for _, matchingFont := range userFonts {
+					if isCriticalSystemFont(matchingFont) {
 						status.Skipped++
-						msg := fmt.Sprintf("  - \"%s\" is a critical system font and will not be removed (Skipped)", matchingFont)
-						GetLogger().Warn("Attempted to remove critical system font: %s", matchingFont)
-						fmt.Println(yellow(msg))
-						perScopeResults[label] = append(perScopeResults[label], msg)
+						msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", matchingFont)
+						GetLogger().Error("Attempted to remove protected system font: %s", matchingFont)
+						fmt.Println(red(msg))
 						continue
 					}
-					err := fontManager.RemoveFont(matchingFont, scope)
+					err := fontManager.RemoveFont(matchingFont, platform.UserScope)
 					if err != nil {
 						success = false
 						status.Failed++
-						msg := fmt.Sprintf("  - \"%s\" (Failed to remove from %s scope) - %v", matchingFont, label, err)
-						GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
+						msg := fmt.Sprintf("  - \"%s\" (Failed to remove from user scope) - %v", matchingFont, err)
+						GetLogger().Error("Failed to remove font %s from user scope: %v", matchingFont, err)
 						fmt.Println(red(msg))
-						perScopeResults[label] = append(perScopeResults[label], msg)
 					} else {
 						removedInAnyScope = true
 						status.Removed++
-						msg := fmt.Sprintf("  - \"%s\" (Removed from %s scope)", matchingFont, label)
-						GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
+						msg := fmt.Sprintf("  - \"%s\" (Removed from user scope)", matchingFont)
+						GetLogger().Info("Successfully removed font: %s from user scope", matchingFont)
 						fmt.Println(green(msg))
-						perScopeResults[label] = append(perScopeResults[label], msg)
 					}
 				}
 				if !success {
 					status.Failed++
 				}
+			} else {
+				// Handle machine scope
+				for i, scope := range scopes {
+					label := scopeLabel[i]
+					GetLogger().Info("Checking scope: %s", label)
+
+					// Check for protected system font first
+					protectedFontSkipped := false
+					if isCriticalSystemFont(fontName) {
+						msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", fontName)
+						GetLogger().Error("Attempted to remove protected system font: %s", fontName)
+						fmt.Println(red(msg))
+						status.Skipped++
+						protectedFontSkipped = true
+						protectedFontEncountered = true
+						continue
+					}
+
+					// Elevation check for machine scope
+					if scope == platform.MachineScope {
+						if err := checkElevation(cmd, fontManager, scope); err != nil {
+							GetLogger().Error("Elevation check failed: %v", err)
+							fmt.Println(red("  - Skipped machine scope due to missing elevation"))
+							continue
+						}
+					}
+
+					matchingFonts := findFontFamilyFiles(fontName, fontManager, scope)
+					if len(matchingFonts) == 0 {
+						results, err := r.SearchFonts(fontName, "false")
+						if err == nil && len(results) > 0 {
+							matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
+						}
+					}
+
+					if len(matchingFonts) == 0 && !protectedFontSkipped {
+						msg := fmt.Sprintf("  - \"%s\" is not installed in %s scope (Skipped)", fontName, label)
+						GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
+						fmt.Println(yellow(msg))
+						status.Skipped++
+						continue
+					}
+
+					success := true
+					for _, matchingFont := range matchingFonts {
+						if isCriticalSystemFont(matchingFont) {
+							status.Skipped++
+							msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", matchingFont)
+							GetLogger().Error("Attempted to remove protected system font: %s", matchingFont)
+							fmt.Println(red(msg))
+							continue
+						}
+						err := fontManager.RemoveFont(matchingFont, scope)
+						if err != nil {
+							success = false
+							status.Failed++
+							msg := fmt.Sprintf("  - \"%s\" (Failed to remove from %s scope) - %v", matchingFont, label, err)
+							GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
+							fmt.Println(red(msg))
+						} else {
+							removedInAnyScope = true
+							status.Removed++
+							msg := fmt.Sprintf("  - \"%s\" (Removed from %s scope)", matchingFont, label)
+							GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
+							fmt.Println(green(msg))
+						}
+					}
+					if !success {
+						status.Failed++
+					}
+				}
 			}
 
-			if !removedInAnyScope {
-				// Suggest the other scope if not found
-				if len(scopes) == 1 {
+			if !removedInAnyScope && !protectedFontEncountered {
+				// Suggest the other scope if not found (only for non-user-scope operations)
+				if len(scopes) == 1 && scopes[0] != platform.UserScope {
 					otherScope := "user"
 					if scopes[0] == platform.UserScope {
 						otherScope = "machine"
@@ -398,5 +577,6 @@ func (e *FontRemovalError) Error() string {
 
 func init() {
 	rootCmd.AddCommand(removeCmd)
-	removeCmd.Flags().String("scope", "all", "Installation scope (user, machine, or all)")
+	removeCmd.Flags().StringP("scope", "s", "user", "Installation scope (user, machine, or all)")
+	removeCmd.Flags().BoolP("force", "f", false, "Force removal of critical system fonts")
 }

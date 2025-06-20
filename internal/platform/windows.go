@@ -178,10 +178,17 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 	// Remove the font resource
 	logger.Debug("Removing font resource...")
 	if err := RemoveFontResource(fontPath); err != nil {
-		logger.Error("Failed to remove font resource from path %s: %v", fontPath, err)
-		return fmt.Errorf("failed to remove font resource: %w", err)
+		// Check if the error is because the font isn't loaded as a resource
+		// This is normal and shouldn't prevent font removal
+		if strings.Contains(err.Error(), "error code: 0") || strings.Contains(err.Error(), "The operation completed successfully") {
+			logger.Debug("Font resource not loaded, continuing with file removal")
+		} else {
+			logger.Error("Failed to remove font resource from path %s: %v", fontPath, err)
+			return fmt.Errorf("failed to remove font resource: %w", err)
+		}
+	} else {
+		logger.Debug("Font resource removed successfully")
 	}
-	logger.Debug("Font resource removed successfully")
 
 	// Remove from registry if machine scope
 	if scope == MachineScope {
@@ -207,21 +214,14 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 	logger.Debug("Font file removed successfully")
 
 	// Notify other applications about the font removal
+	// Only send WM_FONTCHANGE to the desktop window to avoid hangs from full window enumeration.
+	// Enumerating all windows can hang or be extremely slow on some systems.
 	logger.Debug("Notifying system about font change...")
 	if err := NotifyFontChange(); err != nil {
 		logger.Error("Failed to notify system about font change: %v", err)
 		return fmt.Errorf("failed to notify font change: %w", err)
 	}
 	logger.Debug("Font change notification sent successfully")
-
-	// Force a refresh of the font cache
-	logger.Debug("Refreshing font cache...")
-	if err := m.refreshFontCache(); err != nil {
-		logger.Error("Failed to refresh font cache: %v", err)
-		// Continue even if cache refresh fails
-	} else {
-		logger.Debug("Font cache refreshed successfully")
-	}
 
 	logger.Info("Font removal completed successfully")
 	return nil
@@ -399,20 +399,6 @@ func (m *windowsFontManager) removeFontFromRegistry(fontName string) error {
 	}
 
 	logger.Debug("Font removed from registry successfully")
-	return nil
-}
-
-// refreshFontCache forces a refresh of the Windows font cache
-func (m *windowsFontManager) refreshFontCache() error {
-	// Send WM_FONTCHANGE message to all top-level windows
-	hwnd := uintptr(0)
-	for {
-		hwnd = FindWindowEx(0, hwnd, nil, nil)
-		if hwnd == 0 {
-			break
-		}
-		SendMessage(hwnd, WM_FONTCHANGE, 0, 0)
-	}
 	return nil
 }
 
