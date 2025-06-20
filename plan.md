@@ -181,11 +181,11 @@ Remove an installed font.
 List installed fonts.
 
 Options:
-- `-s, --scope`: Installation scope (default: user)
+- `-s, --scope`: Installation scope (default: auto-detected)
   - `user`: List fonts for current user only
   - `machine`: List system-wide fonts (requires elevation)
   - `all`: List fonts from both user and machine scopes
-- `-f, --family`: Filter by font family name
+- `-a, --family`: Filter by font family name
 - `-t, --type`: Filter by font type (TTF, OTF, etc.)
 
 Examples:
@@ -193,7 +193,7 @@ Examples:
 fontget list
 fontget list -s machine
 fontget list -s all
-fontget list -f "Roboto"
+fontget list -a "Roboto"
 fontget list -t TTF
 fontget list -s all -t TTF
 ```
@@ -384,3 +384,36 @@ Options:
    - [ ] Individual source acceptance tracking
    - [ ] Auto-detect and prompt for new sources
    - [ ] Source-specific license handling
+
+## Command Improvements
+
+### Add Command ✅
+- [x] Add `-s` alias for `--scope`
+- [x] Add `--force` flag with `-f` alias
+- [x] Improve description and examples
+- [x] Add auto-scope detection
+- [x] Show installation scope in success messages
+
+### Remove Command ✅
+- [x] Add `-s` alias for `--scope`
+- [x] Add `--force` flag with `-f` alias
+- [x] Improve description and examples
+- [x] Add auto-scope detection
+- [x] Prevent removal of protected system fonts
+- [x] Show removal scope in success messages
+
+### List Command ✅
+- [x] Fix `-f` alias conflict (changed to `-a` for `--family`)
+- [x] Improve description and examples
+- [x] Add auto-scope detection
+- [x] Update examples to use short flags consistently
+
+### Search Command
+- [ ] Fix alias conflicts
+- [ ] Improve description and examples
+- [ ] Add auto-scope detection
+
+### Info Command
+- [ ] Fix alias conflicts
+- [ ] Improve description and examples
+- [ ] Add auto-scope detection

@@ -110,11 +110,11 @@ func listFonts(fontDir string, installScope platform.InstallationScope) ([]FontF
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List installed fonts",
-	Long:  "Lists all installed fonts on your system, with options to filter by family, type, and installation scope.",
+	Long:  "List installed fonts on your system with filtering options.",
 	Example: `  fontget list
-  fontget list --scope machine
+  fontget list -s machine
   fontget list -s all
-  fontget list -f "Roboto"
+  fontget list -a "Roboto"
   fontget list -t TTF
   fontget list -s all -t TTF`,
 	Args: cobra.NoArgs,
@@ -134,6 +134,26 @@ var listCmd = &cobra.Command{
 		fontType, _ := cmd.Flags().GetString("type")
 
 		GetLogger().Info("List command parameters - Scope: %s, Family: %s, Type: %s", scope, family, fontType)
+
+		// Create color functions for auto-detection messages
+		cyan := color.New(color.FgCyan).SprintFunc()
+
+		// Auto-detect scope if not explicitly provided
+		if scope == "" {
+			isElevated, err := fontManager.IsElevated()
+			if err != nil {
+				GetLogger().Warn("Failed to detect elevation status: %v", err)
+				// Default to user scope if we can't detect elevation
+				scope = "user"
+			} else if isElevated {
+				scope = "all"
+				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
+				fmt.Println(cyan("Auto-detected administrator privileges - listing from all scopes"))
+			} else {
+				scope = "user"
+				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
+			}
+		}
 
 		// Convert scope string to InstallationScope
 		var scopes []platform.InstallationScope
@@ -283,7 +303,7 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 
 	// Add flags
-	listCmd.Flags().StringP("scope", "s", "user", "Installation scope (user, machine, or all)")
-	listCmd.Flags().StringP("family", "f", "", "Filter by font family name")
+	listCmd.Flags().StringP("scope", "s", "", "Installation scope (user, machine, or all)")
+	listCmd.Flags().StringP("family", "a", "", "Filter by font family name")
 	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
 }
