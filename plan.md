@@ -89,6 +89,64 @@ Sources:
 }
 ```
 
+## Configuration System Architecture
+
+### Distribution Strategy
+FontGet will be distributed through system package managers:
+- **Windows**: Winget, Chocolatey
+- **Linux**: APT, Pacman, AUR
+- **macOS**: Homebrew, MacPorts
+- **Manual**: Direct binary downloads (.exe, .deb, etc.)
+
+### System-Wide Installation Pattern
+Following system package manager conventions:
+
+**Installation Locations:**
+- **Linux**: `/usr/bin/fontget` (executable), `/etc/fontget/` (configs)
+- **Windows**: `C:\Program Files\FontGet\fontget.exe`, `C:\ProgramData\FontGet\` (configs)
+- **macOS**: `/usr/local/bin/fontget`, `/etc/fontget/` (configs)
+
+**Configuration Structure:**
+```
+System-wide configs (admin managed):
+- Linux: /etc/fontget/
+- Windows: C:\ProgramData\FontGet\
+- macOS: /etc/fontget/
+
+User-specific data (user managed):
+- Linux: ~/.local/share/fontget/
+- Windows: %LOCALAPPDATA%\FontGet\
+- macOS: ~/Library/Application Support/FontGet/
+```
+
+### Current System (Phase 1-2)
+- **Active**: JSON-based configuration in `internal/config/config.go`
+- **Storage**: System-wide directories following package manager conventions
+  - Linux: `/etc/fontget/` (system configs), `~/.local/share/fontget/` (user data)
+  - Windows: `C:\ProgramData\FontGet\` (system configs), `%LOCALAPPDATA%\FontGet\` (user data)
+  - macOS: `/etc/fontget/` (system configs), `~/Library/Application Support/FontGet/` (user data)
+- **Purpose**: Follows system package manager standards and enterprise deployment patterns
+
+### Future System (Phase 3+)
+- **Target**: YAML-based configuration in `internal/config/yaml_config.go`
+- **Storage**: Maintains system-wide structure with YAML format
+- **Benefits**: Modern configuration format while preserving system integration
+
+### Migration Strategy
+1. **Phase 1-2**: Continue using current JSON system while developing YAML system
+2. **Phase 3**: Implement YAML system alongside JSON system
+3. **Post-Phase 3**: Deprecate JSON system, rename `yaml_config.go` to `config.go`
+4. **Final**: Remove old JSON system entirely
+
+### Directory Structure Rationale
+**System-wide approach chosen because:**
+- FontGet will be distributed through official package managers
+- Follows system package manager conventions (like apt, pacman, winget)
+- Enables enterprise deployment and centralized management
+- System admins can manage FontGet configuration centrally
+- Users can still install fonts to their user directories without admin privileges
+- Proper separation of system configs (admin-managed) and user data (user-managed)
+
 ## Commands
 
 ### Core Commands
@@ -254,6 +312,13 @@ Sources:
 4. **Cleanup**:
    - Remove temporary files
    - Update installation tracking
+
+## Improve Logging Messages
+
+- Most logging messages are simple and could benifit from a little more useful detail
+- We must NOT include Useless information for the sake of it.
+- We should only include necesarry or required information  that will benefit users viewing logs or debugging.
+- When we make a change to a file like config or sources we should show the location path of that folder or file.
 
 ## Error Handling
 
