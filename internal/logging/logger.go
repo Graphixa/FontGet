@@ -44,7 +44,6 @@ type Logger struct {
 	compress      bool
 	currentSize   int64
 	lastRotation  time.Time
-	rotationSize  int64
 	rotationCount int
 	ConsoleOutput bool
 }
@@ -75,8 +74,8 @@ func GetLogger() *Logger {
 	loggerOnce.Do(func() {
 		config := Config{
 			Level:      InfoLevel,
-			MaxSize:    10, // 10MB
-			MaxBackups: 5,
+			MaxSize:    10, // 10MB (restored to original)
+			MaxBackups: 3,  // Reduced for testing cleanup
 			MaxAge:     30, // 30 days
 			Compress:   true,
 		}
@@ -264,19 +263,63 @@ func (l *Logger) cleanup() error {
 		return fmt.Errorf("failed to find log files: %w", err)
 	}
 
-	// Sort matches by modification time (newest first)
-	sort.Slice(matches, func(i, j int) bool {
-		infoI, _ := os.Stat(matches[i])
-		infoJ, _ := os.Stat(matches[j])
+	// Get current time for age calculations
+	now := time.Now()
+	var filesToRemove []string
+
+	for _, match := range matches {
+		info, err := os.Stat(match)
+		if err != nil {
+			// Skip files we can't stat
+			continue
+		}
+
+		// Check age constraint
+		if l.maxAge > 0 {
+			age := now.Sub(info.ModTime())
+			if age > time.Duration(l.maxAge)*24*time.Hour {
+				filesToRemove = append(filesToRemove, match)
+				continue
+			}
+		}
+	}
+
+	// Sort remaining files by modification time (newest first) for backup count
+	var remainingFiles []string
+	for _, match := range matches {
+		// Skip files already marked for removal due to age
+		shouldSkip := false
+		for _, toRemove := range filesToRemove {
+			if match == toRemove {
+				shouldSkip = true
+				break
+			}
+		}
+		if shouldSkip {
+			continue
+		}
+
+		remainingFiles = append(remainingFiles, match)
+	}
+
+	// Sort by modification time (newest first)
+	sort.Slice(remainingFiles, func(i, j int) bool {
+		infoI, _ := os.Stat(remainingFiles[i])
+		infoJ, _ := os.Stat(remainingFiles[j])
 		return infoI.ModTime().After(infoJ.ModTime())
 	})
 
-	// Remove old files
-	for i, match := range matches {
+	// Apply backup count constraint
+	for i, match := range remainingFiles {
 		if i >= l.maxBackups {
-			if err := os.Remove(match); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to remove old log file %s: %v\n", match, err)
-			}
+			filesToRemove = append(filesToRemove, match)
+		}
+	}
+
+	// Remove files
+	for _, file := range filesToRemove {
+		if err := os.Remove(file); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to remove old log file %s: %v\n", file, err)
 		}
 	}
 
@@ -298,4 +341,9 @@ func getLogDirectory() (string, error) {
 	default: // Linux and others
 		return filepath.Join(homeDir, ".local", "share", "fontget", "logs"), nil
 	}
+}
+
+// GetLogDirectory returns the appropriate log directory for the current OS
+func GetLogDirectory() (string, error) {
+	return getLogDirectory()
 }

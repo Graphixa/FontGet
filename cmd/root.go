@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"fontget/internal/license"
 	"fontget/internal/logging"
+	"fontget/internal/platform"
+	"os"
 
 	"github.com/spf13/cobra"
 )
@@ -14,6 +16,7 @@ const (
 
 var (
 	verbose bool
+	logs    bool
 	logger  *logging.Logger
 )
 
@@ -23,6 +26,27 @@ var rootCmd = &cobra.Command{
 	Long:  `FontGet is a powerful command-line font manager for installing and managing fonts on your system.`,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if logs {
+			// Open logs directory
+			logDir, err := logging.GetLogDirectory()
+			if err != nil {
+				return fmt.Errorf("failed to get log directory: %w", err)
+			}
+
+			// Create directory if it doesn't exist
+			if err := os.MkdirAll(logDir, 0755); err != nil {
+				return fmt.Errorf("failed to create log directory: %w", err)
+			}
+
+			// Open the directory using platform-specific method
+			if err := platform.OpenDirectory(logDir); err != nil {
+				return fmt.Errorf("failed to open logs directory: %w", err)
+			}
+
+			fmt.Printf("Opened logs directory: %s\n", logDir)
+			return nil
+		}
+
 		return cmd.Help()
 	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -65,6 +89,9 @@ var rootCmd = &cobra.Command{
 func init() {
 	// Add verbose flag
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+
+	// Add logs flag
+	rootCmd.PersistentFlags().BoolVar(&logs, "logs", false, "Open logs directory")
 
 	// Set custom help template
 	rootCmd.SetHelpTemplate(`

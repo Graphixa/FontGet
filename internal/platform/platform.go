@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -127,4 +129,20 @@ func isFontFile(ext string) bool {
 	default:
 		return false
 	}
+}
+
+// OpenDirectory opens a directory using the platform's default file manager
+func OpenDirectory(path string) error {
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("explorer", path)
+	case "darwin":
+		cmd = exec.Command("open", path)
+	default: // Linux and others
+		cmd = exec.Command("xdg-open", path)
+	}
+
+	return cmd.Start()
 }
