@@ -1,5 +1,7 @@
 # Terminal Setup Guide
 
+🚧 **THIS PAGE IS STILL UNDER CONSTRUCTION** 🚧
+
 This guide provides detailed instructions for setting up FontGet completions in various terminal emulators and shells.
 
 ## Table of Contents
