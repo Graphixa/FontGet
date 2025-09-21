@@ -23,3 +23,7 @@ vendor/
 # Build directories
 dist/
 bin/ 
+
+
+bubbletea-sources-plan.md
+command-fixes.md
