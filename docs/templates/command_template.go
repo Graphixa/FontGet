@@ -18,7 +18,9 @@ import (
 var commandCmd = &cobra.Command{
 	Use:   "command <required-arg>",
 	Short: "One-line description of what the command does",
-	Long:  "Detailed description of what the command does and how it works.",
+	Long: `Detailed description of what the command does and how it works.
+
+usage: fontget command [<options>]`,
 	Example: `  fontget command example1
   fontget command "example with quotes"
   fontget command example3 --flag value
@@ -49,23 +51,19 @@ var commandCmd = &cobra.Command{
 	},
 	// Optional: Add argument completion
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Get repository
-		r, err := repo.GetRepository()
+		// Get manifest
+		manifest, err := repo.GetManifest(nil, nil)
 		if err != nil {
 			return nil, cobra.ShellCompDirectiveError
 		}
 
-		// Get all fonts
-		results, err := r.SearchFonts("", "")
-		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
-		}
-
-		// Filter and return font names
+		// Get all fonts from all sources
 		var completions []string
-		for _, result := range results {
-			if strings.HasPrefix(strings.ToLower(result.Name), strings.ToLower(toComplete)) {
-				completions = append(completions, result.Name)
+		for _, sourceInfo := range manifest.Sources {
+			for fontID, fontInfo := range sourceInfo.Fonts {
+				if strings.HasPrefix(strings.ToLower(fontInfo.Name), strings.ToLower(toComplete)) {
+					completions = append(completions, fontID)
+				}
 			}
 		}
 
@@ -82,40 +80,34 @@ var commandCmd = &cobra.Command{
 			return nil // Args validator will have already shown the help
 		}
 
-		// Get repository
-		r, err := repo.GetRepository()
-		if err != nil {
-			return fmt.Errorf("failed to initialize repository: %w", err)
-		}
-
-		// Get manifest
-		manifest, err := r.GetManifest()
+		// Get manifest (using current architecture)
+		manifest, err := repo.GetManifest(nil, nil)
 		if err != nil {
 			return fmt.Errorf("failed to get manifest: %w", err)
 		}
 
-		// Print results in a table format
+		// Print results in a table format (matching search command style)
 		fmt.Printf("\nFound %d items matching '%s'", 0, argValue)
 		if flagValue != "" {
 			fmt.Printf(" with flag '%s'", flagValue)
 		}
 		fmt.Println("\n")
 
-		// Define column widths
+		// Define column widths (matching search command)
 		columns := map[string]int{
-			"Name":   40,
-			"ID":     38,
-			"Value":  20,
-			"Status": 15,
-			"Source": 15,
+			"Name":       30,
+			"ID":         30,
+			"License":    12,
+			"Categories": 15,
+			"Source":     15,
 		}
 
-		// Print header
+		// Print header (matching search command style)
 		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
 			columns["Name"], "Name",
 			columns["ID"], "ID",
-			columns["Value"], "Value",
-			columns["Status"], "Status",
+			columns["License"], "License",
+			columns["Categories"], "Categories",
 			columns["Source"], "Source")
 		fmt.Println(header)
 		fmt.Println(strings.Repeat("-", len(header)))
@@ -142,7 +134,11 @@ func init() {
 	// Note: Replace rootCmd with the actual root command variable from your cmd package
 	// rootCmd.AddCommand(commandCmd)
 
-	// 2. Add flags
+	// 2. Add subcommands if needed (for commands like sources, config, etc.)
+	// commandCmd.AddCommand(subCommand1)
+	// commandCmd.AddCommand(subCommand2)
+
+	// 3. Add flags
 	// String flag with short version
 	commandCmd.Flags().StringP("flag-name", "f", "", "Description of the flag")
 	// Boolean flag
@@ -150,7 +146,7 @@ func init() {
 	// String slice flag
 	commandCmd.Flags().StringSliceP("slice-flag", "s", []string{}, "Description of the slice flag")
 
-	// 3. Add flag completion if needed
+	// 4. Add flag completion if needed
 	commandCmd.RegisterFlagCompletionFunc("flag-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		// Example flag completion
 		completions := []string{
@@ -161,7 +157,7 @@ func init() {
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	})
 
-	// 4. Add required flags if any
+	// 5. Add required flags if any
 	// commandCmd.MarkFlagRequired("flag-name")
 }
 
@@ -177,13 +173,28 @@ Usage Instructions:
 7. Add and configure flags in the init function
 8. Add flag completion if needed
 9. Mark flags as required if needed
+10. For commands with subcommands, follow the sources command pattern
+
+Standard Help Formatting:
+- Use winget-style help with "usage:" line
+- Include subcommands in "The following sub-commands are available:" section
+- Include flags in "The following options are available:" section
+- End with "For more details on a specific command, pass it the help argument. [-?]"
+
+Table Formatting (for list/search commands):
+- Use consistent column widths matching search command
+- Standard columns: Name, ID, License, Categories, Source
+- Use dashes for header separator
+- Include manifest info at bottom
 
 Example for an "add" command:
 
 var addCmd = &cobra.Command{
 	Use:   "add <font-name>",
 	Short: "Add a font to your system",
-	Long:  "Downloads and installs a font from the Google Fonts repository or other added sources.",
+	Long: `Downloads and installs a font from available sources.
+
+usage: fontget add [<options>]`,
 	Example: `  fontget add "Fira Sans"
   fontget add "Roboto" --style "Regular"
   fontget add "Open Sans" -s "Bold"`,

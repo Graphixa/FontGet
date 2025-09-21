@@ -33,18 +33,18 @@ func DefaultSourcesConfig() *SourcesConfig {
 	return &SourcesConfig{
 		Sources: map[string]Source{
 			"Google": {
-				Path:    "https://raw.githubusercontent.com/graphixa/FontGet/main/sources/googleapi-manifest.json",
+				Path:    "https://raw.githubusercontent.com/Graphixa/FontGet-Sources/main/sources/google-fonts.json",
 				Prefix:  "google",
 				Enabled: true,
 			},
 			"NerdFonts": {
-				Path:    "https://raw.githubusercontent.com/graphixa/FontGet/main/sources/nerd-fonts.json",
+				Path:    "https://raw.githubusercontent.com/Graphixa/FontGet-Sources/main/sources/nerd-fonts.json",
 				Prefix:  "nerd",
 				Enabled: true,
 			},
 			"FontSquirrel": {
-				Path:    "https://raw.githubusercontent.com/graphixa/FontGet/main/sources/font-squirrel.json",
-				Prefix:  "sqrl",
+				Path:    "https://raw.githubusercontent.com/Graphixa/FontGet-Sources/main/sources/font-squirrel.json",
+				Prefix:  "squirrel",
 				Enabled: false,
 			},
 		},
@@ -139,6 +139,32 @@ func GetEnabledSources(config *SourcesConfig) []string {
 	return enabled
 }
 
+// GetEnabledSourcesInOrder returns enabled sources in a specific order:
+// 1. Built-in sources: Google, NerdFonts, FontSquirrel
+// 2. User-added sources in the order they appear in the config file
+func GetEnabledSourcesInOrder(config *SourcesConfig) []string {
+	var enabled []string
+
+	// Define built-in source order
+	builtInOrder := []string{"Google", "NerdFonts", "FontSquirrel"}
+
+	// First, add built-in sources in the specified order
+	for _, name := range builtInOrder {
+		if source, exists := config.Sources[name]; exists && source.Enabled {
+			enabled = append(enabled, name)
+		}
+	}
+
+	// Then, add user-added sources (not built-in) in the order they appear in the config
+	for name, source := range config.Sources {
+		if !IsBuiltInSource(name) && source.Enabled {
+			enabled = append(enabled, name)
+		}
+	}
+
+	return enabled
+}
+
 // GetSourceByPrefix returns a source by its prefix
 func GetSourceByPrefix(config *SourcesConfig, prefix string) (string, *Source, bool) {
 	for name, source := range config.Sources {
@@ -155,6 +181,17 @@ func GetSourceByName(config *SourcesConfig, name string) (*Source, bool) {
 		return &source, true
 	}
 	return nil, false
+}
+
+// IsBuiltInSource checks if a source name is a built-in source
+func IsBuiltInSource(name string) bool {
+	builtInSources := []string{"Google", "NerdFonts", "FontSquirrel"}
+	for _, builtIn := range builtInSources {
+		if name == builtIn {
+			return true
+		}
+	}
+	return false
 }
 
 // AddSource adds a new source to the configuration
