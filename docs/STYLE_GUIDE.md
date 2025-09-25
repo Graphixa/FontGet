@@ -9,23 +9,23 @@ This document defines the color scheme and visual hierarchy for FontGet, ensurin
 | Rosewater  | #f5e0dc  | -                                   |
 | Flamingo   | #f2cdcd  | -                                   |
 | Pink       | #f5c2e7  | -                                   |
-| Mauve      | #cba6f7  | -                                   |
+| Mauve      | #cba6f7  | Page titles, report titles, info messages |
 | Red        | #f38ba8  | Error messages, critical warnings   |
 | Maroon     | #eba0ac  | -                                   |
-| Peach      | #fab387  | -                                   |
-| Yellow     | #f9e2af  | Source names, field labels, warnings |
-| Green      | #a6e3a1  | Success messages, enabled states    |
+| Peach      | #fab387  | Warning messages, skipped status    |
+| Yellow     | #f9e2af  | Source names, field labels, examples |
+| Green      | #a6e3a1  | Success messages, installed status  |
 | Teal       | #94e2d5  | -                                   |
 | Sky        | #89dceb  | -                                   |
 | Sapphire   | #74c7ec  | -                                   |
 | Blue       | #89b4fa  | Information, links                  |
 | Lavender   | #b4befe  | -                                   |
-| Text       | #cdd6f4  | Primary text, help text, normal text |
-| Subtext 1  | #bac2de  | Command keys, secondary text        |
-| Subtext 0  | #8c8c8c  | Built-in tags, tertiary text        |
+| Text       | #cdd6f4  | Primary text, regular content       |
+| Subtext 1  | #bac2de  | Command keys, command labels        |
+| Subtext 0  | #9399b2  | Built-in tags, tertiary text        |
 | Overlay 2  | #9399b2  | -                                   |
-| Overlay 1  | #7f849c  | -                                   |
-| Overlay 0  | #6c7086  | -                                   |
+| Overlay 1  | #7f849c  | Form placeholders                   |
+| Overlay 0  | #6c7086  | Page subtitles, form read-only      |
 | Surface 2  | #585b70  | -                                   |
 | Surface 1  | #45475a  | -                                   |
 | Surface 0  | #313244  | Title backgrounds, key backgrounds  |
@@ -33,164 +33,137 @@ This document defines the color scheme and visual hierarchy for FontGet, ensurin
 | Mantle     | #181825  | -                                   |
 | Crust      | #11111b  | -                                   |
 
-## FontGet Color Hierarchy
+## Style Categories
 
-### Primary Colors
-- **Source Names**: Yellow (#f9e2af) - Bold, prominent display
-- **Field Labels**: Yellow (#f9e2af) - Bold, form field names
-- **Form Input**: White (#FFFFFF) - Editable input content
-- **Form Read-Only**: Overlay 0 (#6c7086) - Non-editable input content
-- **Form Placeholder**: Overlay 1 (#7f849c) - Input placeholder text
-- **Primary Text**: Text (#cdd6f4) - Regular content
-- **Help Text**: Overlay 0 (#6c7086) - Secondary information, subtitles
-- **Command Labels**: Subtext 1 (#bac2de) - Bold, button-like labels (Move, Submit, Cancel)
-- **Command Keys**: Subtext 1 (#bac2de) - Bold, key bindings
-- **Titles**: Mauve (#cba6f7) - Bold, with Surface 0 background
-- **Headers**: Blue (#89b4fa) - Bold, no background (for table headers and labels)
-- **Status Report Titles**: Mauve (#cba6f7) - Bold, no background
+FontGet uses a clear categorization system for different types of UI elements:
 
-### Status Colors
-- **Success**: Green (#a6e3a1) - Bold, success messages
-- **Error**: Red (#f38ba8) - Bold, error messages
-- **Information**: Blue (#89b4fa) - Links, info messages
+### 1. PAGE STRUCTURE STYLES - Layout hierarchy and page elements
+- **PageTitle** - Main page titles (Mauve with Surface 0 background)
+- **PageSubtitle** - Section subtitles (Overlay 0 - grayish)
+- **ReportTitle** - Status report titles (Mauve, no background)
+- **ContentText** - Regular text content (Adaptive colors for terminal compatibility)
+- **ContentHighlight** - Highlighted content (Yellow)
 
-### Tag Colors
-- **Built-in Tags**: Custom Gray (#8c8c8c) - [Built-in] labels
-- **Custom Tags**: Text (#cdd6f4) - [Custom] labels
+### 2. USER FEEDBACK STYLES - Interactive responses and notifications
+- **FeedbackInfo** - Informational messages (Mauve)
+- **FeedbackText** - Supporting text (Terminal default)
+- **FeedbackWarning** - Warning messages (Peach)
+- **FeedbackError** - Error messages (Red)
+- **FeedbackSuccess** - Success messages (Green)
 
-### Background Colors
-- **Main Background**: Base (#1e1e2e)
-- **Surface Elements**: Surface 0 (#313244) - Titles, key backgrounds
-- **Selected Row**: #3C3C3C - List item selection
+### 3. DATA DISPLAY STYLES - Tables, lists, and data presentation
+- **TableHeader** - Column headers (Adaptive text)
+- **TableSourceName** - Font names in search/add results (Yellow)
+- **TableRow** - Regular table rows (Adaptive text)
+- **TableSelectedRow** - Selected rows (Surface 0 background)
 
-## Style Definitions
+### 4. FORM STYLES - Input interfaces and forms
+- **FormLabel** - Field labels (Yellow)
+- **FormInput** - Input field content (Adaptive text)
+- **FormPlaceholder** - Placeholder text (Overlay 1)
+- **FormReadOnly** - Read-only field content (Overlay 0)
 
-### Lipgloss Styles
+### 5. COMMAND STYLES - Interactive elements and controls
+- **CommandKey** - Keyboard shortcuts (Subtext 1 with Surface 0 background)
+- **CommandLabel** - Button-like labels (Subtext 1)
+- **CommandExample** - Example commands (Yellow)
+
+## Implementation
+
+### Style Usage Examples
+
 ```go
-// Primary text and elements
-titleStyle = lipgloss.NewStyle().
-    Bold(true).
-    Foreground(lipgloss.Color("#cba6f7")).
-    Background(lipgloss.Color("#313244")).
-    Padding(0, 1)
+// Page titles
+ui.PageTitle.Render("Font Search Results")
 
-headerStyle = lipgloss.NewStyle().
-    Bold(true).
-    Foreground(lipgloss.Color("#b4befe")) // Lavender - no background
+// Status messages
+ui.FeedbackSuccess.Render("Installed")
+ui.FeedbackWarning.Render("Skipped")
+ui.FeedbackError.Render("Failed to install")
 
-statusReportTitleStyle = lipgloss.NewStyle().
-    Bold(true).
-    Foreground(lipgloss.Color("#cba6f7")) // Mauve (same as Title but no background)
+// Table content
+ui.TableSourceName.Render("Roboto")
+ui.TableHeader.Render("Name")
 
-sourceNameStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#f9e2af"))
+// Form elements
+ui.FormLabel.Render("Name:")
+ui.FormInput.Render("user input")
+ui.FormPlaceholder.Render("Enter font name...")
 
-fieldLabelStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#f9e2af")).
-    Bold(true)
-
-formInputStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#cdd6f4")) // Text - same as primary text
-
-formReadOnlyStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#6c7086")) // Overlay 0 - darker gray for disabled state
-
-formPlaceholderStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#7f849c")) // Overlay 1 - mid-gray for placeholders
-
-builtInTagStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#9399b2")) // Overlay 2 - gray for tags used on lists
-
-// Text hierarchy
-helpTextStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#6c7086")) // Overlay 0 - darker gray for secondary info
-
-commandLabelStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#bac2de")). // Subtext 1 - same as command keys
-    Bold(true)
-
-keyStyle = lipgloss.NewStyle().
-    Bold(true).
-    Foreground(lipgloss.Color("#bac2de")).
-    Background(lipgloss.Color("#313244")).
-    Padding(0, 1)
-
-// Status colors
-errorStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#f38ba8")).
-    Bold(true)
-
-successStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#a6e3a1")).
-    Bold(true)
-
-// Tag colors
-builtInTagStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#a6adc8"))
-
-customTagStyle = lipgloss.NewStyle().
-    Foreground(lipgloss.Color("#cdd6f4"))
+// Command elements
+ui.CommandKey.Render("Enter")
+ui.CommandLabel.Render("Submit")
+ui.CommandExample.Render("fontget add google.roboto")
 ```
 
-### Fatih Color Usage
-For commands that use `github.com/fatih/color`, use these equivalents:
-- **Red**: `color.New(color.FgRed).SprintFunc()` → #f38ba8
-- **Green**: `color.New(color.FgGreen).SprintFunc()` → #a6e3a1
-- **Yellow**: `color.New(color.FgYellow).SprintFunc()` → #f9e2af
-- **Cyan**: `color.New(color.FgCyan).SprintFunc()` → #89dceb
+### Status Report Styling
+
+Status reports use a specific pattern where only the status word is colored:
+
+```go
+// Instead of coloring the entire message
+msg := fmt.Sprintf("  - \"%s\" (%s to %s scope)", 
+    fontDisplayName, 
+    ui.FeedbackSuccess.Render("Installed"), 
+    scope)
+fmt.Println(ui.ContentText.Render(msg))
+```
+
+This creates:
+- **Font name and description** → Normal text color
+- **Status word "(Installed)"** → Green
+- **Status word "(Skipped)"** → Peach
+- **Status word "(Failed)"** → Red
+
+## Color Hierarchy
+
+### Primary Visual Elements
+1. **Page Titles** - Mauve (#cba6f7) with background
+2. **Source Names** - Yellow (#f9e2af) - most prominent content
+3. **Field Labels** - Yellow (#f9e2af) - form labels
+4. **Status Words** - Green/Peach/Red based on status
+5. **Primary Text** - Adaptive text color for terminal compatibility
+
+### Status Colors
+- **Success** - Green (#a6e3a1) with bold
+- **Warning** - Peach (#fab387) with bold
+- **Error** - Red (#f38ba8) with bold
+- **Info** - Mauve (#cba6f7) with bold
+
+### Background Usage
+- **Page Titles** - Surface 0 (#313244) background
+- **Command Keys** - Surface 0 (#313244) background
+- **Selected Rows** - Surface 0 (#313244) background
+- **Regular Content** - No background (terminal default)
+
+## Adaptive Colors
+
+Several styles use `lipgloss.AdaptiveColor` for better terminal compatibility:
+
+- **ContentText** - Adapts to light/dark terminals
+- **TableHeader** - Adapts to light/dark terminals
+- **TableRow** - Adapts to light/dark terminals
+- **FormInput** - Adapts to light/dark terminals
 
 ## Usage Guidelines
 
-### Text Hierarchy
-1. **Titles**: Mauve (#cba6f7) with Surface 0 background
-2. **Source Names**: Yellow (#f9e2af) - most prominent content
-3. **Field Labels**: Yellow (#f9e2af) - form labels
-4. **Primary Text**: Text (#cdd6f4) - regular content
-5. **Help Text**: Text (#cdd6f4) - descriptive text
-6. **Command Keys**: Subtext 1 (#bac2de) - key bindings
-7. **Tags**: Custom Gray (#8c8c8c) for built-in, Text (#cdd6f4) for custom
+1. **Consistency** - Use the same style category for similar elements
+2. **Hierarchy** - Page titles > Source names > Field labels > Regular text
+3. **Status Clarity** - Only color status words, not entire messages
+4. **Terminal Compatibility** - Use adaptive colors where appropriate
+5. **Accessibility** - Ensure sufficient contrast between text and backgrounds
 
-### Status Messages
-- **Success**: Green (#a6e3a1) with bold
-- **Error**: Red (#f38ba8) with bold
-- **Warning**: Yellow (#f9e2af) with bold
-- **Info**: Blue (#89b4fa)
+## Migration from Old Styles
 
-### Background Usage
-- **Main Background**: Base (#1e1e2e)
-- **Surface Elements**: Surface 0 (#313244) for titles and key backgrounds
-- **Selection**: #3C3C3C for selected list items
+The old style names have been updated to the new categorization:
 
-## Implementation Notes
-
-- Use Lipgloss for TUI components and Bubble Tea interfaces
-- Use Fatih Color for CLI output and terminal text
-- Ensure sufficient contrast between text and backgrounds
-- Maintain consistency across all FontGet commands
-- Test color combinations for accessibility
-
-## Examples
-
-### Source List Item
-```
-> [x] FontSquirrel [Built-in]
-```
-- `>`: Default terminal color
-- `[x]`: Default terminal color
-- `FontSquirrel`: Yellow (#f9e2af)
-- `[Built-in]`: Custom Gray (#8c8c8c)
-
-### Form Field
-```
-> Name: FontSquirrel
-```
-- `>`: Default terminal color
-- `Name:`: Yellow (#f9e2af), bold
-- `FontSquirrel`: Input field (default)
-
-### Error Message
-```
-Error: Source with this name already exists
-```
-- `Error:`: Red (#f38ba8), bold
-- Rest: Default terminal color
+| Old Name | New Name | Category |
+|----------|----------|----------|
+| `Title` | `PageTitle` | Page Structure |
+| `Header` | `TableHeader` | Data Display |
+| `SourceName` | `TableSourceName` | Data Display |
+| `MessageText` | `FeedbackText` | User Feedback |
+| `MessageWarning` | `FeedbackWarning` | User Feedback |
+| `MessageError` | `FeedbackError` | User Feedback |
+| `MessageSuccess` | `FeedbackSuccess` | User Feedback |
+| `ContentSubtitle` | `ReportTitle` | Page Structure |
