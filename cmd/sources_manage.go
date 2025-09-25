@@ -2,32 +2,23 @@ package cmd
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"sort"
 	"strings"
 
 	"fontget/internal/config"
+	"fontget/internal/functions"
+	"fontget/internal/ui"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 )
 
 // SourceItem represents a source in the TUI
-type SourceItem struct {
-	Name      string
-	Prefix    string
-	URL       string
-	Enabled   bool
-	IsBuiltIn bool
-}
+// This type is now defined in internal/functions/sort.go for consistency
 
 // sourcesModel represents the main model for the sources management TUI
 type sourcesModel struct {
-	sources      []SourceItem
+	sources      []functions.SourceItem
 	cursor       int
 	config       *config.SourcesConfig
 	state        string // "list", "add", "edit", "confirm", "save_confirm", "builtin_warning"
@@ -37,36 +28,12 @@ type sourcesModel struct {
 	focusedField int
 	err          string
 	editingIndex int
+	readOnly     bool // true when viewing built-in source details
+	width        int  // terminal width
+	height       int  // terminal height
 }
 
-// Styles for better visual appeal
-var (
-	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("170")).
-			MarginBottom(1)
-
-	commandStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("212"))
-
-	keyStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("170")).
-			Background(lipgloss.Color("236")).
-			Padding(0, 1)
-
-	helpStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("240"))
-
-	errorStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("196")).
-			Bold(true)
-
-	successStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("82")).
-			Bold(true)
-)
+// Styles are now centralized in internal/ui/styles.go
 
 // NewSourcesModel creates a new sources management model
 func NewSourcesModel() (*sourcesModel, error) {
@@ -81,32 +48,31 @@ func NewSourcesModel() (*sourcesModel, error) {
 		focusedField: 0,
 	}
 
-	// Convert config to SourceItem slice
-	for name, source := range sourcesConfig.Sources {
-		sm.sources = append(sm.sources, SourceItem{
-			Name:      name,
-			Prefix:    source.Prefix,
-			URL:       source.Path,
-			Enabled:   source.Enabled,
-			IsBuiltIn: isBuiltInSource(name),
-		})
-	}
+	// Convert config to SourceItem slice using the new utility function
+	sm.sources = functions.ConvertConfigToSourceItems(sourcesConfig, isBuiltInSource)
 
-	// Sort by name for consistent display
-	sort.Slice(sm.sources, func(i, j int) bool {
-		return sm.sources[i].Name < sm.sources[j].Name
-	})
+	// Sort sources using the centralized sorting function
+	functions.SortSources(sm.sources)
 
-	// Initialize text inputs
+	// Initialize text inputs with default width (will be updated on window resize)
 	sm.nameInput = textinput.New()
 	sm.nameInput.Placeholder = "Source name"
+	sm.nameInput.Width = 50
+	sm.nameInput.TextStyle = ui.FormInput
+	sm.nameInput.PlaceholderStyle = ui.FormPlaceholder
 	sm.nameInput.Focus()
 
 	sm.urlInput = textinput.New()
 	sm.urlInput.Placeholder = "https://example.com/fonts.json"
+	sm.urlInput.Width = 50
+	sm.urlInput.TextStyle = ui.FormInput
+	sm.urlInput.PlaceholderStyle = ui.FormPlaceholder
 
 	sm.prefixInput = textinput.New()
 	sm.prefixInput.Placeholder = "prefix"
+	sm.prefixInput.Width = 50
+	sm.prefixInput.TextStyle = ui.FormInput
+	sm.prefixInput.PlaceholderStyle = ui.FormPlaceholder
 
 	return sm, nil
 }
@@ -114,6 +80,14 @@ func NewSourcesModel() (*sourcesModel, error) {
 // isBuiltInSource checks if a source name is a built-in source
 func isBuiltInSource(name string) bool {
 	return config.IsBuiltInSource(name)
+}
+
+// updateInputWidths updates the width of text inputs based on terminal size
+func (m *sourcesModel) updateInputWidths() {
+	width := functions.CalculateInputWidth(m.width)
+	m.nameInput.Width = width
+	m.urlInput.Width = width
+	m.prefixInput.Width = width
 }
 
 // Init initializes the model
@@ -124,6 +98,14 @@ func (m sourcesModel) Init() tea.Cmd {
 // Update handles messages and updates the model
 func (m sourcesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+
+	// Handle window resize
+	if msg, ok := msg.(tea.WindowSizeMsg); ok {
+		m.width = msg.Width
+		m.height = msg.Height
+		m.updateInputWidths()
+		return m, nil
+	}
 
 	switch m.state {
 	case "list":
@@ -146,8 +128,13 @@ func (m sourcesModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
+		case "esc", "ctrl+c":
+			// Check if there are any changes made
+			if m.hasChanges() {
+				m.state = "save_confirm"
+			} else {
+				return m, tea.Quit
+			}
 
 		case "up", "k":
 			if m.cursor > 0 {
@@ -174,27 +161,19 @@ func (m sourcesModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "e":
 			if len(m.sources) > 0 {
-				if m.sources[m.cursor].IsBuiltIn {
-					m.state = "builtin_warning"
-					m.err = "Built-in sources cannot be edited. You can only enable/disable them."
-				} else {
-					m.state = "edit"
-					m.editingIndex = m.cursor
-					m.focusedField = 0
-					m.nameInput.SetValue(m.sources[m.cursor].Name)
-					m.urlInput.SetValue(m.sources[m.cursor].URL)
-					m.prefixInput.SetValue(m.sources[m.cursor].Prefix)
-					m.nameInput.Focus()
-					m.urlInput.Blur()
-					m.prefixInput.Blur()
-					m.err = ""
-				}
-			}
+				m.state = "edit"
+				m.editingIndex = m.cursor
+				m.focusedField = 0
+				m.nameInput.SetValue(m.sources[m.cursor].Name)
+				m.urlInput.SetValue(m.sources[m.cursor].URL)
+				m.prefixInput.SetValue(m.sources[m.cursor].Prefix)
+				m.nameInput.Focus()
+				m.urlInput.Blur()
+				m.prefixInput.Blur()
+				m.err = ""
 
-		case "f":
-			if len(m.sources) > 0 {
-				// Open file manager for editing source file
-				return m, m.openFileManager()
+				// Set read-only mode for built-in sources
+				m.readOnly = m.sources[m.cursor].IsBuiltIn
 			}
 
 		case "d":
@@ -207,21 +186,12 @@ func (m sourcesModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 
-		case "s":
-			m.state = "save_confirm"
-
-		case "esc":
-			m.err = ""
 		}
 
 	case errorMsg:
 		m.err = msg.text
 		return m, nil
 
-	case successMsg:
-		m.err = ""
-		// Could show success message briefly
-		return m, nil
 	}
 
 	return m, nil
@@ -248,7 +218,11 @@ func (m sourcesModel) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateFocus()
 
 		case "enter":
-			if m.validateForm() {
+			if m.readOnly {
+				// In read-only mode, just go back to list
+				m.state = "list"
+				m.resetForm()
+			} else if m.validateForm() {
 				if m.state == "add" {
 					m.addSource()
 				} else {
@@ -263,14 +237,16 @@ func (m sourcesModel) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Update focused input
-	switch m.focusedField {
-	case 0:
-		m.nameInput, cmd = m.nameInput.Update(msg)
-	case 1:
-		m.urlInput, cmd = m.urlInput.Update(msg)
-	case 2:
-		m.prefixInput, cmd = m.prefixInput.Update(msg)
+	// Update focused input (only if not in read-only mode)
+	if !m.readOnly {
+		switch m.focusedField {
+		case 0:
+			m.nameInput, cmd = m.nameInput.Update(msg)
+		case 1:
+			m.prefixInput, cmd = m.prefixInput.Update(msg)
+		case 2:
+			m.urlInput, cmd = m.urlInput.Update(msg)
+		}
 	}
 
 	return m, cmd
@@ -309,8 +285,7 @@ func (m sourcesModel) updateSaveConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "y", "Y":
 			return m, m.saveChanges()
 		case "n", "N", "esc":
-			m.state = "list"
-			m.err = ""
+			return m, tea.Quit
 		case "ctrl+c":
 			return m, tea.Quit
 		}
@@ -339,14 +314,17 @@ func (m *sourcesModel) updateFocus() {
 	m.urlInput.Blur()
 	m.prefixInput.Blur()
 
-	switch m.focusedField {
-	case 0:
-		m.nameInput.Focus()
-	case 1:
-		m.urlInput.Focus()
-	case 2:
-		m.prefixInput.Focus()
+	if !m.readOnly {
+		switch m.focusedField {
+		case 0:
+			m.nameInput.Focus()
+		case 1:
+			m.prefixInput.Focus()
+		case 2:
+			m.urlInput.Focus()
+		}
 	}
+	// In read-only mode, we don't need to focus inputs since they're not editable
 }
 
 // resetForm resets the form inputs
@@ -356,34 +334,81 @@ func (m *sourcesModel) resetForm() {
 	m.prefixInput.SetValue("")
 	m.focusedField = 0
 	m.err = ""
+	m.readOnly = false
 }
 
-// validateForm validates the form inputs
+// hasChanges checks if any changes have been made to the sources
+func (m *sourcesModel) hasChanges() bool {
+	// Load original config to compare
+	originalConfig, err := config.LoadSourcesConfig()
+	if err != nil {
+		return false
+	}
+
+	// Check if number of sources changed
+	if len(m.sources) != len(originalConfig.Sources) {
+		return true
+	}
+
+	// Check if any source properties changed
+	for _, source := range m.sources {
+		if originalSource, exists := originalConfig.Sources[source.Name]; exists {
+			if originalSource.Enabled != source.Enabled ||
+				originalSource.Prefix != source.Prefix ||
+				originalSource.Path != source.URL {
+				return true
+			}
+		} else {
+			// New source added
+			return true
+		}
+	}
+
+	// Check if any original sources were removed
+	for name := range originalConfig.Sources {
+		found := false
+		for _, source := range m.sources {
+			if source.Name == name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return true
+		}
+	}
+
+	return false
+}
+
+// validateForm validates the form inputs using the centralized validation
 func (m *sourcesModel) validateForm() bool {
 	name := strings.TrimSpace(m.nameInput.Value())
 	url := strings.TrimSpace(m.urlInput.Value())
 	prefix := strings.TrimSpace(m.prefixInput.Value())
 
-	if name == "" {
-		m.err = "Name is required"
+	// Convert prefix to lowercase for consistency
+	prefix = strings.ToLower(prefix)
+	m.prefixInput.SetValue(prefix)
+
+	// Convert editingIndex to -1 if not editing
+	editingIndex := -1
+	if m.state == "edit" {
+		editingIndex = m.editingIndex
+	}
+
+	// Use centralized validation
+	result := functions.ValidateSourceForm(name, url, prefix, m.sources, editingIndex)
+
+	if !result.IsValid {
+		m.err = result.GetFirstError()
 		return false
 	}
 
-	if url == "" {
-		m.err = "URL is required"
-		return false
-	}
-
-	// Check for duplicate names (except when editing the same source)
-	for i, source := range m.sources {
-		if source.Name == name && (m.state != "edit" || i != m.editingIndex) {
-			m.err = "Source with this name already exists"
-			return false
-		}
-	}
-
+	// Auto-generate prefix if empty
 	if prefix == "" {
-		m.prefixInput.SetValue(strings.ToLower(name))
+		generatedPrefix := functions.AutoGeneratePrefix(name)
+		m.prefixInput.SetValue(generatedPrefix)
 	}
 
 	return true
@@ -395,11 +420,14 @@ func (m *sourcesModel) addSource() {
 	url := strings.TrimSpace(m.urlInput.Value())
 	prefix := strings.TrimSpace(m.prefixInput.Value())
 
+	// Ensure prefix is always lowercase
+	prefix = strings.ToLower(prefix)
+
 	if prefix == "" {
 		prefix = strings.ToLower(name)
 	}
 
-	newSource := SourceItem{
+	newSource := functions.SourceItem{
 		Name:      name,
 		Prefix:    prefix,
 		URL:       url,
@@ -408,17 +436,10 @@ func (m *sourcesModel) addSource() {
 	}
 
 	m.sources = append(m.sources, newSource)
-	sort.Slice(m.sources, func(i, j int) bool {
-		return m.sources[i].Name < m.sources[j].Name
-	})
+	functions.SortSources(m.sources)
 
-	// Find the new source's position
-	for i, source := range m.sources {
-		if source.Name == name {
-			m.cursor = i
-			break
-		}
-	}
+	// Find the new source's position using the utility function
+	m.cursor = functions.FindSourceIndex(m.sources, name)
 }
 
 // updateSource updates an existing source
@@ -426,6 +447,9 @@ func (m *sourcesModel) updateSource() {
 	name := strings.TrimSpace(m.nameInput.Value())
 	url := strings.TrimSpace(m.urlInput.Value())
 	prefix := strings.TrimSpace(m.prefixInput.Value())
+
+	// Ensure prefix is always lowercase
+	prefix = strings.ToLower(prefix)
 
 	if prefix == "" {
 		prefix = strings.ToLower(name)
@@ -435,18 +459,11 @@ func (m *sourcesModel) updateSource() {
 	m.sources[m.editingIndex].URL = url
 	m.sources[m.editingIndex].Prefix = prefix
 
-	// Re-sort sources
-	sort.Slice(m.sources, func(i, j int) bool {
-		return m.sources[i].Name < m.sources[j].Name
-	})
+	// Re-sort sources using the centralized sorting function
+	functions.SortSources(m.sources)
 
-	// Find the updated source's position
-	for i, source := range m.sources {
-		if source.Name == name {
-			m.cursor = i
-			break
-		}
-	}
+	// Find the updated source's position using the utility function
+	m.cursor = functions.FindSourceIndex(m.sources, name)
 }
 
 // saveChanges saves the configuration
@@ -472,84 +489,8 @@ func (m sourcesModel) saveChanges() tea.Cmd {
 	}
 }
 
-// openFileManager opens the source file in the default editor
-func (m sourcesModel) openFileManager() tea.Cmd {
-	return func() tea.Msg {
-		if len(m.sources) == 0 {
-			return errorMsg{"No sources available"}
-		}
-
-		source := m.sources[m.cursor]
-
-		// Get the sources directory
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return errorMsg{fmt.Sprintf("Failed to get home directory: %v", err)}
-		}
-
-		sourcesDir := filepath.Join(home, ".fontget", "sources")
-		sourceFile := filepath.Join(sourcesDir, source.Prefix+".json")
-
-		// Check if file exists, if not create it
-		if _, err := os.Stat(sourceFile); os.IsNotExist(err) {
-			// Create the directory if it doesn't exist
-			if err := os.MkdirAll(sourcesDir, 0755); err != nil {
-				return errorMsg{fmt.Sprintf("Failed to create sources directory: %v", err)}
-			}
-
-			// Create a basic source file
-			basicContent := fmt.Sprintf(`{
-  "source_info": {
-    "name": "%s",
-    "description": "Font source for %s",
-    "url": "%s",
-    "version": "1.0.0",
-    "last_updated": "2024-01-01T00:00:00Z",
-    "total_fonts": 0
-  },
-  "fonts": {}
-}`, source.Name, source.Name, source.URL)
-
-			if err := os.WriteFile(sourceFile, []byte(basicContent), 0644); err != nil {
-				return errorMsg{fmt.Sprintf("Failed to create source file: %v", err)}
-			}
-		}
-
-		// Try to open with default editor
-		var cmd *exec.Cmd
-		if os.Getenv("EDITOR") != "" {
-			cmd = exec.Command(os.Getenv("EDITOR"), sourceFile)
-		} else {
-			// Try common editors
-			editors := []string{"notepad.exe", "code", "vim", "nano", "emacs"}
-			for _, editor := range editors {
-				if _, err := exec.LookPath(editor); err == nil {
-					cmd = exec.Command(editor, sourceFile)
-					break
-				}
-			}
-		}
-
-		if cmd == nil {
-			return errorMsg{"No editor found. Please set EDITOR environment variable or install a text editor."}
-		}
-
-		// Run the editor
-		if err := cmd.Run(); err != nil {
-			return errorMsg{fmt.Sprintf("Failed to open editor: %v", err)}
-		}
-
-		return successMsg{fmt.Sprintf("Opened %s for editing", sourceFile)}
-	}
-}
-
 // errorMsg represents an error message
 type errorMsg struct {
-	text string
-}
-
-// successMsg represents a success message
-type successMsg struct {
 	text string
 }
 
@@ -573,47 +514,62 @@ func (m sourcesModel) View() string {
 // listView renders the main list view
 func (m sourcesModel) listView() string {
 	if len(m.sources) == 0 {
-		return titleStyle.Render("FontGet Sources Manager") + "\n\nNo sources configured\n\n" +
-			keyStyle.Render("A") + "dd  " + keyStyle.Render("Q") + "uit"
+		return ui.PageTitle.Render("FontGet Sources Manager") + "\n\nNo sources configured\n\n" +
+			ui.CommandKey.Render("A") + "dd  " + ui.CommandKey.Render("Q") + "uit"
 	}
 
-	out := titleStyle.Render("FontGet Sources Manager") + "\n\n"
+	out := ui.PageTitle.Render("FontGet Sources Manager") + "\n\n"
+
+	// Define column widths - simplified structure
+	statusWidth := 6 // For "[x] " or "[ ] "
+	nameWidth := 35  // Source name column (wider to accommodate type)
+
+	// Table rows
 	for i, source := range m.sources {
-		sel := " "
+		cursor := "  "
 		if i == m.cursor {
-			sel = ">"
+			cursor = "> "
 		}
-		check := " "
+
+		checkbox := "[ ]"
 		if source.Enabled {
-			check = "x"
+			checkbox = "[x]"
 		}
 
-		builtIn := ""
-		if source.IsBuiltIn {
-			builtIn = " (built-in)"
+		// Build styled source name with styled tag using the utility function
+		sourceNameWithType := ui.RenderSourceNameWithTag(source.Name, source.IsBuiltIn)
+
+		// Format the row with proper spacing - align with header
+		row := fmt.Sprintf("%s%-*s %-*s",
+			cursor,
+			statusWidth, checkbox,
+			nameWidth, sourceNameWithType)
+
+		// Highlight selected row
+		if i == m.cursor {
+			row = ui.TableSelectedRow.Render(row)
 		}
 
-		out += fmt.Sprintf("%s [%s] %s%s [%s]\n", sel, check, source.Name, builtIn, source.Prefix)
+		out += row + "\n"
 	}
 
 	out += "\n"
 	if m.err != "" {
-		out += errorStyle.Render("Error: "+m.err) + "\n\n"
+		out += ui.RenderError(m.err) + "\n\n"
 	}
 
-	// Better formatted commands
+	// Better formatted commands using the utility function
 	commands := []string{
-		keyStyle.Render("↑/↓") + " move",
-		keyStyle.Render("Space/Enter") + " toggle",
-		keyStyle.Render("A") + "dd",
-		keyStyle.Render("E") + "dit",
-		keyStyle.Render("F") + "ile",
-		keyStyle.Render("D") + "elete",
-		keyStyle.Render("S") + "ave & quit",
-		keyStyle.Render("Q") + "uit",
+		ui.RenderKeyWithDescription("↑/↓", "Move"),
+		ui.RenderKeyWithDescription("Space/Enter", "Enable/Disable"),
+		ui.RenderKeyWithDescription("A", "Add"),
+		ui.RenderKeyWithDescription("E", "Edit"),
+		ui.RenderKeyWithDescription("D", "Delete"),
+		ui.RenderKeyWithDescription("Esc", "Exit"),
 	}
 
-	out += helpStyle.Render("Commands: " + strings.Join(commands, "  "))
+	helpText := strings.Join(commands, "  ")
+	out += helpText
 
 	return out
 }
@@ -622,43 +578,127 @@ func (m sourcesModel) listView() string {
 func (m sourcesModel) formView() string {
 	title := "Add New Source"
 	if m.state == "edit" {
-		title = "Edit Source"
+		if m.readOnly {
+			title = "Edit Source (Read-Only)"
+		} else {
+			title = "Edit Source"
+		}
 	}
 
-	out := titleStyle.Render("~ "+title) + "\n\n"
+	out := ui.PageTitle.Render(title) + "\n\n"
 
-	fields := []struct {
+	// Create fields based on mode
+	var fields []struct {
 		label string
-		input textinput.Model
+		value string
 		focus bool
-	}{
-		{"Name:", m.nameInput, m.focusedField == 0},
-		{"URL:", m.urlInput, m.focusedField == 1},
-		{"Prefix:", m.prefixInput, m.focusedField == 2},
+	}
+
+	if m.readOnly && len(m.sources) > m.editingIndex {
+		// Read-only mode: show all fields as static text
+		source := m.sources[m.editingIndex]
+		fields = []struct {
+			label string
+			value string
+			focus bool
+		}{
+			{"Source Name:", source.Name, m.focusedField == 0},
+			{"URL:", source.URL, m.focusedField == 1},
+			{"Prefix:", source.Prefix, m.focusedField == 2},
+		}
+	} else {
+		// Edit mode: show input fields
+		fields = []struct {
+			label string
+			value string
+			focus bool
+		}{
+			{"Name:", m.nameInput.Value(), m.focusedField == 0},
+			{"Prefix:", m.prefixInput.Value(), m.focusedField == 1},
+			{"URL:", m.urlInput.Value(), m.focusedField == 2},
+		}
 	}
 
 	for i, field := range fields {
-		sel := " "
-		if field.focus {
-			sel = ">"
+		// Format the field value
+		var fieldValue string
+		if m.readOnly {
+			// In read-only mode, show as static text
+			fieldValue = ui.FormReadOnly.Render(field.value)
+		} else {
+			// In edit mode, show as input field with custom styling
+			if field.focus {
+				// For the focused field, use the textinput's View() method to get the blinking cursor
+				if i == 0 {
+					fieldValue = m.nameInput.View()
+				} else if i == 1 {
+					fieldValue = m.prefixInput.View()
+				} else if i == 2 {
+					fieldValue = m.urlInput.View()
+				}
+			} else {
+				// For non-focused fields, show the value with custom styling
+				var inputValue string
+				if i == 0 {
+					inputValue = m.nameInput.Value()
+				} else if i == 1 {
+					inputValue = m.prefixInput.Value()
+				} else if i == 2 {
+					inputValue = m.urlInput.Value()
+				}
+
+				// Apply custom styling to the input value
+				if inputValue == "" {
+					// Show placeholder with placeholder styling
+					var placeholder string
+					if i == 0 {
+						placeholder = m.nameInput.Placeholder
+					} else if i == 1 {
+						placeholder = m.prefixInput.Placeholder
+					} else if i == 2 {
+						placeholder = m.urlInput.Placeholder
+					}
+					fieldValue = ui.FormPlaceholder.Render(placeholder)
+				} else {
+					// Show actual input value with form input styling
+					fieldValue = ui.FormInput.Render(inputValue)
+				}
+			}
 		}
-		out += fmt.Sprintf("%s %s %s\n", sel, field.label, field.input.View())
+
+		// For focused fields, don't add manual cursor since textinput.View() handles it
+		// For non-focused fields, add a space for alignment
+		sel := " "
+		if !field.focus && !m.readOnly {
+			sel = " "
+		}
+
+		styledLabel := ui.FormLabel.Render(field.label)
+		out += fmt.Sprintf("  %s %s %s\n", styledLabel, sel, fieldValue)
 		if i < len(fields)-1 {
 			out += "\n"
 		}
 	}
 
 	if m.err != "" {
-		out += "\n" + errorStyle.Render("Error: "+m.err) + "\n"
+		out += "\n" + ui.RenderError(m.err) + "\n"
 	}
 
 	commands := []string{
-		keyStyle.Render("Tab/Shift+Tab") + " move",
-		keyStyle.Render("Enter") + " submit",
-		keyStyle.Render("Esc") + " cancel",
+		ui.RenderKeyWithDescription("Tab/Shift+Tab", "Move"),
+		ui.RenderKeyWithDescription("Enter", "Submit"),
+		ui.RenderKeyWithDescription("Esc", "Cancel"),
 	}
 
-	out += "\n" + helpStyle.Render("Commands: "+strings.Join(commands, "  "))
+	if m.readOnly {
+		commands = []string{
+			ui.RenderKeyWithDescription("Tab/Shift+Tab", "Move"),
+			ui.RenderKeyWithDescription("Enter/Esc", "Back"),
+		}
+	}
+
+	helpText := strings.Join(commands, "  ")
+	out += "\n" + helpText
 
 	return out
 }
@@ -666,41 +706,44 @@ func (m sourcesModel) formView() string {
 // confirmView renders the delete confirmation
 func (m sourcesModel) confirmView() string {
 	if len(m.sources) == 0 {
-		return errorStyle.Render("No sources to delete")
+		return ui.RenderError("No sources to delete")
 	}
 
 	source := m.sources[m.cursor]
-	out := titleStyle.Render("~ Confirm Deletion") + "\n\n"
-	out += fmt.Sprintf("Are you sure you want to delete '%s'?\nThis action cannot be undone.\n\n", source.Name)
+	out := ui.PageTitle.Render("Confirm Deletion") + "\n\n"
+	styledName := ui.TableSourceName.Render(source.Name)
+	out += fmt.Sprintf("Are you sure you want to delete '%s'?\nThis cannot be undone.\n\n", styledName)
 
 	commands := []string{
-		keyStyle.Render("Y") + " confirm",
-		keyStyle.Render("N") + " cancel",
+		ui.RenderKeyWithDescription("Y", "Yes"),
+		ui.RenderKeyWithDescription("N", "No"),
 	}
-	out += helpStyle.Render("Commands: " + strings.Join(commands, "  "))
+	helpText := strings.Join(commands, "  ")
+	out += helpText
 
 	return out
 }
 
 // saveConfirmView renders the save confirmation
 func (m sourcesModel) saveConfirmView() string {
-	out := titleStyle.Render("~ Save Changes") + "\n\n"
-	out += "Do you want to save your changes before quitting?\n\n"
+	out := ui.PageTitle.Render("Save Changes") + "\n\n"
+	out += "You have unsaved changes. Do you want to save your changes?\n\n"
 
 	commands := []string{
-		keyStyle.Render("Y") + " save and quit",
-		keyStyle.Render("N") + " quit without saving",
+		ui.RenderKeyWithDescription("Y", "Yes"),
+		ui.RenderKeyWithDescription("N", "No"),
 	}
-	out += helpStyle.Render("Commands: " + strings.Join(commands, "  "))
+	helpText := strings.Join(commands, "  ")
+	out += helpText
 
 	return out
 }
 
 // builtinWarningView renders the built-in source warning
 func (m sourcesModel) builtinWarningView() string {
-	out := titleStyle.Render("~ Warning") + "\n\n"
-	out += errorStyle.Render(m.err) + "\n\n"
-	out += helpStyle.Render("Press " + keyStyle.Render("Enter") + " to continue")
+	out := ui.PageTitle.Render("Warning") + "\n\n"
+	out += ui.RenderError(m.err) + "\n\n"
+	out += ui.FeedbackText.Render("Press " + ui.CommandKey.Render("Enter") + " to continue")
 
 	return out
 }
@@ -715,11 +758,9 @@ Navigation:
   ↑/↓ or j/k  - Move cursor
   Space/Enter - Toggle source enabled state
   a           - Add new source
-  e           - Edit selected source (non-built-in only)
-  f           - Edit source file in external editor
+  e           - Edit selected source (view built-in details)
   d           - Delete selected source (non-built-in only)
-  s           - Save changes and quit
-  q           - Quit without saving
+  esc         - Quit (prompts to save if changes made)
 
 usage: fontget sources manage`,
 	Args:         cobra.NoArgs,

@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"fontget/internal/config"
 	"fontget/internal/repo"
+	"fontget/internal/ui"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -30,8 +31,7 @@ var searchCmd = &cobra.Command{
 
 		// Validate query
 		if query == "" && category == "" {
-			red := color.New(color.FgRed).SprintFunc()
-			fmt.Printf("\n%s\n\n", red("Either a search query or category is required"))
+			fmt.Printf("\n%s\n\n", ui.RenderError("Either a search query or category is required"))
 			return cmd.Help()
 		}
 		return nil
@@ -62,19 +62,19 @@ var searchCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font search operation")
 
-		// Double check args to prevent panic
+		// Get arguments (already validated by Args function)
 		category, _ := cmd.Flags().GetString("category")
 		var query string
 		if len(args) > 0 {
 			query = args[0]
 		}
-		if query == "" && category == "" {
-			return nil // Args validator will have already shown the help
-		}
 
 		GetLogger().Info("Search parameters - Query: %s, Category: %s", query, category)
 
-		// Get repository
+		// Print styled title first
+		fmt.Printf("\n%s\n", ui.PageTitle.Render("Font Search Results"))
+
+		// Get repository (handles source updates internally with spinner if needed)
 		r, err := repo.GetRepository()
 		if err != nil {
 			GetLogger().Error("Failed to initialize repository: %v", err)
@@ -87,17 +87,12 @@ var searchCmd = &cobra.Command{
 			GetLogger().Error("Failed to search fonts: %v", err)
 			return fmt.Errorf("failed to search fonts: %w", err)
 		}
-
-		// Print results in a table format
-		yellow := color.New(color.FgYellow, color.Bold).SprintFunc()
-		cyan := color.New(color.FgCyan).SprintFunc()
-
-		// Print search summary
-		fmt.Printf("\nFound %d fonts matching '%s'", len(results), yellow(query))
+		fmt.Printf("\nFound %d fonts matching '%s'", len(results), ui.TableSourceName.Render(query))
+		fmt.Println()
 		if category != "" {
-			fmt.Printf(" in category '%s'", yellow(category))
+			fmt.Printf(" in category '%s'", ui.TableSourceName.Render(category))
 		}
-		fmt.Println("\n")
+		fmt.Println()
 
 		// Define column widths (match list command style)
 		columns := map[string]int{
@@ -108,15 +103,15 @@ var searchCmd = &cobra.Command{
 			"Source":     12, // For source name
 		}
 
-		// Print header (plain, no color)
+		// Print header with mauve color
 		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
 			columns["Name"], "Name",
 			columns["ID"], "ID",
 			columns["License"], "License",
 			columns["Categories"], "Categories",
 			columns["Source"], "Source")
-		fmt.Println(header)
-		fmt.Println(strings.Repeat("-", len(header)))
+		fmt.Println(ui.TableHeader.Render(header))
+		fmt.Println(ui.FeedbackText.Render(strings.Repeat("-", len(header))))
 
 		for _, result := range results {
 			// Format categories
@@ -150,35 +145,21 @@ var searchCmd = &cobra.Command{
 
 			// Print row: pad first, then apply color only to font name (like list command)
 			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-				yellow(fmt.Sprintf("%-*s", columns["Name"], name)),
+				ui.TableSourceName.Render(fmt.Sprintf("%-*s", columns["Name"], name)),
 				columns["ID"], id,
 				columns["License"], license,
 				columns["Categories"], categories,
 				columns["Source"], result.SourceName)
 		}
 
-		// Print manifest info with colors
-		manifest, err := r.GetManifest()
-		if err != nil {
-			GetLogger().Error("Failed to get manifest: %v", err)
-			return fmt.Errorf("failed to get manifest: %w", err)
+		// Show when FontGet last updated sources
+		if lastUpdated, err := config.GetSourcesLastUpdated(); err == nil && !lastUpdated.IsZero() {
+			fmt.Printf("\n%s: %s\n", ui.FeedbackText.Render("Sources Last Updated"), lastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
 		}
-
-		fmt.Printf("\n%s: %s\n", cyan("Manifest last updated"), manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
-		fmt.Printf("%s: %d\n\n", cyan("Total fonts available"), countTotalFonts(manifest))
 
 		GetLogger().Info("Font search operation completed successfully")
 		return nil
 	},
-}
-
-// countTotalFonts counts the total number of fonts in the manifest
-func countTotalFonts(manifest *repo.FontManifest) int {
-	total := 0
-	for _, source := range manifest.Sources {
-		total += len(source.Fonts)
-	}
-	return total
 }
 
 func init() {

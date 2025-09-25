@@ -134,15 +134,16 @@ func (r *FontRepository) DownloadFont(filePath string) (io.ReadCloser, error) {
 }
 
 // Font represents a font file from the Google Fonts repository
-type Font struct {
+type FontFile struct {
 	Name        string
+	Variant     string
 	Path        string
 	SHA         string
 	DownloadURL string
 }
 
 // DownloadFont downloads a font file and verifies its SHA-256 hash if available
-func DownloadFont(font *Font, targetDir string) (string, error) {
+func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create target directory: %w", err)
@@ -168,7 +169,7 @@ func DownloadFont(font *Font, targetDir string) (string, error) {
 	}
 
 	// Create target file
-	targetPath := filepath.Join(targetDir, font.Name)
+	targetPath := filepath.Join(targetDir, font.Path)
 	file, err := os.Create(targetPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create file: %w", err)
@@ -202,8 +203,125 @@ func DownloadFont(font *Font, targetDir string) (string, error) {
 	return targetPath, nil
 }
 
+// FontMatch represents a font match with source information
+type FontMatch struct {
+	ID       string
+	Name     string
+	Source   string
+	FontInfo FontInfo
+}
+
+// FindFontMatches finds all fonts matching the given name across all sources
+func FindFontMatches(fontName string) ([]FontMatch, error) {
+	// Get repository (same as search command)
+	r, err := GetRepository()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repository: %w", err)
+	}
+	manifest := r.manifest
+
+	// Normalize font name for comparison
+	fontName = strings.ToLower(fontName)
+	fontNameNoSpaces := strings.ReplaceAll(fontName, " ", "")
+
+	var matches []FontMatch
+
+	// Search through all sources
+	for sourceName, source := range manifest.Sources {
+		for id, font := range source.Fonts {
+			// Check both the font name and ID with case-insensitive comparison
+			fontNameLower := strings.ToLower(font.Name)
+			idLower := strings.ToLower(id)
+			fontNameNoSpacesLower := strings.ReplaceAll(fontNameLower, " ", "")
+			idNoSpacesLower := strings.ReplaceAll(idLower, " ", "")
+
+			// Check for exact match
+			if fontNameLower == fontName ||
+				fontNameNoSpacesLower == fontNameNoSpaces ||
+				idLower == fontName ||
+				idNoSpacesLower == fontNameNoSpaces {
+				matches = append(matches, FontMatch{
+					ID:       id,
+					Name:     font.Name,
+					Source:   sourceName,
+					FontInfo: font,
+				})
+			}
+		}
+	}
+
+	return matches, nil
+}
+
+// GetFontByID retrieves font information using a specific font ID (e.g., "google.roboto")
+func GetFontByID(fontID string) ([]FontFile, error) {
+	// Get repository (same as FindFontMatches)
+	r, err := GetRepository()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get repository: %w", err)
+	}
+	manifest := r.manifest
+
+	// Search through all sources for the specific ID
+	for _, source := range manifest.Sources {
+		if font, exists := source.Fonts[fontID]; exists {
+			return convertFontInfoToFontFiles(font, fontID)
+		}
+	}
+
+	return nil, fmt.Errorf("font not found: %s", fontID)
+}
+
+// convertFontInfoToFontFiles converts FontInfo to []FontFile
+func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error) {
+	var fonts []FontFile
+
+	// Process each variant using the preserved variant-file mapping
+	for _, variantName := range font.Variants {
+		var downloadURL string
+
+		// Use variant-specific files if available
+		if font.VariantFiles != nil {
+			if variantFiles, exists := font.VariantFiles[variantName]; exists {
+				for fileType, url := range variantFiles {
+					if (fileType == "ttf" || fileType == "otf") && strings.HasSuffix(url, "."+fileType) {
+						downloadURL = url
+						break
+					}
+				}
+			}
+		}
+
+		// Fallback to general files if variant-specific not found
+		if downloadURL == "" {
+			for fileType, url := range font.Files {
+				if (fileType == "ttf" || fileType == "otf") && strings.HasSuffix(url, "."+fileType) {
+					downloadURL = url
+					break
+				}
+			}
+		}
+
+		if downloadURL != "" {
+			fileName := createFontFileName(font.Name, variantName, downloadURL)
+			fonts = append(fonts, FontFile{
+				Name:        font.Name,
+				Variant:     variantName,
+				Path:        fileName,
+				DownloadURL: downloadURL,
+			})
+		}
+	}
+
+	if len(fonts) == 0 {
+		return nil, fmt.Errorf("no valid font files found for %s", fontID)
+	}
+
+	return fonts, nil
+}
+
 // GetFont retrieves font information from the manifest
-func GetFont(fontName string) ([]Font, error) {
+func GetFont(fontName string) ([]FontFile, error) {
 	// Get manifest
 	manifest, err := GetManifest(nil, nil)
 	if err != nil {
@@ -214,7 +332,7 @@ func GetFont(fontName string) ([]Font, error) {
 	fontName = strings.ToLower(fontName)
 	fontNameNoSpaces := strings.ReplaceAll(fontName, " ", "")
 
-	var fonts []Font
+	var fonts []FontFile
 	found := false
 
 	// First try exact matches
@@ -230,17 +348,40 @@ func GetFont(fontName string) ([]Font, error) {
 			if fontNameLower == fontName || idLower == fontName ||
 				fontNameNoSpacesLower == fontNameNoSpaces || idNoSpacesLower == fontNameNoSpaces {
 				found = true
-				// Process each file in the font
-				for _, url := range font.Files {
-					// Only process TTF and OTF files
-					if strings.HasSuffix(url, ".ttf") || strings.HasSuffix(url, ".otf") {
-						// Extract the file name from the URL
-						fileName := filepath.Base(url)
 
-						fonts = append(fonts, Font{
-							Name:        fileName,
+				// Process each variant using the preserved variant-file mapping
+				for _, variantName := range font.Variants {
+					var downloadURL string
+
+					// Use variant-specific files if available
+					if font.VariantFiles != nil {
+						if variantFiles, exists := font.VariantFiles[variantName]; exists {
+							for fileType, url := range variantFiles {
+								if (fileType == "ttf" || fileType == "otf") && strings.HasSuffix(url, "."+fileType) {
+									downloadURL = url
+									break
+								}
+							}
+						}
+					}
+
+					// Fallback to general files if variant-specific not found
+					if downloadURL == "" {
+						for fileType, url := range font.Files {
+							if (fileType == "ttf" || fileType == "otf") && strings.HasSuffix(url, "."+fileType) {
+								downloadURL = url
+								break
+							}
+						}
+					}
+
+					if downloadURL != "" {
+						fileName := createFontFileName(font.Name, variantName, downloadURL)
+						fonts = append(fonts, FontFile{
+							Name:        font.Name,
+							Variant:     variantName,
 							Path:        fileName,
-							DownloadURL: url,
+							DownloadURL: downloadURL,
 						})
 					}
 				}
@@ -253,6 +394,42 @@ func GetFont(fontName string) ([]Font, error) {
 	}
 
 	return fonts, nil
+}
+
+// createFontFileName creates a proper filename for a font file
+func createFontFileName(fontName, variant, url string) string {
+	// Get the file extension from the URL or default to .ttf
+	ext := filepath.Ext(url)
+	if ext == "" {
+		ext = ".ttf"
+	}
+
+	// Clean the font name for use in filename
+	cleanName := strings.ReplaceAll(fontName, " ", "")
+	cleanName = strings.ReplaceAll(cleanName, "-", "")
+	cleanName = strings.ReplaceAll(cleanName, "_", "")
+
+	// Clean the variant name for use in filename
+	cleanVariant := strings.ReplaceAll(variant, " ", "")
+	cleanVariant = strings.ReplaceAll(cleanVariant, "-", "")
+	cleanVariant = strings.ReplaceAll(cleanVariant, "_", "")
+
+	// Remove the font name from the variant if it's duplicated
+	// e.g., "RobotoBlack" -> "Black"
+	if strings.HasPrefix(strings.ToLower(cleanVariant), strings.ToLower(cleanName)) {
+		cleanVariant = cleanVariant[len(cleanName):]
+	}
+
+	// Capitalize first letter of variant
+	if len(cleanVariant) > 0 {
+		cleanVariant = strings.ToUpper(cleanVariant[:1]) + cleanVariant[1:]
+	}
+
+	// Combine name and variant
+	if cleanVariant != "" && cleanVariant != "Regular" {
+		return cleanName + "-" + cleanVariant + ext
+	}
+	return cleanName + ext
 }
 
 // isFontFile checks if a file is a font file
@@ -344,6 +521,60 @@ func GetAllFonts() []string {
 		}
 	}
 
-	fmt.Printf("Found %d fonts in manifest\n", len(allFonts))
+	// Removed "Found X fonts in manifest" message for cleaner output
+	return allFonts
+}
+
+// GetAllFontsCached returns a list of all fonts from the cached manifest (fast)
+func GetAllFontsCached() []string {
+	// Get cached manifest for speed
+	manifest, err := GetCachedManifest()
+	if err != nil {
+		// If no cache available, return empty list
+		return nil
+	}
+
+	if manifest == nil || manifest.Sources == nil {
+		return nil
+	}
+
+	// Collect all font names from the manifest
+	var allFonts []string
+	seen := make(map[string]bool) // Track unique font names
+
+	for _, source := range manifest.Sources {
+		if source.Fonts == nil {
+			continue
+		}
+		for id, font := range source.Fonts {
+			// Use the font name if available, otherwise use the ID
+			name := font.Name
+			if name == "" {
+				name = id
+			}
+
+			// Add the font name if we haven't seen it before
+			if !seen[name] {
+				allFonts = append(allFonts, name)
+				seen[name] = true
+			}
+
+			// Add the ID if it's different from the name and we haven't seen it
+			if name != id && !seen[id] {
+				allFonts = append(allFonts, id)
+				seen[id] = true
+			}
+
+			// Add a space-removed version of the name if it contains spaces
+			if strings.Contains(name, " ") {
+				noSpaces := strings.ReplaceAll(name, " ", "")
+				if !seen[noSpaces] {
+					allFonts = append(allFonts, noSpaces)
+					seen[noSpaces] = true
+				}
+			}
+		}
+	}
+
 	return allFonts
 }

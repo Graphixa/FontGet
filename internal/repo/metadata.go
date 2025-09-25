@@ -41,9 +41,19 @@ func parseMetadataPB(data []byte) (*FontMetadata, error) {
 		// Read field value based on wire type
 		switch wireType {
 		case 0: // Varint
-			value, err := binary.ReadUvarint(reader)
+			_, err := binary.ReadUvarint(reader)
 			if err != nil {
 				return nil, fmt.Errorf("failed to read varint: %w", err)
+			}
+			// Skip varint fields - string fields should be length-delimited
+		case 2: // Length-delimited
+			length, err := binary.ReadUvarint(reader)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read length: %w", err)
+			}
+			value := make([]byte, length)
+			if _, err := io.ReadFull(reader, value); err != nil {
+				return nil, fmt.Errorf("failed to read value: %w", err)
 			}
 			// Handle field based on field number
 			switch fieldNumber {
@@ -61,18 +71,6 @@ func parseMetadataPB(data []byte) (*FontMetadata, error) {
 				metadata.Version = string(value)
 			case 7: // description
 				metadata.Description = string(value)
-			}
-		case 2: // Length-delimited
-			length, err := binary.ReadUvarint(reader)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read length: %w", err)
-			}
-			value := make([]byte, length)
-			if _, err := io.ReadFull(reader, value); err != nil {
-				return nil, fmt.Errorf("failed to read value: %w", err)
-			}
-			// Handle field based on field number
-			switch fieldNumber {
 			case 8: // subsets
 				metadata.Subsets = append(metadata.Subsets, string(value))
 			case 9: // variants

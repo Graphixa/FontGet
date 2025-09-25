@@ -308,51 +308,15 @@ func (m *windowsFontManager) addFontToRegistry(fontName, fontPath string) error 
 	logger := logging.GetLogger()
 	logger.Debug("Adding font to registry: %s (path: %s)", fontName, fontPath)
 
-	// Open the registry key
-	var key syscall.Handle
-	ret, _, err := regCreateKeyEx.Call(
-		uintptr(HKEY_LOCAL_MACHINE),
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"))),
-		0,
-		0,
-		0,
-		uintptr(KEY_WRITE),
-		0,
-		uintptr(unsafe.Pointer(&key)),
-		0,
-	)
-	if ret != 0 {
-		logger.Error("Failed to open registry key for font %s: %v", fontName, err)
+	key, err := m.openFontRegistryKey()
+	if err != nil {
 		return fmt.Errorf("failed to open registry key: %w", err)
 	}
 	defer regCloseKey.Call(uintptr(key))
-	logger.Debug("Registry key opened successfully")
 
-	// Set the font value
 	valueName := fontName + " (TrueType)"
-	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
-	if err != nil {
-		logger.Error("Failed to convert value name to UTF16 for font %s: %v", fontName, err)
-		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
-	}
-
-	fontPathPtr, err := syscall.UTF16PtrFromString(fontPath)
-	if err != nil {
-		logger.Error("Failed to convert font path to UTF16 for font %s: %v", fontName, err)
-		return fmt.Errorf("failed to convert font path to UTF16: %w", err)
-	}
-
-	ret, _, err = regSetValueEx.Call(
-		uintptr(key),
-		uintptr(unsafe.Pointer(valueNamePtr)),
-		0,
-		uintptr(REG_SZ),
-		uintptr(unsafe.Pointer(fontPathPtr)),
-		uintptr((len(fontPath)+1)*2),
-	)
-	if ret != 0 {
-		logger.Error("Failed to set registry value for font %s: %v", fontName, err)
-		return fmt.Errorf("failed to set registry value: %w", err)
+	if err := m.setRegistryValue(key, valueName, fontPath); err != nil {
+		return fmt.Errorf("failed to set registry value for font %s: %w", fontName, err)
 	}
 
 	logger.Debug("Font added to registry successfully: %s", fontName)
@@ -364,7 +328,24 @@ func (m *windowsFontManager) removeFontFromRegistry(fontName string) error {
 	logger := logging.GetLogger()
 	logger.Debug("Removing font from registry: %s", fontName)
 
-	// Open the registry key
+	key, err := m.openFontRegistryKey()
+	if err != nil {
+		return fmt.Errorf("failed to open registry key: %w", err)
+	}
+	defer regCloseKey.Call(uintptr(key))
+
+	valueName := fontName + " (TrueType)"
+	if err := m.deleteRegistryValue(key, valueName); err != nil {
+		return fmt.Errorf("failed to delete registry value for font %s: %w", fontName, err)
+	}
+
+	logger.Debug("Font removed from registry successfully")
+	return nil
+}
+
+// openFontRegistryKey opens the Windows font registry key for writing
+func (m *windowsFontManager) openFontRegistryKey() (syscall.Handle, error) {
+	logger := logging.GetLogger()
 	var key syscall.Handle
 	ret, _, err := regCreateKeyEx.Call(
 		uintptr(HKEY_LOCAL_MACHINE),
@@ -378,27 +359,63 @@ func (m *windowsFontManager) removeFontFromRegistry(fontName string) error {
 		0,
 	)
 	if ret != 0 {
-		return fmt.Errorf("failed to open registry key: %w", err)
+		logger.Error("Failed to open registry key: %v", err)
+		return 0, fmt.Errorf("failed to open registry key: %w", err)
 	}
-	defer regCloseKey.Call(uintptr(key))
+	logger.Debug("Registry key opened successfully")
+	return key, nil
+}
 
-	// Delete the font value using RegDeleteValueW
-	valueName := fontName + " (TrueType)"
+// setRegistryValue sets a registry value with proper error handling
+func (m *windowsFontManager) setRegistryValue(key syscall.Handle, valueName, value string) error {
+	logger := logging.GetLogger()
+
 	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
 	if err != nil {
+		logger.Error("Failed to convert value name to UTF16: %v", err)
+		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
+	}
+
+	valuePtr, err := syscall.UTF16PtrFromString(value)
+	if err != nil {
+		logger.Error("Failed to convert value to UTF16: %v", err)
+		return fmt.Errorf("failed to convert value to UTF16: %w", err)
+	}
+
+	ret, _, err := regSetValueEx.Call(
+		uintptr(key),
+		uintptr(unsafe.Pointer(valueNamePtr)),
+		0,
+		uintptr(REG_SZ),
+		uintptr(unsafe.Pointer(valuePtr)),
+		uintptr((len(value)+1)*2),
+	)
+	if ret != 0 {
+		logger.Error("Failed to set registry value: %v", err)
+		return fmt.Errorf("failed to set registry value: %w", err)
+	}
+	return nil
+}
+
+// deleteRegistryValue deletes a registry value with proper error handling
+func (m *windowsFontManager) deleteRegistryValue(key syscall.Handle, valueName string) error {
+	logger := logging.GetLogger()
+
+	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
+	if err != nil {
+		logger.Error("Failed to convert value name to UTF16: %v", err)
 		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
 	}
 
 	regDeleteValue := syscall.NewLazyDLL("advapi32.dll").NewProc("RegDeleteValueW")
-	ret, _, err = regDeleteValue.Call(
+	ret, _, err := regDeleteValue.Call(
 		uintptr(key),
 		uintptr(unsafe.Pointer(valueNamePtr)),
 	)
 	if ret != 0 {
+		logger.Error("Failed to delete registry value: %v", err)
 		return fmt.Errorf("failed to delete registry value: %w", err)
 	}
-
-	logger.Debug("Font removed from registry successfully")
 	return nil
 }
 

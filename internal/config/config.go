@@ -11,8 +11,9 @@ import (
 
 // UserConfig represents the user's configuration
 type UserConfig struct {
-	FirstRunCompleted bool                    `json:"first_run_completed"`
-	AcceptedSources   map[string]SourceAccept `json:"accepted_sources"`
+	FirstRunCompleted  bool                    `json:"first_run_completed"`
+	AcceptedSources    map[string]SourceAccept `json:"accepted_sources"`
+	SourcesLastUpdated time.Time               `json:"sources_last_updated,omitempty"`
 }
 
 // SourceAccept represents acceptance of a font source
@@ -162,4 +163,41 @@ func IsSourceAccepted(sourceName string) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// UpdateSourcesLastUpdated updates the timestamp when sources were last updated
+func UpdateSourcesLastUpdated() error {
+	config, err := LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	config.SourcesLastUpdated = time.Now()
+	return SaveConfig(config)
+}
+
+// GetSourcesLastUpdated returns when sources were last updated
+func GetSourcesLastUpdated() (time.Time, error) {
+	config, err := LoadConfig()
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return config.SourcesLastUpdated, nil
+}
+
+// ShouldRefreshSources checks if sources should be refreshed (>24 hours old)
+func ShouldRefreshSources() (bool, error) {
+	lastUpdated, err := GetSourcesLastUpdated()
+	if err != nil {
+		return true, err // If we can't determine, assume we should refresh
+	}
+
+	// If never updated, we should refresh
+	if lastUpdated.IsZero() {
+		return true, nil
+	}
+
+	// Check if more than 24 hours have passed
+	return time.Since(lastUpdated) > 24*time.Hour, nil
 }

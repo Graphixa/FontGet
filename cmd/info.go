@@ -6,8 +6,8 @@ import (
 
 	"fontget/internal/license"
 	"fontget/internal/repo"
+	"fontget/internal/ui"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -20,8 +20,7 @@ var infoCmd = &cobra.Command{
   fontget info "Fira Sans" -m`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			red := color.New(color.FgRed).SprintFunc()
-			fmt.Printf("\n%s\n\n", red("A font ID is required"))
+			fmt.Printf("\n%s\n\n", ui.RenderError("A font ID is required"))
 			return cmd.Help()
 		}
 		return nil
@@ -98,9 +97,8 @@ var infoCmd = &cobra.Command{
 			}
 		}
 		if !found {
-			red := color.New(color.FgRed).SprintFunc()
 			GetLogger().Error("Font '%s' not found", fontID)
-			return fmt.Errorf("%s", red(fmt.Sprintf("Font '%s' not found", fontID)))
+			return fmt.Errorf("%s", ui.RenderError(fmt.Sprintf("Font '%s' not found", fontID)))
 		}
 
 		// If only --license is set, just cat the license text and return
@@ -139,14 +137,13 @@ var infoCmd = &cobra.Command{
 		}
 
 		// Helper for colored headers
-		coloredHeader := color.New(color.Bold, color.FgCyan).SprintFunc()
 
 		// Print font information
-		fmt.Printf("\n%s %s\n", coloredHeader("Font Name:"), font.Name)
+		fmt.Printf("\n%s %s\n", ui.FormLabel.Render("Font Name:"), font.Name)
 
 		// Always show category as it's a single value
 		if len(font.Categories) > 0 {
-			fmt.Printf("\n%s %s\n", coloredHeader("Category:"), font.Categories[0])
+			fmt.Printf("\n%s %s\n", ui.FormLabel.Render("Category:"), font.Categories[0])
 		}
 
 		if showLicense {
@@ -159,22 +156,22 @@ var infoCmd = &cobra.Command{
 				licenseURL = font.SourceURL + "#license"
 			}
 			if licenseURL != "" {
-				fmt.Printf("\n%s %s - %s\n", coloredHeader("License:"), font.License, licenseURL)
+				fmt.Printf("\n%s %s - %s\n", ui.FormLabel.Render("License:"), font.License, licenseURL)
 			} else {
-				fmt.Printf("\n%s %s\n", coloredHeader("License:"), font.License)
+				fmt.Printf("\n%s %s\n", ui.FormLabel.Render("License:"), font.License)
 			}
 		}
 
 		// Always show files when showing all info
 		if showAll {
-			fmt.Printf("\n%s\n", coloredHeader("Files:"))
+			fmt.Printf("\n%s\n", ui.FormLabel.Render("Files:"))
 			for variant, url := range font.Files {
 				fmt.Printf("  - %s: %s\n", variant, url)
 			}
 		}
 
 		if showMetadata {
-			fmt.Printf("\n%s\n", coloredHeader("Metadata:"))
+			fmt.Printf("\n%s\n", ui.FormLabel.Render("Metadata:"))
 			fmt.Printf(" - Last Modified: %s\n", font.LastModified)
 			if font.Description != "" {
 				fmt.Printf(" - Description: %s\n", font.Description)

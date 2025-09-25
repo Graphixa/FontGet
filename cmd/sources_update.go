@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,11 +11,11 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/repo"
+	"fontget/internal/ui"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/fatih/color"
 )
 
 // updateModel represents the update progress TUI
@@ -31,13 +32,13 @@ type updateModel struct {
 	manifest         *repo.FontManifest
 	verbose          bool
 	initialFontCount int
+	timeout          time.Duration
 }
 
 // updateProgressMsg represents progress update
 type updateProgressMsg struct {
-	source   string
-	progress float64
-	status   string
+	source string
+	status string
 }
 
 // updateCompleteMsg represents completion of a source
@@ -53,33 +54,20 @@ type updateFinishedMsg struct {
 	error    error
 }
 
-// Styles for the update TUI
-var (
-	updateTitleStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("170")).
-				MarginBottom(1)
+// Styles are now centralized in internal/ui/styles.go
 
-	updateSourceStyle = lipgloss.NewStyle().
-				Bold(true).
-				Foreground(lipgloss.Color("212"))
-
-	updateStatusStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("82")).
-				Bold(true)
-
-	updateErrorStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("196")).
-				Bold(true)
-
-	updateWarningStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("214")).
-				Bold(true)
-
-	updateSummaryStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("240")).
-				MarginTop(1)
-)
+// createHTTPClient creates a properly configured HTTP client with timeouts
+func createHTTPClient() *http.Client {
+	return &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: 5 * time.Second,
+			IdleConnTimeout:       30 * time.Second,
+			MaxIdleConns:          10,
+			MaxIdleConnsPerHost:   2,
+		},
+	}
+}
 
 // NewUpdateModel creates a new update progress model
 func NewUpdateModel(verbose bool) (*updateModel, error) {
@@ -97,7 +85,7 @@ func NewUpdateModel(verbose bool) (*updateModel, error) {
 	// Create spinner
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
-	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#cba6f7")) // Mauve color
 
 	// Skip initial font count calculation for faster startup
 	initialFontCount := 0
@@ -111,6 +99,7 @@ func NewUpdateModel(verbose bool) (*updateModel, error) {
 		startTime:        time.Now(),
 		verbose:          verbose,
 		initialFontCount: initialFontCount,
+		timeout:          60 * time.Second, // 1 minute total timeout
 	}, nil
 }
 
@@ -125,6 +114,13 @@ func (m updateModel) Init() tea.Cmd {
 // Update handles messages and updates the model
 func (m updateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+
+	// Check for timeout
+	if time.Since(m.startTime) > m.timeout {
+		m.errors["system"] = "update timeout exceeded"
+		m.quitting = true
+		return m, tea.Quit
+	}
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -206,27 +202,48 @@ func (m updateModel) updateNextSource() tea.Cmd {
 			}
 		}
 
-		// Create HTTP client with shorter timeout for faster error detection
-		client := &http.Client{
-			Timeout: 5 * time.Second,
-		}
+		// Create HTTP client with proper timeout and context handling
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		client := createHTTPClient()
 
 		// Store verbose info for display in TUI
 		if m.verbose {
 			m.status[source] = fmt.Sprintf("Checking %s...", sourceConfig.Path)
 		}
 
-		// First, check if source is reachable with HEAD request (fast validation)
-		headResp, err := client.Head(sourceConfig.Path)
+		// Create request with context for proper cancellation
+		req, err := http.NewRequestWithContext(ctx, "GET", sourceConfig.Path, nil)
+		if err != nil {
+			return updateCompleteMsg{
+				source: source,
+				status: "Failed",
+				error:  fmt.Errorf("failed to create request: %w", err),
+			}
+		}
+
+		// Add proper headers
+		req.Header.Set("User-Agent", "FontGet/1.0")
+		req.Header.Set("Accept", "application/json")
+
+		// Make the request
+		if m.verbose {
+			m.status[source] = fmt.Sprintf("Downloading from %s...", sourceConfig.Path)
+		}
+
+		resp, err := client.Do(req)
 		if err != nil {
 			// Provide more specific error messages
 			var errorMsg string
-			if strings.Contains(err.Error(), "timeout") {
-				errorMsg = fmt.Sprintf("request timeout after 5 seconds")
+			if ctx.Err() == context.DeadlineExceeded {
+				errorMsg = "request timeout after 10 seconds"
 			} else if strings.Contains(err.Error(), "no such host") {
-				errorMsg = fmt.Sprintf("host not found")
+				errorMsg = "host not found"
 			} else if strings.Contains(err.Error(), "connection refused") {
-				errorMsg = fmt.Sprintf("connection refused")
+				errorMsg = "connection refused"
+			} else if strings.Contains(err.Error(), "timeout") {
+				errorMsg = "connection timeout"
 			} else {
 				errorMsg = fmt.Sprintf("network error: %v", err)
 			}
@@ -234,31 +251,17 @@ func (m updateModel) updateNextSource() tea.Cmd {
 			return updateCompleteMsg{
 				source: source,
 				status: "Failed",
-				error:  fmt.Errorf(errorMsg),
+				error:  fmt.Errorf("%s", errorMsg),
 			}
 		}
-		headResp.Body.Close()
+		defer resp.Body.Close()
 
-		// Check HTTP status code immediately
-		if headResp.StatusCode >= 400 {
+		// Check HTTP status code
+		if resp.StatusCode >= 400 {
 			return updateCompleteMsg{
 				source: source,
 				status: "Failed",
-				error:  fmt.Errorf("source URL returned status %d", headResp.StatusCode),
-			}
-		}
-
-		// Source is reachable, now download the full content
-		if m.verbose {
-			m.status[source] = fmt.Sprintf("Downloading from %s...", sourceConfig.Path)
-		}
-
-		resp, err := client.Get(sourceConfig.Path)
-		if err != nil {
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("failed to download source: %w", err),
+				error:  fmt.Errorf("source URL returned status %d: %s", resp.StatusCode, resp.Status),
 			}
 		}
 
@@ -267,14 +270,23 @@ func (m updateModel) updateNextSource() tea.Cmd {
 			m.status[source] = fmt.Sprintf("Downloaded (%d bytes), validating JSON...", resp.ContentLength)
 		}
 
-		// Read the response body to actually download the content
-		body, err := io.ReadAll(resp.Body)
-		resp.Body.Close() // Close immediately after reading
+		// Read the response body with size limit to prevent memory issues
+		const maxSize = 50 * 1024 * 1024 // 50MB limit
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
 		if err != nil {
 			return updateCompleteMsg{
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("failed to read source content: %w", err),
+			}
+		}
+
+		// Check if we hit the size limit
+		if len(body) == maxSize {
+			return updateCompleteMsg{
+				source: source,
+				status: "Failed",
+				error:  fmt.Errorf("source file too large (max 50MB)"),
 			}
 		}
 
@@ -309,6 +321,10 @@ func (m updateModel) finishUpdate() tea.Cmd {
 	return func() tea.Msg {
 		// Load manifest to get actual font count
 		manifest, err := repo.GetManifest(nil, nil)
+		if err == nil {
+			// Update the sources last updated timestamp
+			config.UpdateSourcesLastUpdated()
+		}
 		return updateFinishedMsg{
 			manifest: manifest,
 			error:    err,
@@ -321,9 +337,8 @@ func (m updateModel) View() string {
 	var content strings.Builder
 
 	// Always show the updating message at the top
-	cyan := color.New(color.FgCyan).SprintFunc()
 	content.WriteString("\n") // Add space above the message
-	content.WriteString(cyan("Updating FontGet Sources"))
+	content.WriteString(ui.PageTitle.Render("Updating FontGet Sources"))
 	content.WriteString("\n\n") // Add space between message and source list
 
 	if m.quitting {
@@ -337,7 +352,7 @@ func (m updateModel) View() string {
 		// Status indicator - clean text-based
 		var indicator string
 		if i < m.currentSource {
-			indicator = updateStatusStyle.Render("✓")
+			indicator = ui.FeedbackSuccess.Render("✓")
 		} else if i == m.currentSource {
 			indicator = m.spinner.View()
 		} else {
@@ -346,7 +361,7 @@ func (m updateModel) View() string {
 
 		// Error indicator
 		if err, hasError := m.errors[source]; hasError {
-			indicator = updateErrorStyle.Render("✗")
+			indicator = ui.FeedbackError.Render("✗")
 			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", indicator, m.getDisplayName(source), err))
 		} else {
 			// Show verbose status if available
@@ -358,9 +373,9 @@ func (m updateModel) View() string {
 		}
 	}
 
-	// Help (inline)
-	content.WriteString("   ")
-	content.WriteString(updateSummaryStyle.Render("Press 'q' to quit"))
+	// Help (inline) - add spacing and use command label style
+	content.WriteString("\n")
+	content.WriteString(ui.CommandLabel.Render("Press 'Q' to Quit"))
 
 	return content.String()
 }
@@ -395,39 +410,35 @@ func (m updateModel) renderSummary() string {
 	}
 
 	// Individual source results first
-	green := color.New(color.FgGreen).SprintFunc()
-	red := color.New(color.FgRed).SprintFunc()
 	for _, source := range m.sources {
 		if err, hasError := m.errors[source]; hasError {
-			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", red("✗"), m.getDisplayName(source), err))
+			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", ui.FeedbackError.Render("✗"), m.getDisplayName(source), err))
 		} else {
 			// Show verbose status if available
 			if m.verbose && m.status[source] != "" {
-				content.WriteString(fmt.Sprintf("   %s %s - %s\n", green("✓"), m.getDisplayName(source), m.status[source]))
+				content.WriteString(fmt.Sprintf("   %s %s - %s\n", ui.FeedbackSuccess.Render("✓"), m.getDisplayName(source), m.status[source]))
 			} else {
-				content.WriteString(fmt.Sprintf("   %s %s\n", green("✓"), m.getDisplayName(source)))
+				content.WriteString(fmt.Sprintf("   %s %s\n", ui.FeedbackSuccess.Render("✓"), m.getDisplayName(source)))
 			}
 		}
 	}
 
 	// Status Report at the bottom like install command
 	content.WriteString("\n")
-	content.WriteString("Status Report")
+	content.WriteString(ui.ReportTitle.Render("Status Report"))
 	content.WriteString("\n")
 	content.WriteString("---------------------------------------------")
 	content.WriteString("\n")
 
 	// Status line with colors like install command
-	yellow := color.New(color.FgYellow).SprintFunc()
 	content.WriteString(fmt.Sprintf("%s: %d  |  %s: %d  |  %s: %d\n",
-		green("Updated"), successful,
-		yellow("Skipped"), 0, // No skipped in update
-		red("Failed"), failed))
+		ui.FeedbackSuccess.Render("Updated"), successful,
+		ui.FeedbackWarning.Render("Skipped"), 0, // No skipped in update
+		ui.FeedbackError.Render("Failed"), failed))
 
-	// Add font count in gray - calculate actual count
-	gray := color.New(color.FgHiBlack).SprintFunc()
+	// Add font count in darker gray - calculate actual count
 	fontCount := m.calculateFontCount()
-	content.WriteString(fmt.Sprintf("\n%s\n\n", gray(fmt.Sprintf("Total fonts available: %d", fontCount))))
+	content.WriteString(fmt.Sprintf("\n%s\n\n", ui.FeedbackText.Render(fmt.Sprintf("Total fonts available: %d", fontCount))))
 
 	return content.String()
 }

@@ -12,6 +12,7 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/repo"
+	"fontget/internal/ui"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -35,7 +36,6 @@ var sourcesInfoCmd = &cobra.Command{
 	Long:         `Display detailed information about the current FontGet sources configuration.`,
 	SilenceUsage: true, // Don't show usage info on errors
 	RunE: func(cmd *cobra.Command, args []string) error {
-		verbose, _ := cmd.Flags().GetBool("verbose")
 		// Get logger after it's been initialized
 		logger := GetLogger()
 		if logger != nil {
@@ -59,47 +59,46 @@ var sourcesInfoCmd = &cobra.Command{
 			return fmt.Errorf("failed to load sources config: %w", err)
 		}
 
-		fmt.Printf("Sources Information:\n")
-		fmt.Printf("  File: %s\n", sourcesPath)
-		fmt.Printf("  Total Sources: %d\n", len(sourcesConfig.Sources))
+		// Get manifest for additional information
+		manifest, err := repo.GetManifest(nil, nil)
+		if err != nil {
+			if logger != nil {
+				logger.Warn("Failed to get manifest: %v", err)
+			}
+		}
+
+		// Use shared color functions for consistency
+		cyan := Cyan
+		green := Green
+		yellow := Yellow
+		red := Red
+		white := White
+
+		fmt.Printf("\n%s\n", Bold("Sources Information"))
+		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("%s: %s\n", cyan("Sources File"), sourcesPath)
+		fmt.Printf("%s: %d\n", cyan("Total Sources"), len(sourcesConfig.Sources))
 
 		enabledSources := config.GetEnabledSourcesInOrder(sourcesConfig)
-		fmt.Printf("  Enabled Sources: %d\n", len(enabledSources))
+		fmt.Printf("%s: %d\n", cyan("Enabled Sources"), len(enabledSources))
+
+		// Show last updated sources date
+		if manifest != nil {
+			fmt.Printf("%s: %s\n", cyan("Last Updated"), manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
+		}
+
+		// Show cache status and size
+		// Note: Cache directory information would be added here when available
 
 		if len(enabledSources) > 0 {
-			fmt.Printf("  Enabled Source List:\n")
-
-			// If verbose mode, validate sources
-			validationErrors := make(map[string]string)
-			if verbose {
-				client := &http.Client{
-					Timeout: 5 * time.Second,
-				}
-
-				for _, name := range enabledSources {
-					if source, exists := config.GetSourceByName(sourcesConfig, name); exists {
-						resp, err := client.Head(source.Path)
-						if err != nil {
-							validationErrors[name] = fmt.Sprintf("Connection error: %v", err)
-						} else {
-							resp.Body.Close()
-							if resp.StatusCode >= 400 {
-								validationErrors[name] = fmt.Sprintf("HTTP %d", resp.StatusCode)
-							}
-						}
-					}
-				}
-			}
+			fmt.Printf("\n%s\n", Bold("Enabled Sources"))
+			fmt.Printf("---------------------------------------------\n")
 
 			for i, name := range enabledSources {
 				if source, exists := config.GetSourceByName(sourcesConfig, name); exists {
-					status := ""
-					if verbose && validationErrors[name] != "" {
-						status = fmt.Sprintf(" (Error: %s)", validationErrors[name])
-					}
-					fmt.Printf("    %d. %s (%s)%s\n", i+1, name, source.Prefix, status)
+					fmt.Printf("  %d. %s %s\n", i+1, green(name), white(fmt.Sprintf("(%s)", source.Prefix)))
 				} else {
-					fmt.Printf("    %d. %s (NOT FOUND)\n", i+1, name)
+					fmt.Printf("  %d. %s %s\n", i+1, red(name), red("(NOT FOUND)"))
 				}
 			}
 		}
@@ -113,27 +112,18 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 
 		if len(disabledSources) > 0 {
-			fmt.Printf("  Disabled Sources: %d\n", len(disabledSources))
+			fmt.Printf("\n%s\n", Bold("Disabled Sources"))
+			fmt.Printf("---------------------------------------------\n")
 			for i, name := range disabledSources {
 				if source, exists := config.GetSourceByName(sourcesConfig, name); exists {
-					fmt.Printf("    %d. %s (%s)\n", i+1, name, source.Prefix)
+					fmt.Printf("  %d. %s %s\n", i+1, yellow(name), white(fmt.Sprintf("(%s)", source.Prefix)))
 				}
 			}
 		}
 
-		return nil
-	},
-}
+		fmt.Printf("\n")
 
-// sourcesListCmd handles listing sources
-var sourcesListCmd = &cobra.Command{
-	Use:          "list",
-	Short:        "List current sources",
-	Long:         `List all configured font sources with their status and details.`,
-	SilenceUsage: true, // Don't show usage info on errors
-	RunE: func(cmd *cobra.Command, args []string) error {
-		verbose, _ := cmd.Flags().GetBool("verbose")
-		return showSourcesTable(verbose)
+		return nil
 	},
 }
 
@@ -309,7 +299,7 @@ func runSourcesUpdateVerbose() error {
 	}
 
 	// Summary with colors like other commands
-	fmt.Printf("Status Report\n")
+	fmt.Printf("%s\n", ui.ReportTitle.Render("Status Report"))
 	fmt.Printf("---------------------------------------------\n")
 
 	white := color.New(color.FgWhite).SprintFunc()
@@ -342,11 +332,6 @@ func runSourcesUpdateVerbose() error {
 	}
 
 	return nil
-}
-
-func init() {
-	sourcesListCmd.Flags().BoolP("verbose", "v", false, "Show detailed information including validation status")
-	sourcesInfoCmd.Flags().BoolP("verbose", "v", false, "Show detailed information including validation status")
 }
 
 // showSourcesTable displays sources in a table format
@@ -567,8 +552,8 @@ func init() {
 	rootCmd.AddCommand(sourcesCmd)
 
 	// Add subcommands
-	sourcesCmd.AddCommand(sourcesListCmd)
 	sourcesCmd.AddCommand(sourcesInfoCmd)
 	sourcesCmd.AddCommand(sourcesUpdateCmd)
+	sourcesCmd.AddCommand(sourcesManageCmd)
 
 }

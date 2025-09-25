@@ -3,14 +3,16 @@ package cmd
 import (
 	"fmt"
 	"fontget/internal/platform"
+	"fontget/internal/ui"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // FontFile represents an installed font file
@@ -61,7 +63,7 @@ func parseFontName(filename string) (family, style string) {
 	// If we have multiple parts, assume the last part is the style
 	// and everything else is the family name
 	family = strings.Join(parts[:len(parts)-1], "-")
-	style = strings.Title(parts[len(parts)-1])
+	style = cases.Title(language.English, cases.NoLower).String(parts[len(parts)-1])
 	return family, style
 }
 
@@ -135,9 +137,6 @@ var listCmd = &cobra.Command{
 
 		GetLogger().Info("List command parameters - Scope: %s, Family: %s, Type: %s", scope, family, fontType)
 
-		// Create color functions for auto-detection messages
-		cyan := color.New(color.FgCyan).SprintFunc()
-
 		// Auto-detect scope if not explicitly provided
 		if scope == "" {
 			isElevated, err := fontManager.IsElevated()
@@ -148,7 +147,7 @@ var listCmd = &cobra.Command{
 			} else if isElevated {
 				scope = "all"
 				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
-				fmt.Println(cyan("Auto-detected administrator privileges - listing from all scopes"))
+				fmt.Println(ui.FormLabel.Render("Auto-detected administrator privileges - listing from all scopes"))
 			} else {
 				scope = "user"
 				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
@@ -262,7 +261,6 @@ var listCmd = &cobra.Command{
 		fmt.Println(strings.Repeat("-", len(header)))
 
 		// Print each family
-		yellowHeader := color.New(color.FgYellow, color.Bold).SprintFunc()
 		for _, family := range familyNames {
 			fonts := families[family]
 
@@ -273,7 +271,7 @@ var listCmd = &cobra.Command{
 
 			// Print family header: only color 'Font Family:' label, not the family name
 			fmt.Printf("%-*s%s %-*s %-*s %-*s %-*s\n",
-				len("Font Family: "), yellowHeader("Font Family: "),
+				len("Font Family: "), ui.FormLabel.Render("Font Family: "),
 				family,
 				columns["Style"], "",
 				columns["Type"], "",

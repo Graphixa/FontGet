@@ -1,9 +1,14 @@
 package main
 
-import "fontget/cmd"
+import (
+	"fmt"
+	"fontget/cmd"
+	"os"
+)
 
 func main() {
 	if err := cmd.Execute(); err != nil {
-		// handle error, e.g. print and exit
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
 	}
 }
