@@ -64,7 +64,7 @@ fontget sources manage # TUI based source manager
 > [!WARNING]  
 > Shell completion is still a work in progress but is planned.
 > 
-For shell completion setup, see our [Shell Completions Guide](docs/shell-completions.md).
+For shell completion setup, see the [Shell Completions Guide](docs/shell-completions.md).
 
 
 ## License
