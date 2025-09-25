@@ -1,110 +1,73 @@
-# fontget
+# FontGet - A tiny, cross-platform font package manager written in Go.
 
-A tiny, cross-platform font package manager written in Go.
+FontGet - A tiny, cross-platform CLI font manager written in Go.
 
-## Installation
+> [!WARNING]  
+> This project is currently under heavy development so expect bugs.
 
-1. Download the latest release for your platform from the [releases page](https://github.com/yourusername/fontget/releases)
-2. Extract the binary to a location in your PATH
-3. Enable shell completions (optional but recommended):
+## Features
 
-### Shell Completions
+- Install fonts from Google Fonts, Nerd Fonts out of the box
+- You can use your own custom sources
+- Cross-platform support (Windows, macOS, Linux)
+- Font management (install, remove, list, search)
+- Import/export font collections (planned)
+- Sources are cached and updated regularly for fast performance
+- Beautiful terminal UI with Catppuccin color scheme
 
-#### PowerShell
+## Testing
+
+Feel free to test FontGet on your platform by building from source:
+
+### Windows
+
 ```powershell
-# Enable completions for current session
-fontget completion powershell | Out-String | Invoke-Expression
-
-# To make it permanent, add to your PowerShell profile:
-Add-Content $PROFILE "fontget completion powershell | Out-String | Invoke-Expression"
+git clone https://github.com/graphixa/fontget.git
+cd fontget
+go build -o fontget.exe
+.\fontget.exe search "roboto"
 ```
 
-#### Bash
+### macOS/Linux:
 ```bash
-# Enable completions for current session
-source <(fontget completion bash)
-
-# To make it permanent, add to your ~/.bashrc:
-echo "source <(fontget completion bash)" >> ~/.bashrc
-```
-
-#### Zsh
-```zsh
-# Enable completions for current session
-source <(fontget completion zsh)
-
-# To make it permanent, add to your ~/.zshrc:
-echo "source <(fontget completion zsh)" >> ~/.zshrc
-```
-
-> Note: For a comprehensive guide on setting up completions in different terminal emulators (Windows Terminal, Kitty, etc.), please refer to our [Terminal Setup Guide](docs/terminal-setup.md).
-
-```bash
-# Using Go
-go install fontget@latest
-
-# Using Homebrew (macOS)
-brew install fontget
-
-# Using winget (Windows)
-winget install fontget
+# Clone the repository
+git clone https://github.com/graphixa/fontget.git
+cd fontget
+go build -o fontget
+./fontget search "roboto"
 ```
 
 ## Usage
 
 ```bash
-# Install a font
-fontget add "open-sans"
+# Search for fonts
+fontget search "noto"
 
-# Remove a font
-fontget remove "open-sans"
+# Install a specific font
+fontget add google.roboto
+
+# Handle multiple font matches
+fontget add roboto  # Shows selection if multiple sources
 
 # List installed fonts
 fontget list
 
-# Search for fonts
-fontget search "noto"
-
-# Import fonts from JSON
-fontget import fonts.json
-
-# Export installed fonts
-fontget export
-fontget export --google  # Export only Google Fonts
+# Remove a font
+fontget remove "roboto"
 
 # Manage repositories
-fontget repo            # List repositories
-fontget repo --update   # Update font index
-fontget repo --add      # Add a repository
-fontget repo --remove   # Remove a repository
-
-# Manage cache
-fontget cache prune     # Clear unused downloads
+fontget sources info
+fontget sources update
+fontget sources manage # TUI based source manager
 ```
 
-## Features
+## Shell Completions
+> [!WARNING]  
+> Shell completion is still a work in progress but is planned.
+> 
+For shell completion setup, see our [Shell Completions Guide](docs/shell-completions.md).
 
-- Install fonts from Google Fonts and other repositories
-- Offline installation support
-- Cross-platform (Windows, macOS, Linux)
-- Font management (install, remove, list)
-- Import/export font collections
-- Cache management
-
-## Development
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/fontget.git
-cd fontget
-
-# Build
-go build -o fontget ./cmd/fontget
-
-# Run tests
-go test ./...
-```
 
 ## License
 
-MIT License 
+MIT License
