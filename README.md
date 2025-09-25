@@ -1,6 +1,5 @@
-# FontGet - A tiny, cross-platform font package manager written in Go.
-
-FontGet - A tiny, cross-platform CLI font manager written in Go.
+# FontGet
+A tiny, cross-platform font package manager written in Go.
 
 > [!WARNING]  
 > This project is currently under heavy development so expect bugs.
