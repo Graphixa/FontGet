@@ -580,6 +580,27 @@ func GetRepository() (*Repository, error) {
 	return &Repository{manifest: manifest}, nil
 }
 
+// GetRepositoryWithRefresh forces a refresh of sources and returns a new Repository instance
+func GetRepositoryWithRefresh() (*Repository, error) {
+	// Force refresh of sources with spinner
+	var manifest *FontManifest
+	err := runSpinner("Updating Sources...", "Sources Updated", func() error {
+		m, e := GetManifest(nil, nil)
+		if e != nil {
+			return e
+		}
+		manifest = m
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Update the timestamp
+	config.UpdateSourcesLastUpdated()
+	return &Repository{manifest: manifest}, nil
+}
+
 // GetManifest returns the current manifest
 func (r *Repository) GetManifest() (*FontManifest, error) {
 	return r.manifest, nil

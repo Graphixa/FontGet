@@ -64,18 +64,26 @@ var searchCmd = &cobra.Command{
 
 		// Get arguments (already validated by Args function)
 		category, _ := cmd.Flags().GetString("category")
+		refresh, _ := cmd.Flags().GetBool("refresh")
 		var query string
 		if len(args) > 0 {
 			query = args[0]
 		}
 
-		GetLogger().Info("Search parameters - Query: %s, Category: %s", query, category)
+		GetLogger().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 
 		// Print styled title first
 		fmt.Printf("\n%s\n", ui.PageTitle.Render("Font Search Results"))
 
 		// Get repository (handles source updates internally with spinner if needed)
-		r, err := repo.GetRepository()
+		var r *repo.Repository
+		var err error
+		if refresh {
+			// Force refresh of font manifest before search
+			r, err = repo.GetRepositoryWithRefresh()
+		} else {
+			r, err = repo.GetRepository()
+		}
 		if err != nil {
 			GetLogger().Error("Failed to initialize repository: %v", err)
 			return fmt.Errorf("failed to initialize repository: %w", err)
@@ -87,12 +95,12 @@ var searchCmd = &cobra.Command{
 			GetLogger().Error("Failed to search fonts: %v", err)
 			return fmt.Errorf("failed to search fonts: %w", err)
 		}
-		fmt.Printf("\nFound %d fonts matching '%s'", len(results), ui.TableSourceName.Render(query))
-		fmt.Println()
+		// Build the search result message
+		searchMsg := fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.TableSourceName.Render(query))
 		if category != "" {
-			fmt.Printf(" in category '%s'", ui.TableSourceName.Render(category))
+			searchMsg += fmt.Sprintf(" | Filtered by category: '%s'", ui.TableSourceName.Render(category))
 		}
-		fmt.Println()
+		fmt.Printf("\n%s\n\n", searchMsg)
 
 		// Define column widths (match list command style)
 		columns := map[string]int{
@@ -165,6 +173,10 @@ var searchCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(searchCmd)
 	searchCmd.Flags().StringP("category", "c", "", "Filter by font category (Sans Serif, Serif, Display, Handwriting, Monospace, Other)")
+
+	// Hidden flag for development/testing only
+	searchCmd.Flags().Bool("refresh", false, "Force refresh of font manifest before search")
+	searchCmd.Flags().MarkHidden("refresh")
 
 	// Register completion for both short and long category flags
 	categories := []string{

@@ -330,23 +330,29 @@ Use --force to override critical system font protection.
 					for _, matchingFont := range matchingFonts {
 						if isCriticalSystemFont(matchingFont) {
 							status.Skipped++
-							msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", matchingFont)
+							msg := fmt.Sprintf("  ✓ \"%s\" (%s)", matchingFont, ui.FeedbackWarning.Render("Skipped - protected system font"))
 							GetLogger().Error("Attempted to remove protected system font: %s", matchingFont)
-							fmt.Println(ui.RenderError(msg))
+							fmt.Println(ui.ContentText.Render(msg))
 							continue
 						}
-						err := fontManager.RemoveFont(matchingFont, scope)
+
+						// Use spinner for removal operation
+						removeMsg := fmt.Sprintf("Removing %s from %s scope...", matchingFont, label)
+						err := runSpinner(removeMsg, "", func() error {
+							return fontManager.RemoveFont(matchingFont, scope)
+						})
+
 						if err != nil {
 							success = false
 							status.Failed++
-							msg := fmt.Sprintf("  - \"%s\" (Failed to remove from %s scope) - %v", matchingFont, label, err)
+							msg := fmt.Sprintf("  ✗ \"%s\" (%s) - %v", matchingFont, ui.FeedbackError.Render("Failed"), err)
 							GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
 							fmt.Println(ui.RenderError(msg))
 						} else {
 							status.Removed++
-							msg := fmt.Sprintf("  - \"%s\" (Removed from %s scope)", matchingFont, label)
+							msg := fmt.Sprintf("  ✓ \"%s\" (%s from %s scope)", matchingFont, ui.FeedbackSuccess.Render("Removed"), label)
 							GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
-							fmt.Println(ui.RenderSuccess(msg))
+							fmt.Println(ui.ContentText.Render(msg))
 						}
 					}
 					if !success {
@@ -435,24 +441,30 @@ Use --force to override critical system font protection.
 				for _, matchingFont := range userFonts {
 					if isCriticalSystemFont(matchingFont) {
 						status.Skipped++
-						msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", matchingFont)
+						msg := fmt.Sprintf("  ✓ \"%s\" (%s)", matchingFont, ui.FeedbackWarning.Render("Skipped - protected system font"))
 						GetLogger().Error("Attempted to remove protected system font: %s", matchingFont)
-						fmt.Println(ui.RenderError(msg))
+						fmt.Println(ui.ContentText.Render(msg))
 						continue
 					}
-					err := fontManager.RemoveFont(matchingFont, platform.UserScope)
+
+					// Use spinner for removal operation
+					removeMsg := fmt.Sprintf("Removing %s from user scope...", matchingFont)
+					err := runSpinner(removeMsg, "", func() error {
+						return fontManager.RemoveFont(matchingFont, platform.UserScope)
+					})
+
 					if err != nil {
 						success = false
 						status.Failed++
-						msg := fmt.Sprintf("  - \"%s\" (Failed to remove from user scope) - %v", matchingFont, err)
+						msg := fmt.Sprintf("  ✗ \"%s\" (%s) - %v", matchingFont, ui.FeedbackError.Render("Failed"), err)
 						GetLogger().Error("Failed to remove font %s from user scope: %v", matchingFont, err)
 						fmt.Println(ui.RenderError(msg))
 					} else {
 						removedInAnyScope = true
 						status.Removed++
-						msg := fmt.Sprintf("  - \"%s\" (Removed from user scope)", matchingFont)
+						msg := fmt.Sprintf("  ✓ \"%s\" (%s from user scope)", matchingFont, ui.FeedbackSuccess.Render("Removed"))
 						GetLogger().Info("Successfully removed font: %s from user scope", matchingFont)
-						fmt.Println(ui.RenderSuccess(msg))
+						fmt.Println(ui.ContentText.Render(msg))
 					}
 				}
 				if !success {
@@ -505,24 +517,30 @@ Use --force to override critical system font protection.
 					for _, matchingFont := range matchingFonts {
 						if isCriticalSystemFont(matchingFont) {
 							status.Skipped++
-							msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", matchingFont)
+							msg := fmt.Sprintf("  ✓ \"%s\" (%s)", matchingFont, ui.FeedbackWarning.Render("Skipped - protected system font"))
 							GetLogger().Error("Attempted to remove protected system font: %s", matchingFont)
-							fmt.Println(ui.RenderError(msg))
+							fmt.Println(ui.ContentText.Render(msg))
 							continue
 						}
-						err := fontManager.RemoveFont(matchingFont, scope)
+
+						// Use spinner for removal operation
+						removeMsg := fmt.Sprintf("Removing %s from %s scope...", matchingFont, label)
+						err := runSpinner(removeMsg, "", func() error {
+							return fontManager.RemoveFont(matchingFont, scope)
+						})
+
 						if err != nil {
 							success = false
 							status.Failed++
-							msg := fmt.Sprintf("  - \"%s\" (Failed to remove from %s scope) - %v", matchingFont, label, err)
+							msg := fmt.Sprintf("  ✗ \"%s\" (%s) - %v", matchingFont, ui.FeedbackError.Render("Failed"), err)
 							GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
 							fmt.Println(ui.RenderError(msg))
 						} else {
 							removedInAnyScope = true
 							status.Removed++
-							msg := fmt.Sprintf("  - \"%s\" (Removed from %s scope)", matchingFont, label)
+							msg := fmt.Sprintf("  ✓ \"%s\" (%s from %s scope)", matchingFont, ui.FeedbackSuccess.Render("Removed"), label)
 							GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
-							fmt.Println(ui.RenderSuccess(msg))
+							fmt.Println(ui.ContentText.Render(msg))
 						}
 					}
 					if !success {

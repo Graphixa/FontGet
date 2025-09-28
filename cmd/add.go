@@ -5,7 +5,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"fontget/internal/config"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
@@ -105,6 +107,57 @@ func formatFontNameWithVariant(fontName, variant string) string {
 		return fmt.Sprintf("%s %s", fontName, cleanVariant)
 	}
 	return fontName
+}
+
+// getFontDisplayName extracts a proper display name from the font file path
+func getFontDisplayName(fontPath, fontName, variant string) string {
+	// Get the base filename without extension
+	baseName := filepath.Base(fontPath)
+	ext := filepath.Ext(baseName)
+	fileName := strings.TrimSuffix(baseName, ext)
+
+	// For Nerd Fonts and similar fonts, use the actual filename
+	// which contains the proper variant information
+	if strings.Contains(fileName, "NerdFont") || strings.Contains(fileName, "Nerd") {
+		// Convert filename to display name
+		// e.g., "HackNerdFontMono-Regular" -> "Hack Nerd Font Mono Regular"
+		displayName := strings.ReplaceAll(fileName, "NerdFont", " Nerd Font ")
+		displayName = strings.ReplaceAll(displayName, "-", " ")
+		displayName = strings.ReplaceAll(displayName, "  ", " ") // Clean up double spaces
+		displayName = strings.TrimSpace(displayName)
+		return displayName
+	}
+
+	// For other fonts, use the original formatting
+	return formatFontNameWithVariant(fontName, variant)
+}
+
+// getSourceName extracts the source name from a font ID (e.g., "google.roboto" -> "Google Fonts")
+func getSourceName(fontID string) string {
+	// Extract source prefix from font ID (e.g., "google.roboto" -> "google")
+	parts := strings.Split(fontID, ".")
+	if len(parts) < 2 {
+		return "Unknown Source"
+	}
+
+	sourcePrefix := parts[0]
+
+	// Load sources configuration to get the display name
+	sourcesConfig, err := config.LoadSourcesConfig()
+	if err != nil {
+		// Fallback to capitalized prefix if we can't load config
+		return strings.Title(sourcePrefix)
+	}
+
+	// Find the source with matching prefix
+	for sourceName, sourceConfig := range sourcesConfig.Sources {
+		if sourceConfig.Prefix == sourcePrefix {
+			return sourceName
+		}
+	}
+
+	// Fallback to capitalized prefix if not found
+	return strings.Title(sourcePrefix)
 }
 
 // findSimilarFonts returns a list of font names that are similar to the given name
@@ -267,11 +320,13 @@ You can specify the installation scope using the --scope flag:
 
 			// Check if this is already a specific font ID (contains a dot like "google.roboto")
 			var fonts []repo.FontFile
+			var sourceName string
 			var err error
 
 			if strings.Contains(fontName, ".") {
 				// This is a specific font ID, use it directly
 				fonts, err = repo.GetFontByID(fontName)
+				sourceName = getSourceName(fontName)
 			} else {
 				// Find all matches across sources
 				matches, matchErr := repo.FindFontMatches(fontName)
@@ -282,6 +337,7 @@ You can specify the installation scope using the --scope flag:
 				} else if len(matches) == 1 {
 					// Single match, proceed normally
 					fonts, err = repo.GetFontByID(matches[0].ID)
+					sourceName = matches[0].Source
 				} else {
 					// Multiple matches - show search results and prompt for specific ID
 					showMultipleMatchesAndExit(fontName, matches)
@@ -299,9 +355,9 @@ You can specify the installation scope using the --scope flag:
 					GetLogger().Info("Found %d similar fonts for %s", len(similar), fontName)
 					fmt.Printf("\n%s\n\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
 					fmt.Printf("%s\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
-					fmt.Printf("\n%s\n", ui.FeedbackText.Render("Suggestions:"))
+
 					for _, s := range similar {
-						fmt.Printf("  - %s\n", ui.TableSourceName.Render(s))
+						fmt.Printf("  - %s\n", ui.FeedbackWarning.Render(s))
 					}
 					fmt.Println() // Add a blank line after suggestions
 				} else {
@@ -317,52 +373,121 @@ You can specify the installation scope using the --scope flag:
 
 			GetLogger().Debug("Found %d font files for %s", len(fonts), fontName)
 
-			// Download and install each font file
-			for _, font := range fonts {
-				// Check if font is already installed (unless force flag is set)
-				if !force {
-					fontPath := filepath.Join(fontDir, font.Path)
-					if _, err := os.Stat(fontPath); err == nil {
-						status.Skipped++
-						fontDisplayName := formatFontNameWithVariant(font.Name, font.Variant)
-						msg := fmt.Sprintf("  - \"%s\" is already installed (%s)", fontDisplayName, ui.FeedbackWarning.Render("Skipped"))
-						GetLogger().Info("Font already installed: %s", fontDisplayName)
-						fmt.Println(ui.ContentText.Render(msg))
+			// Show installation header for this font
+			fontDisplayName := formatFontNameWithVariant(fonts[0].Name, fonts[0].Variant)
+			if len(fonts) > 1 {
+				fontDisplayName = fonts[0].Name // Use base name for multiple variants
+			}
+
+			// Show the header first
+			installHeader := fmt.Sprintf("\nInstalling '%s' from '%s'\n", fontDisplayName, sourceName)
+			fmt.Printf("%s\n", ui.FeedbackInfo.Render(installHeader))
+
+			// Phase 1: Download with progress bar
+			downloadHeader := "Downloading font files..."
+
+			// For single-font archives (like Nerd Fonts), show more detailed progress
+			var totalSteps int
+			if len(fonts) == 1 {
+				totalSteps = 3 // Download, Extract, Complete
+			} else {
+				totalSteps = len(fonts) // One step per font file
+			}
+
+			// Store downloaded font paths for installation
+			type downloadedFont struct {
+				font      repo.FontFile
+				fontPaths []string
+			}
+			var downloadedFonts []downloadedFont
+
+			progressErr := runProgressBar(downloadHeader, totalSteps, func(updateProgress func()) error {
+				// Download each font file
+				for _, font := range fonts {
+					// Download font to temp directory (handles archives automatically)
+					tempDir := filepath.Join(os.TempDir(), "Fontget", "fonts")
+					GetLogger().Debug("Downloading font to temp directory: %s", tempDir)
+
+					if len(fonts) == 1 {
+						// For single archives, show detailed progress
+						updateProgress() // Step 1: Starting download
+						time.Sleep(200 * time.Millisecond)
+					}
+
+					fontPaths, downloadErr := repo.DownloadAndExtractFont(&font, tempDir)
+
+					if downloadErr != nil {
+						status.Failed++
+						GetLogger().Error("Failed to download font %s: %v", font.Name, downloadErr)
+						updateProgress() // Update progress even on failure
 						continue
 					}
-				}
 
-				// Download font to temp directory
-				tempDir := filepath.Join(os.TempDir(), "Fontget", "fonts")
-				GetLogger().Debug("Downloading font to temp directory: %s", tempDir)
-				fontPath, err := repo.DownloadFont(&font, tempDir)
-				if err != nil {
-					status.Failed++
-					fontDisplayName := formatFontNameWithVariant(font.Name, font.Variant)
-					msg := fmt.Sprintf("  - \"%s\" (Failed to download) - %v", fontDisplayName, err)
-					GetLogger().Error("Failed to download font %s: %v", fontDisplayName, err)
-					fmt.Println(ui.RenderError(msg))
-					continue
-				}
+					// Store for installation phase
+					downloadedFonts = append(downloadedFonts, downloadedFont{
+						font:      font,
+						fontPaths: fontPaths,
+					})
 
-				// Install the font
-				fontDisplayName := formatFontNameWithVariant(font.Name, font.Variant)
-				GetLogger().Debug("Installing font: %s", fontDisplayName)
-				if err := fontManager.InstallFont(fontPath, installScope, force); err != nil {
-					os.Remove(fontPath) // Clean up temp file
-					status.Failed++
-					msg := fmt.Sprintf("  - \"%s\" (%s) - %v", fontDisplayName, ui.FeedbackError.Render("Failed to install"), err)
-					GetLogger().Error("Failed to install font %s: %v", fontDisplayName, err)
-					fmt.Println(ui.TableRow.Render(msg))
-					continue
+					if len(fonts) == 1 {
+						// For single archives, show extraction progress
+						updateProgress() // Step 2: Extracting
+						time.Sleep(200 * time.Millisecond)
+						updateProgress() // Step 3: Complete
+						time.Sleep(200 * time.Millisecond)
+					} else {
+						// For multiple files, one step per file
+						updateProgress()
+						time.Sleep(50 * time.Millisecond)
+					}
 				}
+				return nil
+			})
 
-				// Clean up temp file
-				os.Remove(fontPath)
-				status.Installed++
-				msg := fmt.Sprintf("  - \"%s\" (%s to %s scope)", fontDisplayName, ui.FeedbackSuccess.Render("Installed"), scope)
-				GetLogger().Info("Successfully installed font: %s to %s scope", fontDisplayName, scope)
-				fmt.Println(ui.ContentText.Render(msg))
+			if progressErr != nil {
+				GetLogger().Error("Failed to download font %s: %v", fontDisplayName, progressErr)
+				continue // Skip to next font
+			}
+
+			// Phase 2: Install downloaded fonts (normal terminal output)
+			for _, downloaded := range downloadedFonts {
+				for _, fontPath := range downloaded.fontPaths {
+					// Check if font is already installed (unless force flag is set)
+					if !force {
+						expectedPath := filepath.Join(fontDir, filepath.Base(fontPath))
+						if _, err := os.Stat(expectedPath); err == nil {
+							status.Skipped++
+							fontDisplayName := getFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
+							msg := fmt.Sprintf("  %s %s %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackWarning.Render("Skipped - already installed"))
+							GetLogger().Info("Font already installed: %s", fontDisplayName)
+							fmt.Println(ui.ContentText.Render(msg))
+							os.Remove(fontPath) // Clean up temp file
+							continue
+						}
+					}
+
+					// Install the font
+					fontDisplayName := getFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
+					GetLogger().Debug("Installing font: %s", fontDisplayName)
+
+					installErr := fontManager.InstallFont(fontPath, installScope, force)
+
+					if installErr != nil {
+						os.Remove(fontPath) // Clean up temp file
+						status.Failed++
+						msg := fmt.Sprintf("  %s %s %s - %s", ui.FeedbackError.Render("✗"), ui.TableRow.Render(fontDisplayName), ui.FeedbackError.Render("Failed"), installErr.Error())
+						GetLogger().Error("Failed to install font %s: %v", fontDisplayName, installErr)
+						fmt.Println(ui.TableRow.Render(msg))
+						continue
+					}
+
+					// Clean up temp file
+					os.Remove(fontPath)
+					status.Installed++
+					msg := fmt.Sprintf("  %s %s %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackSuccess.Render("Installed to "+scope+" scope"))
+					GetLogger().Info("Successfully installed font: %s to %s scope", fontDisplayName, scope)
+					fmt.Println(ui.ContentText.Render(msg))
+				}
 			}
 		}
 

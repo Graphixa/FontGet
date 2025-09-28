@@ -160,7 +160,7 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 
 	// Download file
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 5 * time.Minute, // Increased timeout for large archive files
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -205,6 +205,46 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	}
 
 	return targetPath, nil
+}
+
+// DownloadAndExtractFont downloads a font file (which may be an archive) and extracts it if needed
+func DownloadAndExtractFont(font *FontFile, targetDir string) ([]string, error) {
+
+	// Create target directory if it doesn't exist
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create target directory: %w", err)
+	}
+
+	// Download the file first
+	downloadedPath, err := DownloadFont(font, targetDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if the downloaded file is an archive
+	archiveType := DetectArchiveType(downloadedPath)
+
+	if archiveType == ArchiveTypeUnknown {
+		// Not an archive, return the single file
+		return []string{downloadedPath}, nil
+	}
+
+	// It's an archive, extract it
+	extractDir := filepath.Join(targetDir, "extracted")
+	extractedFiles, err := ExtractArchive(downloadedPath, extractDir)
+	if err != nil {
+		os.Remove(downloadedPath) // Clean up the archive file
+		return nil, fmt.Errorf("failed to extract archive: %w", err)
+	}
+
+	// Clean up the archive file
+	os.Remove(downloadedPath)
+
+	if len(extractedFiles) == 0 {
+		return nil, fmt.Errorf("no font files found in archive")
+	}
+
+	return extractedFiles, nil
 }
 
 // FontMatch represents a font match with source information
@@ -279,6 +319,7 @@ func GetFontByID(fontID string) ([]FontFile, error) {
 // convertFontInfoToFontFiles converts FontInfo to []FontFile
 func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error) {
 	var fonts []FontFile
+	seenURLs := make(map[string]bool) // Track seen URLs to avoid duplicates
 
 	// Process each variant using the preserved variant-file mapping
 	for _, variantName := range font.Variants {
@@ -288,7 +329,8 @@ func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error
 		if font.VariantFiles != nil {
 			if variantFiles, exists := font.VariantFiles[variantName]; exists {
 				for fileType, url := range variantFiles {
-					if (fileType == "ttf" || fileType == "otf") && strings.HasSuffix(url, "."+fileType) {
+					// Accept both individual font files and archive files
+					if fileType == "ttf" || fileType == "otf" {
 						downloadURL = url
 						break
 					}
@@ -299,7 +341,8 @@ func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error
 		// Fallback to general files if variant-specific not found
 		if downloadURL == "" {
 			for fileType, url := range font.Files {
-				if (fileType == "ttf" || fileType == "otf") && strings.HasSuffix(url, "."+fileType) {
+				// Accept both individual font files and archive files
+				if fileType == "ttf" || fileType == "otf" {
 					downloadURL = url
 					break
 				}
@@ -307,7 +350,21 @@ func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error
 		}
 
 		if downloadURL != "" {
-			fileName := createFontFileName(font.Name, variantName, downloadURL)
+			// Check if we've already processed this URL (for duplicate variants)
+			if seenURLs[downloadURL] {
+				continue
+			}
+			seenURLs[downloadURL] = true
+
+			// For archive files, use the archive filename as the path
+			// For individual font files, create a proper filename
+			var fileName string
+			if isArchiveFile(downloadURL) {
+				fileName = filepath.Base(downloadURL)
+			} else {
+				fileName = createFontFileName(font.Name, variantName, downloadURL)
+			}
+
 			fonts = append(fonts, FontFile{
 				Name:        font.Name,
 				Variant:     variantName,
@@ -316,12 +373,17 @@ func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error
 			})
 		}
 	}
-
 	if len(fonts) == 0 {
 		return nil, fmt.Errorf("no valid font files found for %s", fontID)
 	}
 
 	return fonts, nil
+}
+
+// isArchiveFile checks if a URL points to an archive file
+func isArchiveFile(url string) bool {
+	ext := strings.ToLower(filepath.Ext(url))
+	return ext == ".zip" || ext == ".xz" || strings.HasSuffix(strings.ToLower(url), ".tar.xz")
 }
 
 // GetFont retrieves font information from the manifest
