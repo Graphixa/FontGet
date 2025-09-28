@@ -59,11 +59,19 @@ var sourcesInfoCmd = &cobra.Command{
 			return fmt.Errorf("failed to load sources config: %w", err)
 		}
 
-		// Get manifest for additional information
-		manifest, err := repo.GetManifest(nil, nil)
+		// Get repository (uses smart caching like search/list commands)
+		var manifest *repo.FontManifest
+		r, err := repo.GetRepository()
 		if err != nil {
 			if logger != nil {
-				logger.Warn("Failed to get manifest: %v", err)
+				logger.Warn("Failed to get repository: %v", err)
+			}
+		} else {
+			manifest, err = r.GetManifest()
+			if err != nil {
+				if logger != nil {
+					logger.Warn("Failed to get manifest: %v", err)
+				}
 			}
 		}
 
