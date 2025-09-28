@@ -125,7 +125,11 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 		progress(0, 1, fmt.Sprintf("Downloading %s source...", sourceName))
 	}
 
-	resp, err := http.Get(url)
+	// Create HTTP client with timeout to prevent hanging
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download %s source: %w", sourceName, err)
 	}
