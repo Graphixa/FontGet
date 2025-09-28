@@ -62,7 +62,9 @@ type FontRepository struct {
 // NewFontRepository creates a new FontRepository instance
 func NewFontRepository() *FontRepository {
 	return &FontRepository{
-		client: &http.Client{},
+		client: &http.Client{
+			Timeout: 30 * time.Second,
+		},
 	}
 }
 
@@ -157,7 +159,9 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	req.Header.Set("User-Agent", "fontget-cli")
 
 	// Download file
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to download font: %w", err)
