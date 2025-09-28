@@ -8,12 +8,12 @@ This document defines the color scheme and visual hierarchy for FontGet, ensurin
 |------------|----------|-------------------------------------|
 | Rosewater  | #f5e0dc  | -                                   |
 | Flamingo   | #f2cdcd  | -                                   |
-| Pink       | #f5c2e7  | -                                   |
+| Pink       | #f5c2e7  | Font names, field labels, examples |
 | Mauve      | #cba6f7  | Page titles, report titles, info messages |
-| Red        | #f38ba8  | Error messages, critical warnings   |
+| Red        | #e78284  | Error messages, critical warnings   |
 | Maroon     | #eba0ac  | -                                   |
-| Peach      | #fab387  | Warning messages, skipped status    |
-| Yellow     | #f9e2af  | Source names, field labels, examples |
+| Peach      | #fab387  | -                                   |
+| Yellow     | #f9e2af  | Warning messages, skipped status    |
 | Green      | #a6e3a1  | Success messages, installed status  |
 | Teal       | #94e2d5  | -                                   |
 | Sky        | #89dceb  | -                                   |
@@ -47,18 +47,18 @@ FontGet uses a clear categorization system for different types of UI elements:
 ### 2. USER FEEDBACK STYLES - Interactive responses and notifications
 - **FeedbackInfo** - Informational messages (Mauve)
 - **FeedbackText** - Supporting text (Terminal default)
-- **FeedbackWarning** - Warning messages (Peach)
+- **FeedbackWarning** - Warning messages (Yellow)
 - **FeedbackError** - Error messages (Red)
 - **FeedbackSuccess** - Success messages (Green)
 
 ### 3. DATA DISPLAY STYLES - Tables, lists, and data presentation
-- **TableHeader** - Column headers (Adaptive text)
-- **TableSourceName** - Font names in search/add results (Yellow)
-- **TableRow** - Regular table rows (Adaptive text)
+- **TableHeader** - Column headers (Terminal default)
+- **TableSourceName** - Font names in search/add results (Pink)
+- **TableRow** - Regular table rows (Terminal default)
 - **TableSelectedRow** - Selected rows (Surface 0 background)
 
 ### 4. FORM STYLES - Input interfaces and forms
-- **FormLabel** - Field labels (Yellow)
+- **FormLabel** - Field labels (Pink)
 - **FormInput** - Input field content (Adaptive text)
 - **FormPlaceholder** - Placeholder text (Overlay 1)
 - **FormReadOnly** - Read-only field content (Overlay 0)
@@ -66,7 +66,7 @@ FontGet uses a clear categorization system for different types of UI elements:
 ### 5. COMMAND STYLES - Interactive elements and controls
 - **CommandKey** - Keyboard shortcuts (Subtext 1 with Surface 0 background)
 - **CommandLabel** - Button-like labels (Subtext 1)
-- **CommandExample** - Example commands (Yellow)
+- **CommandExample** - Example commands (Pink)
 
 ## Implementation
 
@@ -112,21 +112,21 @@ fmt.Println(ui.ContentText.Render(msg))
 This creates:
 - **Font name and description** → Normal text color
 - **Status word "(Installed)"** → Green
-- **Status word "(Skipped)"** → Peach
+- **Status word "(Skipped)"** → Yellow
 - **Status word "(Failed)"** → Red
 
 ## Color Hierarchy
 
 ### Primary Visual Elements
 1. **Page Titles** - Mauve (#cba6f7) with background
-2. **Source Names** - Yellow (#f9e2af) - most prominent content
-3. **Field Labels** - Yellow (#f9e2af) - form labels
-4. **Status Words** - Green/Peach/Red based on status
-5. **Primary Text** - Adaptive text color for terminal compatibility
+2. **Font Names & Labels** - Pink (#f5c2e7) - most prominent content and form labels
+3. **Warning Messages** - Yellow (#f9e2af) - warnings and skipped status
+4. **Status Words** - Green/Yellow/Red based on status
+5. **Primary Text** - Terminal default for better compatibility
 
 ### Status Colors
 - **Success** - Green (#a6e3a1) with bold
-- **Warning** - Peach (#fab387) with bold
+- **Warning** - Yellow (#f9e2af) with bold
 - **Error** - Red (#f38ba8) with bold
 - **Info** - Mauve (#cba6f7) with bold
 
@@ -141,14 +141,14 @@ This creates:
 Several styles use `lipgloss.AdaptiveColor` for better terminal compatibility:
 
 - **ContentText** - Adapts to light/dark terminals
-- **TableHeader** - Adapts to light/dark terminals
-- **TableRow** - Adapts to light/dark terminals
 - **FormInput** - Adapts to light/dark terminals
+
+Note: TableHeader and TableRow now use terminal default colors for better compatibility across different terminal environments.
 
 ## Usage Guidelines
 
 1. **Consistency** - Use the same style category for similar elements
-2. **Hierarchy** - Page titles > Source names > Field labels > Regular text
+2. **Hierarchy** - Page titles > Font names > Field labels > Regular text
 3. **Status Clarity** - Only color status words, not entire messages
 4. **Terminal Compatibility** - Use adaptive colors where appropriate
 5. **Accessibility** - Ensure sufficient contrast between text and backgrounds

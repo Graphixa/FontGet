@@ -52,18 +52,16 @@ var (
 
 	// FeedbackWarning - Warning messages
 	FeedbackWarning = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#fab387")). // Peach
-			Bold(true)
+			Foreground(lipgloss.Color("#f9e2af")) // Yellow
 
 	// FeedbackError - Error messages
 	FeedbackError = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f38ba8")). // Red
-			Bold(true)
+			Foreground(lipgloss.Color("#e78284")) // Red from frappe
 
 	// FeedbackSuccess - Success messages
 	FeedbackSuccess = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#a6e3a1")). // Green
-			Bold(true)
+			Foreground(lipgloss.Color("#a6e3a1")) // Green
+
 )
 
 // ============================================================================
@@ -72,13 +70,12 @@ var (
 var (
 	// TableHeader - Column headers in tables
 	TableHeader = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.AdaptiveColor{Light: "#4c4f69", Dark: "#cdd6f4"}) // Text
+			Foreground(lipgloss.NoColor{}). // No color - uses terminal default
+			Bold(true)
 
 	// TableSourceName - Font names in search/add results
 	TableSourceName = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#df8e1d", Dark: "#f9e2af"}). // Text
-			Bold(true)
+			Foreground(lipgloss.Color("#f5c2e7")) // Pink
 
 	// TableRow - Regular table rows (uses terminal default)
 	TableRow = lipgloss.NewStyle().
@@ -95,7 +92,7 @@ var (
 var (
 	// FormLabel - Field labels (Name:, URL:, etc.)
 	FormLabel = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f9e2af")). // Yellow
+			Foreground(lipgloss.Color("#f5c2e7")). // Pink
 			Bold(true)
 
 	// FormInput - Input field content
@@ -129,9 +126,32 @@ var (
 
 	// CommandExample - Example commands
 	CommandExample = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f9e2af")). // Yellow
+			Foreground(lipgloss.Color("#f5c2e7")). // Pink
 			Bold(true)
 )
+
+// ============================================================================
+// PROGRESS BAR STYLES - Animated progress indicators
+// ============================================================================
+var (
+	// ProgressBarHeader - Progress bar header text
+	ProgressBarHeader = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("#9399b2")) // Overlay 2
+
+	// ProgressBarText - Progress counter text (1/5, 2/5, etc.)
+	ProgressBarText = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#a6adc8")) // Subtext 1
+
+	// ProgressBarContainer - Container for the progress bar
+	ProgressBarContainer = lipgloss.NewStyle().
+				Padding(0, 2) // Add some padding around the progress bar
+)
+
+// GetProgressBarGradient returns the gradient colors for the progress bar
+func GetProgressBarGradient() (string, string) {
+	return "#cba6f7", "#eba0ac" // Mauve to Peach
+}
 
 // ============================================================================
 // UTILITY FUNCTIONS - Common rendering patterns
