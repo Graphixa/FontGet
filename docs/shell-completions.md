@@ -1,6 +1,6 @@
 # Shell Completions Setup
 
-FontGet supports shell completions for PowerShell, Bash, and Zsh. Follow the instructions below for your shell.
+FontGet aims to support shell completions for PowerShell, Bash, and Zsh and other terminal emulators. Follow the instructions below for your shell.
 
 ## PowerShell
 
