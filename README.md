@@ -13,6 +13,7 @@ A tiny, cross-platform font package manager written in Go.
 - Import/export font collections (planned)
 - Sources are cached and updated regularly for fast performance
 - Beautiful terminal UI with Catppuccin color scheme
+- Powered by [FontGet-Sources](https://github.com/Graphixa/FontGet-Sources) for reliable font data
 
 ## Testing
 
@@ -35,6 +36,15 @@ cd fontget
 go build -o fontget
 ./fontget search "roboto"
 ```
+
+## How It Works
+
+FontGet uses the [FontGet-Sources](https://github.com/Graphixa/FontGet-Sources) repository to provide reliable, up-to-date font data. This centralized approach ensures:
+
+- **Consistent data**: All users get the same font information
+- **Regular updates**: Font data is maintained and updated regularly
+- **Fast performance**: Sources are cached locally for quick access
+- **Reliability**: One centralized sources for consistency
 
 ## Usage
 
