@@ -25,11 +25,11 @@ var (
 	// ReportTitle - Status report and data report titles
 	ReportTitle = lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.NoColor{}) // Mauve (no background)
+			Foreground(lipgloss.NoColor{}) // No color
 
 	// ContentText - Regular text content (uses terminal default for compatibility)
 	ContentText = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#4c4f69", Dark: "#cdd6f4"}) // Text
+			Foreground(lipgloss.NoColor{}) // No color - uses terminal default
 
 	// ContentHighlight - Highlighted content (like font names)
 	ContentHighlight = lipgloss.NewStyle().
@@ -48,7 +48,7 @@ var (
 
 	// FeedbackText - Supporting informational text
 	FeedbackText = lipgloss.NewStyle().
-			Foreground(lipgloss.NoColor{}) // Text
+			Foreground(lipgloss.NoColor{}) // No color
 
 	// FeedbackWarning - Warning messages
 	FeedbackWarning = lipgloss.NewStyle().
@@ -77,12 +77,12 @@ var (
 
 	// TableSourceName - Font names in search/add results
 	TableSourceName = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f9e2af")). // Yellow
+			Foreground(lipgloss.AdaptiveColor{Light: "#df8e1d", Dark: "#f9e2af"}). // Text
 			Bold(true)
 
 	// TableRow - Regular table rows (uses terminal default)
 	TableRow = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#4c4f69", Dark: "#cdd6f4"}) // Text
+			Foreground(lipgloss.NoColor{}) // No color - uses terminal default
 
 	// TableSelectedRow - Selected table rows
 	TableSelectedRow = lipgloss.NewStyle().
