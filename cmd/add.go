@@ -297,7 +297,7 @@ You can specify the installation scope using the --scope flag:
 				similar := findSimilarFonts(fontName, allFonts)
 				if len(similar) > 0 {
 					GetLogger().Info("Found %d similar fonts for %s", len(similar), fontName)
-					fmt.Printf("\n%s\n\n", ui.FeedbackWarning.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+					fmt.Printf("\n%s\n\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
 					fmt.Printf("%s\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
 					fmt.Printf("\n%s\n", ui.FeedbackText.Render("Suggestions:"))
 					for _, s := range similar {
@@ -306,7 +306,7 @@ You can specify the installation scope using the --scope flag:
 					fmt.Println() // Add a blank line after suggestions
 				} else {
 					GetLogger().Info("No similar fonts found for %s", fontName)
-					fmt.Printf("\n%s\n", ui.FeedbackWarning.Render("No similar fonts found."))
+					fmt.Printf("\n%s\n", ui.FeedbackError.Render("No similar fonts found."))
 					fmt.Printf("%s\n", ui.FeedbackText.Render("Try using the search command to find available fonts."))
 					fmt.Printf("\n%s\n", ui.FeedbackText.Render("Example:"))
 					fmt.Printf("  %s\n", ui.CommandExample.Render("fontget search \"roboto\""))
@@ -353,7 +353,7 @@ You can specify the installation scope using the --scope flag:
 					status.Failed++
 					msg := fmt.Sprintf("  - \"%s\" (%s) - %v", fontDisplayName, ui.FeedbackError.Render("Failed to install"), err)
 					GetLogger().Error("Failed to install font %s: %v", fontDisplayName, err)
-					fmt.Println(ui.ContentText.Render(msg))
+					fmt.Println(ui.TableRow.Render(msg))
 					continue
 				}
 
