@@ -1,5 +1,3 @@
-# FontGet Refactor Checklist
-
 ## ✅ **COMPLETED PHASES**
 
 ### **Phase 1: Critical Infrastructure (COMPLETED)**
@@ -23,20 +21,148 @@
 - [x] **Style guide documentation** - Created comprehensive `docs/STYLE_GUIDE.md`
 - [x] **Sources management refactor** - Updated to use new centralized systems
 
-## 🎯 **NEXT PHASE: COMPREHENSIVE CODEBASE CLEANUP**
+### **Phase 2.5: UI/UX Overhaul & Documentation (COMPLETED)**
+- [x] **Complete style system overhaul** - Reorganized `styles.go` into clear categories
+- [x] **Catppuccin Mocha palette implementation** - Applied consistent color scheme
+- [x] **Adaptive color system** - Implemented `lipgloss.AdaptiveColor` for terminal compatibility
+- [x] **Status message standardization** - Only color status words, rest uses `ContentText`
+- [x] **Command output consistency** - Updated all commands to use new style system
+- [x] **Font collision detection** - Added winget-style multi-source font selection
+- [x] **Performance improvements** - Fixed 16-second delays in add command
+- [x] **Documentation updates** - Updated README.md, STYLE_GUIDE.md, shell-completions.md
+- [x] **Command reference creation** - Created comprehensive command-reference.md
+- [x] **Git workflow fixes** - Resolved executable file conflicts
 
-### **Phase 3: Style System Application (IN PROGRESS)**
-- [x] **Apply centralized styles to all commands**
-  - [x] Update `cmd/search.go` to use new style system
-  - [ ] Update `cmd/list.go` to use centralized table components
-  - [x] Update `cmd/add.go` to use validation patterns
-  - [x] Update `cmd/remove.go` to standardize confirmation dialogs
-  - [x] Update `cmd/info.go` to apply consistent formatting
-  - [x] Update `cmd/sources.go` to use new patterns
-  - [x] Update `cmd/sources_update.go` to use new patterns
-  - [x] Update `cmd/sources_manage.go` to use new patterns
+### **Phase 2.6: Documentation Audit & Sync (IN PROGRESS)**
+- [ ] **Flag audit** - Find all implemented flags across all commands
+- [ ] **Command reference accuracy** - Update Quick Reference table with complete flag list
+- [ ] **Documentation sync process** - Create automated validation and sync workflow
+- [ ] **Flag consistency** - Standardize flag registration patterns across commands
+- [ ] **Help text standardization** - Ensure consistent help formatting and examples
 
-- [ ] **Standardize error handling across commands**
+## 🎯 **NEXT PHASE: COMPLETE STYLE SYSTEM IMPLEMENTATION**
+
+### **Phase 3: Complete Style System Implementation (Up Next)**
+- [ ] **Update remaining commands to use new style system**
+  - [ ] `cmd/remove.go` - ❌ PARTIALLY UPDATED - Needs visual consistency with add.go
+    - [ ] Add page headers and structure (PageTitle, PageSubtitle)
+    - [ ] Improve status message formatting to match add.go patterns
+    - [ ] Standardize error messages with FeedbackError/FeedbackText
+    - [ ] Add font name formatting function (formatFontNameWithVariant)
+    - [ ] Update status report integration to match add.go
+  - [ ] `cmd/list.go` - ❌ NEEDS UPDATE - Missing page titles, table headers
+  - [ ] `cmd/info.go` - ❌ NEEDS UPDATE - Missing page titles, content styling
+  - [ ] `cmd/cache.go` - ❌ NEEDS UPDATE - Still using old color functions
+  - [ ] `cmd/config.go` - ❌ NEEDS UPDATE - Still using old color functions
+  - [ ] `cmd/completion.go` - ❌ NEEDS UPDATE - Not checked yet
+
+- [ ] **Implement systematic verbose mode across all commands**
+  - [ ] **Commands that NEED verbose mode:**
+    - [ ] `cmd/add.go` - Add verbose output for font operations
+      - [ ] Show download URLs and progress
+      - [ ] Show installation directory paths
+      - [ ] Show font file details (size, type, variant)
+      - [ ] Show scope detection and elevation status
+      - [ ] Show font search and matching details
+    - [ ] `cmd/remove.go` - Add verbose output for removal operations
+      - [ ] Show font file paths being removed
+      - [ ] Show scope detection and elevation status
+      - [ ] Show font family matching process
+      - [ ] Show protected font detection
+    - [ ] `cmd/search.go` - Add verbose output for search operations
+      - [ ] Show search parameters and filters
+      - [ ] Show result count and filtering process
+      - [ ] Show source-specific search details
+    - [ ] `cmd/list.go` - Add verbose output for listing operations
+      - [ ] Show directory scanning process
+      - [ ] Show font file detection and parsing
+      - [ ] Show filtering and sorting details
+    - [ ] `cmd/info.go` - Add verbose output for info operations
+      - [ ] Show metadata fetching process
+      - [ ] Show source resolution and font lookup
+    - [ ] `cmd/cache.go` - Add verbose output for cache operations
+      - [ ] Show cache directory operations
+      - [ ] Show file system operations and validation
+  - [ ] **Implementation approach:**
+    - [ ] Use existing global `--verbose` flag from root command
+    - [ ] Add verbose-specific output using `ui.FeedbackText.Render()`
+    - [ ] Show additional technical details when verbose is enabled
+    - [ ] Keep normal output clean and concise
+    - [ ] Ensure verbose output doesn't interfere with normal operation
+
+- [ ] **Implement yarlson/pin spinner directly in commands**
+  - [ ] Add yarlson/pin import to `cmd/add.go`
+    - [ ] Add spinner during font download ("Downloading...")
+    - [ ] Add spinner during font installation ("Installing...")
+    - [ ] Show checkmark (✓) for successful operations
+    - [ ] Show crossmark (✗) for failed operations
+    - [ ] Append (Installed to user scope) or (Installed to machine scope) in the FeedbackSuccess ui.style component to each font install line
+    - [ ] Append (Skipped ) in the FeedbackWarning ui.style component to each font skipped to each font skipped line
+    - [ ] Append (Failed) in the FeedbackError ui.style component to each font failed to install
+  - [ ] Add yarlson/pin import to `cmd/remove.go`
+    - [ ] Add spinner during font removal ("Removing...")
+    - [ ] Show checkmark (✓) for successful removals
+    - [ ] Show crossmark (✗) for failed removals
+  - [ ] Replace Bubble Tea spinner with yarlson/pin in `cmd/sources_update.go`
+    - [ ] Remove Bubble Tea spinner implementation
+    - [ ] Use yarlson/pin directly for source updates
+  - [ ] Extract `runSpinner` helper function to `cmd/shared.go`
+    - [ ] Keep the helper function but make it available to all commands
+    - [ ] Maintain consistent colors and symbols
+
+- [ ] **Enhance font installation feedback with detailed variant reporting**
+  - [ ] Update `cmd/add.go` to show detailed installation header
+    - [ ] Add header: `"Installing 'FontName' from 'SourceName'"`
+    - [ ] Use `ui.PageSubtitle.Render()` for the header
+  - [ ] Update `cmd/add.go` to show individual variant status with symbols
+    - [ ] Change successful installation to: `"✓ FontName Variant (Installed to user scope)"`
+    - [ ] Change skipped installation to: `"✓ FontName Variant (Skipped - already installed)"`
+    - [ ] Change failed installation to: `"✗ FontName Variant (Failed - [error reason])"`
+    - [ ] Use `ui.FeedbackSuccess.Render("Installed to [scope] scope")` for success
+    - [ ] Use `ui.FeedbackWarning.Render("Skipped - already installed")` for skipped
+    - [ ] Use `ui.FeedbackError.Render("Failed - [error reason]")` for failed
+  - [ ] Apply same pattern to `cmd/remove.go` for removal operations
+    - [ ] Add header: `"Removing 'FontName' from 'SourceName'"`
+    - [ ] Change successful removal to: `"✓ FontName Variant (Removed from user scope)"`
+    - [ ] Change skipped removal to: `"✓ FontName Variant (Skipped - not installed)"`
+    - [ ] Change failed removal to: `"✗ FontName Variant (Failed - [error reason])"`
+  - [ ] Update status report formatting
+    - [ ] Keep existing status report at the end
+    - [ ] Ensure it shows: `"Installed: X  |  Skipped: X  |  Failed: X"`
+    - [ ] Use consistent formatting with current implementation
+  
+    **EXPECTED OUTPUT**
+    ```
+    Installing 'Fira-Code' from 'Nerd Fonts' 
+
+    ✓ Fira Code Light (Installed to user scope)
+    ✓ Fira Code Medium (Skipped - already installed)
+    ✗ Fira Code Bold (Failed - download error)
+
+    Status Report
+    ---------------------------------------------
+    Installed: 1  |  Skipped: 1  |  Failed: 1
+    ```
+
+
+- [ ] **Add hidden development flag for testing**
+  - [ ] Add `--refresh` flag to `cmd/search.go` only for testing purposes and debugging (we may aim to remove this later)
+    - [ ] Mark as hidden flag (not shown in help)
+    - [ ] Force refresh of font manifest before search
+    - [ ] Useful for testing search with latest data
+    - [ ] Add comment: "Hidden flag for development/testing only"
+  - [ ] Remove `--refresh` flag from other commands
+    - [ ] `cmd/add.go` - Remove refresh flag (not needed)
+    - [ ] `cmd/remove.go` - Remove refresh flag (not needed) 
+    - [ ] `cmd/info.go` - Remove refresh flag (not needed)
+    - [ ] `cmd/sources.go` - Remove refresh flag (redundant with update command)
+
+
+- [ ] **Fix style inconsistencies in `internal/ui/styles.go`**
+  - [ ] Change ContentText to use `lipgloss.NoColor{}` (terminal default)
+  - [ ] Change TableRow to use `lipgloss.NoColor{}` (terminal default)
+
+- [ ] **Standardize error handling across all commands**
   - Replace scattered error messages with `ui.RenderError()`
   - Implement consistent error types
   - Standardize error display patterns
@@ -48,7 +174,7 @@
   - Extract confirmation dialogs to `internal/components/confirm.go`
 
 ### **Phase 4: Command Consistency (PLANNED)**
-- [ ] **Standardize command help formatting**
+- [ ] **Standardize help formatting across all commands**
   - Apply consistent description format across all commands
   - Standardize example format and flag descriptions
   - Add keyboard navigation patterns to help text
@@ -63,7 +189,7 @@
   - Standardize confirmation dialogs
   - Consistent status reporting across commands
 
-### **Phase 5: Missing Features Implementation (PLANNED)**
+### **Phase 5: Critical Bug Fixes (URGENT)**
 - [ ] **Archive Handling (Critical Missing Feature)**
   - Implement ZIP extraction for Font Squirrel
   - Implement TAR.XZ extraction for Nerd Fonts
@@ -74,34 +200,44 @@
   - Implement font export/import functionality
   - Update list command to show source information
 
-- [ ] **Complete missing command updates**
-  - Update `cmd/info.go` with enhanced metadata display
-  - Update `cmd/list.go` with source filtering options
+### **Phase 6: Documentation & Process Integration (PLANNED)**
+- [ ] **Integrate documentation sync process**
+  - Add `scripts/audit-flags.go` to CI/CD pipeline
+  - Create automated documentation validation
+  - Implement pre-release documentation checks
+  - Add documentation sync to development workflow
 
-### **Phase 6: Testing & Documentation (PLANNED)**
+- [ ] **Standardize flag management**
+  - Create consistent flag registration patterns
+  - Implement centralized flag validation
+  - Standardize global vs local flag handling
+  - Add flag completion standardization
+
+### **Phase 7: Testing & Performance (PLANNED)**
 - [ ] **Add comprehensive testing**
   - Unit tests for new components and utilities
   - Integration tests for updated commands
   - Cross-platform compatibility testing
+  - Documentation accuracy testing
 
 - [ ] **Update documentation**
   - Update README.md with new features
   - Create migration guide for breaking changes
   - Add developer documentation and contribution guidelines
+  - Maintain documentation sync with code changes
 
 - [ ] **Add performance monitoring**
   - Implement performance metrics tracking
   - Add diagnostic commands for system health
 
-## 📋 **CURRENT FOCUS: Phase 3 - Style System Application + Critical Bug Fix**
+## 📋 **CURRENT FOCUS: Phase 3 - Complete Style System Implementation**
 
-**Remaining Tasks:**
-1. **Archive Handling (CRITICAL BUG)** - Nerd Fonts and Font Squirrel fonts fail to install due to missing ZIP/TAR.XZ extraction
-2. **`cmd/list.go`** - High visibility, needs table component and centralized styling
-3. **Error handling standardization** - Replace scattered error messages with `ui.RenderError()`
-4. **Create reusable UI components** - Extract common components for consistency
+**Immediate Priority:**
+1. **Update remaining commands** - `remove.go`, `list.go`, `info.go`, `cache.go`, `config.go`, `completion.go`
+2. **Standardize error handling** - Replace hardcoded errors with `ui.RenderError()`
+3. **Create reusable components** - Extract common UI patterns
 
-**Critical Issue Identified:**
+**Critical Issues to Address:**
 - `fontget add Zedmono` fails because Nerd Fonts provides ZIP files but FontGet lacks extraction logic
 - Same issue affects Font Squirrel fonts
 - This is blocking the add command for multiple font sources
