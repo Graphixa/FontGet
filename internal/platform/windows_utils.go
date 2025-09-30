@@ -151,14 +151,20 @@ func RunAsElevated() error {
 		return fmt.Errorf("failed to convert working directory to UTF-16: %w", err)
 	}
 
+	// Convert "runas" to UTF-16
+	runasPtr, err := syscall.UTF16PtrFromString("runas")
+	if err != nil {
+		return fmt.Errorf("failed to convert runas to UTF-16: %w", err)
+	}
+
 	// Use ShellExecute to trigger UAC prompt
-	ret, _, err := shell32.NewProc("ShellExecuteW").Call(
-		0, // hwnd
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("runas"))), // lpOperation
-		uintptr(unsafe.Pointer(exePtr)),                            // lpFile
-		uintptr(unsafe.Pointer(cmdLinePtr)),                        // lpParameters
-		uintptr(unsafe.Pointer(cwdPtr)),                            // lpDirectory
-		syscall.SW_NORMAL,                                          // nShowCmd
+	ret, _, _ := shell32.NewProc("ShellExecuteW").Call(
+		0,                                   // hwnd
+		uintptr(unsafe.Pointer(runasPtr)),   // lpOperation
+		uintptr(unsafe.Pointer(exePtr)),     // lpFile
+		uintptr(unsafe.Pointer(cmdLinePtr)), // lpParameters
+		uintptr(unsafe.Pointer(cwdPtr)),     // lpDirectory
+		syscall.SW_NORMAL,                   // nShowCmd
 	)
 
 	// ShellExecute returns a value greater than 32 on success
