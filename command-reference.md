@@ -20,6 +20,13 @@ fontget add "google.roboto"
 
 # Force reinstall existing font
 fontget add "roboto" --force
+
+# Install with verbose output
+fontget add "roboto" --verbose
+
+# Install with debug diagnostics
+fontget add "roboto" --debug
+
 ```
 
 ---
@@ -301,15 +308,21 @@ fontget import --file fonts.csv
 | &nbsp;&nbsp;&nbsp;- `info` | Display current config |  |
 | &nbsp;&nbsp;&nbsp;- `edit` | Open config file in editor |  |
 | `completion` | Generate completion script |  |
-| _Global Flags_ | Available on all commands | `--verbose, -v`, `--logs` |
+| _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs` |
 
 ---
 
 ## Flag Reference
 
 ### Global Flags
-- `--verbose, -v` - Enable verbose output and debug logging
+- `--verbose, -v` - Show detailed operation information (user-friendly)
+- `--debug` - Show debug logs with timestamps (for troubleshooting)
 - `--logs` - Open the logs directory in your file manager
+
+### Flag Combinations
+- Use `--verbose` alone for user-friendly detailed output
+- Use `--debug` alone for developer diagnostic output with timestamps
+- Use `--verbose --debug` together for maximum detail (both user info + diagnostics)
 
 ### Command-Specific Flags
 
