@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -286,6 +287,9 @@ Use --force to override critical system font protection.
 		if len(scopes) == 2 {
 			// Check elevation first
 			if err := checkElevation(cmd, fontManager, platform.MachineScope); err != nil {
+				if errors.Is(err, ErrElevationRequired) {
+					return nil // Already printed user-friendly message
+				}
 				GetLogger().Error("Elevation check failed for --scope all: %v", err)
 				fmt.Println(ui.RenderError("This operation requires administrator privileges."))
 				fmt.Println("To run as administrator:")
@@ -491,6 +495,10 @@ Use --force to override critical system font protection.
 					// Elevation check for machine scope
 					if scope == platform.MachineScope {
 						if err := checkElevation(cmd, fontManager, scope); err != nil {
+							if errors.Is(err, ErrElevationRequired) {
+								fmt.Println(ui.RenderError("  - Skipped machine scope due to missing elevation"))
+								continue
+							}
 							GetLogger().Error("Elevation check failed: %v", err)
 							fmt.Println(ui.RenderError("  - Skipped machine scope due to missing elevation"))
 							continue

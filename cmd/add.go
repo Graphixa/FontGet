@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,11 +9,23 @@ import (
 	"time"
 
 	"fontget/internal/config"
+	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
+)
+
+// Configuration options for add command behavior
+const (
+	// HideProgressBarWhenFinished controls whether the progress bar disappears after completion
+	// Set to true for cleaner output (recommended), false to keep progress bar visible for debugging
+	HideProgressBarWhenFinished = true
+
+	// ShowProgressBarHeader controls whether the progress bar displays its own header text
+	// Set to false when you're displaying your own header (cleaner), true to show both
+	ShowProgressBarHeader = false
 )
 
 // InstallationStatus tracks the status of font installations
@@ -21,6 +34,82 @@ type InstallationStatus struct {
 	Skipped   int
 	Failed    int
 	Details   []string
+}
+
+// showFontNotFoundWithSuggestions displays font not found error with suggestions in table format
+func showFontNotFoundWithSuggestions(fontName string, similar []string) {
+	fmt.Printf("\n%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+
+	// If no similar fonts found, show general guidance
+	if len(similar) == 0 {
+		fmt.Printf("%s\n", ui.FeedbackText.Render("Try using the search command to find available fonts."))
+		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Example:"))
+		fmt.Printf("  %s\n", ui.CommandExample.Render("fontget search \"roboto\""))
+		fmt.Println()
+		return
+	}
+
+	// Collect unique matches from all suggestions
+	seenIDs := make(map[string]bool)
+	var uniqueMatches []repo.FontMatch
+
+	for _, suggestion := range similar {
+		// Try to find matches for the suggestion to get proper font IDs
+		matches, err := repo.FindFontMatches(suggestion)
+		if err == nil && len(matches) > 0 {
+			// Add all unique matches from this suggestion
+			for _, match := range matches {
+				if !seenIDs[match.ID] {
+					uniqueMatches = append(uniqueMatches, match)
+					seenIDs[match.ID] = true
+				}
+			}
+		}
+	}
+
+	// If we found matches, display them in table format
+	if len(uniqueMatches) > 0 {
+		fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
+		// Use consistent column widths and apply styling to the entire formatted string
+		headerLine := fmt.Sprintf("%-30s %-30s %-12s %-15s %-20s",
+			"Name", "ID", "License", "Categories", "Source")
+		fmt.Printf("%s\n", ui.TableHeader.Render(headerLine))
+		fmt.Printf("%s\n", strings.Repeat("-", 127))
+
+		// Display each unique match as a table row
+		for _, match := range uniqueMatches {
+			// Get categories (first one if available)
+			categories := "N/A"
+			if len(match.FontInfo.Categories) > 0 {
+				categories = match.FontInfo.Categories[0]
+			}
+
+			// Get license
+			license := match.FontInfo.License
+			if license == "" {
+				license = "N/A"
+			}
+
+			// Format the data line consistently with yellow font name
+			fmt.Printf("%s %-30s %-12s %-15s %-20s\n",
+				ui.TableSourceName.Render(fmt.Sprintf("%-30s", truncateString(match.Name, 30))),
+				truncateString(match.ID, 30),
+				truncateString(license, 12),
+				truncateString(categories, 15),
+				truncateString(match.Source, 20))
+		}
+	} else {
+		// Fallback: if similar font names were found but couldn't be resolved to matches
+		// This suggests the font exists in our cache but is no longer available from sources
+		fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' was not able to be downloaded and installed.", fontName)))
+		fmt.Printf("%s\n", ui.FeedbackText.Render("It may have been removed from the font source."))
+		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Please refresh FontGet sources using:"))
+		fmt.Printf("  %s\n", ui.CommandExample.Render("fontget sources update"))
+		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Try using the search command to find other available fonts:"))
+		fmt.Printf("  %s\n", ui.CommandExample.Render("fontget search \"roboto\""))
+	}
+
+	fmt.Printf("\n")
 }
 
 // showMultipleMatchesAndExit displays search results and instructs user to use specific font ID
@@ -140,18 +229,18 @@ func getSourceName(fontID string) string {
 		return "Unknown Source"
 	}
 
-	sourcePrefix := parts[0]
+	sourcePrefix := strings.ToLower(parts[0]) // Ensure lowercase for consistent matching
 
-	// Load sources configuration to get the display name
-	sourcesConfig, err := config.LoadSourcesConfig()
+	// Load manifest to get the display name
+	manifest, err := config.LoadManifest()
 	if err != nil {
-		// Fallback to capitalized prefix if we can't load config
+		// Fallback to capitalized prefix if we can't load manifest
 		return strings.Title(sourcePrefix)
 	}
 
-	// Find the source with matching prefix
-	for sourceName, sourceConfig := range sourcesConfig.Sources {
-		if sourceConfig.Prefix == sourcePrefix {
+	// Find the source with matching prefix (case-insensitive)
+	for sourceName, sourceConfig := range manifest.Sources {
+		if strings.ToLower(sourceConfig.Prefix) == sourcePrefix {
 			return sourceName
 		}
 	}
@@ -161,52 +250,110 @@ func getSourceName(fontID string) string {
 }
 
 // findSimilarFonts returns a list of font names that are similar to the given name
+// Prioritizes actual font names (no dots) over font IDs (with dots like "google.roboto")
 func findSimilarFonts(fontName string, allFonts []string) []string {
-	// Simple fuzzy matching on the allFonts list (much faster)
 	queryLower := strings.ToLower(fontName)
 	queryNorm := strings.ReplaceAll(queryLower, " ", "")
-	var similar []string
 
-	// Simple substring matching for speed
+	// Separate font names from font IDs for prioritized matching
+	var fontNames []string // "Open Sans", "Roboto", etc.
+	var fontIDs []string   // "google.roboto", "nerd.fira-code", etc.
+
 	for _, font := range allFonts {
-		fontLower := strings.ToLower(font)
-		fontNorm := strings.ReplaceAll(fontLower, " ", "")
-		// Skip exact equals (case/space-insensitive) to avoid suggesting the same query back
-		if fontLower == queryLower || fontNorm == queryNorm {
-			continue
-		}
-		if strings.Contains(fontLower, queryLower) || strings.Contains(queryLower, fontLower) {
-			similar = append(similar, font)
-			if len(similar) >= 5 {
-				break
-			}
+		if strings.Contains(font, ".") {
+			fontIDs = append(fontIDs, font)
+		} else {
+			fontNames = append(fontNames, font)
 		}
 	}
 
-	// If no substring matches, try partial word matches
-	if len(similar) == 0 {
-		words := strings.Fields(queryLower)
-		for _, font := range allFonts {
-			fontLower := strings.ToLower(font)
-			fontNorm := strings.ReplaceAll(fontLower, " ", "")
-			if fontLower == queryLower || fontNorm == queryNorm {
-				continue
-			}
-			for _, word := range words {
-				if len(word) > 2 && strings.Contains(fontLower, word) {
-					similar = append(similar, font)
-					if len(similar) >= 5 {
-						break
-					}
-				}
-			}
-			if len(similar) >= 5 {
-				break
-			}
-		}
+	var similar []string
+
+	// Phase 1: Check font names first (higher priority)
+	similar = findMatchesInList(queryLower, queryNorm, fontNames, similar, 5)
+
+	// Phase 2: If we need more results, check font IDs
+	if len(similar) < 5 {
+		remaining := 5 - len(similar)
+		similar = findMatchesInList(queryLower, queryNorm, fontIDs, similar, remaining)
 	}
 
 	GetLogger().Debug("Found %d similar fonts for %s", len(similar), fontName)
+	return similar
+}
+
+// findMatchesInList performs fuzzy matching on a specific list of fonts
+func findMatchesInList(queryLower, queryNorm string, fontList []string, existing []string, maxResults int) []string {
+	similar := existing
+
+	// Simple substring matching for speed
+	for _, font := range fontList {
+		if len(similar) >= maxResults {
+			break
+		}
+
+		fontLower := strings.ToLower(font)
+		fontNorm := strings.ReplaceAll(fontLower, " ", "")
+
+		// Skip exact equals and already found fonts
+		if fontLower == queryLower || fontNorm == queryNorm {
+			continue
+		}
+
+		// Skip if already in results
+		alreadyFound := false
+		for _, existing := range similar {
+			if strings.ToLower(existing) == fontLower {
+				alreadyFound = true
+				break
+			}
+		}
+		if alreadyFound {
+			continue
+		}
+
+		if strings.Contains(fontLower, queryLower) || strings.Contains(queryLower, fontLower) {
+			similar = append(similar, font)
+		}
+	}
+
+	// If no substring matches and we still need more, try partial word matches
+	if len(similar) < maxResults {
+		words := strings.Fields(queryLower)
+		for _, font := range fontList {
+			if len(similar) >= maxResults {
+				break
+			}
+
+			fontLower := strings.ToLower(font)
+			fontNorm := strings.ReplaceAll(fontLower, " ", "")
+
+			// Skip exact equals and already found fonts
+			if fontLower == queryLower || fontNorm == queryNorm {
+				continue
+			}
+
+			// Skip if already in results
+			alreadyFound := false
+			for _, existing := range similar {
+				if strings.ToLower(existing) == fontLower {
+					alreadyFound = true
+					break
+				}
+			}
+			if alreadyFound {
+				continue
+			}
+
+			for _, word := range words {
+				if len(word) > 2 && strings.Contains(fontLower, word) {
+					similar = append(similar, font)
+					break
+				}
+			}
+		}
+	}
+
 	return similar
 }
 
@@ -242,6 +389,11 @@ You can specify the installation scope using the --scope flag:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font installation operation")
 
+		// Ensure manifest system is initialized (fixes missing sources.json bug)
+		if err := config.EnsureManifestExists(); err != nil {
+			return fmt.Errorf("failed to initialize sources: %v", err)
+		}
+
 		// Double check args to prevent panic
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			return nil // Args validator will have already shown the help
@@ -259,6 +411,9 @@ You can specify the installation scope using the --scope flag:
 		force, _ := cmd.Flags().GetBool("force")
 
 		GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scope, force)
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Auto-detect scope if not explicitly provided
 		if scope == "" {
@@ -289,6 +444,9 @@ You can specify the installation scope using the --scope flag:
 
 		// Check elevation
 		if err := checkElevation(cmd, fontManager, installScope); err != nil {
+			if errors.Is(err, ErrElevationRequired) {
+				return nil // Already printed user-friendly message
+			}
 			GetLogger().Error("Elevation check failed: %v", err)
 			return err
 		}
@@ -301,6 +459,9 @@ You can specify the installation scope using the --scope flag:
 		// Get font directory for the specified scope
 		fontDir := fontManager.GetFontDir(installScope)
 		GetLogger().Debug("Using font directory: %s", fontDir)
+
+		// Verbose-level information for users
+		output.GetVerbose().Info("Installing fonts to: %s", fontDir)
 
 		// Initialize status tracking
 		status := InstallationStatus{
@@ -325,8 +486,10 @@ You can specify the installation scope using the --scope flag:
 
 			if strings.Contains(fontName, ".") {
 				// This is a specific font ID, use it directly
-				fonts, err = repo.GetFontByID(fontName)
-				sourceName = getSourceName(fontName)
+				// Convert to lowercase for consistent matching
+				fontID := strings.ToLower(fontName)
+				fonts, err = repo.GetFontByID(fontID)
+				sourceName = getSourceName(fontID)
 			} else {
 				// Find all matches across sources
 				matches, matchErr := repo.FindFontMatches(fontName)
@@ -351,23 +514,8 @@ You can specify the installation scope using the --scope flag:
 
 				// Try to find similar fonts
 				similar := findSimilarFonts(fontName, allFonts)
-				if len(similar) > 0 {
-					GetLogger().Info("Found %d similar fonts for %s", len(similar), fontName)
-					fmt.Printf("\n%s\n\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
-					fmt.Printf("%s\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
-
-					for _, s := range similar {
-						fmt.Printf("  - %s\n", ui.FeedbackWarning.Render(s))
-					}
-					fmt.Println() // Add a blank line after suggestions
-				} else {
-					GetLogger().Info("No similar fonts found for %s", fontName)
-					fmt.Printf("\n%s\n", ui.FeedbackError.Render("No similar fonts found."))
-					fmt.Printf("%s\n", ui.FeedbackText.Render("Try using the search command to find available fonts."))
-					fmt.Printf("\n%s\n", ui.FeedbackText.Render("Example:"))
-					fmt.Printf("  %s\n", ui.CommandExample.Render("fontget search \"roboto\""))
-					fmt.Println()
-				}
+				GetLogger().Info("Found %d similar fonts for %s", len(similar), fontName)
+				showFontNotFoundWithSuggestions(fontName, similar)
 				continue // Skip to next font
 			}
 
@@ -379,12 +527,13 @@ You can specify the installation scope using the --scope flag:
 				fontDisplayName = fonts[0].Name // Use base name for multiple variants
 			}
 
-			// Show the header first
-			installHeader := fmt.Sprintf("\nInstalling '%s' from '%s'\n", fontDisplayName, sourceName)
-			fmt.Printf("%s\n", ui.FeedbackInfo.Render(installHeader))
+			// Phase 1: Download with progress bar (combined header)
+			// Add blank line before each font header
+			fmt.Println()
 
-			// Phase 1: Download with progress bar
-			downloadHeader := "Downloading font files..."
+			headerMessage := fmt.Sprintf("Downloading and Installing '%s' from '%s'", fontDisplayName, sourceName)
+			fmt.Println(ui.FeedbackInfo.Render(headerMessage))
+			downloadHeader := "" // Don't pass header to progress bar since we already displayed it
 
 			// For single-font archives (like Nerd Fonts), show more detailed progress
 			var totalSteps int
@@ -401,7 +550,7 @@ You can specify the installation scope using the --scope flag:
 			}
 			var downloadedFonts []downloadedFont
 
-			progressErr := runProgressBar(downloadHeader, totalSteps, func(updateProgress func()) error {
+			progressErr := runProgressBarWithOptions(downloadHeader, totalSteps, func(updateProgress func()) error {
 				// Download each font file
 				for _, font := range fonts {
 					// Download font to temp directory (handles archives automatically)
@@ -442,12 +591,15 @@ You can specify the installation scope using the --scope flag:
 					}
 				}
 				return nil
-			})
+			}, HideProgressBarWhenFinished, ShowProgressBarHeader)
 
 			if progressErr != nil {
 				GetLogger().Error("Failed to download font %s: %v", fontDisplayName, progressErr)
 				continue // Skip to next font
 			}
+
+			// Add blank line after progress bar
+			fmt.Println()
 
 			// Phase 2: Install downloaded fonts (normal terminal output)
 			for _, downloaded := range downloadedFonts {
@@ -458,8 +610,12 @@ You can specify the installation scope using the --scope flag:
 						if _, err := os.Stat(expectedPath); err == nil {
 							status.Skipped++
 							fontDisplayName := getFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
-							msg := fmt.Sprintf("  %s %s %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackWarning.Render("Skipped - already installed"))
+							msg := fmt.Sprintf("  %s %s - %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackWarning.Render("[Skipped] already installed"))
 							GetLogger().Info("Font already installed: %s", fontDisplayName)
+
+							// Verbose mode shows additional info about skipped fonts
+							output.GetVerbose().Detail("Info", "Font exists at: %s", expectedPath)
+
 							fmt.Println(ui.ContentText.Render(msg))
 							os.Remove(fontPath) // Clean up temp file
 							continue
@@ -475,17 +631,28 @@ You can specify the installation scope using the --scope flag:
 					if installErr != nil {
 						os.Remove(fontPath) // Clean up temp file
 						status.Failed++
-						msg := fmt.Sprintf("  %s %s %s - %s", ui.FeedbackError.Render("✗"), ui.TableRow.Render(fontDisplayName), ui.FeedbackError.Render("Failed"), installErr.Error())
+
+						// Simple, clean error message for all platforms
+						msg := fmt.Sprintf("  %s %s - %s", ui.FeedbackError.Render("✗"), ui.TableRow.Render(fontDisplayName), ui.FeedbackError.Render("[Failed] to overwrite existing font"))
+						fmt.Println(ui.ContentText.Render(msg))
+
+						// Show detailed error in verbose mode (user-friendly, no timestamps)
+						output.GetVerbose().Detail("Error", "%s", installErr.Error())
+
 						GetLogger().Error("Failed to install font %s: %v", fontDisplayName, installErr)
-						fmt.Println(ui.TableRow.Render(msg))
 						continue
 					}
 
 					// Clean up temp file
 					os.Remove(fontPath)
 					status.Installed++
-					msg := fmt.Sprintf("  %s %s %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackSuccess.Render("Installed to "+scope+" scope"))
+					msg := fmt.Sprintf("  %s %s - %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackSuccess.Render("[Installed] to "+scope+" scope"))
 					GetLogger().Info("Successfully installed font: %s to %s scope", fontDisplayName, scope)
+
+					// Verbose mode shows installation path
+					finalPath := filepath.Join(fontDir, filepath.Base(fontPath))
+					output.GetVerbose().Detail("Info", "Installed to: %s", finalPath)
+
 					fmt.Println(ui.ContentText.Render(msg))
 				}
 			}
@@ -504,14 +671,8 @@ You can specify the installation scope using the --scope flag:
 		GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d",
 			status.Installed, status.Skipped, status.Failed)
 
-		// Only return error if there were actual installation or download failures
-		if status.Failed > 0 {
-			return &FontInstallationError{
-				FailedCount: status.Failed,
-				TotalCount:  len(fontNames),
-			}
-		}
-
+		// Don't return error for installation failures since we already show detailed status report
+		// This prevents duplicate error messages while maintaining proper exit codes
 		return nil
 	},
 }

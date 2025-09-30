@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"fontget/internal/license"
 	"fontget/internal/logging"
+	"fontget/internal/output"
 	"fontget/internal/platform"
 	"os"
 
 	"github.com/spf13/cobra"
 )
 
-const (
-	version = "1.0"
-)
+// Version is now managed centrally in internal/version package
 
 var (
 	verbose bool
+	debug   bool
 	logs    bool
 	logger  *logging.Logger
 )
@@ -50,11 +50,21 @@ var rootCmd = &cobra.Command{
 		return cmd.Help()
 	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		// Initialize logger with appropriate level based on verbose flag
+		// Initialize logger with appropriate level based on flags
 		config := logging.DefaultConfig()
-		if verbose {
+
+		// Debug flag enables full logging with timestamps to console
+		if debug {
 			config.Level = logging.DebugLevel
-			config.ConsoleOutput = true // Enable console output for debug/info logs when verbose is set
+			config.ConsoleOutput = true // Show all logs to console in debug mode
+		} else if verbose {
+			// Verbose flag enables INFO level but no console logging (cleaner output)
+			config.Level = logging.InfoLevel
+			config.ConsoleOutput = false // Don't show regular logs in verbose mode
+		} else {
+			// Default mode: minimal logging, no console output
+			config.Level = logging.ErrorLevel
+			config.ConsoleOutput = false
 		}
 
 		var err error
@@ -87,11 +97,18 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	// Add verbose flag
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
+	// Add verbose flag - shows detailed operation information (user-friendly)
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed operation information")
+
+	// Add debug flag - shows full diagnostic logs with timestamps (for developers)
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show debug logs with timestamps (for troubleshooting)")
 
 	// Add logs flag
 	rootCmd.PersistentFlags().BoolVar(&logs, "logs", false, "Open logs directory")
+
+	// Inject flag checkers into output package to avoid circular imports
+	output.SetVerboseChecker(IsVerbose)
+	output.SetDebugChecker(IsDebug)
 
 	// Set custom help template
 	rootCmd.SetHelpTemplate(`
@@ -190,4 +207,14 @@ func Execute() error {
 // GetLogger returns the global logger instance
 func GetLogger() *logging.Logger {
 	return logger
+}
+
+// IsVerbose returns true if verbose mode is enabled
+func IsVerbose() bool {
+	return verbose
+}
+
+// IsDebug returns true if debug mode is enabled
+func IsDebug() bool {
+	return debug
 }

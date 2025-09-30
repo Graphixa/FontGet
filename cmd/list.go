@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"fontget/internal/config"
 	"fontget/internal/platform"
 	"fontget/internal/ui"
 	"os"
@@ -123,6 +125,11 @@ var listCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font list operation")
 
+		// Ensure manifest system is initialized (fixes missing sources.json bug)
+		if err := config.EnsureManifestExists(); err != nil {
+			return fmt.Errorf("failed to initialize sources: %v", err)
+		}
+
 		// Create font manager
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
@@ -179,6 +186,9 @@ var listCmd = &cobra.Command{
 			if installScope == platform.MachineScope {
 				GetLogger().Debug("Checking elevation for machine scope")
 				if err := checkElevation(cmd, fontManager, installScope); err != nil {
+					if errors.Is(err, ErrElevationRequired) {
+						return nil // Already printed user-friendly message
+					}
 					GetLogger().Error("Elevation check failed: %v", err)
 					return err
 				}

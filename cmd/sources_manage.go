@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"fontget/internal/config"
 	"fontget/internal/functions"
@@ -20,7 +21,7 @@ import (
 type sourcesModel struct {
 	sources      []functions.SourceItem
 	cursor       int
-	config       *config.SourcesConfig
+	manifest     *config.Manifest
 	state        string // "list", "add", "edit", "confirm", "save_confirm", "builtin_warning"
 	nameInput    textinput.Model
 	urlInput     textinput.Model
@@ -37,19 +38,19 @@ type sourcesModel struct {
 
 // NewSourcesModel creates a new sources management model
 func NewSourcesModel() (*sourcesModel, error) {
-	sourcesConfig, err := config.LoadSourcesConfig()
+	manifest, err := config.LoadManifest()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load sources config: %w", err)
+		return nil, fmt.Errorf("failed to load manifest: %w", err)
 	}
 
 	sm := &sourcesModel{
-		config:       sourcesConfig,
+		manifest:     manifest,
 		state:        "list",
 		focusedField: 0,
 	}
 
-	// Convert config to SourceItem slice using the new utility function
-	sm.sources = functions.ConvertConfigToSourceItems(sourcesConfig, isBuiltInSource)
+	// Convert manifest to SourceItem slice
+	sm.sources = convertManifestToSourceItems(manifest)
 
 	// Sort sources using the centralized sorting function
 	functions.SortSources(sm.sources)
@@ -79,7 +80,12 @@ func NewSourcesModel() (*sourcesModel, error) {
 
 // isBuiltInSource checks if a source name is a built-in source
 func isBuiltInSource(name string) bool {
-	return config.IsBuiltInSource(name)
+	switch name {
+	case "Google Fonts", "Nerd Fonts", "Font Squirrel":
+		return true
+	default:
+		return false
+	}
 }
 
 // updateInputWidths updates the width of text inputs based on terminal size
@@ -337,25 +343,42 @@ func (m *sourcesModel) resetForm() {
 	m.readOnly = false
 }
 
+// convertManifestToSourceItems converts manifest sources to SourceItem slice
+func convertManifestToSourceItems(manifest *config.Manifest) []functions.SourceItem {
+	var sources []functions.SourceItem
+	for name, source := range manifest.Sources {
+		sources = append(sources, functions.SourceItem{
+			Name:      name,
+			Prefix:    source.Prefix,
+			URL:       source.URL,
+			Enabled:   source.Enabled,
+			IsBuiltIn: isBuiltInSource(name),
+			Priority:  source.Priority,
+		})
+	}
+	return sources
+}
+
 // hasChanges checks if any changes have been made to the sources
 func (m *sourcesModel) hasChanges() bool {
-	// Load original config to compare
-	originalConfig, err := config.LoadSourcesConfig()
+	// Load original manifest to compare
+	originalManifest, err := config.LoadManifest()
 	if err != nil {
 		return false
 	}
 
 	// Check if number of sources changed
-	if len(m.sources) != len(originalConfig.Sources) {
+	if len(m.sources) != len(originalManifest.Sources) {
 		return true
 	}
 
 	// Check if any source properties changed
 	for _, source := range m.sources {
-		if originalSource, exists := originalConfig.Sources[source.Name]; exists {
+		if originalSource, exists := originalManifest.Sources[source.Name]; exists {
 			if originalSource.Enabled != source.Enabled ||
 				originalSource.Prefix != source.Prefix ||
-				originalSource.Path != source.URL {
+				originalSource.URL != source.URL ||
+				originalSource.Priority != source.Priority {
 				return true
 			}
 		} else {
@@ -365,7 +388,7 @@ func (m *sourcesModel) hasChanges() bool {
 	}
 
 	// Check if any original sources were removed
-	for name := range originalConfig.Sources {
+	for name := range originalManifest.Sources {
 		found := false
 		for _, source := range m.sources {
 			if source.Name == name {
@@ -427,12 +450,14 @@ func (m *sourcesModel) addSource() {
 		prefix = strings.ToLower(name)
 	}
 
+	// Assign priority to custom sources (100+ to ensure they come after built-in sources)
 	newSource := functions.SourceItem{
 		Name:      name,
 		Prefix:    prefix,
 		URL:       url,
 		Enabled:   true,
 		IsBuiltIn: false,
+		Priority:  m.getNextCustomSourcePriority(),
 	}
 
 	m.sources = append(m.sources, newSource)
@@ -466,27 +491,84 @@ func (m *sourcesModel) updateSource() {
 	m.cursor = functions.FindSourceIndex(m.sources, name)
 }
 
-// saveChanges saves the configuration
+// saveChanges saves the configuration to the new manifest system
 func (m sourcesModel) saveChanges() tea.Cmd {
 	return func() tea.Msg {
-		// Update the config with current sources
-		m.config.Sources = make(map[string]config.Source)
+		// Load current manifest
+		manifest, err := config.LoadManifest()
+		if err != nil {
+			return errorMsg{fmt.Sprintf("Failed to load manifest: %v", err)}
+		}
 
+		// Update manifest with current sources (including priority)
+		manifest.Sources = make(map[string]config.SourceConfig)
 		for _, source := range m.sources {
-			m.config.Sources[source.Name] = config.Source{
-				Path:    source.URL,
-				Prefix:  source.Prefix,
-				Enabled: source.Enabled,
+			manifest.Sources[source.Name] = config.SourceConfig{
+				URL:      source.URL,
+				Prefix:   source.Prefix,
+				Enabled:  source.Enabled,
+				Filename: generateFilename(source.Name),
+				Priority: source.Priority,
+				// Keep existing metadata
+				LastSynced: getExistingLastSynced(manifest.Sources, source.Name),
+				FontCount:  getExistingFontCount(manifest.Sources, source.Name),
+				Version:    getExistingVersion(manifest.Sources, source.Name),
 			}
 		}
 
-		// Save the configuration
-		if err := config.SaveSourcesConfig(m.config); err != nil {
-			return errorMsg{err.Error()}
+		// Update last modified time
+		manifest.LastUpdated = time.Now()
+
+		// Save the manifest
+		if err := config.SaveManifest(manifest); err != nil {
+			return errorMsg{fmt.Sprintf("Failed to save manifest: %v", err)}
 		}
 
 		return tea.Quit()
 	}
+}
+
+// getNextCustomSourcePriority returns the next priority for custom sources
+func (m *sourcesModel) getNextCustomSourcePriority() int {
+	// Find the highest priority among custom sources
+	maxPriority := 99 // Start custom sources at 100
+	for _, source := range m.sources {
+		if !source.IsBuiltIn && source.Priority > maxPriority {
+			maxPriority = source.Priority
+		}
+	}
+	return maxPriority + 1
+}
+
+// Helper functions to preserve existing metadata
+func getExistingLastSynced(sources map[string]config.SourceConfig, name string) *time.Time {
+	if existing, exists := sources[name]; exists {
+		return existing.LastSynced
+	}
+	return nil
+}
+
+func getExistingFontCount(sources map[string]config.SourceConfig, name string) int {
+	if existing, exists := sources[name]; exists {
+		return existing.FontCount
+	}
+	return 0
+}
+
+func getExistingVersion(sources map[string]config.SourceConfig, name string) string {
+	if existing, exists := sources[name]; exists {
+		return existing.Version
+	}
+	return ""
+}
+
+// generateFilename creates a clean filename from source name
+func generateFilename(sourceName string) string {
+	// Convert to lowercase and replace spaces with hyphens
+	filename := strings.ToLower(sourceName)
+	filename = strings.ReplaceAll(filename, " ", "-")
+	filename = strings.ReplaceAll(filename, "_", "-")
+	return filename + ".json"
 }
 
 // errorMsg represents an error message

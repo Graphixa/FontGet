@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fontget/internal/config"
+	"fontget/internal/functions"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
@@ -43,20 +44,14 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 
 		// Show sources information
-		sourcesPath, err := config.GetSourcesConfigPath()
-		if err != nil {
-			if logger != nil {
-				logger.Error("Failed to get sources path: %v", err)
-			}
-			return fmt.Errorf("failed to get sources path: %w", err)
-		}
+		manifestPath := filepath.Join(config.GetAppConfigDir(), "manifest.json")
 
-		sourcesConfig, err := config.LoadSourcesConfig()
+		configManifest, err := config.LoadManifest()
 		if err != nil {
 			if logger != nil {
-				logger.Error("Failed to load sources config: %v", err)
+				logger.Error("Failed to load manifest: %v", err)
 			}
-			return fmt.Errorf("failed to load sources config: %w", err)
+			return fmt.Errorf("failed to load manifest: %w", err)
 		}
 
 		// Get repository (uses smart caching like search/list commands)
@@ -84,10 +79,10 @@ var sourcesInfoCmd = &cobra.Command{
 
 		fmt.Printf("\n%s\n", Bold("Sources Information"))
 		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("%s: %s\n", cyan("Sources File"), sourcesPath)
-		fmt.Printf("%s: %d\n", cyan("Total Sources"), len(sourcesConfig.Sources))
+		fmt.Printf("%s: %s\n", cyan("Manifest File"), manifestPath)
+		fmt.Printf("%s: %d\n", cyan("Total Sources"), len(configManifest.Sources))
 
-		enabledSources := config.GetEnabledSourcesInOrder(sourcesConfig)
+		enabledSources := functions.GetEnabledSourcesInOrder(configManifest)
 		fmt.Printf("%s: %d\n", cyan("Enabled Sources"), len(enabledSources))
 
 		// Show last updated sources date
@@ -103,7 +98,7 @@ var sourcesInfoCmd = &cobra.Command{
 			fmt.Printf("---------------------------------------------\n")
 
 			for i, name := range enabledSources {
-				if source, exists := config.GetSourceByName(sourcesConfig, name); exists {
+				if source, exists := config.GetSourceByName(configManifest, name); exists {
 					fmt.Printf("  %d. %s %s\n", i+1, green(name), white(fmt.Sprintf("(%s)", source.Prefix)))
 				} else {
 					fmt.Printf("  %d. %s %s\n", i+1, red(name), red("(NOT FOUND)"))
@@ -113,7 +108,7 @@ var sourcesInfoCmd = &cobra.Command{
 
 		// Show disabled sources
 		var disabledSources []string
-		for name, source := range sourcesConfig.Sources {
+		for name, source := range configManifest.Sources {
 			if !source.Enabled {
 				disabledSources = append(disabledSources, name)
 			}
@@ -123,7 +118,7 @@ var sourcesInfoCmd = &cobra.Command{
 			fmt.Printf("\n%s\n", Bold("Disabled Sources"))
 			fmt.Printf("---------------------------------------------\n")
 			for i, name := range disabledSources {
-				if source, exists := config.GetSourceByName(sourcesConfig, name); exists {
+				if source, exists := config.GetSourceByName(configManifest, name); exists {
 					fmt.Printf("  %d. %s %s\n", i+1, yellow(name), white(fmt.Sprintf("(%s)", source.Prefix)))
 				}
 			}
@@ -143,31 +138,37 @@ func updateSourceConfigurations() error {
 		logger.Info("Starting sources configuration update")
 	}
 
-	// Load current sources configuration
-	sourcesConfig, err := config.LoadSourcesConfig()
+	// Load current manifest
+	manifest, err := config.LoadManifest()
 	if err != nil {
 		if logger != nil {
-			logger.Error("Failed to load sources config: %v", err)
+			logger.Error("Failed to load manifest: %v", err)
 		}
-		return fmt.Errorf("failed to load sources config: %w", err)
+		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
-	// Get built-in sources configuration
-	defaultConfig := config.DefaultSourcesConfig()
+	// Get default manifest for comparison
+	defaultManifest, err := config.GetDefaultManifest()
+	if err != nil {
+		if logger != nil {
+			logger.Error("Failed to get default manifest: %v", err)
+		}
+		return fmt.Errorf("failed to get default manifest: %w", err)
+	}
 
 	// Update sources to use FontGet-Sources URLs
 	updated := false
-	for name, source := range sourcesConfig.Sources {
-		if defaultSource, exists := defaultConfig.Sources[name]; exists {
+	for name, source := range manifest.Sources {
+		if defaultSource, exists := defaultManifest.Sources[name]; exists {
 			// Check if URL or prefix needs updating (but NOT the enabled status)
-			needsUpdate := source.Path != defaultSource.Path ||
+			needsUpdate := source.URL != defaultSource.URL ||
 				source.Prefix != defaultSource.Prefix
 
 			if needsUpdate {
-				source.Path = defaultSource.Path
+				source.URL = defaultSource.URL
 				source.Prefix = defaultSource.Prefix
 				// Don't change source.Enabled - let the user control that via sources manage
-				sourcesConfig.Sources[name] = source
+				manifest.Sources[name] = source
 				updated = true
 				if logger != nil {
 					logger.Info("Updated %s source URL and prefix", name)
@@ -178,7 +179,7 @@ func updateSourceConfigurations() error {
 
 	if updated {
 		// Save updated configuration
-		if err := config.SaveSourcesConfig(sourcesConfig); err != nil {
+		if err := config.SaveManifest(manifest); err != nil {
 			if logger != nil {
 				logger.Error("Failed to save updated sources config: %v", err)
 			}
@@ -197,17 +198,17 @@ func runSourcesUpdateVerbose() error {
 		logger.Info("Starting verbose sources update operation")
 	}
 
-	// Load sources configuration
-	sourcesConfig, err := config.LoadSourcesConfig()
+	// Load manifest
+	manifest, err := config.LoadManifest()
 	if err != nil {
 		if logger != nil {
-			logger.Error("Failed to load sources config: %v", err)
+			logger.Error("Failed to load manifest: %v", err)
 		}
-		return fmt.Errorf("failed to load sources config: %w", err)
+		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
 	// Get enabled sources
-	enabledSources := config.GetEnabledSourcesInOrder(sourcesConfig)
+	enabledSources := functions.GetEnabledSourcesInOrder(manifest)
 	if len(enabledSources) == 0 {
 		return fmt.Errorf("no sources are enabled")
 	}
@@ -225,7 +226,7 @@ func runSourcesUpdateVerbose() error {
 
 	// Process each source with detailed logging
 	for _, sourceName := range enabledSources {
-		source, exists := sourcesConfig.Sources[sourceName]
+		source, exists := manifest.Sources[sourceName]
 		if !exists {
 			fmt.Printf("Checking for updates for %s\n", sourceName)
 			fmt.Printf("%s\n\n", red("Error: Source not found in configuration"))
@@ -241,7 +242,7 @@ func runSourcesUpdateVerbose() error {
 		}
 
 		// First, check if source is reachable with HEAD request (fast validation)
-		headResp, err := client.Head(source.Path)
+		headResp, err := client.Head(source.URL)
 		if err != nil {
 			// Provide more specific error messages
 			var errorMsg string
@@ -269,8 +270,8 @@ func runSourcesUpdateVerbose() error {
 
 		// Source is reachable, now download the full content
 		fmt.Printf("Source Found\n")
-		fmt.Printf("Downloading from: %s\n", yellow(source.Path))
-		resp, err := client.Get(source.Path)
+		fmt.Printf("Downloading from: %s\n", yellow(source.URL))
+		resp, err := client.Get(source.URL)
 		if err != nil {
 			fmt.Printf("%s\n\n", red(fmt.Sprintf("Error: Failed to download source - %v", err)))
 			failed++
@@ -327,13 +328,13 @@ func runSourcesUpdateVerbose() error {
 		}
 	}
 
-	manifest, err := repo.GetManifestWithRefresh(nil, progress, true)
+	fontManifest, err := repo.GetManifestWithRefresh(nil, progress, true)
 	if err != nil {
 		fmt.Printf("%s\n", yellow(fmt.Sprintf("Warning: Failed to refresh font data cache: %v", err)))
 	} else {
 		// Count total fonts
 		totalFonts := 0
-		for _, sourceInfo := range manifest.Sources {
+		for _, sourceInfo := range fontManifest.Sources {
 			totalFonts += len(sourceInfo.Fonts)
 		}
 		fmt.Printf("%s %d\n", cyan("Total fonts available:"), totalFonts)
@@ -350,20 +351,20 @@ func showSourcesTable(verbose bool) error {
 		logger.Info("Starting sources table display")
 	}
 
-	// Load sources configuration
-	sourcesConfig, err := config.LoadSourcesConfig()
+	// Load manifest
+	manifest, err := config.LoadManifest()
 	if err != nil {
 		if logger != nil {
-			logger.Error("Failed to load sources config: %v", err)
+			logger.Error("Failed to load manifest: %v", err)
 		}
-		return fmt.Errorf("failed to load sources config: %w", err)
+		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
 	// Display sources in table format
 	fmt.Printf("FontGet Sources\n")
 	fmt.Printf("===============\n\n")
 
-	if len(sourcesConfig.Sources) == 0 {
+	if len(manifest.Sources) == 0 {
 		fmt.Printf("No sources configured.\n")
 		return nil
 	}
@@ -383,9 +384,9 @@ func showSourcesTable(verbose bool) error {
 			Timeout: 5 * time.Second,
 		}
 
-		for name, source := range sourcesConfig.Sources {
+		for name, source := range manifest.Sources {
 			if source.Enabled {
-				resp, err := client.Head(source.Path)
+				resp, err := client.Head(source.URL)
 				if err != nil {
 					validationErrors[name] = fmt.Sprintf("Connection error: %v", err)
 				} else {
@@ -398,7 +399,7 @@ func showSourcesTable(verbose bool) error {
 		}
 	}
 
-	for name, source := range sourcesConfig.Sources {
+	for name, source := range manifest.Sources {
 		status := "Disabled"
 		if source.Enabled {
 			status = "Enabled"
@@ -412,11 +413,11 @@ func showSourcesTable(verbose bool) error {
 			status += fmt.Sprintf(" (Error: %s)", validationErrors[name])
 		}
 
-		fmt.Printf("%-15s %-10s %-8s %-50s\n", name, source.Prefix, status, source.Path)
+		fmt.Printf("%-15s %-10s %-8s %-50s\n", name, source.Prefix, status, source.URL)
 	}
 
 	fmt.Printf("\nTotal sources: %d (Enabled: %d, Disabled: %d)\n",
-		len(sourcesConfig.Sources), enabledCount, disabledCount)
+		len(manifest.Sources), enabledCount, disabledCount)
 
 	return nil
 }
@@ -444,7 +445,7 @@ usage: fontget sources update [--verbose]`,
 		}
 
 		// Run TUI update display with spinners
-		return RunSourcesUpdateTUI(false)
+		return RunSourcesUpdateTUI(verbose)
 	},
 }
 
@@ -460,31 +461,37 @@ func handleSourcesUpdate(cmd *cobra.Command) error {
 		logger.Info("Starting sources update operation")
 	}
 
-	// Load current sources configuration
-	sourcesConfig, err := config.LoadSourcesConfig()
+	// Load current manifest
+	manifest, err := config.LoadManifest()
 	if err != nil {
 		if logger != nil {
-			logger.Error("Failed to load sources config: %v", err)
+			logger.Error("Failed to load manifest: %v", err)
 		}
-		return fmt.Errorf("failed to load sources config: %w", err)
+		return fmt.Errorf("failed to load manifest: %w", err)
 	}
 
-	// Get built-in sources configuration
-	defaultConfig := config.DefaultSourcesConfig()
+	// Get default manifest for comparison
+	defaultManifest, err := config.GetDefaultManifest()
+	if err != nil {
+		if logger != nil {
+			logger.Error("Failed to get default manifest: %v", err)
+		}
+		return fmt.Errorf("failed to get default manifest: %w", err)
+	}
 
 	// Update sources to use FontGet-Sources URLs
 	updated := false
-	for name, source := range sourcesConfig.Sources {
-		if defaultSource, exists := defaultConfig.Sources[name]; exists {
+	for name, source := range manifest.Sources {
+		if defaultSource, exists := defaultManifest.Sources[name]; exists {
 			// Check if URL or prefix needs updating (but NOT the enabled status)
-			needsUpdate := source.Path != defaultSource.Path ||
+			needsUpdate := source.URL != defaultSource.URL ||
 				source.Prefix != defaultSource.Prefix
 
 			if needsUpdate {
-				source.Path = defaultSource.Path
+				source.URL = defaultSource.URL
 				source.Prefix = defaultSource.Prefix
 				// Don't change source.Enabled - let the user control that via sources manage
-				sourcesConfig.Sources[name] = source
+				manifest.Sources[name] = source
 				updated = true
 				if logger != nil {
 					logger.Info("Updated %s source URL and prefix", name)
@@ -495,7 +502,7 @@ func handleSourcesUpdate(cmd *cobra.Command) error {
 
 	if updated {
 		// Save updated configuration
-		if err := config.SaveSourcesConfig(sourcesConfig); err != nil {
+		if err := config.SaveManifest(manifest); err != nil {
 			if logger != nil {
 				logger.Error("Failed to save updated sources config: %v", err)
 			}
@@ -504,8 +511,8 @@ func handleSourcesUpdate(cmd *cobra.Command) error {
 
 		PrintSuccess("Sources configuration updated to use FontGet-Sources URLs")
 		PrintInfo("Updated sources:")
-		for name, source := range sourcesConfig.Sources {
-			fmt.Printf("   %s: %s (%s)\n", InfoColor.Sprint(name), source.Path, source.Prefix)
+		for name, source := range manifest.Sources {
+			fmt.Printf("   %s: %s (%s)\n", InfoColor.Sprint(name), source.URL, source.Prefix)
 		}
 	} else {
 		PrintInfo("Sources configuration is already up to date")
@@ -525,7 +532,7 @@ func handleSourcesUpdate(cmd *cobra.Command) error {
 	}
 
 	// Load manifest with force refresh
-	manifest, err := repo.GetManifestWithRefresh(nil, progress, true)
+	fontManifest, err := repo.GetManifestWithRefresh(nil, progress, true)
 	if err != nil {
 		if logger != nil {
 			logger.Error("Failed to refresh font data cache: %v", err)
@@ -548,12 +555,34 @@ func handleSourcesUpdate(cmd *cobra.Command) error {
 
 	// Count total fonts across all sources
 	totalFonts := 0
-	for _, sourceInfo := range manifest.Sources {
+	for _, sourceInfo := range fontManifest.Sources {
 		totalFonts += len(sourceInfo.Fonts)
 	}
 	fmt.Printf("%s %d\n", InfoColor.Sprint("Total fonts available:"), totalFonts)
 
 	return nil
+}
+
+// getEnabledSourcesInOrder returns enabled sources in priority order
+func getEnabledSourcesInOrder(manifest *config.Manifest) []string {
+	var sources []functions.SourceItem
+	for name, source := range manifest.Sources {
+		if source.Enabled {
+			sources = append(sources, functions.SourceItem{
+				Name:     name,
+				Priority: source.Priority,
+			})
+		}
+	}
+
+	// Sort by priority
+	functions.SortSources(sources)
+
+	var result []string
+	for _, source := range sources {
+		result = append(result, source.Name)
+	}
+	return result
 }
 
 func init() {

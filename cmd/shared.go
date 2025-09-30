@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"strings"
 
@@ -16,22 +18,36 @@ import (
 	pinpkg "github.com/yarlson/pin"
 )
 
+// ErrElevationRequired is a sentinel error used to indicate we've already printed
+// user-facing elevation instructions and no further error output is needed.
+var ErrElevationRequired = errors.New("elevation required")
+
 // printElevationHelp prints platform-specific elevation instructions
 func printElevationHelp(cmd *cobra.Command, platform string) {
 	fmt.Println()
+
+	// Build the exact command the user ran (prefer root name over executable filename)
+	fullCmd := strings.TrimSpace(fmt.Sprintf("%s %s", cmd.Root().Name(), strings.Join(os.Args[1:], " ")))
+
 	switch platform {
 	case "windows":
-		cmd.Println("This operation requires administrator privileges.")
-		cmd.Println("To run as administrator:")
-		cmd.Println("  1. Right-click on Command Prompt or PowerShell.")
-		cmd.Println("  2. Select 'Run as administrator'.")
-		cmd.Printf("  3. Run: %s\n", cmd.CommandPath())
+		// Error line in red
+		cmd.Println(ui.FeedbackError.Render("This operation requires administrator privileges."))
+		fmt.Println()
+		// Guidance in normal feedback text
+		cmd.Println(ui.FeedbackText.Render("To run as administrator:"))
+		cmd.Println(ui.FeedbackText.Render("  1. Right-click on Command Prompt or PowerShell."))
+		cmd.Println(ui.FeedbackText.Render("  2. Select 'Run as administrator'."))
+		cmd.Println(ui.FeedbackText.Render(fmt.Sprintf("  3. Run: %s", fullCmd)))
 	case "darwin", "linux":
-		cmd.Println("This operation requires root privileges.")
-		cmd.Println("To run as root, prepend 'sudo' to your command, for example:")
-		cmd.Printf("  sudo %s\n", cmd.CommandPath())
+		// Error line in red
+		cmd.Println(ui.FeedbackError.Render("This operation requires root privileges."))
+		fmt.Println()
+		// Guidance in normal feedback text
+		cmd.Println(ui.FeedbackText.Render("To run as root, prepend 'sudo' to your command, for example:"))
+		cmd.Println(ui.FeedbackText.Render(fmt.Sprintf("  sudo %s", fullCmd)))
 	default:
-		cmd.Println("This operation requires elevated privileges. Please re-run as administrator or root.")
+		cmd.Println(ui.FeedbackError.Render("This operation requires elevated privileges. Please re-run as administrator or root."))
 	}
 	fmt.Println()
 }
@@ -40,14 +56,8 @@ func printElevationHelp(cmd *cobra.Command, platform string) {
 // and prints help if elevation is required but not present
 func checkElevation(cmd *cobra.Command, fontManager platform.FontManager, scope platform.InstallationScope) error {
 	if fontManager.RequiresElevation(scope) {
-		// Create elevation manager
-		elevationManager, err := platform.NewElevationManager()
-		if err != nil {
-			return fmt.Errorf("failed to initialize elevation manager: %w", err)
-		}
-
 		// Check if already elevated
-		elevated, err := elevationManager.IsElevated()
+		elevated, err := fontManager.IsElevated()
 		if err != nil {
 			return fmt.Errorf("failed to check elevation status: %w", err)
 		}
@@ -55,7 +65,10 @@ func checkElevation(cmd *cobra.Command, fontManager platform.FontManager, scope 
 		if !elevated {
 			// Print help message
 			printElevationHelp(cmd, runtime.GOOS)
-			return fmt.Errorf("this command requires elevated privileges. Please follow the instructions above to re-run as administrator/root")
+			// Prevent Cobra and callers from printing duplicate error messages
+			cmd.SilenceErrors = true
+			cmd.SilenceUsage = true
+			return ErrElevationRequired
 		}
 	}
 	return nil
@@ -214,6 +227,11 @@ func runSpinner(msg, doneMsg string, fn func() error) error {
 
 	err := fn()
 	if err != nil {
+		// Do not duplicate user-facing elevation errors; we've already printed instructions
+		if errors.Is(err, ErrElevationRequired) {
+			p.Stop("")
+			return err
+		}
 		// Show failure with red X, but return the error
 		p.Fail(err.Error())
 		return err
@@ -249,4 +267,9 @@ func pinkToPin(hex string) pinpkg.Color {
 // runProgressBar runs a progress bar using the UI component
 func runProgressBar(msg string, totalSteps int, fn func(updateProgress func()) error) error {
 	return components.RunWithProgress(msg, totalSteps, fn)
+}
+
+// runProgressBarWithOptions runs a progress bar with configurable options
+func runProgressBarWithOptions(msg string, totalSteps int, fn func(updateProgress func()) error, hideWhenFinished bool, showHeader bool) error {
+	return components.RunWithProgressOptions(msg, totalSteps, fn, hideWhenFinished, showHeader)
 }

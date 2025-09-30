@@ -48,15 +48,9 @@ var configInfoCmd = &cobra.Command{
 		}
 
 		// Show configuration information
-		configPath, err := config.GetYAMLConfigPath()
-		if err != nil {
-			if logger != nil {
-				logger.Error("Failed to get config path: %v", err)
-			}
-			return fmt.Errorf("failed to get config path: %w", err)
-		}
+		configPath := config.GetAppConfigPath()
 
-		yamlConfig, err := config.LoadYAMLConfig()
+		appConfig, err := config.LoadUserPreferences()
 		if err != nil {
 			if logger != nil {
 				logger.Error("Failed to load config: %v", err)
@@ -68,17 +62,17 @@ var configInfoCmd = &cobra.Command{
 		fmt.Printf("  Location: %s\n", configPath)
 
 		// Show editor information
-		actualEditor := config.GetEditorWithFallback(yamlConfig)
-		if yamlConfig.Configuration.DefaultEditor == "" {
+		actualEditor := config.GetEditorWithFallback(appConfig)
+		if appConfig.Configuration.DefaultEditor == "" {
 			fmt.Printf("  Default Editor: %s (system default)\n", actualEditor)
 			fmt.Printf("  Editor Note: To customize, edit config.yaml and uncomment a DefaultEditor line\n")
 		} else {
 			fmt.Printf("  Default Editor: %s (custom)\n", actualEditor)
 		}
 
-		fmt.Printf("  Log Path: %s\n", yamlConfig.Logging.LogPath)
-		fmt.Printf("  Max Log Size: %s\n", yamlConfig.Logging.MaxSize)
-		fmt.Printf("  Max Log Files: %d\n", yamlConfig.Logging.MaxFiles)
+		fmt.Printf("  Log Path: %s\n", appConfig.Logging.LogPath)
+		fmt.Printf("  Max Log Size: %s\n", appConfig.Logging.MaxSize)
+		fmt.Printf("  Max Log Files: %d\n", appConfig.Logging.MaxFiles)
 		return nil
 	},
 }
@@ -95,16 +89,10 @@ var configEditCmd = &cobra.Command{
 		}
 
 		// Open configuration file in editor
-		configPath, err := config.GetYAMLConfigPath()
-		if err != nil {
-			if logger != nil {
-				logger.Error("Failed to get config path: %v", err)
-			}
-			return fmt.Errorf("failed to get config path: %w", err)
-		}
+		configPath := config.GetAppConfigPath()
 
 		// Load current config to ensure it exists
-		yamlConfig, err := config.LoadYAMLConfig()
+		appConfig, err := config.LoadUserPreferences()
 		if err != nil {
 			if logger != nil {
 				logger.Error("Failed to load config: %v", err)
@@ -113,7 +101,7 @@ var configEditCmd = &cobra.Command{
 		}
 
 		// Save config to ensure it exists on disk
-		if err := config.SaveYAMLConfig(yamlConfig); err != nil {
+		if err := config.SaveUserPreferences(appConfig); err != nil {
 			if logger != nil {
 				logger.Error("Failed to save config: %v", err)
 			}
@@ -121,7 +109,7 @@ var configEditCmd = &cobra.Command{
 		}
 
 		// Get the editor to use
-		editor := config.GetEditorWithFallback(yamlConfig)
+		editor := config.GetEditorWithFallback(appConfig)
 
 		// Open the configuration file in the editor
 		fmt.Printf("Opening config.yaml in %s...\n", editor)
@@ -178,7 +166,7 @@ func init() {
 					logger.Info("Resetting configuration to defaults")
 				}
 
-				if err := config.GenerateInitialYAMLConfig(); err != nil {
+				if err := config.GenerateInitialUserPreferences(); err != nil {
 					if logger != nil {
 						logger.Error("Failed to generate default config: %v", err)
 					}
@@ -190,7 +178,7 @@ func init() {
 				return nil
 			}
 
-			yamlConfig, err := config.LoadYAMLConfig()
+			appConfig, err := config.LoadUserPreferences()
 			if err != nil {
 				if logger != nil {
 					logger.Error("Failed to load config: %v", err)
@@ -221,7 +209,7 @@ func init() {
 				return nil
 			}
 
-			if err := config.ValidateYAMLConfig(yamlConfig); err != nil {
+			if err := config.ValidateUserPreferences(appConfig); err != nil {
 				red := color.New(color.FgRed).SprintFunc()
 				if logger != nil {
 					logger.Error("Configuration validation failed: %v", err)

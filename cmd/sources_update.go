@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fontget/internal/config"
+	"fontget/internal/functions"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
@@ -71,13 +72,13 @@ func createHTTPClient() *http.Client {
 
 // NewUpdateModel creates a new update progress model
 func NewUpdateModel(verbose bool) (*updateModel, error) {
-	sourcesConfig, err := config.LoadSourcesConfig()
+	manifest, err := config.LoadManifest()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load sources config: %w", err)
+		return nil, fmt.Errorf("failed to load manifest: %w", err)
 	}
 
 	// Get enabled sources
-	enabledSources := config.GetEnabledSourcesInOrder(sourcesConfig)
+	enabledSources := functions.GetEnabledSourcesInOrder(manifest)
 	if len(enabledSources) == 0 {
 		return nil, fmt.Errorf("no sources are enabled")
 	}
@@ -182,8 +183,8 @@ func (m updateModel) updateNextSource() tea.Cmd {
 	m.status[source] = "Starting..."
 
 	return func() tea.Msg {
-		// Load the current config to get the source URL
-		sourcesConfig, err := config.LoadSourcesConfig()
+		// Load the current manifest to get the source URL
+		manifest, err := config.LoadManifest()
 		if err != nil {
 			return updateCompleteMsg{
 				source: source,
@@ -193,7 +194,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		}
 
 		// Get the source URL for validation
-		sourceConfig, exists := sourcesConfig.Sources[source]
+		sourceConfig, exists := manifest.Sources[source]
 		if !exists {
 			return updateCompleteMsg{
 				source: source,
@@ -210,11 +211,11 @@ func (m updateModel) updateNextSource() tea.Cmd {
 
 		// Store verbose info for display in TUI
 		if m.verbose {
-			m.status[source] = fmt.Sprintf("Checking %s...", sourceConfig.Path)
+			m.status[source] = fmt.Sprintf("Checking %s...", sourceConfig.URL)
 		}
 
 		// Create request with context for proper cancellation
-		req, err := http.NewRequestWithContext(ctx, "GET", sourceConfig.Path, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", sourceConfig.URL, nil)
 		if err != nil {
 			return updateCompleteMsg{
 				source: source,
@@ -229,7 +230,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 
 		// Make the request
 		if m.verbose {
-			m.status[source] = fmt.Sprintf("Downloading from %s...", sourceConfig.Path)
+			m.status[source] = fmt.Sprintf("Downloading from %s...", sourceConfig.URL)
 		}
 
 		resp, err := client.Do(req)

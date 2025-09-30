@@ -62,6 +62,11 @@ var searchCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font search operation")
 
+		// Ensure manifest system is initialized (fixes missing sources.json bug)
+		if err := config.EnsureManifestExists(); err != nil {
+			return fmt.Errorf("failed to initialize sources: %v", err)
+		}
+
 		// Get arguments (already validated by Args function)
 		category, _ := cmd.Flags().GetString("category")
 		refresh, _ := cmd.Flags().GetBool("refresh")

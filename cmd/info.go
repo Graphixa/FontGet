@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"fontget/internal/config"
 	"fontget/internal/license"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
@@ -50,6 +51,11 @@ var infoCmd = &cobra.Command{
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font info operation")
+
+		// Ensure manifest system is initialized (fixes missing sources.json bug)
+		if err := config.EnsureManifestExists(); err != nil {
+			return fmt.Errorf("failed to initialize sources: %v", err)
+		}
 
 		// Double check args to prevent panic
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
