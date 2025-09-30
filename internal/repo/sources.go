@@ -188,19 +188,19 @@ func loadSourceDataFromCacheOnly(url string, sourceName string) (*SourceData, er
 }
 
 // loadAllSources loads all enabled sources and merges them into a combined manifest
-func loadAllSources(sourcesConfig *config.SourcesConfig, progress ProgressCallback) (*FontManifest, error) {
-	return loadAllSourcesWithCache(sourcesConfig, progress, false)
+func loadAllSources(manifest *config.Manifest, progress ProgressCallback) (*FontManifest, error) {
+	return loadAllSourcesWithCache(manifest, progress, false)
 }
 
 // loadAllSourcesFromCacheOnly loads all enabled sources from cache only (no refresh)
-func loadAllSourcesFromCacheOnly(sourcesConfig *config.SourcesConfig) (*FontManifest, error) {
+func loadAllSourcesFromCacheOnly(manifest *config.Manifest) (*FontManifest, error) {
 	var allSources = make(map[string]SourceInfo)
 
 	totalSources := 0
 	enabledSources := 0
 
 	// Count enabled sources
-	for _, source := range sourcesConfig.Sources {
+	for _, source := range manifest.Sources {
 		if source.Enabled {
 			totalSources++
 		}
@@ -213,13 +213,13 @@ func loadAllSourcesFromCacheOnly(sourcesConfig *config.SourcesConfig) (*FontMani
 	var oldestSourceTime time.Time
 	firstSource := true
 
-	for sourceName, sourceConfig := range sourcesConfig.Sources {
+	for sourceName, sourceConfig := range manifest.Sources {
 		if !sourceConfig.Enabled {
 			continue
 		}
 
 		// Use the URL from the configuration
-		sourceURL := sourceConfig.Path
+		sourceURL := sourceConfig.URL
 
 		sourceData, err := loadSourceDataFromCacheOnly(sourceURL, sourceName)
 		if err != nil {
@@ -292,25 +292,25 @@ func loadAllSourcesFromCacheOnly(sourcesConfig *config.SourcesConfig) (*FontMani
 		lastUpdated = time.Now()
 	}
 
-	// Create the manifest
-	manifest := &FontManifest{
+	// Create the font manifest
+	fontManifest := &FontManifest{
 		Version:     "1.0",
 		LastUpdated: lastUpdated,
 		Sources:     allSources,
 	}
 
-	return manifest, nil
+	return fontManifest, nil
 }
 
 // loadAllSourcesWithCache loads all enabled sources with optional cache refresh
-func loadAllSourcesWithCache(sourcesConfig *config.SourcesConfig, progress ProgressCallback, forceRefresh bool) (*FontManifest, error) {
+func loadAllSourcesWithCache(manifest *config.Manifest, progress ProgressCallback, forceRefresh bool) (*FontManifest, error) {
 	var allSources = make(map[string]SourceInfo)
 
 	totalSources := 0
 	enabledSources := 0
 
 	// Count enabled sources
-	for _, source := range sourcesConfig.Sources {
+	for _, source := range manifest.Sources {
 		if source.Enabled {
 			totalSources++
 		}
@@ -321,7 +321,7 @@ func loadAllSourcesWithCache(sourcesConfig *config.SourcesConfig, progress Progr
 	}
 
 	currentSource := 0
-	for sourceName, sourceConfig := range sourcesConfig.Sources {
+	for sourceName, sourceConfig := range manifest.Sources {
 		if !sourceConfig.Enabled {
 			continue
 		}
@@ -332,7 +332,7 @@ func loadAllSourcesWithCache(sourcesConfig *config.SourcesConfig, progress Progr
 		}
 
 		// Use the URL from the configuration
-		sourceURL := sourceConfig.Path
+		sourceURL := sourceConfig.URL
 
 		sourceData, err := loadSourceDataWithCache(sourceURL, sourceName, nil, forceRefresh)
 		if err != nil {
@@ -400,14 +400,14 @@ func loadAllSourcesWithCache(sourcesConfig *config.SourcesConfig, progress Progr
 		return nil, fmt.Errorf("no sources could be loaded successfully")
 	}
 
-	// Create combined manifest
-	manifest := &FontManifest{
+	// Create combined font manifest
+	fontManifest := &FontManifest{
 		Version:     "2.0", // New version for FontGet-Sources integration
 		LastUpdated: time.Now(),
 		Sources:     allSources,
 	}
 
-	return manifest, nil
+	return fontManifest, nil
 }
 
 // ensureSourcesDir ensures the sources directory exists
