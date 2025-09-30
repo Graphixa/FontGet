@@ -126,8 +126,8 @@ var (
 
 	// CommandExample - Example commands
 	CommandExample = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f5c2e7")). // Pink
-			Bold(true)
+			Foreground(lipgloss.NoColor{}) // No color - uses terminal default
+
 )
 
 // ============================================================================
