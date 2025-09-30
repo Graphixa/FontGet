@@ -22,19 +22,26 @@ type tickMsg time.Time
 
 // Model represents the progress bar component
 type Model struct {
-	progress    progress.Model
-	header      string
-	currentStep *int64 // Use atomic counter for thread-safe access
-	totalSteps  int
-	completed   bool
-	err         error
-	callback    func(updateProgress func()) error
-	ctx         context.Context
-	cancel      context.CancelFunc
+	progress         progress.Model
+	header           string
+	currentStep      *int64 // Use atomic counter for thread-safe access
+	totalSteps       int
+	completed        bool
+	err              error
+	callback         func(updateProgress func()) error
+	ctx              context.Context
+	cancel           context.CancelFunc
+	hideWhenFinished bool // Controls whether to hide the progress bar when completed
+	showHeader       bool // Controls whether to show the header text
 }
 
 // NewProgressModel creates a new progress bar model
 func NewProgressModel(header string, totalSteps int, callback func(updateProgress func()) error) Model {
+	return NewProgressModelWithOptions(header, totalSteps, callback, true, true) // Default to hiding when finished and showing header
+}
+
+// NewProgressModelWithOptions creates a new progress bar model with configurable options
+func NewProgressModelWithOptions(header string, totalSteps int, callback func(updateProgress func()) error, hideWhenFinished bool, showHeader bool) Model {
 	ctx, cancel := context.WithCancel(context.Background())
 	currentStep := int64(0)
 
@@ -45,13 +52,15 @@ func NewProgressModel(header string, totalSteps int, callback func(updateProgres
 	)
 
 	return Model{
-		progress:    prog,
-		header:      header,
-		currentStep: &currentStep,
-		totalSteps:  totalSteps,
-		callback:    callback,
-		ctx:         ctx,
-		cancel:      cancel,
+		progress:         prog,
+		header:           header,
+		currentStep:      &currentStep,
+		totalSteps:       totalSteps,
+		callback:         callback,
+		ctx:              ctx,
+		cancel:           cancel,
+		hideWhenFinished: hideWhenFinished,
+		showHeader:       showHeader,
 	}
 }
 
@@ -112,7 +121,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the progress bar
 func (m Model) View() string {
-	if m.completed && m.err == nil {
+	if m.completed && m.err == nil && m.hideWhenFinished {
 		return ""
 	}
 
@@ -123,10 +132,12 @@ func (m Model) View() string {
 	// Build the view using the centralized styles
 	var result strings.Builder
 
-	// Header with proper styling
-	result.WriteString("\n")
-	result.WriteString(ui.ProgressBarHeader.Render(m.header))
-	result.WriteString("\n")
+	// Header with proper styling (only if header is not empty and showHeader is true)
+	if m.header != "" && m.showHeader {
+		result.WriteString("\n")
+		result.WriteString(ui.ProgressBarHeader.Render(m.header))
+		result.WriteString("\n")
+	}
 
 	// Progress bar with container styling
 	progressLine := ui.ProgressBarContainer.Render(
@@ -175,9 +186,14 @@ func (m Model) runCallback() tea.Cmd {
 	})
 }
 
-// RunWithProgress runs a progress bar
+// RunWithProgress runs a progress bar with default settings (hides when finished, shows header)
 func RunWithProgress(header string, totalSteps int, callback func(updateProgress func()) error) error {
-	model := NewProgressModel(header, totalSteps, callback)
+	return RunWithProgressOptions(header, totalSteps, callback, true, true)
+}
+
+// RunWithProgressOptions runs a progress bar with configurable options
+func RunWithProgressOptions(header string, totalSteps int, callback func(updateProgress func()) error, hideWhenFinished bool, showHeader bool) error {
+	model := NewProgressModelWithOptions(header, totalSteps, callback, hideWhenFinished, showHeader)
 
 	// Create and run the Bubble Tea program
 	program := tea.NewProgram(model)
