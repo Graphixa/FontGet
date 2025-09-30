@@ -170,3 +170,31 @@ func RunAsElevated() error {
 
 	return nil
 }
+
+// CreateHiddenDirectory creates a directory and sets it as hidden on Windows
+func CreateHiddenDirectory(path string, perm os.FileMode) error {
+	// First create the directory normally
+	if err := os.MkdirAll(path, perm); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Set the hidden attribute on Windows
+	pathPtr, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return fmt.Errorf("failed to convert path to UTF16: %w", err)
+	}
+
+	// Use SetFileAttributes to make the directory hidden
+	kernel32 := syscall.NewLazyDLL("kernel32.dll")
+	setFileAttributes := kernel32.NewProc("SetFileAttributesW")
+
+	// FILE_ATTRIBUTE_HIDDEN = 0x2
+	ret, _, err := setFileAttributes.Call(uintptr(unsafe.Pointer(pathPtr)), 0x2)
+	if ret == 0 {
+		// Get the actual Windows error code
+		errCode := syscall.GetLastError()
+		return fmt.Errorf("SetFileAttributes failed (error code: %d): %w", errCode, err)
+	}
+
+	return nil
+}

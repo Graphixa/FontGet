@@ -166,3 +166,10 @@ func (m *linuxFontManager) updateFontCache(scope InstallationScope) error {
 
 	return nil
 }
+
+// CreateHiddenDirectory creates a directory and sets it as hidden on Linux
+func CreateHiddenDirectory(path string, perm os.FileMode) error {
+	// On macOS/Linux, directories starting with . are automatically hidden
+	// Just create the directory normally
+	return os.MkdirAll(path, perm)
+}
