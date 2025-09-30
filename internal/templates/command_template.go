@@ -10,6 +10,7 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/logging"
+	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
@@ -22,6 +23,10 @@ import (
 func GetLogger() *logging.Logger {
 	return nil // Replace with actual logger implementation
 }
+
+// NOTE: No need for IsVerbose/IsDebug placeholders anymore!
+// Use the new clean output interface instead:
+// output.GetVerbose().Info("message") and output.GetDebug().Message("message")
 
 // Template for new commands. Replace "command" with your command name
 var commandCmd = &cobra.Command{
@@ -88,6 +93,9 @@ usage: fontget command [<options>]`,
 			logger.Info("Starting command operation")
 		}
 
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
 		// Double check args to prevent panic
 		flagValue, _ := cmd.Flags().GetString("flag-name")
 		var argValue string
@@ -100,6 +108,15 @@ usage: fontget command [<options>]`,
 
 		// Print styled title using modern UI components
 		fmt.Printf("\n%s\n", ui.PageTitle.Render("Command Results"))
+
+		// Verbose-level information for users
+		output.GetVerbose().Info("Processing command with argument: %s", argValue)
+		if flagValue != "" {
+			output.GetVerbose().Info("Using flag value: %s", flagValue)
+		}
+
+		// Debug state information for developers
+		output.GetDebug().State("Arguments received: %d, Flag provided: %t", len(args), flagValue != "")
 
 		// Use optimized repository access (smart caching like search/list commands)
 		r, err := repo.GetRepository()
@@ -125,6 +142,13 @@ usage: fontget command [<options>]`,
 			fmt.Printf(" with flag '%s'", ui.TableSourceName.Render(flagValue))
 		}
 		fmt.Println()
+
+		// Verbose information about the operation
+		output.GetVerbose().Info("Search completed successfully")
+		output.GetVerbose().Detail("Results", "Found %d matches", 0)
+
+		// Debug performance information
+		output.GetDebug().Performance("Search operation completed in <timing>")
 
 		// Define column widths (matching search command style)
 		columns := map[string]int{
@@ -244,6 +268,31 @@ LOGGING BEST PRACTICES:
 - Use logger.Error() for errors
 - Use logger.Warn() for warnings
 
+VERBOSE/DEBUG MODE BEST PRACTICES (NEW CLEAN INTERFACE):
+- Use output.GetVerbose().Info(format, args...) for user-friendly detailed output
+- Use output.GetVerbose().Warning/Error/Success(format, args...) for different message types
+- Use output.GetVerbose().Detail(prefix, format, args...) for indented details
+- Use output.GetDebug().Message(format, args...) for developer diagnostic output
+- Use output.GetDebug().State/Performance/Error/Warning(format, args...) for debug diagnostics
+- Clean, consistent interface - no manual styling needed
+- Users can combine --verbose --debug for maximum detail
+- Keep normal output clean and ensure verbose/debug doesn't interfere with operation
+
+EXAMPLES:
+```go
+// Verbose output (user-friendly)
+output.GetVerbose().Info("Installing fonts to: %s", fontDir)
+output.GetVerbose().Detail("Info", "Font exists at: %s", path)
+output.GetVerbose().Warning("Font may be corrupted")
+output.GetVerbose().Error("Installation failed: %s", err.Error())
+
+// Debug output (developer diagnostics)
+output.GetDebug().Message("Debug mode enabled - detailed diagnostics")
+output.GetDebug().State("Current working directory: %s", dir)
+output.GetDebug().Performance("Operation completed in %v", duration)
+output.GetDebug().Error("Critical system error: %v", err)
+```
+
 Standard Help Formatting:
 - Use winget-style help with "usage:" line
 - Include subcommands in "The following sub-commands are available:" section
@@ -281,6 +330,12 @@ usage: fontget add [<options>]`,
 			logger.Info("Starting font add operation")
 		}
 
+		// Debug-level information for developers
+		if IsDebug() {
+			fmt.Printf("%s Debug mode enabled - showing detailed diagnostic information\n",
+				ui.FeedbackInfo.Render("[DEBUG]"))
+		}
+
 		// Double check args to prevent panic
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			return nil // Args validator will have already shown the help
@@ -288,6 +343,32 @@ usage: fontget add [<options>]`,
 
 		// Print styled title
 		fmt.Printf("\n%s\n", ui.PageTitle.Render("Adding Font"))
+
+		style, _ := cmd.Flags().GetString("style")
+		fontName := args[0]
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
+		// Verbose-level information for users
+		output.GetVerbose().Info("Adding font: %s", fontName)
+		if style != "" {
+			output.GetVerbose().Info("Using style: %s", style)
+		}
+
+		// Example of different verbose/debug output types
+		output.GetVerbose().Detail("Operation", "Installing to user scope")
+		output.GetDebug().State("Current working directory: %s", "/path/to/dir")
+
+		// Example of error handling with verbose/debug output
+		// if err := someOperation(); err != nil {
+		//     output.GetVerbose().Error("Installation failed: %s", err.Error())
+		//     output.GetDebug().Error("Critical error in font installation: %v", err)
+		//     // Still log to file for debugging
+		//     if logger != nil {
+		//         logger.Error("Font installation failed: %v", err)
+		//     }
+		// }
 
 		// Use optimized repository access
 		r, err := repo.GetRepository()
@@ -297,9 +378,6 @@ usage: fontget add [<options>]`,
 			}
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
-
-		style, _ := cmd.Flags().GetString("style")
-		fontName := args[0]
 
 		// Add font logic here
 		fmt.Printf("Adding font: %s", ui.TableSourceName.Render(fontName))
