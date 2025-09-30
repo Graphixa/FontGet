@@ -32,8 +32,8 @@ func (e ValidationErrors) Error() string {
 	return strings.Join(messages, "\n  - ")
 }
 
-// ValidateStrictYAMLConfig performs strict validation on YAML config with multi-error collection
-func ValidateStrictYAMLConfig(data map[string]interface{}) error {
+// ValidateStrictAppConfig performs strict validation on app config with multi-error collection
+func ValidateStrictAppConfig(data map[string]interface{}) error {
 	var errors ValidationErrors
 
 	// Validate Configuration section
@@ -66,49 +66,6 @@ func ValidateStrictYAMLConfig(data map[string]interface{}) error {
 	} else {
 		errors = append(errors, ValidationError{
 			Field:   "Logging",
-			Message: "section is required",
-		})
-	}
-
-	if len(errors) > 0 {
-		return errors
-	}
-	return nil
-}
-
-// ValidateStrictSourcesConfig performs strict validation on sources config with multi-error collection
-func ValidateStrictSourcesConfig(data map[string]interface{}) error {
-	var errors ValidationErrors
-
-	// Validate sources section
-	if sourcesSection, exists := data["sources"]; exists {
-		if sourcesMap, ok := sourcesSection.(map[string]interface{}); ok {
-			if len(sourcesMap) == 0 {
-				errors = append(errors, ValidationError{
-					Field:   "sources",
-					Message: "at least one source must be configured",
-				})
-			} else {
-				for name, sourceData := range sourcesMap {
-					if sourceMap, ok := sourceData.(map[string]interface{}); ok {
-						errors = append(errors, validateSource(name, sourceMap)...)
-					} else {
-						errors = append(errors, ValidationError{
-							Field:   fmt.Sprintf("sources.%s", name),
-							Message: "must be an object",
-						})
-					}
-				}
-			}
-		} else {
-			errors = append(errors, ValidationError{
-				Field:   "sources",
-				Message: "must be an object",
-			})
-		}
-	} else {
-		errors = append(errors, ValidationError{
-			Field:   "sources",
 			Message: "section is required",
 		})
 	}
