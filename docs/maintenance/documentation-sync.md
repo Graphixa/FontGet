@@ -122,7 +122,7 @@ fontget search --help
 4. Check help output consistency
 
 ### When Adding New Commands
-1. Add command to `command-reference.md`
+1. Add command to `docs/help.md`
 2. Include all flags in Quick Reference table
 3. Add detailed flag descriptions
 4. Provide working examples
