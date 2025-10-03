@@ -10,8 +10,8 @@ import (
 
 // SourceData represents the complete FontGet-Sources file structure
 type SourceData struct {
-	SourceInfo SourceInfo          `json:"source_info"`
-	Fonts      map[string]FontData `json:"fonts"`
+	SourceInfo SourceInfo      `json:"source_info"`
+	Fonts      map[string]Font `json:"fonts"`
 }
 
 // SourceInfo represents metadata about a font source
@@ -81,28 +81,6 @@ type Font struct {
 
 // Conversion functions to help migrate from old structures
 
-// FromFontData converts FontData to Font
-func (f *Font) FromFontData(data FontData) {
-	f.Name = data.Name
-	f.Family = data.Family
-	f.License = data.License
-	f.LicenseURL = data.LicenseURL
-	f.Designer = data.Designer
-	f.Foundry = data.Foundry
-	f.Version = data.Version
-	f.Description = data.Description
-	f.Categories = data.Categories
-	f.Tags = data.Tags
-	f.Popularity = data.Popularity
-	f.LastModified = data.LastModified
-	f.MetadataURL = data.MetadataURL
-	f.SourceURL = data.SourceURL
-	f.Variants = data.Variants
-	f.UnicodeRanges = data.UnicodeRanges
-	f.Languages = data.Languages
-	f.SampleText = data.SampleText
-}
-
 // FromFontInfo converts FontInfo to Font
 func (f *Font) FromFontInfo(info FontInfo) {
 	f.Name = info.Name
@@ -142,39 +120,11 @@ func (f *Font) FromFontFileInfo(info FontFileInfo) {
 	}
 }
 
-// FontData represents detailed information about a font from FontGet-Sources (deprecated - use Font)
-type FontData struct {
-	Name          string        `json:"name"`
-	Family        string        `json:"family"`
-	License       string        `json:"license"`
-	LicenseURL    string        `json:"license_url,omitempty"`
-	Designer      string        `json:"designer,omitempty"`
-	Foundry       string        `json:"foundry,omitempty"`
-	Version       string        `json:"version,omitempty"`
-	Description   string        `json:"description,omitempty"`
-	Categories    []string      `json:"categories,omitempty"`
-	Tags          []string      `json:"tags,omitempty"`
-	Popularity    int           `json:"popularity,omitempty"`
-	LastModified  string        `json:"last_modified,omitempty"`
-	MetadataURL   string        `json:"metadata_url,omitempty"`
-	SourceURL     string        `json:"source_url,omitempty"`
-	Variants      []FontVariant `json:"variants"`
-	UnicodeRanges []string      `json:"unicode_ranges,omitempty"`
-	Languages     []string      `json:"languages,omitempty"`
-	SampleText    string        `json:"sample_text,omitempty"`
-}
-
 // FontManifest represents the combined manifest of all fonts
 type FontManifest struct {
 	Version     string                `json:"version"`
 	LastUpdated time.Time             `json:"last_updated"`
 	Sources     map[string]SourceInfo `json:"sources"`
-}
-
-// Legacy structures (to be deprecated)
-// Manifest represents the font manifest
-type Manifest struct {
-	Sources map[string]Source `json:"sources"`
 }
 
 // Source represents a font source

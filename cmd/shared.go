@@ -264,11 +264,6 @@ func pinkToPin(hex string) pinpkg.Color {
 	}
 }
 
-// runProgressBar runs a progress bar using the UI component
-func runProgressBar(msg string, totalSteps int, fn func(updateProgress func()) error) error {
-	return components.RunWithProgress(msg, totalSteps, fn)
-}
-
 // runProgressBarWithOptions runs a progress bar with configurable options
 func runProgressBarWithOptions(msg string, totalSteps int, fn func(updateProgress func()) error, hideWhenFinished bool, showHeader bool) error {
 	return components.RunWithProgressOptions(msg, totalSteps, fn, hideWhenFinished, showHeader)

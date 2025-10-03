@@ -275,60 +275,10 @@ func fileExists(filepath string) bool {
 }
 
 func validateExistingManifest(manifestPath string) error {
-	// TODO: Add validation logic for existing manifest
-	// - Check version compatibility
-	// - Validate schema
-	// - Check for required fields
-	return nil
-}
-
-// MigrateFromLegacyConfig migrates old sources.json to new manifest.json
-// DownloadAndParseSource is a public wrapper for the internal function
-func DownloadAndParseSource(url, filename string) (*SourceData, error) {
-	return downloadAndParseSource(url, filename)
-}
-
-func MigrateFromLegacyConfig() error {
-	configDir := GetAppConfigDir()
-	legacyPath := filepath.Join(configDir, "sources.json")
-	newPath := getManifestPath()
-
-	if fileExists(legacyPath) && !fileExists(newPath) {
-		// Read legacy config
-		data, err := os.ReadFile(legacyPath)
-		if err != nil {
-			return fmt.Errorf("failed to read legacy config: %v", err)
-		}
-
-		// Parse legacy format (assuming it's similar to our old SourcesConfig)
-		var legacyConfig map[string]interface{}
-		if err := json.Unmarshal(data, &legacyConfig); err != nil {
-			return fmt.Errorf("failed to parse legacy config: %v", err)
-		}
-
-		// Create new manifest with migrated settings
-		manifest, err := createDefaultManifest()
-		if err != nil {
-			return fmt.Errorf("failed to create default manifest during migration: %v", err)
-		}
-
-		// TODO: Migrate user preferences from legacy config
-		// For now, use defaults and let bootstrap handle the rest
-
-		// Save new manifest
-		if err := saveManifest(manifest); err != nil {
-			return fmt.Errorf("failed to save migrated manifest: %v", err)
-		}
-
-		// Backup legacy file
-		backupPath := legacyPath + ".backup"
-		if err := os.Rename(legacyPath, backupPath); err != nil {
-			fmt.Printf("Warning: Could not backup legacy config: %v\n", err)
-		}
-
-		fmt.Printf("Migrated legacy sources.json to manifest.json (backup saved as sources.json.backup)\n")
+	// Basic validation - check if file exists and is readable
+	if _, err := os.Stat(manifestPath); err != nil {
+		return fmt.Errorf("manifest file not found: %w", err)
 	}
-
 	return nil
 }
 

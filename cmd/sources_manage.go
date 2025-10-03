@@ -711,21 +711,23 @@ func (m sourcesModel) formView() string {
 			// In edit mode, show as input field with custom styling
 			if field.focus {
 				// For the focused field, use the textinput's View() method to get the blinking cursor
-				if i == 0 {
+				switch i {
+				case 0:
 					fieldValue = m.nameInput.View()
-				} else if i == 1 {
+				case 1:
 					fieldValue = m.prefixInput.View()
-				} else if i == 2 {
+				case 2:
 					fieldValue = m.urlInput.View()
 				}
 			} else {
 				// For non-focused fields, show the value with custom styling
 				var inputValue string
-				if i == 0 {
+				switch i {
+				case 0:
 					inputValue = m.nameInput.Value()
-				} else if i == 1 {
+				case 1:
 					inputValue = m.prefixInput.Value()
-				} else if i == 2 {
+				case 2:
 					inputValue = m.urlInput.Value()
 				}
 
@@ -733,11 +735,12 @@ func (m sourcesModel) formView() string {
 				if inputValue == "" {
 					// Show placeholder with placeholder styling
 					var placeholder string
-					if i == 0 {
+					switch i {
+					case 0:
 						placeholder = m.nameInput.Placeholder
-					} else if i == 1 {
+					case 1:
 						placeholder = m.prefixInput.Placeholder
-					} else if i == 2 {
+					case 2:
 						placeholder = m.urlInput.Placeholder
 					}
 					fieldValue = ui.FormPlaceholder.Render(placeholder)

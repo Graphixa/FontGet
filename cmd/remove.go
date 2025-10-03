@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"os"
@@ -15,31 +14,6 @@ import (
 
 	"github.com/spf13/cobra"
 )
-
-var (
-	scope string
-	force bool
-)
-
-// promptYesNo asks the user a yes/no question and returns true for yes, false for no
-func promptYesNo(message string) (bool, error) {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Print(message + " (y/n): ")
-		response, err := reader.ReadString('\n')
-		if err != nil {
-			return false, fmt.Errorf("failed to read user input: %w", err)
-		}
-		response = strings.ToLower(strings.TrimSpace(response))
-		if response == "y" || response == "yes" {
-			return true, nil
-		}
-		if response == "n" || response == "no" {
-			return false, nil
-		}
-		fmt.Println("Please answer 'y' or 'n'")
-	}
-}
 
 // RemovalStatus tracks the status of font removals
 type RemovalStatus struct {
@@ -148,44 +122,6 @@ func normalizeFontName(name string) string {
 	name = strings.ReplaceAll(name, "-", "")
 	name = strings.ReplaceAll(name, "_", "")
 	return name
-}
-
-// findSimilarInstalledFonts returns a list of installed font names that are similar to the given name
-func findSimilarInstalledFonts(fontName string, fontManager platform.FontManager, scope platform.InstallationScope) []string {
-	// Get the font directory
-	fontDir := fontManager.GetFontDir(scope)
-
-	// Get all installed fonts
-	var installedFonts []string
-	filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			installedFonts = append(installedFonts, info.Name())
-		}
-		return nil
-	})
-
-	// Find similar fonts using string similarity
-	var similar []string
-	normalizedQuery := normalizeFontName(fontName)
-	for _, font := range installedFonts {
-		family, _ := parseFontName(font)
-		normalizedFamily := normalizeFontName(family)
-
-		// Check if the normalized family name contains the query or vice versa
-		if strings.Contains(normalizedFamily, normalizedQuery) || strings.Contains(normalizedQuery, normalizedFamily) {
-			similar = append(similar, font)
-		}
-	}
-
-	// Limit to 5 suggestions
-	if len(similar) > 5 {
-		similar = similar[:5]
-	}
-
-	return similar
 }
 
 var removeCmd = &cobra.Command{
