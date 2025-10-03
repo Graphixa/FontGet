@@ -15,6 +15,12 @@ A tiny, cross-platform font package manager written in Go.
 - Beautiful terminal UI with Catppuccin color scheme
 - Powered by [FontGet-Sources](https://github.com/Graphixa/FontGet-Sources) for reliable font data
 
+## Documentation
+
+- **[Help](docs/help.md)** - Complete command reference and usage examples
+- **[Codebase](docs/codebase.md)** - Technical docs for development
+- **[Contributing](docs/contributing.md)** - How to contribute to the project
+
 ## Testing
 
 Feel free to test FontGet on your platform by building from source:
