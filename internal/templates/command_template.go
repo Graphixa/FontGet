@@ -1,6 +1,6 @@
 // This is a template for building new commands.
-// It is not used in the project.
-// It is only used to help you build new commands.
+// It is not used in the project - it's a development template.
+// Use this as a starting point when creating new FontGet commands.
 
 package templates
 
