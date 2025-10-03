@@ -12,6 +12,7 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/functions"
+	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
@@ -54,9 +55,28 @@ var sourcesInfoCmd = &cobra.Command{
 			return fmt.Errorf("failed to load manifest: %w", err)
 		}
 
-		// Get repository (uses smart caching like search/list commands)
+		// Check if source files actually exist - if not, force refresh with spinner
+		home, err := os.UserHomeDir()
+		var r *repo.Repository
 		var manifest *repo.FontManifest
-		r, err := repo.GetRepository()
+
+		if err == nil {
+			sourcesDir := filepath.Join(home, ".fontget", "sources")
+			if entries, err := os.ReadDir(sourcesDir); err != nil || len(entries) == 0 {
+				// No source files exist, force refresh with spinner
+				if logger != nil {
+					logger.Info("No source files found, forcing refresh with spinner")
+				}
+				r, err = repo.GetRepositoryWithRefresh()
+			} else {
+				// Source files exist, use normal repository loading
+				r, err = repo.GetRepository()
+			}
+		} else {
+			// Fallback to normal repository loading
+			r, err = repo.GetRepository()
+		}
+
 		if err != nil {
 			if logger != nil {
 				logger.Warn("Failed to get repository: %v", err)
@@ -91,7 +111,29 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 
 		// Show cache status and size
-		// Note: Cache directory information would be added here when available
+		if err == nil {
+			sourcesDir := filepath.Join(home, ".fontget", "sources")
+			if info, err := os.Stat(sourcesDir); err == nil {
+				totalSize := getDirSize(sourcesDir)
+				fmt.Printf("%s: %s (modified: %s)\n", cyan("Cache Size"), formatFileSize(totalSize), info.ModTime().Format("2006-01-02 15:04:05"))
+
+				// Show individual source file sizes
+				if entries, err := os.ReadDir(sourcesDir); err == nil {
+					fmt.Printf("%s: %d files\n", cyan("Cached Sources"), len(entries))
+					for _, entry := range entries {
+						if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+							filePath := filepath.Join(sourcesDir, entry.Name())
+							if info, err := os.Stat(filePath); err == nil {
+								age := time.Since(info.ModTime())
+								fmt.Printf("  - %s: %s (age: %s)\n", entry.Name(), formatFileSize(info.Size()), formatDuration(age))
+							}
+						}
+					}
+				}
+			} else {
+				fmt.Printf("%s: Not found\n", cyan("Cache Size"))
+			}
+		}
 
 		if len(enabledSources) > 0 {
 			fmt.Printf("\n%s\n", Bold("Enabled Sources"))
@@ -434,7 +476,45 @@ usage: fontget sources update [--verbose]`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		verbose, _ := cmd.Flags().GetBool("verbose")
 
-		// First, update the source configurations (like the original command does)
+		GetLogger().Info("Starting sources update operation")
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
+		// Clear existing cached sources first
+		output.GetVerbose().Info("Clearing existing cached sources")
+		output.GetDebug().State("Clearing sources directory before update")
+
+		home, err := os.UserHomeDir()
+		if err != nil {
+			GetLogger().Error("Failed to get home directory: %v", err)
+			output.GetVerbose().Error("Failed to get home directory: %v", err)
+			output.GetDebug().Error("Home directory lookup failed: %v", err)
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+
+		sourcesDir := filepath.Join(home, ".fontget", "sources")
+		if err := os.RemoveAll(sourcesDir); err != nil {
+			GetLogger().Error("Failed to clear sources directory: %v", err)
+			output.GetVerbose().Error("Failed to clear sources directory: %v", err)
+			output.GetDebug().Error("Sources directory removal failed: %v", err)
+			return fmt.Errorf("failed to clear sources directory: %w", err)
+		}
+
+		// Recreate the sources directory
+		if err := os.MkdirAll(sourcesDir, 0755); err != nil {
+			GetLogger().Error("Failed to recreate sources directory: %v", err)
+			output.GetVerbose().Error("Failed to recreate sources directory: %v", err)
+			output.GetDebug().Error("Sources directory creation failed: %v", err)
+			return fmt.Errorf("failed to recreate sources directory: %w", err)
+		}
+
+		output.GetVerbose().Success("Cleared existing cached sources")
+		output.GetDebug().State("Sources directory cleared and recreated")
+
+		// Update the source configurations
+		output.GetVerbose().Info("Updating source configurations")
+		output.GetDebug().State("Calling updateSourceConfigurations()")
 		if err := updateSourceConfigurations(); err != nil {
 			return err
 		}
@@ -450,6 +530,16 @@ usage: fontget sources update [--verbose]`,
 }
 
 func init() {
+	rootCmd.AddCommand(sourcesCmd)
+
+	// Add subcommands
+	sourcesCmd.AddCommand(sourcesInfoCmd)
+	sourcesCmd.AddCommand(sourcesUpdateCmd)
+	sourcesCmd.AddCommand(sourcesClearCmd)
+	sourcesCmd.AddCommand(sourcesValidateCmd)
+	sourcesCmd.AddCommand(sourcesManageCmd)
+
+	// Add flags
 	sourcesUpdateCmd.Flags().BoolP("verbose", "v", false, "Show detailed error messages for failed sources")
 }
 
@@ -585,12 +675,220 @@ func getEnabledSourcesInOrder(manifest *config.Manifest) []string {
 	return result
 }
 
-func init() {
-	rootCmd.AddCommand(sourcesCmd)
+// Helper functions for sources validate
 
-	// Add subcommands
-	sourcesCmd.AddCommand(sourcesInfoCmd)
-	sourcesCmd.AddCommand(sourcesUpdateCmd)
-	sourcesCmd.AddCommand(sourcesManageCmd)
+func isValidSourceFile(filePath string) bool {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return false
+	}
 
+	var jsonData interface{}
+	return json.Unmarshal(data, &jsonData) == nil
+}
+
+func formatFileSize(size int64) string {
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	div, exp := int64(unit), 0
+	for n := size / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
+}
+
+func getDirSize(dir string) int64 {
+	var size int64
+	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size
+}
+
+func formatDuration(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%.0fs", d.Seconds())
+	} else if d < time.Hour {
+		return fmt.Sprintf("%.0fm", d.Minutes())
+	} else if d < 24*time.Hour {
+		return fmt.Sprintf("%.1fh", d.Hours())
+	} else {
+		days := int(d.Hours() / 24)
+		return fmt.Sprintf("%dd", days)
+	}
+}
+
+var sourcesClearCmd = &cobra.Command{
+	Use:   "clear",
+	Short: "Clear cached sources",
+	Long:  `Remove all cached source files. This will force a fresh download on next use.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting sources clear operation")
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
+		// Get sources directory
+		output.GetVerbose().Info("Getting sources directory")
+		output.GetDebug().State("Calling os.UserHomeDir()")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			GetLogger().Error("Failed to get home directory: %v", err)
+			output.GetVerbose().Error("Failed to get home directory: %v", err)
+			output.GetDebug().Error("Home directory lookup failed: %v", err)
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+
+		sourcesDir := filepath.Join(home, ".fontget", "sources")
+		output.GetVerbose().Info("Clearing sources directory: %s", sourcesDir)
+		output.GetDebug().State("Removing directory: %s", sourcesDir)
+
+		// Check if sources directory exists
+		if _, err := os.Stat(sourcesDir); err != nil {
+			fmt.Println(Yellow("Sources directory not found - nothing to clear"))
+			output.GetVerbose().Info("Sources directory does not exist")
+			output.GetDebug().State("Sources directory not found: %s", sourcesDir)
+			return nil
+		}
+
+		// Clear the sources directory
+		if err := os.RemoveAll(sourcesDir); err != nil {
+			GetLogger().Error("Failed to clear sources directory: %v", err)
+			output.GetVerbose().Error("Failed to clear sources directory: %v", err)
+			output.GetDebug().Error("Directory removal failed: %v", err)
+			return fmt.Errorf("failed to clear sources directory: %w", err)
+		}
+
+		// Recreate the sources directory
+		output.GetVerbose().Info("Recreating sources directory")
+		output.GetDebug().State("Creating directory: %s with permissions 0755", sourcesDir)
+		if err := os.MkdirAll(sourcesDir, 0755); err != nil {
+			GetLogger().Error("Failed to recreate sources directory: %v", err)
+			output.GetVerbose().Error("Failed to recreate sources directory: %v", err)
+			output.GetDebug().Error("Directory creation failed: %v", err)
+			return fmt.Errorf("failed to recreate sources directory: %w", err)
+		}
+
+		output.GetVerbose().Success("Sources cleared successfully")
+		output.GetDebug().State("Sources clear operation completed successfully")
+		fmt.Println(Green("Sources cleared successfully"))
+		GetLogger().Info("Sources clear operation completed")
+		return nil
+	},
+}
+
+var sourcesValidateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Validate cached sources integrity",
+	Long:  `Check the integrity of cached source files and report any issues. Useful for troubleshooting custom sources.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting sources validation operation")
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
+		// Get sources directory
+		output.GetVerbose().Info("Getting sources directory")
+		output.GetDebug().State("Calling getSourcesDir()")
+		home, err := os.UserHomeDir()
+		if err != nil {
+			GetLogger().Error("Failed to get home directory: %v", err)
+			output.GetVerbose().Error("Failed to get home directory: %v", err)
+			output.GetDebug().Error("Home directory lookup failed: %v", err)
+			return fmt.Errorf("failed to get home directory: %w", err)
+		}
+
+		sourcesDir := filepath.Join(home, ".fontget", "sources")
+		output.GetVerbose().Info("Validating sources directory: %s", sourcesDir)
+
+		// Check if sources directory exists
+		if _, err := os.Stat(sourcesDir); err != nil {
+			fmt.Println(Red("Sources directory not found"))
+			output.GetVerbose().Warning("Sources directory does not exist")
+			output.GetDebug().State("Sources directory not found: %s", sourcesDir)
+			return nil
+		}
+
+		fmt.Printf("Validating sources in: %s\n", sourcesDir)
+
+		// Validate individual source files
+		entries, err := os.ReadDir(sourcesDir)
+		if err != nil {
+			GetLogger().Error("Failed to read sources directory: %v", err)
+			output.GetVerbose().Error("Failed to read sources directory: %v", err)
+			output.GetDebug().Error("Directory read failed: %v", err)
+			return fmt.Errorf("failed to read sources directory: %w", err)
+		}
+
+		validCount := 0
+		invalidCount := 0
+		jsonFileCount := 0
+
+		output.GetVerbose().Info("Validating %d source files", len(entries))
+		output.GetDebug().State("Starting validation of %d files", len(entries))
+
+		for _, entry := range entries {
+			if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
+				jsonFileCount++
+				filePath := filepath.Join(sourcesDir, entry.Name())
+				output.GetDebug().State("Validating file: %s", entry.Name())
+
+				if isValidSourceFile(filePath) {
+					// Get file size for display
+					if info, err := os.Stat(filePath); err == nil {
+						size := formatFileSize(info.Size())
+						fmt.Printf("  ✓ %s: Valid (%s)\n", entry.Name(), size)
+						output.GetDebug().State("File %s is valid, size: %s", entry.Name(), size)
+					} else {
+						fmt.Printf("  ✓ %s: Valid\n", entry.Name())
+						output.GetDebug().State("File %s is valid", entry.Name())
+					}
+					validCount++
+				} else {
+					fmt.Printf("  ✗ %s: Invalid - Malformed JSON\n", entry.Name())
+					invalidCount++
+					output.GetVerbose().Warning("File %s is invalid", entry.Name())
+					output.GetDebug().State("File %s failed validation", entry.Name())
+				}
+			}
+		}
+
+		// Check if no JSON files were found
+		if jsonFileCount == 0 {
+			fmt.Println(Yellow("No source files found to validate."))
+			fmt.Println(Yellow("Try running: fontget sources update"))
+			output.GetVerbose().Info("No JSON source files found in directory")
+			output.GetDebug().State("No .json files found in sources directory")
+			return nil
+		}
+
+		fmt.Printf("\nValidation Results:\n")
+		fmt.Printf("  Valid files: %d\n", validCount)
+		fmt.Printf("  Invalid files: %d\n", invalidCount)
+
+		output.GetVerbose().Info("Validation completed - Valid: %d, Invalid: %d", validCount, invalidCount)
+		output.GetDebug().State("Validation results: %d valid, %d invalid", validCount, invalidCount)
+
+		if invalidCount > 0 {
+			fmt.Println(Yellow("Some source files are invalid. Consider running 'fontget sources update' to fix."))
+			output.GetVerbose().Warning("Sources validation found %d invalid files", invalidCount)
+		} else {
+			fmt.Println(Green("All source files are valid"))
+			output.GetVerbose().Success("All source files are valid")
+		}
+
+		output.GetVerbose().Success("Sources validation operation completed")
+		output.GetDebug().State("Sources validation operation completed successfully")
+		GetLogger().Info("Sources validation operation completed")
+		return nil
+	},
 }

@@ -209,6 +209,16 @@ func (m updateModel) updateNextSource() tea.Cmd {
 
 		client := createHTTPClient()
 
+		// Check if we should abort due to timeout
+		if time.Since(m.startTime) > m.timeout {
+			cancel()
+			return updateCompleteMsg{
+				source: source,
+				status: "Failed",
+				error:  fmt.Errorf("update timeout exceeded"),
+			}
+		}
+
 		// Store verbose info for display in TUI
 		if m.verbose {
 			m.status[source] = fmt.Sprintf("Checking %s...", sourceConfig.URL)
@@ -320,12 +330,50 @@ func (m updateModel) updateNextSource() tea.Cmd {
 // finishUpdate completes the update process
 func (m updateModel) finishUpdate() tea.Cmd {
 	return func() tea.Msg {
-		// Load manifest to get actual font count
-		manifest, err := repo.GetManifest(nil, nil)
-		if err == nil {
-			// Update the sources last updated timestamp
-			config.UpdateSourcesLastUpdated()
+		// Use a timeout context to prevent hanging
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		// Load manifest to get actual font count with timeout
+		done := make(chan struct{})
+		var manifest *repo.FontManifest
+		var err error
+
+		// Use a goroutine with proper cleanup
+		go func() {
+			defer func() {
+				// Ensure the done channel is always closed
+				select {
+				case <-done:
+					// Already closed
+				default:
+					close(done)
+				}
+			}()
+
+			// Check if context is already cancelled
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			manifest, err = repo.GetManifest(nil, nil)
+		}()
+
+		select {
+		case <-done:
+			// Manifest loaded successfully or with error
+			if err == nil {
+				// Update the sources last updated timestamp
+				config.UpdateSourcesLastUpdated()
+			}
+		case <-ctx.Done():
+			// Timeout occurred - ensure goroutine cleanup
+			cancel()
+			err = fmt.Errorf("manifest loading timeout after 5 seconds")
 		}
+
 		return updateFinishedMsg{
 			manifest: manifest,
 			error:    err,

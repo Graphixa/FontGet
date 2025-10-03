@@ -608,11 +608,6 @@ func (r *Repository) GetManifest() (*FontManifest, error) {
 
 // SearchFonts searches for fonts matching the query using advanced search logic
 func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
-	// Check cache first
-	if cachedResults, err := r.getCachedSearchResults(query, category); err == nil && cachedResults != nil {
-		return cachedResults, nil
-	}
-
 	query = strings.ToLower(query)
 	var results []SearchResult
 
@@ -640,9 +635,6 @@ func (r *Repository) SearchFonts(query string, category string) ([]SearchResult,
 	if category != "" {
 		results = r.filterByCategory(results, category)
 	}
-
-	// Cache the results
-	r.cacheSearchResults(query, category, results)
 
 	return results, nil
 }
@@ -727,75 +719,4 @@ func (r *Repository) filterByCategory(results []SearchResult, category string) [
 		}
 	}
 	return filteredResults
-}
-
-// getCachedSearchResults retrieves cached search results if they exist and are valid
-func (r *Repository) getCachedSearchResults(query, category string) ([]SearchResult, error) {
-	cache, err := NewCache()
-	if err != nil {
-		return nil, err
-	}
-
-	// Create cache filename based on query and category
-	cacheKey := fmt.Sprintf("search_%s_%s", strings.ReplaceAll(query, " ", "_"), strings.ReplaceAll(category, " ", "_"))
-	cacheFile := filepath.Join(cache.Dir, "search", cacheKey+".json")
-
-	// Check if cache file exists and is less than 1 hour old
-	if info, err := os.Stat(cacheFile); err != nil {
-		return nil, err
-	} else if time.Since(info.ModTime()) > time.Hour {
-		return nil, fmt.Errorf("cache expired")
-	}
-
-	// Read cache file
-	data, err := os.ReadFile(cacheFile)
-	if err != nil {
-		return nil, err
-	}
-
-	var entry SearchCacheEntry
-	if err := json.Unmarshal(data, &entry); err != nil {
-		return nil, err
-	}
-
-	// Verify the query matches (ignore category for now since original struct doesn't have it)
-	if entry.Query != query {
-		return nil, fmt.Errorf("cache mismatch")
-	}
-
-	return entry.Results, nil
-}
-
-// cacheSearchResults caches search results for future use
-func (r *Repository) cacheSearchResults(query, category string, results []SearchResult) error {
-	cache, err := NewCache()
-	if err != nil {
-		return err
-	}
-
-	// Create search cache directory
-	searchCacheDir := filepath.Join(cache.Dir, "search")
-	if err := os.MkdirAll(searchCacheDir, 0755); err != nil {
-		return err
-	}
-
-	// Create cache entry
-	entry := SearchCacheEntry{
-		Query:      query,
-		ExactMatch: false, // We don't use exact match in Repository search
-		Results:    results,
-		Timestamp:  time.Now(),
-	}
-
-	// Create cache filename
-	cacheKey := fmt.Sprintf("search_%s_%s", strings.ReplaceAll(query, " ", "_"), strings.ReplaceAll(category, " ", "_"))
-	cacheFile := filepath.Join(searchCacheDir, cacheKey+".json")
-
-	// Marshal and save
-	data, err := json.Marshal(entry)
-	if err != nil {
-		return err
-	}
-
-	return os.WriteFile(cacheFile, data, 0644)
 }
