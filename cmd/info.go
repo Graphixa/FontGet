@@ -6,6 +6,7 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/license"
+	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
@@ -52,6 +53,9 @@ var infoCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font info operation")
 
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
 			return fmt.Errorf("failed to initialize sources: %v", err)
@@ -64,6 +68,8 @@ var infoCmd = &cobra.Command{
 
 		fontID := args[0]
 		GetLogger().Info("Retrieving info for font: %s", fontID)
+		output.GetVerbose().Info("Retrieving information for font: %s", fontID)
+		output.GetDebug().State("Starting font info lookup for: %s", fontID)
 
 		// Get flags
 		showLicense, _ := cmd.Flags().GetBool("license")
@@ -76,34 +82,52 @@ var infoCmd = &cobra.Command{
 			showMetadata = true
 		}
 
+		output.GetVerbose().Info("Display options - License: %v, Metadata: %v, Show All: %v", showLicense, showMetadata, showAll)
+		output.GetDebug().State("Info display flags: license=%v, metadata=%v, showAll=%v", showLicense, showMetadata, showAll)
+
 		// Get repository
+		output.GetVerbose().Info("Initializing repository for font lookup")
+		output.GetDebug().State("Calling repo.GetRepository()")
 		r, err := repo.GetRepository()
 		if err != nil {
 			GetLogger().Error("Failed to initialize repository: %v", err)
+			output.GetVerbose().Error("Failed to initialize repository: %v", err)
+			output.GetDebug().Error("Repository initialization failed: %v", err)
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
 		// Get manifest
+		output.GetVerbose().Info("Retrieving font manifest")
+		output.GetDebug().State("Calling r.GetManifest()")
 		manifest, err := r.GetManifest()
 		if err != nil {
 			GetLogger().Error("Failed to get manifest: %v", err)
+			output.GetVerbose().Error("Failed to get manifest: %v", err)
+			output.GetDebug().Error("Manifest retrieval failed: %v", err)
 			return fmt.Errorf("failed to get manifest: %w", err)
 		}
 
 		// Find font in manifest
+		output.GetVerbose().Info("Searching for font '%s' in manifest", fontID)
+		output.GetDebug().State("Searching %d sources for font '%s'", len(manifest.Sources), fontID)
 		var fontSource string
 		var font repo.FontInfo
 		found := false
 		for sourceKey, source := range manifest.Sources {
+			output.GetDebug().State("Checking source '%s' with %d fonts", sourceKey, len(source.Fonts))
 			if f, ok := source.Fonts[fontID]; ok {
 				font = f
 				fontSource = sourceKey
 				found = true
+				output.GetVerbose().Info("Found font '%s' in source '%s'", fontID, sourceKey)
+				output.GetDebug().State("Font found in source: %s", sourceKey)
 				break
 			}
 		}
 		if !found {
 			GetLogger().Error("Font '%s' not found", fontID)
+			output.GetVerbose().Error("Font '%s' not found in any source", fontID)
+			output.GetDebug().Error("Font lookup failed: '%s' not found in %d sources", fontID, len(manifest.Sources))
 			return fmt.Errorf("%s", ui.RenderError(fmt.Sprintf("Font '%s' not found", fontID)))
 		}
 

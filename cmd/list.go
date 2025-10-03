@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"fontget/internal/config"
+	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/ui"
 	"os"
@@ -125,6 +126,9 @@ var listCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font list operation")
 
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
 			return fmt.Errorf("failed to initialize sources: %v", err)
@@ -134,6 +138,8 @@ var listCmd = &cobra.Command{
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
 			GetLogger().Error("Failed to initialize font manager: %v", err)
+			output.GetVerbose().Error("Failed to initialize font manager: %v", err)
+			output.GetDebug().Error("Font manager initialization failed: %v", err)
 			return fmt.Errorf("failed to initialize font manager: %w", err)
 		}
 
@@ -144,20 +150,30 @@ var listCmd = &cobra.Command{
 
 		GetLogger().Info("List command parameters - Scope: %s, Family: %s, Type: %s", scope, family, fontType)
 
+		// Verbose-level information for users
+		output.GetVerbose().Info("List command parameters - Scope: %s, Family: %s, Type: %s", scope, family, fontType)
+		output.GetDebug().State("Starting font listing with parameters: scope='%s', family='%s', type='%s'", scope, family, fontType)
+
 		// Auto-detect scope if not explicitly provided
 		if scope == "" {
 			isElevated, err := fontManager.IsElevated()
 			if err != nil {
 				GetLogger().Warn("Failed to detect elevation status: %v", err)
+				output.GetVerbose().Warning("Failed to detect elevation status: %v", err)
+				output.GetDebug().State("Elevation detection failed: %v", err)
 				// Default to user scope if we can't detect elevation
 				scope = "user"
 			} else if isElevated {
 				scope = "all"
 				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
+				output.GetVerbose().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
+				output.GetDebug().State("Elevation detected, using 'all' scope")
 				fmt.Println(ui.FormLabel.Render("Auto-detected administrator privileges - listing from all scopes"))
 			} else {
 				scope = "user"
 				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
+				output.GetVerbose().Info("Auto-detected user privileges, defaulting to 'user' scope")
+				output.GetDebug().State("No elevation detected, using 'user' scope")
 			}
 		}
 
@@ -181,27 +197,41 @@ var listCmd = &cobra.Command{
 
 		// Collect fonts from all specified scopes
 		var allFonts []FontFile
+		output.GetVerbose().Info("Scanning %d scope(s) for installed fonts", len(scopes))
 		for _, installScope := range scopes {
+			output.GetVerbose().Info("Scanning %s scope for fonts", installScope)
+			output.GetDebug().State("Processing scope: %s", installScope)
+
 			// Check elevation for machine scope
 			if installScope == platform.MachineScope {
 				GetLogger().Debug("Checking elevation for machine scope")
+				output.GetVerbose().Info("Checking elevation for machine scope access")
+				output.GetDebug().State("Machine scope requires elevation check")
 				if err := checkElevation(cmd, fontManager, installScope); err != nil {
 					if errors.Is(err, ErrElevationRequired) {
 						return nil // Already printed user-friendly message
 					}
 					GetLogger().Error("Elevation check failed: %v", err)
+					output.GetVerbose().Error("Elevation check failed: %v", err)
+					output.GetDebug().Error("Elevation check failed for machine scope: %v", err)
 					return err
 				}
 			}
 
 			// Get font directory for the specified scope
 			fontDir := fontManager.GetFontDir(installScope)
+			output.GetVerbose().Info("Scanning font directory: %s", fontDir)
+			output.GetDebug().State("Font directory for %s scope: %s", installScope, fontDir)
 
 			// List fonts in this directory
 			fonts, err := listFonts(fontDir, installScope)
 			if err != nil {
+				output.GetVerbose().Error("Failed to scan fonts in %s: %v", fontDir, err)
+				output.GetDebug().Error("Font scanning failed for %s: %v", fontDir, err)
 				return err
 			}
+			output.GetVerbose().Info("Found %d fonts in %s scope", len(fonts), installScope)
+			output.GetDebug().State("Scanned %d font files in %s scope", len(fonts), installScope)
 			allFonts = append(allFonts, fonts...)
 		}
 
@@ -212,20 +242,27 @@ var listCmd = &cobra.Command{
 		}
 
 		// Apply filters
+		output.GetVerbose().Info("Applying filters - Family: '%s', Type: '%s'", family, fontType)
+		output.GetDebug().State("Filtering %d fonts with family='%s', type='%s'", len(allFonts), family, fontType)
 		var filteredFonts []FontFile
 		for _, font := range allFonts {
 			// Filter by family if specified
 			if family != "" && !strings.EqualFold(font.Family, family) {
+				output.GetDebug().State("Filtering out font %s (family '%s' != '%s')", font.Name, font.Family, family)
 				continue
 			}
 
 			// Filter by type if specified
 			if fontType != "" && !strings.EqualFold(font.Type, fontType) {
+				output.GetDebug().State("Filtering out font %s (type '%s' != '%s')", font.Name, font.Type, fontType)
 				continue
 			}
 
 			filteredFonts = append(filteredFonts, font)
 		}
+
+		output.GetVerbose().Info("Filtering completed - %d fonts match criteria", len(filteredFonts))
+		output.GetDebug().State("Filtering result: %d fonts match all criteria", len(filteredFonts))
 
 		if len(filteredFonts) == 0 {
 			GetLogger().Info("No fonts found matching the specified filters")

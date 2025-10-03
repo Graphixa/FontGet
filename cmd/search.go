@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"fontget/internal/config"
+	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
@@ -62,6 +63,9 @@ var searchCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font search operation")
 
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
 			return fmt.Errorf("failed to initialize sources: %v", err)
@@ -77,6 +81,10 @@ var searchCmd = &cobra.Command{
 
 		GetLogger().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 
+		// Verbose-level information for users
+		output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
+		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', refresh=%v", query, category, refresh)
+
 		// Print styled title first
 		fmt.Printf("\n%s\n", ui.PageTitle.Render("Font Search Results"))
 
@@ -85,21 +93,34 @@ var searchCmd = &cobra.Command{
 		var err error
 		if refresh {
 			// Force refresh of font manifest before search
+			output.GetVerbose().Info("Forcing refresh of font manifest before search")
+			output.GetDebug().State("Using GetRepositoryWithRefresh() to force source updates")
 			r, err = repo.GetRepositoryWithRefresh()
 		} else {
+			output.GetVerbose().Info("Using cached font manifest for search")
+			output.GetDebug().State("Using GetRepository() with cached sources")
 			r, err = repo.GetRepository()
 		}
 		if err != nil {
 			GetLogger().Error("Failed to initialize repository: %v", err)
+			output.GetVerbose().Error("Failed to initialize repository: %v", err)
+			output.GetDebug().Error("Repository initialization failed: %v", err)
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
 		// Search fonts
+		output.GetVerbose().Info("Searching fonts with query: '%s' and category: '%s'", query, category)
+		output.GetDebug().State("Calling r.SearchFonts(query='%s', category='%s')", query, category)
 		results, err := r.SearchFonts(query, category)
 		if err != nil {
 			GetLogger().Error("Failed to search fonts: %v", err)
+			output.GetVerbose().Error("Search operation failed: %v", err)
+			output.GetDebug().Error("Font search failed: %v", err)
 			return fmt.Errorf("failed to search fonts: %w", err)
 		}
+
+		output.GetVerbose().Info("Search completed - found %d results", len(results))
+		output.GetDebug().State("Search returned %d font results", len(results))
 		// Build the search result message
 		searchMsg := fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.TableSourceName.Render(query))
 		if category != "" {

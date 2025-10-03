@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
@@ -221,6 +222,9 @@ Use --force to override critical system font protection.
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font removal operation")
 
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			return nil
 		}
@@ -234,6 +238,10 @@ Use --force to override critical system font protection.
 		scopeFlag, _ := cmd.Flags().GetString("scope")
 		forceFlag, _ := cmd.Flags().GetBool("force")
 		GetLogger().Info("Removal parameters - Scope: %s, Force: %v", scopeFlag, forceFlag)
+
+		// Verbose-level information for users
+		output.GetVerbose().Info("Removal parameters - Scope: %s, Force: %v", scopeFlag, forceFlag)
+		output.GetVerbose().Info("Processing %d font(s): %v", len(args), args)
 
 		GetLogger().Info("Processing %d font(s): %v", len(args), args)
 
@@ -250,15 +258,18 @@ Use --force to override critical system font protection.
 			isElevated, err := fontManager.IsElevated()
 			if err != nil {
 				GetLogger().Warn("Failed to detect elevation status: %v", err)
+				output.GetVerbose().Warning("Failed to detect elevation status: %v", err)
 				// Default to user scope if we can't detect elevation
 				scopeFlag = "user"
 			} else if isElevated {
 				scopeFlag = "all"
 				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
+				output.GetVerbose().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
 				fmt.Println(ui.FormLabel.Render("Auto-detected administrator privileges - removing from all scopes"))
 			} else {
 				scopeFlag = "user"
 				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
+				output.GetVerbose().Info("Auto-detected user privileges, defaulting to 'user' scope")
 			}
 		}
 
@@ -302,16 +313,25 @@ Use --force to override critical system font protection.
 			// Process fonts with simple single-status-report approach
 			for _, fontName := range fontNames {
 				GetLogger().Info("Processing font: %s", fontName)
+				output.GetVerbose().Info("Processing font: %s", fontName)
+				output.GetDebug().State("Starting font removal process for: %s", fontName)
 
 				for i, scope := range scopes {
 					label := scopeLabel[i]
 					GetLogger().Info("Checking scope: %s", label)
+					output.GetVerbose().Info("Checking scope: %s", label)
+					output.GetDebug().State("Checking font files in %s scope", label)
 
 					matchingFonts := findFontFamilyFiles(fontName, fontManager, scope)
+					output.GetDebug().State("Found %d matching font files in %s scope", len(matchingFonts), label)
+
 					if len(matchingFonts) == 0 {
+						output.GetVerbose().Info("No direct matches found, searching repository for: %s", fontName)
 						results, err := r.SearchFonts(fontName, "false")
 						if err == nil && len(results) > 0 {
+							output.GetVerbose().Info("Found %d search results, using first match: %s", len(results), results[0].Name)
 							matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
+							output.GetDebug().State("After repository search, found %d matching font files", len(matchingFonts))
 						}
 					}
 
@@ -319,29 +339,39 @@ Use --force to override critical system font protection.
 						if isCriticalSystemFont(fontName) {
 							msg := fmt.Sprintf("  - \"%s\" is a protected system font and cannot be removed (Skipped)", fontName)
 							GetLogger().Error("Attempted to remove protected system font: %s", fontName)
+							output.GetVerbose().Warning("Protected system font detected: %s", fontName)
+							output.GetDebug().State("Font %s is in critical system font list", fontName)
 							fmt.Println(ui.RenderError(msg))
 							status.Skipped++
 							continue
 						}
 						msg := fmt.Sprintf("  - Not found in %s scope", label)
 						GetLogger().Info("Font not installed in %s scope: %s", label, fontName)
+						output.GetVerbose().Info("Font not found in %s scope: %s", label, fontName)
+						output.GetDebug().State("No font files found for %s in %s scope", fontName, label)
 						fmt.Println(ui.TableSourceName.Render(msg))
 						status.Skipped++
 						continue
 					}
 
 					success := true
+					output.GetVerbose().Info("Found %d font files to process in %s scope", len(matchingFonts), label)
 					for _, matchingFont := range matchingFonts {
+						output.GetDebug().State("Processing font file: %s", matchingFont)
+
 						if isCriticalSystemFont(matchingFont) {
 							status.Skipped++
 							msg := fmt.Sprintf("  ✓ \"%s\" (%s)", matchingFont, ui.FeedbackWarning.Render("Skipped - protected system font"))
 							GetLogger().Error("Attempted to remove protected system font: %s", matchingFont)
+							output.GetVerbose().Warning("Skipping protected system font: %s", matchingFont)
+							output.GetDebug().State("Font %s is in critical system font list", matchingFont)
 							fmt.Println(ui.ContentText.Render(msg))
 							continue
 						}
 
 						// Use spinner for removal operation
 						removeMsg := fmt.Sprintf("Removing %s from %s scope...", matchingFont, label)
+						output.GetVerbose().Info("Removing font file: %s from %s scope", matchingFont, label)
 						err := runSpinner(removeMsg, "", func() error {
 							return fontManager.RemoveFont(matchingFont, scope)
 						})
@@ -351,11 +381,15 @@ Use --force to override critical system font protection.
 							status.Failed++
 							msg := fmt.Sprintf("  ✗ \"%s\" (%s) - %v", matchingFont, ui.FeedbackError.Render("Failed"), err)
 							GetLogger().Error("Failed to remove font %s from %s scope: %v", matchingFont, label, err)
+							output.GetVerbose().Error("Failed to remove font %s: %v", matchingFont, err)
+							output.GetDebug().Error("Font removal failed for %s in %s scope: %v", matchingFont, label, err)
 							fmt.Println(ui.RenderError(msg))
 						} else {
 							status.Removed++
 							msg := fmt.Sprintf("  ✓ \"%s\" (%s from %s scope)", matchingFont, ui.FeedbackSuccess.Render("Removed"), label)
 							GetLogger().Info("Successfully removed font: %s from %s scope", matchingFont, label)
+							output.GetVerbose().Success("Successfully removed font: %s from %s scope", matchingFont, label)
+							output.GetDebug().State("Font removal completed successfully for %s", matchingFont)
 							fmt.Println(ui.ContentText.Render(msg))
 						}
 					}
