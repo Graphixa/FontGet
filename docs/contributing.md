@@ -11,7 +11,7 @@ Thank you for your interest in contributing to FontGet! This guide will help you
 
 ### Development Setup
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/yourusername/FontGet.git`
+2. Clone your fork: `git clone https://github.com/Graphixa/FontGet.git`
 3. Navigate to the project: `cd FontGet`
 4. Install dependencies: `go mod download`
 
