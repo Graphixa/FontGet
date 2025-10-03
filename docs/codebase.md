@@ -373,17 +373,6 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Status**: ✅ Active - License management
 
-### `internal/errors/`
-**Purpose**: Error handling
-**Files**: (Empty directory)
-
-**Status**: ⚠️ Empty - May need cleanup
-
-### `internal/index/`
-**Purpose**: Indexing
-**Files**: (Empty directory)
-
-**Status**: ⚠️ Empty - May need cleanup
 
 ---
 
@@ -393,7 +382,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Main project documentation
 **Status**: ✅ Active - Project documentation
 
-### `command-reference.md`
+### `docs/help.md`
 **Purpose**: Command reference documentation
 **Status**: ✅ Active - User documentation
 
@@ -410,7 +399,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Status**: ✅ Active - Documentation
 
-### `documentation-sync.md`
+### `docs/maintenance/documentation-sync.md`
 **Purpose**: Documentation synchronization
 **Status**: ✅ Active - Documentation management
 
@@ -440,29 +429,6 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 ### Files to Review for Potential Cleanup:
 
-1. **`internal/errors/`** - Empty directory, may be unused
-   - **Status**: ⚠️ Empty directory
-   - **Recommendation**: Removed as it was not needed for future error handling
-
-2. **`internal/index/`** - Empty directory, may be unused
-   - **Status**: ⚠️ Empty directory
-   - **Recommendation**: Removed as it was not needed for future indexing features
-
-3. **`fontget.exe~`** - Backup executable
-   - **Status**: ⚠️ Backup file
-   - **Recommendation**: Safe to remove
-
-4. **`scripts/audit-flags.go`** - CLI flag audit utility
-   - **Purpose**: Analyzes command files to extract flag information and check documentation sync
-   - **Status**: ✅ Utility script (not deprecated)
-   - **Recommendation**: Keep as development utility
-
-### Files That Were Recently Refactored:
-
-1. **`internal/config/sources_config.go`** - DELETED (replaced by manifest system)
-2. **`internal/output/shared.go`** - DELETED (consolidated into verbose.go and debug.go)
-3. **`internal/config/app_config.go`** - DELETED (renamed to user_preferences.go)
-4. **`internal/config/config.go`** - DELETED (renamed to app_state.go)
 
 ### Template Files:
 
@@ -529,8 +495,6 @@ The codebase has undergone recent refactoring to implement a new manifest system
 - ✅ Recent refactoring improved maintainability
 
 ### Areas for Improvement:
-- ⚠️ Remove empty directories (`internal/errors/`, `internal/index/`)
-- ⚠️ Clean up backup files (`fontget.exe~`)
 - 🔄 Consider adding more comprehensive tests
 
 **Overall Status**: ✅ Healthy - Well-structured, actively maintained codebase with recent architectural improvements
