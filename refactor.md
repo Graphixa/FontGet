@@ -83,6 +83,63 @@
   - [ ] Better compatibility with CI/CD and automated environments
   - [ ] Consistent with other CLI tools' management patterns
 
+#### **Font ID Resolution & Smart Matching** (HIGH PRIORITY)
+
+##### **Phase 1: Installation Tracking System**
+- [ ] **Add installation tracking system**
+  - [ ] Create `~/.fontget/installed.json` to track font ID → system name mappings
+  - [ ] Update install process to record font ID when installing via FontGet
+- [ ] **Smart font detection (winget-style)**
+  - [ ] Add tracking for font variants and their system names
+  - [ ] Handle font updates and reinstallations
+
+##### **Phase 2: Smart Font Detection (winget-style)**
+- [ ] **Smart font detection**
+  - [ ] Scan system fonts against all FontGet sources
+  - [ ] Match system fonts to FontGet sources by priority order
+  - [ ] Show Font ID for detected fonts, blank for unknown fonts
+  - [ ] Cache detection results for performance
+- [ ] **Enhanced list command**
+  - [ ] Show Font Name, Font ID, Variants, Categories (e.g. Display, Serif etc. if possible) and Source columns
+  - [ ] Display detected fonts with their Font ID from highest priority source
+  - [ ] Leave Font ID blank for fonts not in any FontGet source
+  - [ ] Add filtering by source and Font ID
+
+##### **Phase 3: Enhanced Remove Command**
+- [ ] **Enhanced remove command**
+  - [ ] Support both font IDs (`nerd.fira-code`) and system names (`Fira Code`)
+  - [ ] Add suggestion system like add command
+  - [ ] Support partial matches (`open-sans` matches across multiple sources)
+  - [ ] Show source resolution when multiple sources match
+  - [ ] Integrate with installation tracking system
+
+#### **Update System** (MEDIUM PRIORITY)
+
+##### **Phase 1: Update Command Implementation**
+- [ ] **Add `update` command**
+  - [ ] `fontget update` - Check and update if newer version available
+  - [ ] `fontget update --check` - Just check for updates without installing
+  - [ ] Integration with GitHub Releases API
+  - [ ] Version comparison and update logic
+  - [ ] Backup current version before update
+  - [ ] Rollback capability if update fails
+
+##### **Phase 2: GitHub Actions Setup**
+- [ ] **Set up GitHub Actions for automated builds**
+  - [ ] Cross-platform build workflow (Windows, macOS, Linux)
+  - [ ] Automated version tagging and releases
+  - [ ] Build matrix for different architectures
+  - [ ] Artifact upload and release creation
+  - [ ] Automated testing on multiple platforms
+
+##### **Phase 3: Build System & Distribution**
+- [ ] **Complete CI/CD pipeline**
+  - [ ] Code signing for Windows/macOS
+  - [ ] Automated changelog generation
+  - [ ] Release notes automation
+  - [ ] Binary verification and checksums
+  - [ ] Distribution to package managers (Homebrew, Chocolatey, etc.)
+
 #### **Future Commands**
 - [ ] **Add `export` command** - Export installed fonts/collections
   - [ ] Support export by family, source, or all
