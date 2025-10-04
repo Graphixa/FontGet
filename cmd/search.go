@@ -128,30 +128,13 @@ var searchCmd = &cobra.Command{
 		}
 		fmt.Printf("\n%s\n\n", searchMsg)
 
-		// Define column widths (match list command style)
-		columns := map[string]int{
-			"Name":       30, // For display name
-			"ID":         30, // For longer font IDs
-			"License":    12, // For license type
-			"Categories": 15, // For categories
-			"Source":     12, // For source name
-		}
-
-		// Print header with mauve color
-		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
-			columns["Name"], "Name",
-			columns["ID"], "ID",
-			columns["License"], "License",
-			columns["Categories"], "Categories",
-			columns["Source"], "Source")
-		fmt.Println(ui.TableHeader.Render(header))
-		fmt.Println(ui.FeedbackText.Render(strings.Repeat("-", len(header))))
-
+		// Collect data for dynamic table sizing
+		var names, ids, licenses, categories, sources []string
 		for _, result := range results {
 			// Format categories
-			categories := "N/A"
+			categoriesStr := "N/A"
 			if len(result.Categories) > 0 {
-				categories = strings.Join(result.Categories, ", ")
+				categoriesStr = strings.Join(result.Categories, ", ")
 			}
 
 			// Format license
@@ -160,30 +143,80 @@ var searchCmd = &cobra.Command{
 				license = result.License
 			}
 
-			// Truncate long names with ellipsis
-			name := result.Name
-			if len(name) > columns["Name"]-3 {
-				name = name[:columns["Name"]-3] + "..."
-			}
+			names = append(names, result.Name)
+			ids = append(ids, result.ID)
+			licenses = append(licenses, license)
+			categories = append(categories, categoriesStr)
+			sources = append(sources, result.SourceName)
+		}
 
-			// Truncate long IDs with ellipsis
-			id := result.ID
-			if len(id) > columns["ID"]-3 {
-				id = id[:columns["ID"]-3] + "..."
-			}
+		// Calculate dynamic column widths
+		maxName := TableColName
+		maxID := TableColID
+		maxLicense := TableColLicense
+		maxCategories := TableColCategories
+		maxSource := TableColSource
 
-			// Truncate categories if too long
-			if len(categories) > columns["Categories"]-3 {
-				categories = categories[:columns["Categories"]-3] + "..."
+		for _, name := range names {
+			if len(name) > maxName {
+				maxName = len(name)
 			}
+		}
+		for _, id := range ids {
+			if len(id) > maxID {
+				maxID = len(id)
+			}
+		}
+		for _, license := range licenses {
+			if len(license) > maxLicense {
+				maxLicense = len(license)
+			}
+		}
+		for _, category := range categories {
+			if len(category) > maxCategories {
+				maxCategories = len(category)
+			}
+		}
+		for _, source := range sources {
+			if len(source) > maxSource {
+				maxSource = len(source)
+			}
+		}
 
-			// Print row: pad first, then apply color only to font name (like list command)
-			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-				ui.TableSourceName.Render(fmt.Sprintf("%-*s", columns["Name"], name)),
-				columns["ID"], id,
-				columns["License"], license,
-				columns["Categories"], categories,
-				columns["Source"], result.SourceName)
+		// Calculate total width needed
+		totalWidth := maxName + maxID + maxLicense + maxCategories + maxSource + 4 // +4 for spaces
+
+		// If total width exceeds reasonable maximum (160 chars), use fixed widths
+		if totalWidth > 160 {
+			fmt.Println(ui.TableHeader.Render(GetSearchTableHeader()))
+			fmt.Println(GetTableSeparator())
+
+			for i := range results {
+				fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+					ui.TableSourceName.Render(fmt.Sprintf("%-*s", TableColName, truncateString(names[i], TableColName))),
+					TableColID, truncateString(ids[i], TableColID),
+					TableColLicense, truncateString(licenses[i], TableColLicense),
+					TableColCategories, truncateString(categories[i], TableColCategories),
+					TableColSource, truncateString(sources[i], TableColSource))
+			}
+		} else {
+			// Use dynamic widths
+			fmt.Println(ui.TableHeader.Render(fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
+				maxName, "Name",
+				maxID, "ID",
+				maxLicense, "License",
+				maxCategories, "Categories",
+				maxSource, "Source")))
+			fmt.Println(strings.Repeat("-", totalWidth))
+
+			for i := range results {
+				fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+					ui.TableSourceName.Render(fmt.Sprintf("%-*s", maxName, names[i])),
+					maxID, ids[i],
+					maxLicense, licenses[i],
+					maxCategories, categories[i],
+					maxSource, sources[i])
+			}
 		}
 
 		// Show when FontGet last updated sources

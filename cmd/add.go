@@ -153,14 +153,6 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 	fmt.Printf("\n")
 }
 
-// truncateString truncates a string to the specified length
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen-3] + "..."
-}
-
 // formatFontNameWithVariant formats a font name with its variant for display
 func formatFontNameWithVariant(fontName, variant string) string {
 	if variant == "" || variant == "regular" {

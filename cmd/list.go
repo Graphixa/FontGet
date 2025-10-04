@@ -287,24 +287,9 @@ var listCmd = &cobra.Command{
 
 		GetLogger().Info("Found %d font families", len(familyNames))
 
-		// Define column widths
-		columns := map[string]int{
-			"Name":  45, // For display name
-			"Style": 18, // For font style
-			"Type":  10, // For file type
-			"Date":  20, // For installation date
-			"Scope": 10, // For installation scope
-		}
-
-		// Print header (match search command style)
-		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
-			columns["Name"], "Name",
-			columns["Style"], "Style",
-			columns["Type"], "Type",
-			columns["Date"], "Installed",
-			columns["Scope"], "Scope")
-		fmt.Println(ui.TableHeader.Render(header))
-		fmt.Println(ui.FeedbackText.Render(strings.Repeat("-", len(header))))
+		// Use shared table system for consistent formatting
+		fmt.Println(ui.TableHeader.Render(GetListTableHeader()))
+		fmt.Println(GetTableSeparator())
 
 		// Print each family
 		for _, family := range familyNames {
@@ -315,22 +300,22 @@ var listCmd = &cobra.Command{
 				return fonts[i].Style < fonts[j].Style
 			})
 
-			// Print family header (match search command style)
+			// Print family header using shared column constants
 			fmt.Printf("%-*s %-*s %-*s %-*s %-*s\n",
-				columns["Name"], ui.TableSourceName.Render(family),
-				columns["Style"], "",
-				columns["Type"], "",
-				columns["Date"], "",
-				columns["Scope"], "")
+				TableColListName, ui.TableSourceName.Render(family),
+				TableColStyle, "",
+				TableColType, "",
+				TableColDate, "",
+				TableColScope, "")
 
-			// Print each font in the family (match search command style)
+			// Print each font in the family using shared column constants
 			for _, font := range fonts {
 				fmt.Printf(" - %-*s %-*s %-*s %-*s %-*s\n",
-					columns["Name"]-3, font.Name,
-					columns["Style"], font.Style,
-					columns["Type"], font.Type,
-					columns["Date"], font.InstallDate.Format("2006-01-02 15:04"),
-					columns["Scope"], font.Scope)
+					TableColListName-3, truncateString(font.Name, TableColListName-3),
+					TableColStyle, truncateString(font.Style, TableColStyle),
+					TableColType, truncateString(font.Type, TableColType),
+					TableColDate, font.InstallDate.Format("2006-01-02 15:04"),
+					TableColScope, truncateString(font.Scope, TableColScope))
 			}
 
 			// Add a blank line after each family

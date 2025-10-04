@@ -303,6 +303,106 @@ func GetSearchTableHeader() string {
 		TableColSource, "Source")
 }
 
+// GetDynamicSearchTableHeader returns a table header with dynamic column widths based on data
+func GetDynamicSearchTableHeader(names, ids, licenses, categories, sources []string) string {
+	// Calculate maximum widths needed for each column
+	maxName := TableColName
+	maxID := TableColID
+	maxLicense := TableColLicense
+	maxCategories := TableColCategories
+	maxSource := TableColSource
+
+	// Check all data arrays
+	for _, name := range names {
+		if len(name) > maxName {
+			maxName = len(name)
+		}
+	}
+	for _, id := range ids {
+		if len(id) > maxID {
+			maxID = len(id)
+		}
+	}
+	for _, license := range licenses {
+		if len(license) > maxLicense {
+			maxLicense = len(license)
+		}
+	}
+	for _, category := range categories {
+		if len(category) > maxCategories {
+			maxCategories = len(category)
+		}
+	}
+	for _, source := range sources {
+		if len(source) > maxSource {
+			maxSource = len(source)
+		}
+	}
+
+	// Calculate total width needed
+	totalWidth := maxName + maxID + maxLicense + maxCategories + maxSource + 4 // +4 for spaces
+
+	// If total width exceeds reasonable maximum (160 chars), use fixed widths
+	if totalWidth > 160 {
+		return GetSearchTableHeader()
+	}
+
+	// Return dynamic header
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
+		maxName, "Name",
+		maxID, "ID",
+		maxLicense, "License",
+		maxCategories, "Categories",
+		maxSource, "Source")
+}
+
+// GetDynamicSearchTableSeparator returns a separator line with dynamic width
+func GetDynamicSearchTableSeparator(names, ids, licenses, categories, sources []string) string {
+	// Calculate maximum widths needed for each column
+	maxName := TableColName
+	maxID := TableColID
+	maxLicense := TableColLicense
+	maxCategories := TableColCategories
+	maxSource := TableColSource
+
+	// Check all data arrays
+	for _, name := range names {
+		if len(name) > maxName {
+			maxName = len(name)
+		}
+	}
+	for _, id := range ids {
+		if len(id) > maxID {
+			maxID = len(id)
+		}
+	}
+	for _, license := range licenses {
+		if len(license) > maxLicense {
+			maxLicense = len(license)
+		}
+	}
+	for _, category := range categories {
+		if len(category) > maxCategories {
+			maxCategories = len(category)
+		}
+	}
+	for _, source := range sources {
+		if len(source) > maxSource {
+			maxSource = len(source)
+		}
+	}
+
+	// Calculate total width needed
+	totalWidth := maxName + maxID + maxLicense + maxCategories + maxSource + 4 // +4 for spaces
+
+	// If total width exceeds reasonable maximum (160 chars), use fixed width
+	if totalWidth > 160 {
+		return GetTableSeparator()
+	}
+
+	return strings.Repeat("-", totalWidth)
+}
+
 // GetTableSeparator returns a table separator line with consistent width
 func GetTableSeparator() string {
 	return strings.Repeat("-", TableTotalWidth)
@@ -323,4 +423,12 @@ func GetSourcesTableHeader() string {
 	return fmt.Sprintf("%-*s %-*s",
 		TableColStatus, "Status",
 		TableColSourceName, "Name")
+}
+
+// truncateString truncates a string to the specified length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
 }
