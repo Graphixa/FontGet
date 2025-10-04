@@ -432,3 +432,119 @@ func truncateString(s string, maxLen int) string {
 	}
 	return s[:maxLen-3] + "..."
 }
+
+// findSimilarFonts finds similar fonts using fuzzy matching
+// This is a unified version that works for both repository fonts and installed fonts
+func findSimilarFonts(fontName string, allFonts []string, isInstalledFonts bool) []string {
+	queryLower := strings.ToLower(fontName)
+	queryNorm := strings.ReplaceAll(queryLower, " ", "")
+	queryNorm = strings.ReplaceAll(queryNorm, "-", "")
+	queryNorm = strings.ReplaceAll(queryNorm, "_", "")
+
+	var similar []string
+	seen := make(map[string]bool)
+
+	if isInstalledFonts {
+		// For installed fonts, use simpler matching for speed
+		similar = findMatchesInInstalledFonts(queryLower, queryNorm, allFonts, similar, seen, 5)
+	} else {
+		// For repository fonts, separate font names from font IDs for prioritized matching
+		var fontNames []string // "Open Sans", "Roboto", etc.
+		var fontIDs []string   // "google.roboto", "nerd.fira-code", etc.
+
+		for _, font := range allFonts {
+			if strings.Contains(font, ".") {
+				fontIDs = append(fontIDs, font)
+			} else {
+				fontNames = append(fontNames, font)
+			}
+		}
+
+		// Phase 1: Check font names first (higher priority)
+		similar = findMatchesInList(queryLower, queryNorm, fontNames, similar, 5)
+
+		// Phase 2: If we need more results, check font IDs
+		if len(similar) < 5 {
+			remaining := 5 - len(similar)
+			similar = findMatchesInList(queryLower, queryNorm, fontIDs, similar, remaining)
+		}
+	}
+
+	return similar
+}
+
+// findMatchesInInstalledFonts performs fuzzy matching on installed fonts (simplified for speed)
+func findMatchesInInstalledFonts(queryLower, queryNorm string, fontList []string, existing []string, seen map[string]bool, maxResults int) []string {
+	similar := existing
+
+	// Simple substring matching for speed
+	for _, font := range fontList {
+		if len(similar) >= maxResults {
+			break
+		}
+
+		fontLower := strings.ToLower(font)
+		fontNorm := strings.ReplaceAll(fontLower, " ", "")
+		fontNorm = strings.ReplaceAll(fontNorm, "-", "")
+		fontNorm = strings.ReplaceAll(fontNorm, "_", "")
+
+		// Skip exact equals and already found fonts
+		if fontLower == queryLower || fontNorm == queryNorm || seen[font] {
+			continue
+		}
+
+		if strings.Contains(fontLower, queryLower) || strings.Contains(queryLower, fontLower) {
+			similar = append(similar, font)
+			seen[font] = true
+		}
+	}
+
+	// If no substring matches and we still need more, try partial word matches
+	if len(similar) < maxResults {
+		words := strings.Fields(queryLower)
+		for _, font := range fontList {
+			if len(similar) >= maxResults || seen[font] {
+				break
+			}
+
+			fontLower := strings.ToLower(font)
+			for _, word := range words {
+				if len(word) > 2 && strings.Contains(fontLower, word) {
+					similar = append(similar, font)
+					seen[font] = true
+					break
+				}
+			}
+		}
+	}
+
+	return similar
+}
+
+// findMatchesInList performs fuzzy matching on a specific list of fonts (for repository fonts)
+func findMatchesInList(queryLower, queryNorm string, fontList []string, existing []string, maxResults int) []string {
+	similar := existing
+	seen := make(map[string]bool)
+
+	// Simple substring matching for speed
+	for _, font := range fontList {
+		if len(similar) >= maxResults {
+			break
+		}
+
+		fontLower := strings.ToLower(font)
+		fontNorm := strings.ReplaceAll(fontLower, " ", "")
+
+		// Skip exact equals and already found fonts
+		if fontLower == queryLower || fontNorm == queryNorm || seen[font] {
+			continue
+		}
+
+		if strings.Contains(fontLower, queryLower) || strings.Contains(queryLower, fontLower) {
+			similar = append(similar, font)
+			seen[font] = true
+		}
+	}
+
+	return similar
+}

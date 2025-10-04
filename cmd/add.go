@@ -49,14 +49,26 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 		return
 	}
 
-	// Collect unique matches from all suggestions
+	// Load repository for detailed font information
+	repository, err := repo.GetRepository()
+	if err != nil {
+		// If we can't load repository, show simple list (like remove command)
+		fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
+		for _, font := range similar {
+			fmt.Printf("  - %s\n", ui.TableSourceName.Render(font))
+		}
+		fmt.Println()
+		return
+	}
+
+	// Collect unique matches from all suggestions using the loaded repository
 	seenIDs := make(map[string]bool)
 	var uniqueMatches []repo.FontMatch
 
 	for _, suggestion := range similar {
-		// Try to find matches for the suggestion to get proper font IDs
-		matches, err := repo.FindFontMatches(suggestion)
-		if err == nil && len(matches) > 0 {
+		// Use the already-loaded repository instead of FindFontMatches
+		matches := findMatchesInRepository(repository, suggestion)
+		if len(matches) > 0 {
 			// Add all unique matches from this suggestion
 			for _, match := range matches {
 				if !seenIDs[match.ID] {
@@ -108,6 +120,47 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 	}
 
 	fmt.Printf("\n")
+}
+
+// findMatchesInRepository finds font matches using an already-loaded repository (performance optimization)
+func findMatchesInRepository(repository *repo.Repository, fontName string) []repo.FontMatch {
+	// Get the manifest from the repository
+	manifest, err := repository.GetManifest()
+	if err != nil {
+		return nil
+	}
+
+	// Normalize font name for comparison
+	fontName = strings.ToLower(fontName)
+	fontNameNoSpaces := strings.ReplaceAll(fontName, " ", "")
+
+	var matches []repo.FontMatch
+
+	// Search through all sources
+	for sourceName, source := range manifest.Sources {
+		for id, font := range source.Fonts {
+			// Check both the font name and ID with case-insensitive comparison
+			fontNameLower := strings.ToLower(font.Name)
+			idLower := strings.ToLower(id)
+			fontNameNoSpacesLower := strings.ReplaceAll(fontNameLower, " ", "")
+			idNoSpacesLower := strings.ReplaceAll(idLower, " ", "")
+
+			// Check for exact match
+			if fontNameLower == fontName ||
+				fontNameNoSpacesLower == fontNameNoSpaces ||
+				idLower == fontName ||
+				idNoSpacesLower == fontNameNoSpaces {
+				matches = append(matches, repo.FontMatch{
+					ID:       id,
+					Name:     font.Name,
+					Source:   sourceName,
+					FontInfo: font,
+				})
+			}
+		}
+	}
+
+	return matches
 }
 
 // showMultipleMatchesAndExit displays search results and instructs user to use specific font ID
@@ -235,114 +288,6 @@ func getSourceName(fontID string) string {
 
 	// Fallback to capitalized prefix if not found
 	return strings.Title(sourcePrefix)
-}
-
-// findSimilarFonts returns a list of font names that are similar to the given name
-// Prioritizes actual font names (no dots) over font IDs (with dots like "google.roboto")
-func findSimilarFonts(fontName string, allFonts []string) []string {
-	queryLower := strings.ToLower(fontName)
-	queryNorm := strings.ReplaceAll(queryLower, " ", "")
-
-	// Separate font names from font IDs for prioritized matching
-	var fontNames []string // "Open Sans", "Roboto", etc.
-	var fontIDs []string   // "google.roboto", "nerd.fira-code", etc.
-
-	for _, font := range allFonts {
-		if strings.Contains(font, ".") {
-			fontIDs = append(fontIDs, font)
-		} else {
-			fontNames = append(fontNames, font)
-		}
-	}
-
-	var similar []string
-
-	// Phase 1: Check font names first (higher priority)
-	similar = findMatchesInList(queryLower, queryNorm, fontNames, similar, 5)
-
-	// Phase 2: If we need more results, check font IDs
-	if len(similar) < 5 {
-		remaining := 5 - len(similar)
-		similar = findMatchesInList(queryLower, queryNorm, fontIDs, similar, remaining)
-	}
-
-	GetLogger().Debug("Found %d similar fonts for %s", len(similar), fontName)
-	return similar
-}
-
-// findMatchesInList performs fuzzy matching on a specific list of fonts
-func findMatchesInList(queryLower, queryNorm string, fontList []string, existing []string, maxResults int) []string {
-	similar := existing
-
-	// Simple substring matching for speed
-	for _, font := range fontList {
-		if len(similar) >= maxResults {
-			break
-		}
-
-		fontLower := strings.ToLower(font)
-		fontNorm := strings.ReplaceAll(fontLower, " ", "")
-
-		// Skip exact equals and already found fonts
-		if fontLower == queryLower || fontNorm == queryNorm {
-			continue
-		}
-
-		// Skip if already in results
-		alreadyFound := false
-		for _, existing := range similar {
-			if strings.ToLower(existing) == fontLower {
-				alreadyFound = true
-				break
-			}
-		}
-		if alreadyFound {
-			continue
-		}
-
-		if strings.Contains(fontLower, queryLower) || strings.Contains(queryLower, fontLower) {
-			similar = append(similar, font)
-		}
-	}
-
-	// If no substring matches and we still need more, try partial word matches
-	if len(similar) < maxResults {
-		words := strings.Fields(queryLower)
-		for _, font := range fontList {
-			if len(similar) >= maxResults {
-				break
-			}
-
-			fontLower := strings.ToLower(font)
-			fontNorm := strings.ReplaceAll(fontLower, " ", "")
-
-			// Skip exact equals and already found fonts
-			if fontLower == queryLower || fontNorm == queryNorm {
-				continue
-			}
-
-			// Skip if already in results
-			alreadyFound := false
-			for _, existing := range similar {
-				if strings.ToLower(existing) == fontLower {
-					alreadyFound = true
-					break
-				}
-			}
-			if alreadyFound {
-				continue
-			}
-
-			for _, word := range words {
-				if len(word) > 2 && strings.Contains(fontLower, word) {
-					similar = append(similar, font)
-					break
-				}
-			}
-		}
-	}
-
-	return similar
 }
 
 var addCmd = &cobra.Command{
@@ -501,7 +446,7 @@ You can specify the installation scope using the --scope flag:
 				GetLogger().Error("Font not found: %s", fontName)
 
 				// Try to find similar fonts
-				similar := findSimilarFonts(fontName, allFonts)
+				similar := findSimilarFonts(fontName, allFonts, false) // false = repository fonts
 				GetLogger().Info("Found %d similar fonts for %s", len(similar), fontName)
 				showFontNotFoundWithSuggestions(fontName, similar)
 				continue // Skip to next font

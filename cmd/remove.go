@@ -195,7 +195,7 @@ func showInstalledFontNotFoundWithSuggestions(fontName string, fontManager platf
 	}
 
 	// Find similar fonts
-	similar := findSimilarInstalledFonts(fontName, installedFonts)
+	similar := findSimilarFonts(fontName, installedFonts, true) // true = installed fonts
 
 	// If no similar fonts found, show general guidance
 	if len(similar) == 0 {
@@ -216,60 +216,6 @@ func showInstalledFontNotFoundWithSuggestions(fontName string, fontManager platf
 	fmt.Printf("\n%s\n", ui.FeedbackText.Render("Use the exact font name to remove it:"))
 	fmt.Printf("  %s\n", ui.CommandExample.Render(fmt.Sprintf("fontget remove \"%s\"", similar[0])))
 	fmt.Println()
-}
-
-// findSimilarInstalledFonts returns a list of installed font names that are similar to the given name
-func findSimilarInstalledFonts(fontName string, installedFonts []string) []string {
-	queryLower := strings.ToLower(fontName)
-	queryNorm := strings.ReplaceAll(queryLower, " ", "")
-	queryNorm = strings.ReplaceAll(queryNorm, "-", "")
-	queryNorm = strings.ReplaceAll(queryNorm, "_", "")
-
-	var similar []string
-	seen := make(map[string]bool)
-
-	// Simple substring matching for speed
-	for _, font := range installedFonts {
-		if len(similar) >= 5 { // Limit to 5 suggestions
-			break
-		}
-
-		fontLower := strings.ToLower(font)
-		fontNorm := strings.ReplaceAll(fontLower, " ", "")
-		fontNorm = strings.ReplaceAll(fontNorm, "-", "")
-		fontNorm = strings.ReplaceAll(fontNorm, "_", "")
-
-		// Skip exact equals and already found fonts
-		if fontLower == queryLower || fontNorm == queryNorm || seen[font] {
-			continue
-		}
-
-		if strings.Contains(fontLower, queryLower) || strings.Contains(queryLower, fontLower) {
-			similar = append(similar, font)
-			seen[font] = true
-		}
-	}
-
-	// If no substring matches and we still need more, try partial word matches
-	if len(similar) < 5 {
-		words := strings.Fields(queryLower)
-		for _, font := range installedFonts {
-			if len(similar) >= 5 || seen[font] {
-				break
-			}
-
-			fontLower := strings.ToLower(font)
-			for _, word := range words {
-				if len(word) > 2 && strings.Contains(fontLower, word) {
-					similar = append(similar, font)
-					seen[font] = true
-					break
-				}
-			}
-		}
-	}
-
-	return similar
 }
 
 // buildInstalledFontsCache builds a cache of installed font names for efficient suggestions
@@ -313,7 +259,7 @@ func showInstalledFontNotFoundWithSuggestionsCached(fontName string, installedFo
 	fmt.Printf("\n%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
 
 	// Find similar fonts from cache
-	similar := findSimilarInstalledFonts(fontName, installedFonts)
+	similar := findSimilarFonts(fontName, installedFonts, true) // true = installed fonts
 
 	// If no similar fonts found, show general guidance
 	if len(similar) == 0 {
