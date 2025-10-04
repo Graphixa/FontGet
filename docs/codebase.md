@@ -360,9 +360,26 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Status**: ✅ Active - Development templates
 
 ### `internal/components/`
-**Purpose**: UI components
+**Purpose**: Reusable UI components
 **Files**:
-- `progress.go`: Progress bar component
+- `progress.go`: Progress bar component with Bubble Tea integration
+- `card.go`: Card components with integrated titles and flexible padding
+- `form.go`: Form input components for TUI interfaces
+- `confirm.go`: Confirmation dialog components
+- `hierarchy.go`: Hierarchical list components for structured data display
+
+**Key Features**:
+- **Card System**: Modern card components with integrated titles in borders, configurable padding (vertical/horizontal), and consistent styling
+- **Form Components**: Reusable form elements for interactive TUI interfaces
+- **Progress Indicators**: Animated progress bars with customizable styling
+- **Confirmation Dialogs**: Standardized confirmation prompts with consistent styling
+- **Hierarchical Lists**: Tree-like display components for structured data (e.g., font families with variants)
+
+**Usage Examples**:
+- **Info Command**: Uses card components for displaying font details, license info, and metadata
+- **Sources Management**: Uses form and confirmation components for interactive source editing
+- **List Command**: Uses hierarchy components for displaying font families with variants
+- **Update Operations**: Uses progress components for showing update progress
 
 **Status**: ✅ Active - UI components
 
@@ -472,6 +489,17 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
 - **Built-in sources**: Priority 1, 2, 3 (Google Fonts, Nerd Fonts, Font Squirrel)
 - **Custom sources**: Priority 100+ (processed after built-in sources)
 - **Benefits**: Predictable source processing order
+
+#### **UI Component System (2025-01-02)**
+- **Card Components**: Redesigned with integrated titles in borders, flexible padding controls, and consistent styling
+- **Form Components**: Extracted reusable form elements from TUI interfaces
+- **Confirmation Dialogs**: Standardized confirmation prompts with consistent styling
+- **Hierarchical Lists**: Tree-like display components for structured data
+- **Benefits**:
+  - Consistent UI/UX across all commands
+  - Reusable components reduce code duplication
+  - Better maintainability and styling control
+  - Enhanced visual hierarchy and user experience
 
 ---
 

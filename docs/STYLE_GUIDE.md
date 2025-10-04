@@ -68,6 +68,13 @@ FontGet uses a clear categorization system for different types of UI elements:
 - **CommandLabel** - Button-like labels (Subtext 1)
 - **CommandExample** - Example commands (Pink)
 
+### 6. CARD STYLES - Card components and layouts
+- **CardTitle** - Card titles integrated into borders (Mauve with Surface 0 background)
+- **CardLabel** - Labels within cards (Pink - matches FormLabel)
+- **CardContent** - Regular content within cards (Terminal default - matches FeedbackText)
+- **CardBorder** - Card border styling (Overlay 1 color)
+- **CardContainer** - Container for cards with proper spacing
+
 ## Implementation
 
 ### Style Usage Examples
@@ -94,6 +101,12 @@ ui.FormPlaceholder.Render("Enter font name...")
 ui.CommandKey.Render("Enter")
 ui.CommandLabel.Render("Submit")
 ui.CommandExample.Render("fontget add google.roboto")
+
+// Card elements
+ui.CardTitle.Render("Font Details")
+ui.CardLabel.Render("Name:")
+ui.CardContent.Render("Roboto Mono")
+ui.CardBorder.Render("Card content here")
 ```
 
 ### Status Report Styling
@@ -115,14 +128,43 @@ This creates:
 - **Status word "(Skipped)"** → Yellow
 - **Status word "(Failed)"** → Red
 
+### Card Component Styling
+
+Card components use a hierarchical approach with integrated titles:
+
+```go
+// Card with integrated title in border
+card := components.NewCardWithSections("Font Details", []components.CardSection{
+    {Label: "Name", Value: "Roboto Mono"},
+    {Label: "ID", Value: "google.roboto-mono"},
+    {Label: "Category", Value: "Monospace"},
+})
+
+// Custom card with specific padding
+customCard := components.Card{
+    Title:             "Test Font",
+    Content:           "Custom content here",
+    Width:             80,
+    VerticalPadding:   1,  // Top/bottom padding
+    HorizontalPadding: 2,  // Left/right padding
+}
+```
+
+This creates:
+- **Card titles** → Integrated into top border with Mauve color and Surface 0 background
+- **Card labels** → Pink color (e.g., "Name:", "ID:", "Category:")
+- **Card content** → Terminal default color for values
+- **Card borders** → Overlay 1 color with rounded corners
+
 ## Color Hierarchy
 
 ### Primary Visual Elements
 1. **Page Titles** - Mauve (#cba6f7) with background
-2. **Font Names & Labels** - Pink (#f5c2e7) - most prominent content and form labels
-3. **Warning Messages** - Yellow (#f9e2af) - warnings and skipped status
-4. **Status Words** - Green/Yellow/Red based on status
-5. **Primary Text** - Terminal default for better compatibility
+2. **Card Titles** - Mauve (#cba6f7) with Surface 0 background, integrated into borders
+3. **Font Names & Labels** - Pink (#f5c2e7) - most prominent content, form labels, and card labels
+4. **Warning Messages** - Yellow (#f9e2af) - warnings and skipped status
+5. **Status Words** - Green/Yellow/Red based on status
+6. **Primary Text** - Terminal default for better compatibility
 
 ### Status Colors
 - **Success** - Green (#a6e3a1) with bold
@@ -138,7 +180,8 @@ This creates:
 
 ## Adaptive Colors
 
-Several styles use `lipgloss.AdaptiveColor` for better terminal compatibility:
+~~Several styles use `lipgloss.AdaptiveColor` for better terminal compatibility:~~
+Not properly supported so don't use
 
 - **ContentText** - Adapts to light/dark terminals
 - **FormInput** - Adapts to light/dark terminals
@@ -192,11 +235,13 @@ fmt.Printf("%-*s %-*s %-*s\n",
 ## Usage Guidelines
 
 1. **Consistency** - Use the same style category for similar elements
-2. **Hierarchy** - Page titles > Font names > Field labels > Regular text
+2. **Hierarchy** - Page titles > Card titles > Font names > Field labels > Regular text
 3. **Status Clarity** - Only color status words, not entire messages
 4. **Terminal Compatibility** - Use adaptive colors where appropriate
 5. **Accessibility** - Ensure sufficient contrast between text and backgrounds
-6. **Table Width** - Never exceed 95 characters total width for tables
+6. **Table Width** - Never exceed 120 characters total width for tables
+7. **Card Design** - Use integrated titles in borders for better visual hierarchy
+8. **Padding Control** - Use vertical and horizontal padding separately for different use cases
 
 ## Migration from Old Styles
 
