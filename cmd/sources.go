@@ -596,7 +596,11 @@ var sourcesValidateCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("Validating sources in: %s\n", sourcesDir)
+		// Display page header
+		fmt.Printf("\n%s\n", ui.PageTitle.Render("Sources Validation"))
+		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Directory"), sourcesDir)
+		fmt.Printf("\n")
 
 		// Validate individual source files
 		entries, err := os.ReadDir(sourcesDir)
@@ -649,9 +653,13 @@ var sourcesValidateCmd = &cobra.Command{
 			return nil
 		}
 
-		fmt.Printf("\nValidation Results:\n")
-		fmt.Printf("  Valid files: %d\n", validCount)
-		fmt.Printf("  Invalid files: %d\n", invalidCount)
+		// Print validation results
+		fmt.Printf("\n%s\n", ui.ReportTitle.Render("Validation Results"))
+		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("%s: %d  |  %s: %d\n",
+			ui.FeedbackSuccess.Render("Valid"), validCount,
+			ui.FeedbackError.Render("Invalid"), invalidCount)
+		fmt.Printf("\n")
 
 		output.GetVerbose().Info("Validation completed - Valid: %d, Invalid: %d", validCount, invalidCount)
 		output.GetDebug().State("Validation results: %d valid, %d invalid", validCount, invalidCount)

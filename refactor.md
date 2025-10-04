@@ -47,6 +47,34 @@
   - [ ] Extract progress indicators to `internal/components/progress.go`
   - [ ] Extract confirmation dialogs to `internal/components/confirm.go`
 
+#### **Shared Function Consolidation** (HIGH PRIORITY)
+- [x] **Table standardization system** - Created flexible table system in `cmd/shared.go`
+  - [x] `GetSearchTableHeader()` - Font search/add/remove tables (5 columns)
+  - [x] `GetListTableHeader()` - Font list tables (5 columns) 
+  - [x] `GetTableSeparator()` - Consistent separator line
+  - [x] Column width constants for all table types
+  - [x] Maximum table width: 120 characters (full terminal width)
+  - [x] `GetSourcesTableHeader()` - Reserved for future sources info table (not currently used)
+- [ ] **Update commands to use shared table system**
+  - [ ] `cmd/list.go` - Replace custom table formatting with `GetListTableHeader()`
+  - [ ] `cmd/search.go` - Replace custom table formatting with `GetSearchTableHeader()`
+  - [ ] `cmd/sources.go` - Currently uses simple text formatting, no table needed
+  - [ ] Any other commands using custom table formatting
+- [ ] **Move remaining duplicate functions to `cmd/shared.go`**
+  - [ ] `truncateString()` - Used in both add.go and remove.go
+  - [ ] `findSimilarFonts()` and `findSimilarInstalledFonts()` - Font suggestion logic
+  - [ ] `showFontNotFoundWithSuggestions()` and `showInstalledFontNotFoundWithSuggestionsCached()` - Suggestion display
+  - [ ] `formatFontNameWithVariant()` - Font name formatting
+  - [ ] `extractFontDisplayNameFromFilename()` - Font filename parsing
+  - [ ] `convertCamelCaseToSpaced()` - String formatting utilities
+  - [ ] `buildInstalledFontsCache()` - Font discovery caching
+- [ ] **Benefits of consolidation**
+  - [ ] Eliminate code duplication between add/remove commands
+  - [ ] Centralize font suggestion and display logic
+  - [ ] Easier maintenance and consistency
+  - [ ] Reduced binary size
+  - [ ] Single source of truth for font handling utilities
+
 #### **Evaluate Performance Optimisations** (LOW PRIORITY)
 - [ ] **Add parallel processing**
   - [ ] Parallel font downloads for multiple fonts
@@ -99,6 +127,11 @@
   - [ ] Match system fonts to FontGet sources by priority order
   - [ ] Show Font ID for detected fonts, blank for unknown fonts
   - [ ] Cache detection results for performance
+- [ ] **Dynamic source detection for remove command**
+  - [ ] Replace "System" placeholder with actual source name (e.g., "Google Fonts", "Nerd Fonts")
+  - [ ] Show Font ID instead of "N/A" when font is detected in sources
+  - [ ] Display license and categories when available from source
+  - [ ] Fall back to "System Font" only for fonts not found in any source
 - [ ] **Enhanced list command**
   - [ ] Show Font Name, Font ID, Variants, Categories (e.g. Display, Serif etc. if possible) and Source columns
   - [ ] Display detected fonts with their Font ID from highest priority source

@@ -145,6 +145,50 @@ Several styles use `lipgloss.AdaptiveColor` for better terminal compatibility:
 
 Note: TableHeader and TableRow now use terminal default colors for better compatibility across different terminal environments.
 
+## Table Standards
+
+### Maximum Table Width
+All tables in FontGet are designed to efficiently use standard terminal space:
+- **Maximum total width**: 120 characters (uses full 120-character terminals)
+- **Column spacing**: 1 space between columns
+- **Separator line**: Matches table width exactly
+- **Space utilization**: Maximum readability with full terminal width
+
+### Table Column Standards
+Different commands use different column structures based on their purpose:
+
+#### Font Search/Add/Remove Tables (5 columns, 120 chars total)
+- **Name**: 36 characters (font display name - wider for longer names)
+- **ID**: 34 characters (font ID like "nerd.font-name" - much wider)
+- **License**: 12 characters (license type - slightly wider)
+- **Categories**: 16 characters (font categories - wider for multiple)
+- **Source**: 18 characters (source name - wider)
+
+#### Font List Tables (5 columns, 120 chars total)
+- **Name**: 54 characters (font family name - much wider)
+- **Style**: 22 characters (font style/variant - wider)
+- **Type**: 10 characters (file type)
+- **Installed**: 20 characters (installation date)
+- **Scope**: 10 characters (user/machine)
+
+#### Sources Management Tables (2 columns, 120 chars total)
+- **Status**: 10 characters (checkbox/status)
+- **Name**: 109 characters (source name with tags - much wider)
+
+### Implementation
+Use the shared table functions in `cmd/shared.go` for consistent formatting:
+```go
+// For font search/add/remove tables
+fmt.Printf("%s\n", ui.TableHeader.Render(GetTableHeader()))
+fmt.Printf("%s\n", GetTableSeparator())
+
+// For custom tables, use the column constants
+fmt.Printf("%-*s %-*s %-*s\n", 
+    TableColName, "Name",
+    TableColID, "ID", 
+    TableColSource, "Source")
+```
+
 ## Usage Guidelines
 
 1. **Consistency** - Use the same style category for similar elements
@@ -152,6 +196,7 @@ Note: TableHeader and TableRow now use terminal default colors for better compat
 3. **Status Clarity** - Only color status words, not entire messages
 4. **Terminal Compatibility** - Use adaptive colors where appropriate
 5. **Accessibility** - Ensure sufficient contrast between text and backgrounds
+6. **Table Width** - Never exceed 95 characters total width for tables
 
 ## Migration from Old Styles
 

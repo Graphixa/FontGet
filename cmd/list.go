@@ -266,7 +266,9 @@ var listCmd = &cobra.Command{
 
 		if len(filteredFonts) == 0 {
 			GetLogger().Info("No fonts found matching the specified filters")
-			fmt.Printf("No fonts found matching the specified filters\n")
+			fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
+			fmt.Printf("---------------------------------------------\n")
+			fmt.Printf("%s\n", ui.FeedbackWarning.Render("No fonts found matching the specified filters"))
 			return nil
 		}
 
@@ -285,9 +287,6 @@ var listCmd = &cobra.Command{
 
 		GetLogger().Info("Found %d font families", len(familyNames))
 
-		// Print header
-		fmt.Printf("\nInstalled fonts:\n\n")
-
 		// Define column widths
 		columns := map[string]int{
 			"Name":  45, // For display name
@@ -297,15 +296,15 @@ var listCmd = &cobra.Command{
 			"Scope": 10, // For installation scope
 		}
 
-		// Print header
+		// Print header (match search command style)
 		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
 			columns["Name"], "Name",
 			columns["Style"], "Style",
 			columns["Type"], "Type",
 			columns["Date"], "Installed",
 			columns["Scope"], "Scope")
-		fmt.Println(header)
-		fmt.Println(strings.Repeat("-", len(header)))
+		fmt.Println(ui.TableHeader.Render(header))
+		fmt.Println(ui.FeedbackText.Render(strings.Repeat("-", len(header))))
 
 		// Print each family
 		for _, family := range familyNames {
@@ -316,16 +315,15 @@ var listCmd = &cobra.Command{
 				return fonts[i].Style < fonts[j].Style
 			})
 
-			// Print family header: only color 'Font Family:' label, not the family name
-			fmt.Printf("%-*s%s %-*s %-*s %-*s %-*s\n",
-				len("Font Family: "), ui.FormLabel.Render("Font Family: "),
-				family,
+			// Print family header (match search command style)
+			fmt.Printf("%-*s %-*s %-*s %-*s %-*s\n",
+				columns["Name"], ui.TableSourceName.Render(family),
 				columns["Style"], "",
 				columns["Type"], "",
 				columns["Date"], "",
 				columns["Scope"], "")
 
-			// Print each font in the family
+			// Print each font in the family (match search command style)
 			for _, font := range fonts {
 				fmt.Printf(" - %-*s %-*s %-*s %-*s %-*s\n",
 					columns["Name"]-3, font.Name,
@@ -338,6 +336,16 @@ var listCmd = &cobra.Command{
 			// Add a blank line after each family
 			fmt.Println("")
 		}
+
+		// Print summary
+		fmt.Printf("\n%s\n", ui.ReportTitle.Render("Summary"))
+		fmt.Printf("---------------------------------------------\n")
+		fmt.Printf("%s: %d font(s) in %d family(ies)\n",
+			ui.ContentHighlight.Render("Total"), len(filteredFonts), len(familyNames))
+		if scope != "" {
+			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Scope"), scope)
+		}
+		fmt.Printf("\n")
 
 		GetLogger().Info("Font list operation completed successfully")
 		return nil

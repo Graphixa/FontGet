@@ -168,15 +168,9 @@ var infoCmd = &cobra.Command{
 
 		// Helper for colored headers
 
-		// Print font information
-		fmt.Printf("\n%s %s\n", ui.FormLabel.Render("Font Name:"), font.Name)
-
-		// Always show category as it's a single value
-		if len(font.Categories) > 0 {
-			fmt.Printf("\n%s %s\n", ui.FormLabel.Render("Category:"), font.Categories[0])
-		}
-
 		if showLicense {
+			fmt.Printf("%s\n", ui.PageSubtitle.Render("License Information"))
+			fmt.Printf("---------------------------------------------\n")
 			licenseURL := ""
 			// Always show the raw license URL for Google Fonts OFL fonts
 			if fontSource == "google-fonts" && strings.ToLower(font.License) == "ofl" {
@@ -186,32 +180,37 @@ var infoCmd = &cobra.Command{
 				licenseURL = font.SourceURL + "#license"
 			}
 			if licenseURL != "" {
-				fmt.Printf("\n%s %s - %s\n", ui.FormLabel.Render("License:"), font.License, licenseURL)
+				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("License"), font.License)
+				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("URL"), licenseURL)
 			} else {
-				fmt.Printf("\n%s %s\n", ui.FormLabel.Render("License:"), font.License)
+				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("License"), font.License)
 			}
+			fmt.Printf("\n")
 		}
 
 		// Always show files when showing all info
 		if showAll {
-			fmt.Printf("\n%s\n", ui.FormLabel.Render("Files:"))
+			fmt.Printf("%s\n", ui.PageSubtitle.Render("Available Files"))
+			fmt.Printf("---------------------------------------------\n")
 			for variant, url := range font.Files {
-				fmt.Printf("  - %s: %s\n", variant, url)
+				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render(variant), ui.ContentText.Render(url))
 			}
+			fmt.Printf("\n")
 		}
 
 		if showMetadata {
-			fmt.Printf("\n%s\n", ui.FormLabel.Render("Metadata:"))
-			fmt.Printf(" - Last Modified: %s\n", font.LastModified)
+			fmt.Printf("%s\n", ui.PageSubtitle.Render("Metadata"))
+			fmt.Printf("---------------------------------------------\n")
+			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Last Modified"), font.LastModified)
 			if font.Description != "" {
-				fmt.Printf(" - Description: %s\n", font.Description)
+				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Description"), font.Description)
 			}
-			fmt.Printf(" - Source URL: %s\n", font.SourceURL)
-			fmt.Printf(" - Metadata URL: %s\n", font.MetadataURL)
-			fmt.Printf(" - Popularity: %d\n", font.Popularity)
+			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Source URL"), font.SourceURL)
+			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Metadata URL"), font.MetadataURL)
+			fmt.Printf("%s: %d\n", ui.ContentHighlight.Render("Popularity"), font.Popularity)
+			fmt.Printf("\n")
 		}
 
-		fmt.Println()
 		GetLogger().Info("Font info operation completed successfully")
 		return nil
 	},

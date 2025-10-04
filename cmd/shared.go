@@ -268,3 +268,59 @@ func pinkToPin(hex string) pinpkg.Color {
 func runProgressBarWithOptions(msg string, totalSteps int, fn func(updateProgress func()) error, hideWhenFinished bool, showHeader bool) error {
 	return components.RunWithProgressOptions(msg, totalSteps, fn, hideWhenFinished, showHeader)
 }
+
+// Table formatting constants for consistent table widths across all commands
+const (
+	// Font Search/Add/Remove Tables (5 columns, total: 120 chars - uses full 120-char terminals)
+	TableColName       = 36 // Font name (wider for longer names)
+	TableColID         = 34 // Font ID (wider for longer IDs like "nerd.font-name")
+	TableColLicense    = 12 // License (slightly wider)
+	TableColCategories = 16 // Categories (wider for multiple categories)
+	TableColSource     = 18 // Source (wider for source names)
+
+	// Font List Tables (5 columns, total: 120 chars)
+	TableColListName = 54 // Font family name (wider)
+	TableColStyle    = 22 // Font style/variant (wider)
+	TableColType     = 10 // File type
+	TableColDate     = 20 // Installation date
+	TableColScope    = 10 // Scope (user/machine)
+
+	// Sources Management Tables (2 columns, total: 120 chars)
+	TableColStatus     = 10  // Checkbox/status
+	TableColSourceName = 109 // Source name with tags (much wider)
+
+	// Total table width (uses full 120-char terminals for maximum space utilization)
+	TableTotalWidth = 120
+)
+
+// GetSearchTableHeader returns a formatted table header for font search/add/remove tables
+func GetSearchTableHeader() string {
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
+		TableColName, "Name",
+		TableColID, "ID",
+		TableColLicense, "License",
+		TableColCategories, "Categories",
+		TableColSource, "Source")
+}
+
+// GetTableSeparator returns a table separator line with consistent width
+func GetTableSeparator() string {
+	return strings.Repeat("-", TableTotalWidth)
+}
+
+// GetListTableHeader returns a formatted table header for font list tables
+func GetListTableHeader() string {
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
+		TableColListName, "Name",
+		TableColStyle, "Style",
+		TableColType, "Type",
+		TableColDate, "Installed",
+		TableColScope, "Scope")
+}
+
+// GetSourcesTableHeader returns a formatted table header for sources management tables
+func GetSourcesTableHeader() string {
+	return fmt.Sprintf("%-*s %-*s",
+		TableColStatus, "Status",
+		TableColSourceName, "Name")
+}

@@ -71,10 +71,8 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 	if len(uniqueMatches) > 0 {
 		fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
 		// Use consistent column widths and apply styling to the entire formatted string
-		headerLine := fmt.Sprintf("%-30s %-30s %-12s %-15s %-20s",
-			"Name", "ID", "License", "Categories", "Source")
-		fmt.Printf("%s\n", ui.TableHeader.Render(headerLine))
-		fmt.Printf("%s\n", strings.Repeat("-", 127))
+		fmt.Printf("%s\n", ui.TableHeader.Render(GetSearchTableHeader()))
+		fmt.Printf("%s\n", GetTableSeparator())
 
 		// Display each unique match as a table row
 		for _, match := range uniqueMatches {
@@ -91,12 +89,12 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 			}
 
 			// Format the data line consistently with yellow font name
-			fmt.Printf("%s %-30s %-12s %-15s %-20s\n",
-				ui.TableSourceName.Render(fmt.Sprintf("%-30s", truncateString(match.Name, 30))),
-				truncateString(match.ID, 30),
-				truncateString(license, 12),
-				truncateString(categories, 15),
-				truncateString(match.Source, 20))
+			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+				ui.TableSourceName.Render(fmt.Sprintf("%-*s", TableColName, truncateString(match.Name, TableColName))),
+				TableColID, truncateString(match.ID, TableColID),
+				TableColLicense, truncateString(license, TableColLicense),
+				TableColCategories, truncateString(categories, TableColCategories),
+				TableColSource, truncateString(match.Source, TableColSource))
 		}
 	} else {
 		// Fallback: if similar font names were found but couldn't be resolved to matches
@@ -127,10 +125,8 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 
 	fmt.Printf("\n")
 	// Use consistent column widths and apply styling to the entire formatted string
-	headerLine := fmt.Sprintf("%-30s %-30s %-12s %-15s %-20s",
-		"Name", "ID", "License", "Categories", "Source")
-	fmt.Printf("%s\n", ui.TableHeader.Render(headerLine))
-	fmt.Printf("%s\n", strings.Repeat("-", 127))
+	fmt.Printf("%s\n", ui.TableHeader.Render(GetSearchTableHeader()))
+	fmt.Printf("%s\n", GetTableSeparator())
 
 	for _, match := range matches {
 		// Get categories (first one if available)
@@ -146,12 +142,12 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 		}
 
 		// Format the data line consistently with yellow font name
-		fmt.Printf("%s %-30s %-12s %-15s %-20s\n",
-			ui.TableSourceName.Render(fmt.Sprintf("%-30s", truncateString(match.Name, 30))),
-			truncateString(match.ID, 30),
-			truncateString(license, 12),
-			truncateString(categories, 15),
-			truncateString(match.Source, 20))
+		fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+			ui.TableSourceName.Render(fmt.Sprintf("%-*s", TableColName, truncateString(match.Name, TableColName))),
+			TableColID, truncateString(match.ID, TableColID),
+			TableColLicense, truncateString(license, TableColLicense),
+			TableColCategories, truncateString(categories, TableColCategories),
+			TableColSource, truncateString(match.Source, TableColSource))
 	}
 
 	fmt.Printf("\n")
