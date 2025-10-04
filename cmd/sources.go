@@ -16,7 +16,6 @@ import (
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -91,23 +90,19 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 
 		// Use shared color functions for consistency
-		cyan := Cyan
-		green := Green
-		yellow := Yellow
-		red := Red
-		white := White
+		// Use UI components instead of direct color functions
 
-		fmt.Printf("\n%s\n", Bold("Sources Information"))
+		fmt.Printf("\n%s\n", ui.PageTitle.Render("Sources Information"))
 		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("%s: %s\n", cyan("Manifest File"), manifestPath)
-		fmt.Printf("%s: %d\n", cyan("Total Sources"), len(configManifest.Sources))
+		fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Manifest File"), manifestPath)
+		fmt.Printf("%s: %d\n", ui.ContentHighlight.Render("Total Sources"), len(configManifest.Sources))
 
 		enabledSources := functions.GetEnabledSourcesInOrder(configManifest)
-		fmt.Printf("%s: %d\n", cyan("Enabled Sources"), len(enabledSources))
+		fmt.Printf("%s: %d\n", ui.ContentHighlight.Render("Enabled Sources"), len(enabledSources))
 
 		// Show last updated sources date
 		if manifest != nil {
-			fmt.Printf("%s: %s\n", cyan("Last Updated"), manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
+			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Last Updated"), manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
 		}
 
 		// Show cache status and size
@@ -115,11 +110,11 @@ var sourcesInfoCmd = &cobra.Command{
 			sourcesDir := filepath.Join(home, ".fontget", "sources")
 			if info, err := os.Stat(sourcesDir); err == nil {
 				totalSize := getDirSize(sourcesDir)
-				fmt.Printf("%s: %s (modified: %s)\n", cyan("Cache Size"), formatFileSize(totalSize), info.ModTime().Format("2006-01-02 15:04:05"))
+				fmt.Printf("%s: %s (modified: %s)\n", ui.ContentHighlight.Render("Cache Size"), formatFileSize(totalSize), info.ModTime().Format("2006-01-02 15:04:05"))
 
 				// Show individual source file sizes
 				if entries, err := os.ReadDir(sourcesDir); err == nil {
-					fmt.Printf("%s: %d files\n", cyan("Cached Sources"), len(entries))
+					fmt.Printf("%s: %d files\n", ui.ContentHighlight.Render("Cached Sources"), len(entries))
 					for _, entry := range entries {
 						if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
 							filePath := filepath.Join(sourcesDir, entry.Name())
@@ -131,19 +126,19 @@ var sourcesInfoCmd = &cobra.Command{
 					}
 				}
 			} else {
-				fmt.Printf("%s: Not found\n", cyan("Cache Size"))
+				fmt.Printf("%s: Not found\n", ui.ContentHighlight.Render("Cache Size"))
 			}
 		}
 
 		if len(enabledSources) > 0 {
-			fmt.Printf("\n%s\n", Bold("Enabled Sources"))
+			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Enabled Sources"))
 			fmt.Printf("---------------------------------------------\n")
 
 			for i, name := range enabledSources {
 				if source, exists := config.GetSourceByName(configManifest, name); exists {
-					fmt.Printf("  %d. %s %s\n", i+1, green(name), white(fmt.Sprintf("(%s)", source.Prefix)))
+					fmt.Printf("  %d. %s %s\n", i+1, ui.FeedbackSuccess.Render(name), ui.ContentText.Render(fmt.Sprintf("(%s)", source.Prefix)))
 				} else {
-					fmt.Printf("  %d. %s %s\n", i+1, red(name), red("(NOT FOUND)"))
+					fmt.Printf("  %d. %s %s\n", i+1, ui.FeedbackError.Render(name), ui.FeedbackError.Render("(NOT FOUND)"))
 				}
 			}
 		}
@@ -157,11 +152,11 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 
 		if len(disabledSources) > 0 {
-			fmt.Printf("\n%s\n", Bold("Disabled Sources"))
+			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Disabled Sources"))
 			fmt.Printf("---------------------------------------------\n")
 			for i, name := range disabledSources {
 				if source, exists := config.GetSourceByName(configManifest, name); exists {
-					fmt.Printf("  %d. %s %s\n", i+1, yellow(name), white(fmt.Sprintf("(%s)", source.Prefix)))
+					fmt.Printf("  %d. %s %s\n", i+1, ui.FeedbackWarning.Render(name), ui.ContentText.Render(fmt.Sprintf("(%s)", source.Prefix)))
 				}
 			}
 		}
@@ -255,13 +250,9 @@ func runSourcesUpdateVerbose() error {
 		return fmt.Errorf("no sources are enabled")
 	}
 
-	// Color functions
-	cyan := color.New(color.FgCyan).SprintFunc()
-	red := color.New(color.FgRed).SprintFunc()
-	green := color.New(color.FgGreen).SprintFunc()
-	yellow := color.New(color.FgYellow).SprintFunc()
+	// Use UI components instead of direct color functions
 
-	fmt.Printf("%s\n\n", cyan("Updating FontGet Sources..."))
+	fmt.Printf("%s\n\n", ui.PageTitle.Render("Updating Sources..."))
 
 	successful := 0
 	failed := 0
@@ -271,7 +262,7 @@ func runSourcesUpdateVerbose() error {
 		source, exists := manifest.Sources[sourceName]
 		if !exists {
 			fmt.Printf("Checking for updates for %s\n", sourceName)
-			fmt.Printf("%s\n\n", red("Error: Source not found in configuration"))
+			fmt.Printf("%s\n\n", ui.RenderError("Source not found in configuration"))
 			failed++
 			continue
 		}
@@ -297,7 +288,7 @@ func runSourcesUpdateVerbose() error {
 			} else {
 				errorMsg = fmt.Sprintf("network error: %v", err)
 			}
-			fmt.Printf("%s\n\n", red(fmt.Sprintf("Error: %s", errorMsg)))
+			fmt.Printf("%s\n\n", ui.RenderError(errorMsg))
 			failed++
 			continue
 		}
@@ -305,17 +296,17 @@ func runSourcesUpdateVerbose() error {
 
 		// Check HTTP status code immediately
 		if headResp.StatusCode >= 400 {
-			fmt.Printf("%s\n\n", red(fmt.Sprintf("Error: Source URL returned status %d", headResp.StatusCode)))
+			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Source URL returned status %d", headResp.StatusCode)))
 			failed++
 			continue
 		}
 
 		// Source is reachable, now download the full content
 		fmt.Printf("Source Found\n")
-		fmt.Printf("Downloading from: %s\n", yellow(source.URL))
+		fmt.Printf("Downloading from: %s\n", ui.ContentHighlight.Render(source.URL))
 		resp, err := client.Get(source.URL)
 		if err != nil {
-			fmt.Printf("%s\n\n", red(fmt.Sprintf("Error: Failed to download source - %v", err)))
+			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to download source - %v", err)))
 			failed++
 			continue
 		}
@@ -324,7 +315,7 @@ func runSourcesUpdateVerbose() error {
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close() // Close immediately after reading
 		if err != nil {
-			fmt.Printf("%s\n\n", red(fmt.Sprintf("Error: Failed to read source content - %v", err)))
+			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to read source content - %v", err)))
 			failed++
 			continue
 		}
@@ -332,7 +323,7 @@ func runSourcesUpdateVerbose() error {
 		// Validate JSON
 		var jsonData interface{}
 		if err := json.Unmarshal(body, &jsonData); err != nil {
-			fmt.Printf("%s\n\n", red(fmt.Sprintf("Error: Source content is not valid JSON - %v", err)))
+			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Source content is not valid JSON - %v", err)))
 			failed++
 			continue
 		}
@@ -340,12 +331,12 @@ func runSourcesUpdateVerbose() error {
 		// Success - show where it would be cached
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Printf("%s\n\n", red(fmt.Sprintf("Error: Failed to get home directory - %v", err)))
+			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to get home directory - %v", err)))
 			failed++
 			continue
 		}
 		cachePath := filepath.Join(homeDir, ".fontget", "cache", fmt.Sprintf("%s.json", sourceName))
-		fmt.Printf("%s\n\n", green(fmt.Sprintf("Success: Downloaded to %s (%d bytes)", cachePath, len(body))))
+		fmt.Printf("%s\n\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to %s (%d bytes)", cachePath, len(body))))
 		successful++
 	}
 
@@ -353,18 +344,16 @@ func runSourcesUpdateVerbose() error {
 	fmt.Printf("%s\n", ui.ReportTitle.Render("Status Report"))
 	fmt.Printf("---------------------------------------------\n")
 
-	white := color.New(color.FgWhite).SprintFunc()
-
 	fmt.Printf("%s: %s  |  %s: %s  |  %s: %s\n",
-		green("Updated"), white(successful),
-		yellow("Skipped"), white(0),
-		red("Failed"), white(failed))
+		ui.FeedbackSuccess.Render("Updated"), ui.ContentText.Render(fmt.Sprintf("%d", successful)),
+		ui.FeedbackWarning.Render("Skipped"), ui.ContentText.Render("0"),
+		ui.FeedbackError.Render("Failed"), ui.ContentText.Render(fmt.Sprintf("%d", failed)))
 
 	// Try to load manifest with force refresh
-	fmt.Printf("\n%s\n", cyan("Refreshing font data cache..."))
+	fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Refreshing font data cache..."))
 	progress := func(current, total int, message string) {
 		if current == total {
-			fmt.Printf("%s\n", green("Font data cache refreshed successfully"))
+			fmt.Printf("%s\n", ui.RenderSuccess("Font data cache refreshed successfully"))
 		} else {
 			fmt.Printf("   %s\n", message)
 		}
@@ -372,14 +361,14 @@ func runSourcesUpdateVerbose() error {
 
 	fontManifest, err := repo.GetManifestWithRefresh(nil, progress, true)
 	if err != nil {
-		fmt.Printf("%s\n", yellow(fmt.Sprintf("Warning: Failed to refresh font data cache: %v", err)))
+		fmt.Printf("%s\n", ui.RenderWarning(fmt.Sprintf("Failed to refresh font data cache: %v", err)))
 	} else {
 		// Count total fonts
 		totalFonts := 0
 		for _, sourceInfo := range fontManifest.Sources {
 			totalFonts += len(sourceInfo.Fonts)
 		}
-		fmt.Printf("%s %d\n", cyan("Total fonts available:"), totalFonts)
+		fmt.Printf("%s %d\n", ui.ContentHighlight.Render("Total fonts available:"), totalFonts)
 	}
 
 	return nil
@@ -543,7 +532,7 @@ var sourcesClearCmd = &cobra.Command{
 
 		// Check if sources directory exists
 		if _, err := os.Stat(sourcesDir); err != nil {
-			fmt.Println(Yellow("Sources directory not found - nothing to clear"))
+			fmt.Println(ui.RenderWarning("Sources directory not found - nothing to clear"))
 			output.GetVerbose().Info("Sources directory does not exist")
 			output.GetDebug().State("Sources directory not found: %s", sourcesDir)
 			return nil
@@ -569,7 +558,7 @@ var sourcesClearCmd = &cobra.Command{
 
 		output.GetVerbose().Success("Sources cleared successfully")
 		output.GetDebug().State("Sources clear operation completed successfully")
-		fmt.Println(Green("Sources cleared successfully"))
+		fmt.Println(ui.RenderSuccess("Sources cleared successfully"))
 		GetLogger().Info("Sources clear operation completed")
 		return nil
 	},
@@ -601,7 +590,7 @@ var sourcesValidateCmd = &cobra.Command{
 
 		// Check if sources directory exists
 		if _, err := os.Stat(sourcesDir); err != nil {
-			fmt.Println(Red("Sources directory not found"))
+			fmt.Println(ui.RenderError("Sources directory not found"))
 			output.GetVerbose().Warning("Sources directory does not exist")
 			output.GetDebug().State("Sources directory not found: %s", sourcesDir)
 			return nil
@@ -653,8 +642,8 @@ var sourcesValidateCmd = &cobra.Command{
 
 		// Check if no JSON files were found
 		if jsonFileCount == 0 {
-			fmt.Println(Yellow("No source files found to validate."))
-			fmt.Println(Yellow("Try running: fontget sources update"))
+			fmt.Println(ui.RenderWarning("No source files found to validate."))
+			fmt.Println(ui.RenderWarning("Try running: fontget sources update"))
 			output.GetVerbose().Info("No JSON source files found in directory")
 			output.GetDebug().State("No .json files found in sources directory")
 			return nil
@@ -668,10 +657,10 @@ var sourcesValidateCmd = &cobra.Command{
 		output.GetDebug().State("Validation results: %d valid, %d invalid", validCount, invalidCount)
 
 		if invalidCount > 0 {
-			fmt.Println(Yellow("Some source files are invalid. Consider running 'fontget sources update' to fix."))
+			fmt.Println(ui.RenderWarning("Some source files are invalid. Consider running 'fontget sources update' to fix."))
 			output.GetVerbose().Warning("Sources validation found %d invalid files", invalidCount)
 		} else {
-			fmt.Println(Green("All source files are valid"))
+			fmt.Println(ui.RenderSuccess("All source files are valid"))
 			output.GetVerbose().Success("All source files are valid")
 		}
 
