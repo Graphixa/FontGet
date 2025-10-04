@@ -131,6 +131,37 @@ var (
 )
 
 // ============================================================================
+// CARD STYLES - Card components and layouts
+// ============================================================================
+var (
+	// CardTitle - Card titles integrated into borders
+	CardTitle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#cba6f7")). // Mauve - matches FeedbackInfo
+			Background(lipgloss.Color("#313244")). // Surface 0
+			Padding(0, 1)
+
+	// CardLabel - Labels within cards (License:, URL:, etc.)
+	CardLabel = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#f5c2e7")). // Pink - matches FormLabel
+			Bold(true)
+
+	// CardContent - Regular content within cards
+	CardContent = lipgloss.NewStyle().
+			Foreground(lipgloss.NoColor{}) // Terminal default - matches FeedbackText
+
+	// CardBorder - Card border styling
+	CardBorder = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#7f849c")) // Overlay 1
+
+	// CardContainer - Container for cards with proper spacing
+	CardContainer = lipgloss.NewStyle().
+			Padding(0, 0).
+			Margin(0, 0)
+)
+
+// ============================================================================
 // PROGRESS BAR STYLES - Animated progress indicators
 // ============================================================================
 var (
