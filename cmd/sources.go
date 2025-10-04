@@ -66,10 +66,10 @@ var sourcesInfoCmd = &cobra.Command{
 				if logger != nil {
 					logger.Info("No source files found, forcing refresh with spinner")
 				}
-				r, err = repo.GetRepositoryWithRefresh()
+				r, _ = repo.GetRepositoryWithRefresh()
 			} else {
 				// Source files exist, use normal repository loading
-				r, err = repo.GetRepository()
+				r, _ = repo.GetRepository()
 			}
 		} else {
 			// Fallback to normal repository loading
