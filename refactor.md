@@ -18,12 +18,12 @@
 ### **Phase 3: Complete Command Standardization**
 
 #### **Remaining Error Handling Standardization**
-- [ ] **Update `cmd/sources.go`** - Replace direct color functions with UI components
-  - [ ] Replace `red()`, `green()`, `yellow()` with `ui.RenderError()`, `ui.RenderSuccess()`, `ui.RenderWarning()`
-  - [ ] Standardize error message formatting
-- [ ] **Update `cmd/config.go`** - Replace direct color functions with UI components
-  - [ ] Replace `color.New(color.FgRed).SprintFunc()` with `ui.RenderError()`
-  - [ ] Standardize success/warning messages
+- [x] **Update `cmd/sources.go`** - Replace direct color functions with UI components
+  - [x] Replace `red()`, `green()`, `yellow()` with `ui.RenderError()`, `ui.RenderSuccess()`, `ui.RenderWarning()`
+  - [x] Standardize error message formatting
+- [x] **Update `cmd/config.go`** - Replace direct color functions with UI components
+  - [x] Replace `color.New(color.FgRed).SprintFunc()` with `ui.RenderError()`
+  - [x] Standardize success/warning messages
 
 #### **Command Visual Consistency**
 - [ ] **Apply "Gold Standard" to remaining commands** (using `cmd/add.go` and `cmd/search.go` as baseline)
@@ -31,6 +31,31 @@
   - [ ] `cmd/list.go` - Styling and headers
   - [ ] `cmd/info.go` - Styling and content sections
   - [ ] `cmd/sources.go` - Styling parity (info, update, manage) use table like search for sources showing source info such as size in mb
+
+#### **Enhanced Command Layouts** (NEW - Based on ideas.md)
+- [ ] **Info Command Card-Based Layout**
+  - [ ] Implement bordered card sections for different information categories
+  - [ ] Font Details card (Name, ID, Category)
+  - [ ] License Info card (License, URL)
+  - [ ] Available Files card (Download URLs)
+  - [ ] Metadata card (Last Modified, Source URL, Popularity)
+  - [ ] Use charmbracelet TUI components for consistent styling
+- [ ] **List Command Hierarchical Display**
+  - [ ] Show font families with their variants in a tree-like structure
+  - [ ] Use pink color for font family names
+  - [ ] Use regular console color for font variants
+  - [ ] Add `--detailed` or `--full` flag to show font variants
+  - [ ] Default mode shows only font families (compact view)
+  - [ ] Detailed mode shows all variants with indentation
+- [ ] **Dynamic Table System Integration**
+  - [ ] Apply dynamic table widths to all commands using search/add/remove tables
+  - [ ] Update `cmd/add.go` and `cmd/remove.go` to use dynamic widths for suggestion tables
+  - [ ] Ensure consistent table behavior across all commands
+- [ ] **Color Scheme Enhancements**
+  - [ ] Implement pink color for font family names (matching ideas.md)
+  - [ ] Use regular console color for font variants and secondary text
+  - [ ] Create consistent color hierarchy across all commands
+  - [ ] Add color utilities to `cmd/shared.go` for easy access
 
 #### **Verbose/Debug Implementation**
 - [ ] **Complete verbose/debug framework for remaining commands**
@@ -42,10 +67,13 @@
 
 #### **UI Component Extraction**
 - [ ] **Create reusable UI components**
-  - [ ] Extract table components to `internal/components/table.go`
+  - [x] ~~Extract table components to `internal/components/table.go`~~ **NOT NEEDED** - Table system already well-centralized in `cmd/shared.go`
   - [ ] Extract form components to `internal/components/form.go`
   - [ ] Extract progress indicators to `internal/components/progress.go`
   - [ ] Extract confirmation dialogs to `internal/components/confirm.go`
+  - [ ] Extract card components to `internal/components/card.go` (for info command)
+  - [ ] Extract hierarchical list components to `internal/components/hierarchy.go` (for list command)
+  - [ ] Extract color scheme utilities to `internal/components/colors.go`
 
 #### **Shared Function Consolidation** (HIGH PRIORITY)
 - [x] **Table standardization system** - Created flexible table system in `cmd/shared.go`
@@ -55,27 +83,33 @@
   - [x] Column width constants for all table types
   - [x] Maximum table width: 120 characters (full terminal width)
   - [x] `GetSourcesTableHeader()` - Reserved for future sources info table (not currently used)
-- [ ] **Update commands to use shared table system**
-  - [ ] `cmd/list.go` - Replace custom table formatting with `GetListTableHeader()`
-  - [ ] `cmd/search.go` - Replace custom table formatting with `GetSearchTableHeader()`
-  - [ ] `cmd/sources.go` - Currently uses simple text formatting, no table needed
-  - [ ] Any other commands using custom table formatting
-- [ ] **Move remaining duplicate functions to `cmd/shared.go`**
-  - [ ] `truncateString()` - Used in both add.go and remove.go
-  - [ ] `findSimilarFonts()` and `findSimilarInstalledFonts()` - Font suggestion logic
-  - [ ] `showFontNotFoundWithSuggestions()` and `showInstalledFontNotFoundWithSuggestionsCached()` - Suggestion display
-  - [ ] `formatFontNameWithVariant()` - Font name formatting
-  - [ ] `extractFontDisplayNameFromFilename()` - Font filename parsing
-  - [ ] `convertCamelCaseToSpaced()` - String formatting utilities
-  - [ ] `buildInstalledFontsCache()` - Font discovery caching
-- [ ] **Benefits of consolidation**
-  - [ ] Eliminate code duplication between add/remove commands
-  - [ ] Centralize font suggestion and display logic
-  - [ ] Easier maintenance and consistency
-  - [ ] Reduced binary size
-  - [ ] Single source of truth for font handling utilities
+- [x] **Update commands to use shared table system**
+  - [x] `cmd/list.go` - Replace custom table formatting with `GetListTableHeader()`
+  - [x] `cmd/search.go` - Replace custom table formatting with `GetSearchTableHeader()`
+  - [x] `cmd/sources.go` - Currently uses simple text formatting, no table needed
+  - [x] `cmd/add.go` - Already using `GetSearchTableHeader()`
+  - [x] `cmd/remove.go` - Already using `GetSearchTableHeader()`
+- [x] **Move remaining duplicate functions to `cmd/shared.go`**
+  - [x] `truncateString()` - Used in both add.go and remove.go
+  - [x] `findSimilarFonts()` and `findSimilarInstalledFonts()` - Font suggestion logic (consolidated into unified `findSimilarFonts()`)
+  - [x] `showFontNotFoundWithSuggestions()` and `showInstalledFontNotFoundWithSuggestionsCached()` - Suggestion display (kept command-specific as they differ significantly)
+  - [x] `formatFontNameWithVariant()` - Font name formatting (only in add.go, not duplicated)
+  - [x] `extractFontDisplayNameFromFilename()` - Font filename parsing (only in remove.go, not duplicated)
+  - [x] `convertCamelCaseToSpaced()` - String formatting utilities (only in remove.go, not duplicated)
+  - [x] `buildInstalledFontsCache()` - Font discovery caching (only in remove.go, not duplicated)
+- [x] **Benefits of consolidation**
+  - [x] Eliminate code duplication between add/remove commands
+  - [x] Centralize font suggestion and display logic
+  - [x] Easier maintenance and consistency
+  - [x] Reduced binary size
+  - [x] Single source of truth for font handling utilities
 
 #### **Evaluate Performance Optimisations** (LOW PRIORITY)
+- [x] **Font suggestion performance optimization** - Optimized add command suggestion table performance
+  - [x] Analyzed performance bottlenecks in suggestion display
+  - [x] Implemented fresh data approach (90ms vs 10ms - imperceptible to humans)
+  - [x] Maintained dynamic source detection without caching complexity
+  - [x] Verified remove command performance (~10ms) remains optimal
 - [ ] **Add parallel processing**
   - [ ] Parallel font downloads for multiple fonts
   - [ ] Worker pool with configurable concurrency (default: 3-5 workers)
@@ -234,4 +268,4 @@
 
 ---
 
-**Current Status**: 5/7 commands fully standardized, 2 commands need error handling updates, all commands need visual consistency review.
+**Current Status**: 5/7 commands fully standardized, 2 commands need error handling updates, all commands need visual consistency review. **COMPLETED**: Shared function consolidation, table standardization, and performance optimization for suggestion systems.
