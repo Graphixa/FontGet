@@ -144,7 +144,7 @@ func (m FormModel) View() string {
 
 	// Render fields
 	for i, field := range m.Fields {
-		fieldValue := m.renderFieldValue(field, i)
+		fieldValue := m.renderFieldValue(field)
 		styledLabel := ui.FormLabel.Render(field.Label)
 		out += fmt.Sprintf("  %s %s\n", styledLabel, fieldValue)
 		if i < len(m.Fields)-1 {
@@ -166,7 +166,7 @@ func (m FormModel) View() string {
 }
 
 // renderFieldValue renders the value for a field
-func (m FormModel) renderFieldValue(field FormField, fieldIndex int) string {
+func (m FormModel) renderFieldValue(field FormField) string {
 	if field.ReadOnly {
 		// In read-only mode, show as static text
 		return ui.FormReadOnly.Render(field.Value)

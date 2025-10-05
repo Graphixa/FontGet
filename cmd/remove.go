@@ -26,51 +26,96 @@ type RemovalStatus struct {
 // List of critical system fonts to not remove (filenames and families, case-insensitive, no extension)
 var criticalSystemFonts = map[string]bool{
 	// Windows core fonts
-	"arial":             true,
-	"arialbold":         true,
-	"arialitalic":       true,
-	"arialbolditalic":   true,
-	"calibri":           true,
-	"calibribold":       true,
-	"calibriitalic":     true,
-	"calibribolditalic": true,
-	"segoeui":           true,
-	"segoeuibold":       true,
-	"segoeuiitalic":     true,
-	"segoeuibolditalic": true,
-	"times":             true,
-	"timesnewroman":     true,
-	"timesnewromanpsmt": true,
-	"courier":           true,
-	"tahoma":            true,
-	"verdana":           true,
-	"symbol":            true,
-	"wingdings":         true,
+	"arial":                 true,
+	"arialbold":             true,
+	"arialitalic":           true,
+	"arialbolditalic":       true,
+	"calibri":               true,
+	"calibribold":           true,
+	"calibriitalic":         true,
+	"calibribolditalic":     true,
+	"segoeui":               true,
+	"segoeuibold":           true,
+	"segoeuiitalic":         true,
+	"segoeuibolditalic":     true,
+	"times":                 true,
+	"timesnewroman":         true,
+	"timesnewromanpsmt":     true,
+	"courier":               true,
+	"tahoma":                true,
+	"verdana":               true,
+	"symbol":                true,
+	"wingdings":             true,
+	"consolas":              true,
+	"georgia":               true,
+	"georgiabold":           true,
+	"georgiaitalic":         true,
+	"georgiabolditalic":     true,
+	"comicsansms":           true,
+	"comicsansmsbold":       true,
+	"impact":                true,
+	"trebuchetms":           true,
+	"trebuchetmsbold":       true,
+	"trebuchetmsitalic":     true,
+	"trebuchetmsbolditalic": true,
+	"palatino":              true,
+	"palatinolinotype":      true,
+	"bookantiqua":           true,
+	"centurygothic":         true,
+	"franklingothic":        true,
+	"gillsans":              true,
+	"gillsansmt":            true,
+
 	// macOS core fonts
-	"sfnsdisplay":   true,
-	"sfnsrounded":   true,
-	"sfnstext":      true,
-	"geneva":        true,
-	"monaco":        true,
-	"lucida grande": true,
-	"menlo":         true,
-	"helvetica":     true,
-	"helveticaneue": true,
-	// Linux common fonts
-	"dejavusans":       true,
-	"dejavusansmono":   true,
-	"dejavuserif":      true,
-	"liberationsans":   true,
-	"liberationserif":  true,
-	"liberationmono":   true,
-	"nimbusroman":      true,
-	"nimbussans":       true,
-	"nimbusmono":       true,
-	"ubuntu":           true,
-	"ubuntumono":       true,
-	"ubuntubold":       true,
-	"ubuntuitalic":     true,
-	"ubuntubolditalic": true,
+	"cambria":              true,
+	"sfnsdisplay":          true,
+	"sfnsrounded":          true,
+	"sfnstext":             true,
+	"geneva":               true,
+	"monaco":               true,
+	"lucida grande":        true,
+	"menlo":                true,
+	"helvetica":            true,
+	"helveticaneue":        true,
+	"myriad":               true,
+	"myriadpro":            true,
+	"myriadset":            true,
+	"myriadsemibold":       true,
+	"myriadsemibolditalic": true,
+	"sanfrancisco":         true,
+	"sfprodisplay":         true,
+	"sfprotext":            true,
+	"sfprorounded":         true,
+	"athelas":              true,
+	"seravek":              true,
+	"seraveklight":         true,
+	"seravekmedium":        true,
+	"seraveksemibold":      true,
+	"seravekbold":          true,
+	"applegaramond":        true,
+	"garamond":             true,
+	"garamonditalic":       true,
+	"garamondbold":         true,
+	"garamondbolditalic":   true,
+	"optima":               true,
+	"optimabold":           true,
+	"optimaitalic":         true,
+	"optimabolditalic":     true,
+	"futura":               true,
+	"futurabold":           true,
+	"futuraitalic":         true,
+	"futurabolditalic":     true,
+
+	// Linux system fonts
+	"ubuntu":              true,
+	"ubuntumono":          true,
+	"ubuntubold":          true,
+	"ubuntuitalic":        true,
+	"ubuntubolditalic":    true,
+	"cantarell":           true,
+	"cantarellbold":       true,
+	"cantarellitalic":     true,
+	"cantarellbolditalic": true,
 }
 
 // isCriticalSystemFont checks if a font is a critical system font
@@ -166,56 +211,6 @@ func convertCamelCaseToSpaced(s string) string {
 		result = append(result, r)
 	}
 	return string(result)
-}
-
-// showInstalledFontNotFoundWithSuggestions displays font not found error with suggestions for installed fonts
-func showInstalledFontNotFoundWithSuggestions(fontName string, fontManager platform.FontManager) {
-	fmt.Printf("\n%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
-
-	// Get all installed fonts to suggest alternatives
-	var installedFonts []string
-	scopes := []platform.InstallationScope{platform.UserScope, platform.MachineScope}
-
-	for _, scope := range scopes {
-		fontDir := fontManager.GetFontDir(scope)
-		filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if !info.IsDir() && (strings.HasSuffix(strings.ToLower(info.Name()), ".ttf") ||
-				strings.HasSuffix(strings.ToLower(info.Name()), ".otf")) {
-				// Extract font family name
-				family, _ := parseFontName(info.Name())
-				if family != "" {
-					installedFonts = append(installedFonts, family)
-				}
-			}
-			return nil
-		})
-	}
-
-	// Find similar fonts
-	similar := findSimilarFonts(fontName, installedFonts, true) // true = installed fonts
-
-	// If no similar fonts found, show general guidance
-	if len(similar) == 0 {
-		fmt.Printf("%s\n", ui.FeedbackText.Render("Try using the list command to see installed fonts."))
-		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Example:"))
-		fmt.Printf("  %s\n", ui.CommandExample.Render("fontget list"))
-		fmt.Println()
-		return
-	}
-
-	// Display similar fonts in a clean format
-	fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
-
-	for _, font := range similar {
-		fmt.Printf("  - %s\n", ui.TableSourceName.Render(font))
-	}
-
-	fmt.Printf("\n%s\n", ui.FeedbackText.Render("Use the exact font name to remove it:"))
-	fmt.Printf("  %s\n", ui.CommandExample.Render(fmt.Sprintf("fontget remove \"%s\"", similar[0])))
-	fmt.Println()
 }
 
 // buildInstalledFontsCache builds a cache of installed font names for efficient suggestions
