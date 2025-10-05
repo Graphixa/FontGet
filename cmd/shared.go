@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -12,10 +11,8 @@ import (
 	"fontget/internal/platform"
 	"fontget/internal/ui"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	pinpkg "github.com/yarlson/pin"
 )
 
 // ErrElevationRequired is a sentinel error used to indicate we've already printed
@@ -204,64 +201,6 @@ type ElevationError struct {
 
 func (e *ElevationError) Error() string {
 	return fmt.Sprintf("elevation required for operation '%s' on platform '%s'", e.Operation, e.Platform)
-}
-
-// runSpinner runs a lightweight spinner while fn executes. Always stops with a green check style.
-func runSpinner(msg, doneMsg string, fn func() error) error {
-	// Pre-style the message with lipgloss using Pink color for font names
-	styledMsg := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#f5c2e7")). // Pink - matches TableSourceName
-		Bold(true).
-		Render(msg)
-
-	// Configure spinner with pre-styled message
-	p := pinpkg.New(styledMsg,
-		pinpkg.WithSpinnerColor(pinkToPin("#cba6f7")),    // spinner mauve
-		pinpkg.WithDoneSymbol(' '),                       // No done symbol - we'll handle it ourselves
-		pinpkg.WithDoneSymbolColor(pinkToPin("#a6e3a1")), // green check
-	)
-
-	// Start spinner; it auto-disables animation when output is piped
-	cancel := p.Start(context.Background())
-	defer cancel()
-
-	err := fn()
-	if err != nil {
-		// Do not duplicate user-facing elevation errors; we've already printed instructions
-		if errors.Is(err, ErrElevationRequired) {
-			p.Stop("")
-			return err
-		}
-		// Show failure with red X, but return the error
-		p.Fail(err.Error())
-		return err
-	}
-	// Style the completion message with the same color
-	styledDoneMsg := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#a6adc8")). // Gray
-		Render(doneMsg)
-
-	if doneMsg == "" {
-		styledDoneMsg = styledMsg
-	}
-	p.Stop(styledDoneMsg)
-	return nil
-}
-
-// pinkToPin maps hex-ish choice to nearest pin color (simple mapping to keep code local)
-func pinkToPin(hex string) pinpkg.Color {
-	switch strings.ToLower(hex) {
-	case "#a6e3a1":
-		return pinpkg.ColorGreen
-	case "#cba6f7":
-		return pinpkg.ColorMagenta
-	case "#b4befe":
-		return pinpkg.ColorBlue
-	case "#a6adc8":
-		return pinpkg.ColorCyan
-	default:
-		return pinpkg.ColorDefault
-	}
 }
 
 // runProgressBarWithOptions runs a progress bar with configurable options

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"fontget/internal/components"
 	"fontget/internal/config"
-	"fontget/internal/license"
 	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
@@ -131,84 +131,82 @@ var infoCmd = &cobra.Command{
 			return fmt.Errorf("%s", ui.RenderError(fmt.Sprintf("Font '%s' not found", fontID)))
 		}
 
-		// If only --license is set, just cat the license text and return
-		if showLicense && !showMetadata {
-			// Find license URL
-			licenseURLFromPackage := license.GetLicenseURL(fontID, fontSource)
-			if licenseURLFromPackage != "" {
-				licenseText, err := license.FetchLicenseText(licenseURLFromPackage)
-				if err != nil {
-					license.HandleLicenseError(fontID, err)
-					return nil
-				}
-				fmt.Println() // Add blank line for visual separation
-				_ = license.DisplayLicenseText(licenseText)
-				return nil
-			}
-			license.HandleLicenseError(fontID, nil)
-			return nil
-		}
+		// Note: License-only mode now uses cards instead of raw text display
 
-		// If only --metadata is set, just cat the metadata and return
-		if showMetadata && !showLicense {
-			// Fetch metadata from the metadata URL
-			if font.MetadataURL != "" {
-				metadataText, err := license.FetchLicenseText(font.MetadataURL) // Reuse the same HTTP fetching function
-				if err != nil {
-					fmt.Printf("Metadata not found for \"%s\". Error: %v\n", fontID, err)
-					return nil
-				}
-				fmt.Println() // Add blank line for visual separation
-				_ = license.DisplayLicenseText(metadataText)
-				return nil
-			}
-			fmt.Printf("Metadata URL not available for \"%s\"\n", fontID)
-			return nil
-		}
+		// Note: Metadata-only mode now uses cards instead of raw text display
 
-		// Helper for colored headers
+		// Display font information using card components
+		var cards []components.Card
+
+		// Always show font details card
+		category := "Unknown"
+		if len(font.Categories) > 0 {
+			category = font.Categories[0]
+		}
+		cards = append(cards, components.FontDetailsCard(font.Name, fontID, category))
 
 		if showLicense {
-			fmt.Printf("%s\n", ui.PageSubtitle.Render("License Information"))
-			fmt.Printf("---------------------------------------------\n")
 			licenseURL := ""
-			// Always show the raw license URL for Google Fonts OFL fonts
-			if fontSource == "google-fonts" && strings.ToLower(font.License) == "ofl" {
-				id := strings.ToLower(strings.ReplaceAll(fontID, " ", ""))
-				licenseURL = "https://raw.githubusercontent.com/google/fonts/main/ofl/" + id + "/OFL.txt"
-			} else if font.SourceURL != "" && strings.Contains(font.SourceURL, "fonts.google.com") {
-				licenseURL = font.SourceURL + "#license"
+			// Handle different sources for license URLs
+			if fontSource == "google-fonts" {
+				if strings.ToLower(font.License) == "ofl" {
+					// For OFL fonts, use the GitHub raw URL
+					id := strings.ToLower(strings.ReplaceAll(fontID, " ", ""))
+					licenseURL = "https://raw.githubusercontent.com/google/fonts/main/ofl/" + id + "/OFL.txt"
+				} else if font.SourceURL != "" {
+					// For other Google Fonts, use the source URL with license anchor
+					licenseURL = font.SourceURL + "#license"
+				}
+			} else if font.SourceURL != "" {
+				// Fallback to source URL
+				licenseURL = font.SourceURL
 			}
-			if licenseURL != "" {
-				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("License"), font.License)
-				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("URL"), licenseURL)
-			} else {
-				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("License"), font.License)
-			}
-			fmt.Printf("\n")
+
+			cards = append(cards, components.LicenseInfoCard(font.License, licenseURL))
 		}
 
-		// Always show files when showing all info
+		// Always show source information when showing all info
 		if showAll {
-			fmt.Printf("%s\n", ui.PageSubtitle.Render("Available Files"))
-			fmt.Printf("---------------------------------------------\n")
-			for variant, url := range font.Files {
-				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render(variant), ui.ContentText.Render(url))
+			// Get source information from the manifest
+			if source, exists := manifest.Sources[fontSource]; exists {
+				// Use the source name and description from the manifest
+				sourceName := source.Name
+				if sourceName == "" {
+					sourceName = fontSource // Fallback to source key
+				}
+
+				// Use the source URL from the manifest, or fall back to font's source URL
+				sourceURL := source.URL
+				if sourceURL == "" {
+					sourceURL = font.SourceURL
+				}
+
+				// Only show source info if we have a URL
+				if sourceURL != "" {
+					cards = append(cards, components.SourceInfoCard(sourceName, sourceURL, source.Description))
+				}
+			} else {
+				// Fallback for unknown sources
+				if font.SourceURL != "" {
+					cards = append(cards, components.SourceInfoCard(fontSource, font.SourceURL, ""))
+				}
 			}
-			fmt.Printf("\n")
 		}
 
 		if showMetadata {
-			fmt.Printf("%s\n", ui.PageSubtitle.Render("Metadata"))
-			fmt.Printf("---------------------------------------------\n")
-			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Last Modified"), font.LastModified)
-			if font.Description != "" {
-				fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Description"), font.Description)
+			// Create metadata card with popularity as string
+			popularityStr := ""
+			if font.Popularity > 0 {
+				popularityStr = fmt.Sprintf("%d", font.Popularity)
 			}
-			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Source URL"), font.SourceURL)
-			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Metadata URL"), font.MetadataURL)
-			fmt.Printf("%s: %d\n", ui.ContentHighlight.Render("Popularity"), font.Popularity)
-			fmt.Printf("\n")
+			lastModifiedStr := font.LastModified.Format("2006-01-02T15:04:05Z")
+			cards = append(cards, components.MetadataCard(lastModifiedStr, font.SourceURL, popularityStr))
+		}
+
+		// Render all cards
+		if len(cards) > 0 {
+			cardModel := components.NewCardModel("", cards)
+			fmt.Println(cardModel.Render())
 		}
 
 		GetLogger().Info("Font info operation completed successfully")

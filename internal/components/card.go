@@ -215,13 +215,23 @@ func AvailableFilesCard(files []string) Card {
 
 	var content strings.Builder
 	for i, file := range files {
+		// Use a simple bullet point without extra spaces
 		content.WriteString("• " + file)
 		if i < len(files)-1 {
 			content.WriteString("\n")
 		}
 	}
 
-	return NewCard("Available Files", content.String())
+	// Create a custom card that handles URLs better
+	card := Card{
+		Title:             "Available Files",
+		Content:           content.String(),
+		Width:             80,
+		VerticalPadding:   1,
+		HorizontalPadding: 0, // No horizontal padding for URLs
+	}
+
+	return card
 }
 
 // MetadataCard creates a card for metadata
@@ -239,6 +249,24 @@ func MetadataCard(lastModified, sourceURL, popularity string) Card {
 	}
 
 	return NewCardWithSections("Metadata", sections)
+}
+
+// SourceInfoCard creates a card for source information
+func SourceInfoCard(sourceName, sourceURL, description string) Card {
+	sections := []CardSection{
+		{Label: "Source", Value: sourceName},
+		{Label: "URL", Value: sourceURL},
+	}
+
+	// Only add description if it's provided
+	if description != "" {
+		sections = append(sections, CardSection{
+			Label: "Description",
+			Value: description,
+		})
+	}
+
+	return NewCardWithSections("Source Information", sections)
 }
 
 // CustomCard creates a custom card with the given title and content
