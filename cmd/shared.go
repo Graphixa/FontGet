@@ -218,11 +218,12 @@ const (
 	TableColSource     = 18 // Source (wider for source names)
 
 	// Font List Tables (5 columns, total: 120 chars)
-	TableColListName = 54 // Font family name (wider)
-	TableColStyle    = 22 // Font style/variant (wider)
+	TableColListName = 42 // Font family name (wider)
+	TableColListID   = 34 // Font ID (for future ID matching)
 	TableColType     = 10 // File type
 	TableColDate     = 20 // Installation date
 	TableColScope    = 10 // Scope (user/machine)
+	// Total: 42 + 34 + 10 + 20 + 10 + 4 spaces = 120 chars (exactly 120)
 
 	// Sources Management Tables (2 columns, total: 120 chars)
 	TableColStatus     = 10  // Checkbox/status
@@ -347,11 +348,11 @@ func GetTableSeparator() string {
 	return strings.Repeat("-", TableTotalWidth)
 }
 
-// GetListTableHeader returns a formatted table header for font list tables
+// GetListTableHeader returns a formatted table header for font list tables (Name, ID, Type, Installed, Scope)
 func GetListTableHeader() string {
 	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
 		TableColListName, "Name",
-		TableColStyle, "Style",
+		TableColListID, "ID",
 		TableColType, "Type",
 		TableColDate, "Installed",
 		TableColScope, "Scope")

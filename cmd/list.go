@@ -70,6 +70,88 @@ func parseFontName(filename string) (family, style string) {
 	return family, style
 }
 
+// groupFontsByFamily analyzes font names to find common base families
+func groupFontsByFamily(fontMetadata map[string]*platform.FontMetadata) map[string][]string {
+	groups := make(map[string][]string)
+
+	// Collect all unique family names
+	familyNames := make([]string, 0)
+	for _, metadata := range fontMetadata {
+		familyNames = append(familyNames, metadata.FamilyName)
+	}
+
+	// Group similar family names together
+	for _, familyName := range familyNames {
+		baseFamily := findBaseFamilyName(familyName, familyNames)
+		groups[baseFamily] = append(groups[baseFamily], familyName)
+	}
+
+	return groups
+}
+
+// findBaseFamilyName finds the base family name by analyzing common prefixes
+func findBaseFamilyName(familyName string, allFamilyNames []string) string {
+	// Split the family name into words
+	words := strings.Split(familyName, " ")
+	if len(words) <= 1 {
+		return familyName
+	}
+
+	// Find the longest common prefix with other family names
+	bestMatch := familyName
+	maxCommonWords := 0
+
+	for _, otherFamily := range allFamilyNames {
+		if otherFamily == familyName {
+			continue
+		}
+
+		otherWords := strings.Split(otherFamily, " ")
+		commonWords := findCommonPrefix(words, otherWords)
+
+		if len(commonWords) > maxCommonWords && len(commonWords) > 0 {
+			maxCommonWords = len(commonWords)
+			bestMatch = strings.Join(commonWords, " ")
+		}
+	}
+
+	return bestMatch
+}
+
+// findCommonPrefix finds the common prefix between two word arrays
+func findCommonPrefix(words1, words2 []string) []string {
+	var common []string
+	minLen := len(words1)
+	if len(words2) < minLen {
+		minLen = len(words2)
+	}
+
+	for i := 0; i < minLen; i++ {
+		if words1[i] == words2[i] {
+			common = append(common, words1[i])
+		} else {
+			break
+		}
+	}
+
+	return common
+}
+
+// findBestGroup finds the best group for a font family name
+func findBestGroup(familyName string, groups map[string][]string) string {
+	// Look for exact match first
+	for groupName, familyNames := range groups {
+		for _, name := range familyNames {
+			if name == familyName {
+				return groupName
+			}
+		}
+	}
+
+	// If no exact match, return the original name
+	return familyName
+}
+
 // listFonts lists fonts in the specified directory and scope
 func listFonts(fontDir string, installScope platform.InstallationScope) ([]FontFile, error) {
 	GetLogger().Debug("Listing fonts in directory: %s (scope: %s)", fontDir, installScope)
@@ -94,10 +176,11 @@ func listFonts(fontDir string, installScope platform.InstallationScope) ([]FontF
 			continue
 		}
 
-		// Parse font name
+		// For list command, use filename parsing to show individual font files
+		// This matches the old behavior where each font file is shown separately
 		family, style := parseFontName(file.Name())
 
-		// Create font file entry
+		// Create font file entry using filename parsing
 		fontFiles = append(fontFiles, FontFile{
 			Name:        file.Name(),
 			Family:      family,
@@ -115,8 +198,9 @@ func listFonts(fontDir string, installScope platform.InstallationScope) ([]FontF
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List installed fonts",
-	Long:  "List installed fonts on your system with filtering options.",
+	Long:  "List installed fonts on your system with filtering options and display modes.",
 	Example: `  fontget list
+  fontget list --detailed
   fontget list -s machine
   fontget list -s all
   fontget list -a "Roboto"
@@ -272,10 +356,31 @@ var listCmd = &cobra.Command{
 			return nil
 		}
 
-		// Group fonts by family
+		// Group fonts by analyzing family names dynamically (like Windows/macOS font manager)
 		families := make(map[string][]FontFile)
+
+		// First pass: collect all font metadata
+		fontMetadata := make(map[string]*platform.FontMetadata)
 		for _, f := range filteredFonts {
-			families[f.Family] = append(families[f.Family], f)
+			fontPath := filepath.Join(fontManager.GetFontDir(platform.InstallationScope(f.Scope)), f.Name)
+			metadata, err := platform.ExtractFontMetadata(fontPath)
+			if err != nil {
+				GetLogger().Debug("Failed to extract metadata for %s, using filename parsing: %v", f.Name, err)
+				families[f.Family] = append(families[f.Family], f)
+			} else {
+				fontMetadata[f.Name] = metadata
+			}
+		}
+
+		// Second pass: group fonts by analyzing family name patterns
+		groupedFamilies := groupFontsByFamily(fontMetadata)
+
+		// Third pass: assign fonts to their groups
+		for _, f := range filteredFonts {
+			if metadata, exists := fontMetadata[f.Name]; exists {
+				groupName := findBestGroup(metadata.FamilyName, groupedFamilies)
+				families[groupName] = append(families[groupName], f)
+			}
 		}
 
 		// Sort families alphabetically
@@ -286,13 +391,35 @@ var listCmd = &cobra.Command{
 		sort.Strings(familyNames)
 
 		GetLogger().Info("Found %d font families", len(familyNames))
+		output.GetVerbose().Info("Found %d font families with %d total fonts", len(familyNames), len(filteredFonts))
+		output.GetDebug().State("Font families: %v", familyNames)
 
-		// Use shared table system for consistent formatting
+		// Display page title
+		fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
+
+		// Check if we should show detailed view (hierarchy under each font)
+		detailed, _ := cmd.Flags().GetBool("detailed")
+
+		output.GetVerbose().Info("Using table display with detailed=%v", detailed)
+		output.GetDebug().State("Table mode enabled - detailed=%v", detailed)
+
+		// Build the info message about found fonts
+		scopeInfo := "across both user and machine scopes"
+		if scope == "user" {
+			scopeInfo = "in the 'user' scope"
+		} else if scope == "machine" {
+			scopeInfo = "in the 'machine' scope"
+		}
+
+		infoMsg := fmt.Sprintf("Found %d fonts installed %s", len(filteredFonts), scopeInfo)
+		fmt.Printf("\n%s\n\n", infoMsg)
+
+		// Always use table format - use the list table format
 		fmt.Println(ui.TableHeader.Render(GetListTableHeader()))
 		fmt.Println(GetTableSeparator())
 
 		// Print each family
-		for _, family := range familyNames {
+		for i, family := range familyNames {
 			fonts := families[family]
 
 			// Sort fonts by style
@@ -300,37 +427,51 @@ var listCmd = &cobra.Command{
 				return fonts[i].Style < fonts[j].Style
 			})
 
-			// Print family header using shared column constants
-			fmt.Printf("%-*s %-*s %-*s %-*s %-*s\n",
-				TableColListName, ui.TableSourceName.Render(family),
-				TableColStyle, "",
-				TableColType, "",
-				TableColDate, "",
-				TableColScope, "")
+			// Get the first font to represent the family (for Type, Date, Scope)
+			representativeFont := fonts[0]
 
-			// Print each font in the family using shared column constants
-			for _, font := range fonts {
-				fmt.Printf(" - %-*s %-*s %-*s %-*s %-*s\n",
-					TableColListName-3, truncateString(font.Name, TableColListName-3),
-					TableColStyle, truncateString(font.Style, TableColStyle),
-					TableColType, truncateString(font.Type, TableColType),
-					TableColDate, font.InstallDate.Format("2006-01-02 15:04"),
-					TableColScope, truncateString(font.Scope, TableColScope))
+			// Font ID is blank for now (until ID matching is implemented)
+			fontID := ""
+
+			// Print family row with pink color for font name - using same pattern as search.go
+			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+				ui.TableSourceName.Render(fmt.Sprintf("%-*s", TableColListName, truncateString(family, TableColListName))),
+				TableColListID, fontID, // Blank for now
+				TableColType, representativeFont.Type,
+				TableColDate, representativeFont.InstallDate.Format("2006-01-02 15:04"),
+				TableColScope, representativeFont.Scope)
+
+			// If detailed mode, show variants under each font family
+			if detailed {
+				output.GetDebug().State("Showing detailed variants for family: %s", family)
+				for _, font := range fonts {
+					// Get the actual style name from metadata for this specific font
+					fontPath := filepath.Join(fontManager.GetFontDir(platform.InstallationScope(font.Scope)), font.Name)
+					metadata, err := platform.ExtractFontMetadata(fontPath)
+					styleName := font.Style // Default to filename-based style
+					if err == nil && metadata.StyleName != "" {
+						styleName = metadata.StyleName // Use proper style name from metadata
+					}
+
+					// Create variant display with arrow and regular console color
+					variantDisplay := fmt.Sprintf("  ↳ %s", styleName)
+					fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+						fmt.Sprintf("%-*s", TableColListName, variantDisplay), // Regular console color for variants
+						TableColListID, "",
+						TableColType, "",
+						TableColDate, "",
+						TableColScope, "")
+				}
 			}
 
-			// Add a blank line after each family
-			fmt.Println("")
+			// Add spacing after each font family only in detailed mode
+			if detailed && i < len(familyNames)-1 {
+				fmt.Println()
+			}
 		}
 
-		// Print summary
-		fmt.Printf("\n%s\n", ui.ReportTitle.Render("Summary"))
-		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("%s: %d font(s) in %d family(ies)\n",
-			ui.ContentHighlight.Render("Total"), len(filteredFonts), len(familyNames))
-		if scope != "" {
-			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Scope"), scope)
-		}
-		fmt.Printf("\n")
+		// Add final spacing for better terminal appearance
+		fmt.Println()
 
 		GetLogger().Info("Font list operation completed successfully")
 		return nil
@@ -344,4 +485,5 @@ func init() {
 	listCmd.Flags().StringP("scope", "s", "", "Installation scope (user, machine, or all)")
 	listCmd.Flags().StringP("family", "a", "", "Filter by font family name")
 	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
+	listCmd.Flags().BoolP("detailed", "d", false, "Show detailed hierarchical view of font families with variants")
 }

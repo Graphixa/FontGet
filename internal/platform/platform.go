@@ -6,8 +6,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
+	"unicode/utf16"
+
+	"golang.org/x/image/font/sfnt"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // InstallationScope defines where fonts should be installed
@@ -145,4 +151,298 @@ func OpenDirectory(path string) error {
 	}
 
 	return cmd.Start()
+}
+
+// FontMetadata represents extracted font metadata
+type FontMetadata struct {
+	FamilyName string
+	StyleName  string
+	FullName   string
+}
+
+// ExtractFontMetadata extracts font family and style names from a font file
+func ExtractFontMetadata(fontPath string) (*FontMetadata, error) {
+	// Early font type detection - check file extension first
+	ext := strings.ToLower(filepath.Ext(fontPath))
+	if !isFontFile(ext) {
+		// Not a font file, use filename parsing directly
+		filename := filepath.Base(fontPath)
+		family, style := parseFontNameImproved(filename)
+		return &FontMetadata{
+			FamilyName: family,
+			StyleName:  style,
+			FullName:   family + " " + style,
+		}, nil
+	}
+
+	// Try header-only approach first for better performance
+	metadata, err := extractFontMetadataHeaderOnly(fontPath)
+	if err == nil {
+		return metadata, nil
+	}
+
+	// Fall back to full file reading if header-only fails
+	return extractFontMetadataFullFile(fontPath)
+}
+
+// extractFontMetadataHeaderOnly attempts to extract font metadata by reading only the header and name table
+func extractFontMetadataHeaderOnly(fontPath string) (*FontMetadata, error) {
+	file, err := os.Open(fontPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open font file: %w", err)
+	}
+	defer file.Close()
+
+	// Read SFNT header (first 12 bytes)
+	header := make([]byte, 12)
+	if _, err := file.ReadAt(header, 0); err != nil {
+		return nil, fmt.Errorf("failed to read SFNT header: %w", err)
+	}
+
+	// Check if it's a valid SFNT font
+	if len(header) < 12 {
+		return nil, fmt.Errorf("invalid SFNT header")
+	}
+
+	// Read number of tables (bytes 4-6)
+	numTables := int(header[4])<<8 | int(header[5])
+	if numTables < 1 || numTables > 100 { // Sanity check
+		return nil, fmt.Errorf("invalid number of tables: %d", numTables)
+	}
+
+	// Read table directory (16 bytes per table)
+	tableDirSize := numTables * 16
+	tableDir := make([]byte, tableDirSize)
+	if _, err := file.ReadAt(tableDir, 12); err != nil {
+		return nil, fmt.Errorf("failed to read table directory: %w", err)
+	}
+
+	// Find the 'name' table
+	var nameTableOffset, nameTableLength int
+	for i := 0; i < numTables; i++ {
+		offset := i * 16
+		// Check if this is the 'name' table (tag is first 4 bytes)
+		if string(tableDir[offset:offset+4]) == "name" {
+			// Read offset and length (bytes 8-12 and 12-16)
+			nameTableOffset = int(tableDir[offset+8])<<24 | int(tableDir[offset+9])<<16 |
+				int(tableDir[offset+10])<<8 | int(tableDir[offset+11])
+			nameTableLength = int(tableDir[offset+12])<<24 | int(tableDir[offset+13])<<16 |
+				int(tableDir[offset+14])<<8 | int(tableDir[offset+15])
+			break
+		}
+	}
+
+	if nameTableOffset == 0 {
+		return nil, fmt.Errorf("name table not found")
+	}
+
+	// Read the name table
+	nameTableData := make([]byte, nameTableLength)
+	if _, err := file.ReadAt(nameTableData, int64(nameTableOffset)); err != nil {
+		return nil, fmt.Errorf("failed to read name table: %w", err)
+	}
+
+	// Parse the name table to extract font names
+	return parseNameTable(nameTableData)
+}
+
+// extractFontMetadataFullFile falls back to reading the entire font file
+func extractFontMetadataFullFile(fontPath string) (*FontMetadata, error) {
+	// Read the font file
+	fontData, err := os.ReadFile(fontPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read font file: %w", err)
+	}
+
+	// Parse the font using SFNT (supports both TTF and OTF)
+	font, err := sfnt.Parse(fontData)
+	if err != nil {
+		// If font parsing fails, fall back to improved filename parsing
+		filename := filepath.Base(fontPath)
+		family, style := parseFontNameImproved(filename)
+		return &FontMetadata{
+			FamilyName: family,
+			StyleName:  style,
+			FullName:   family + " " + style,
+		}, nil
+	}
+
+	var buf sfnt.Buffer
+	metadata := &FontMetadata{}
+
+	// Extract family name
+	familyName, err := font.Name(&buf, sfnt.NameIDFamily)
+	if err != nil || familyName == "" {
+		// If we can't get the family name, fall back to filename parsing
+		filename := filepath.Base(fontPath)
+		family, _ := parseFontNameImproved(filename)
+		metadata.FamilyName = family
+	} else {
+		metadata.FamilyName = familyName
+	}
+
+	// Extract style name
+	styleName, err := font.Name(&buf, sfnt.NameIDSubfamily)
+	if err != nil || styleName == "" {
+		// If we can't get the style name, fall back to filename parsing
+		filename := filepath.Base(fontPath)
+		_, style := parseFontNameImproved(filename)
+		metadata.StyleName = style
+	} else {
+		metadata.StyleName = styleName
+	}
+
+	// Extract full name
+	fullName, err := font.Name(&buf, sfnt.NameIDFull)
+	if err != nil || fullName == "" {
+		// If we can't get the full name, combine family and style
+		metadata.FullName = metadata.FamilyName + " " + metadata.StyleName
+	} else {
+		metadata.FullName = fullName
+	}
+
+	return metadata, nil
+}
+
+// parseNameTable parses the name table data to extract font names
+func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
+	if len(nameTableData) < 6 {
+		return nil, fmt.Errorf("name table too short")
+	}
+
+	// Read name table header
+	count := int(nameTableData[2])<<8 | int(nameTableData[3])
+	stringOffset := int(nameTableData[4])<<8 | int(nameTableData[5])
+
+	if count == 0 || stringOffset >= len(nameTableData) {
+		return nil, fmt.Errorf("invalid name table format")
+	}
+
+	metadata := &FontMetadata{}
+
+	// Parse name records
+	for i := 0; i < count; i++ {
+		recordOffset := 6 + (i * 12)
+		if recordOffset+12 > len(nameTableData) {
+			break
+		}
+
+		// Read name record
+		platformID := int(nameTableData[recordOffset])<<8 | int(nameTableData[recordOffset+1])
+		nameID := int(nameTableData[recordOffset+6])<<8 | int(nameTableData[recordOffset+7])
+		length := int(nameTableData[recordOffset+8])<<8 | int(nameTableData[recordOffset+9])
+		offset := int(nameTableData[recordOffset+10])<<8 | int(nameTableData[recordOffset+11])
+
+		// Only process Unicode names (platform ID 3 or 0)
+		if platformID != 3 && platformID != 0 {
+			continue
+		}
+
+		// Calculate actual string offset
+		stringStart := stringOffset + offset
+		stringEnd := stringStart + length
+
+		if stringEnd > len(nameTableData) {
+			continue
+		}
+
+		// Extract the string
+		stringData := nameTableData[stringStart:stringEnd]
+		var name string
+
+		if platformID == 3 || platformID == 0 {
+			// Unicode (UTF-16BE)
+			if len(stringData) >= 2 {
+				// Convert UTF-16BE to UTF-8
+				utf16Data := make([]uint16, len(stringData)/2)
+				for j := 0; j < len(stringData); j += 2 {
+					utf16Data[j/2] = uint16(stringData[j])<<8 | uint16(stringData[j+1])
+				}
+				name = string(utf16.Decode(utf16Data))
+			}
+		}
+
+		// Store based on name ID - prioritize Typographic names for better grouping
+		switch nameID {
+		case 16: // Typographic Family Name (preferred for grouping)
+			if metadata.FamilyName == "" {
+				metadata.FamilyName = name
+			}
+		case 1: // Font Family (fallback)
+			if metadata.FamilyName == "" {
+				metadata.FamilyName = name
+			}
+		case 17: // Typographic Subfamily Name (preferred for style)
+			if metadata.StyleName == "" {
+				metadata.StyleName = name
+			}
+		case 2: // Font Subfamily (fallback)
+			if metadata.StyleName == "" {
+				metadata.StyleName = name
+			}
+		case 4: // Full Font Name
+			if metadata.FullName == "" {
+				metadata.FullName = name
+			}
+		}
+	}
+
+	// Fallback to filename parsing if we didn't get good names
+	if metadata.FamilyName == "" || metadata.StyleName == "" {
+		return nil, fmt.Errorf("insufficient name data in name table")
+	}
+
+	// Set full name if not found
+	if metadata.FullName == "" {
+		metadata.FullName = metadata.FamilyName + " " + metadata.StyleName
+	}
+
+	return metadata, nil
+}
+
+// parseFontNameImproved provides better font name parsing than the original
+func parseFontNameImproved(filename string) (family, style string) {
+	// Remove file extension
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+
+	// Remove variation parameters
+	if idx := strings.Index(name, "["); idx != -1 {
+		name = name[:idx]
+	}
+
+	// Remove "webfont" suffix if present
+	name = strings.TrimSuffix(name, "-webfont")
+
+	// Handle common compressed name patterns
+	// Insert spaces before capital letters that follow lowercase letters
+	// This handles cases like "SourceCodePro" -> "Source Code Pro"
+	expanded := regexp.MustCompile(`([a-z])([A-Z])`).ReplaceAllString(name, `$1 $2`)
+
+	// For fonts with spaces in their names
+	if strings.Contains(expanded, " ") {
+		// Extract the base family name
+		parts := strings.Split(expanded, " ")
+		if len(parts) > 0 {
+			family = parts[0]
+			// The rest is the style
+			if len(parts) > 1 {
+				style = strings.Join(parts[1:], " ")
+			} else {
+				style = "Regular"
+			}
+			return family, style
+		}
+	}
+
+	// For other fonts, split by hyphens
+	parts := strings.Split(expanded, "-")
+	if len(parts) == 1 {
+		return parts[0], "Regular"
+	}
+
+	// If we have multiple parts, assume the last part is the style
+	// and everything else is the family name
+	family = strings.Join(parts[:len(parts)-1], "-")
+	style = cases.Title(language.English, cases.NoLower).String(parts[len(parts)-1])
+	return family, style
 }

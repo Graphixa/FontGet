@@ -10,6 +10,7 @@ require (
 	github.com/spf13/cobra v1.9.1
 	github.com/xi2/xz v0.0.0-20171230120015-48954b6210f8
 	github.com/yarlson/pin v0.9.1
+	golang.org/x/image v0.20.0
 	golang.org/x/text v0.28.0
 	gopkg.in/yaml.v3 v3.0.1
 )
