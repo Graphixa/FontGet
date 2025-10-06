@@ -310,6 +310,13 @@ const (
 	TableColStatus     = 10  // Checkbox/status
 	TableColSourceName = 109 // Source name with tags (much wider)
 
+	// Sources Info Table (4 columns, total: 120 chars including 3 spaces)
+	// Sum of widths must equal 117 (117 + 3 spaces = 120)
+	TableColSrcName    = 36 // Source display name (room for optional [Disabled])
+	TableColSrcPrefix  = 12 // Prefix key
+	TableColSrcUpdated = 32 // Last updated
+	TableColSrcType    = 10 // Type (Built-in/Custom)
+
 	// Total table width (uses full 120-char terminals for maximum space utilization)
 	TableTotalWidth = 120
 )
@@ -444,6 +451,15 @@ func GetSourcesTableHeader() string {
 	return fmt.Sprintf("%-*s %-*s",
 		TableColStatus, "Status",
 		TableColSourceName, "Name")
+}
+
+// GetSourcesInfoTableHeader returns the header for the sources info table (Name, Prefix, URL, Status)
+func GetSourcesInfoTableHeader() string {
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s",
+		TableColSrcName, "Source Name",
+		TableColSrcPrefix, "Prefix",
+		TableColSrcUpdated, "Last Updated",
+		TableColSrcType, "Type")
 }
 
 // truncateString truncates a string to the specified length

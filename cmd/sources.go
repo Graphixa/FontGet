@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/functions"
 	"fontget/internal/output"
@@ -89,80 +91,147 @@ var sourcesInfoCmd = &cobra.Command{
 			}
 		}
 
-		// Use shared color functions for consistency
-		// Use UI components instead of direct color functions
-
-		fmt.Printf("\n%s\n", ui.PageTitle.Render("Sources Information"))
-		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Manifest File"), manifestPath)
-		fmt.Printf("%s: %d\n", ui.ContentHighlight.Render("Total Sources"), len(configManifest.Sources))
-
-		enabledSources := functions.GetEnabledSourcesInOrder(configManifest)
-		fmt.Printf("%s: %d\n", ui.ContentHighlight.Render("Enabled Sources"), len(enabledSources))
-
-		// Show last updated sources date
-		if manifest != nil {
-			fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Last Updated"), manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
+		// Summary card
+		var cards []components.Card
+		lastUpdated := "Unknown"
+		relative := ""
+		if manifest != nil && !manifest.LastUpdated.IsZero() {
+			lastUpdated = manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST")
+			relative = fmt.Sprintf(" (%s ago)", formatDuration(time.Since(manifest.LastUpdated)))
 		}
+		// enabled/disabled counts are derived below; no need to precompute ordered list here
 
-		// Show cache status and size
+		sourcesDir := ""
 		if err == nil {
-			sourcesDir := filepath.Join(home, ".fontget", "sources")
-			if info, err := os.Stat(sourcesDir); err == nil {
-				totalSize := getDirSize(sourcesDir)
-				fmt.Printf("%s: %s (modified: %s)\n", ui.ContentHighlight.Render("Cache Size"), formatFileSize(totalSize), info.ModTime().Format("2006-01-02 15:04:05"))
-
-				// Show individual source file sizes
-				if entries, err := os.ReadDir(sourcesDir); err == nil {
-					fmt.Printf("%s: %d files\n", ui.ContentHighlight.Render("Cached Sources"), len(entries))
-					for _, entry := range entries {
-						if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".json") {
-							filePath := filepath.Join(sourcesDir, entry.Name())
-							if info, err := os.Stat(filePath); err == nil {
-								age := time.Since(info.ModTime())
-								fmt.Printf("  - %s: %s (age: %s)\n", entry.Name(), formatFileSize(info.Size()), formatDuration(age))
-							}
-						}
-					}
-				}
-			} else {
-				fmt.Printf("%s: Not found\n", ui.ContentHighlight.Render("Cache Size"))
+			sourcesDir = filepath.Join(home, ".fontget", "sources")
+		}
+		totalCacheSize := int64(0)
+		if sourcesDir != "" {
+			if _, err := os.Stat(sourcesDir); err == nil {
+				totalCacheSize = getDirSize(sourcesDir)
 			}
 		}
 
-		if len(enabledSources) > 0 {
-			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Enabled Sources"))
-			fmt.Printf("---------------------------------------------\n")
-
-			for i, name := range enabledSources {
-				if source, exists := config.GetSourceByName(configManifest, name); exists {
-					fmt.Printf("  %d. %s %s\n", i+1, ui.FeedbackSuccess.Render(name), ui.ContentText.Render(fmt.Sprintf("(%s)", source.Prefix)))
-				} else {
-					fmt.Printf("  %d. %s %s\n", i+1, ui.FeedbackError.Render(name), ui.FeedbackError.Render("(NOT FOUND)"))
-				}
+		// Build summary content with requested layout and spacing
+		disabledCount := 0
+		for _, s := range configManifest.Sources {
+			if !s.Enabled {
+				disabledCount++
 			}
 		}
+		var sb strings.Builder
+		sb.WriteString(ui.CardLabel.Render("Manifest File: "))
+		sb.WriteString(ui.CardContent.Render(manifestPath))
+		sb.WriteString("\n")
+		if sourcesDir != "" {
+			sb.WriteString(ui.CardLabel.Render("Cache Path: "))
+			sb.WriteString(ui.CardContent.Render(sourcesDir))
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(ui.CardLabel.Render("Last Updated: "))
+		sb.WriteString(ui.CardContent.Render(lastUpdated + relative))
+		sb.WriteString("\n")
+		if sourcesDir != "" {
+			sb.WriteString(ui.CardLabel.Render("Total Cache Size: "))
+			sb.WriteString(ui.CardContent.Render(formatFileSize(totalCacheSize)))
+			sb.WriteString("\n\n")
+		} else {
+			sb.WriteString("\n")
+		}
+		totalSources := len(configManifest.Sources)
+		label := "Total Sources: "
+		sb.WriteString(ui.CardLabel.Render(label))
+		sb.WriteString(ui.CardContent.Render(fmt.Sprintf("%d", totalSources)))
+		if disabledCount > 0 {
+			sb.WriteString(ui.CardContent.Render(fmt.Sprintf(" (%d disabled)", disabledCount)))
+		}
+		cards = append(cards, components.CustomCard("Summary", sb.String()))
 
-		// Show disabled sources
-		var disabledSources []string
-		for name, source := range configManifest.Sources {
+		// Render Summary card only (no page title)
+		model := components.NewCardModel("", cards)
+		model.SetWidth(80)
+		fmt.Println()
+		fmt.Println(model.Render())
+
+		// Unified Sources table without headings, includes Status
+		fmt.Println()
+		fmt.Println(ui.TableHeader.Render(GetSourcesInfoTableHeader()))
+		sepWidth := TableColSrcName + TableColSrcPrefix + TableColSrcUpdated + TableColSrcType + 3
+		fmt.Println(strings.Repeat("-", sepWidth))
+		// Build rows and sort: built-in first, then enabled, then name
+		type row struct {
+			name  string
+			src   config.SourceConfig
+			built bool
+		}
+		var rows []row
+		if def, _ := config.GetDefaultManifest(); def != nil {
+			for n, s := range configManifest.Sources {
+				_, built := def.Sources[n]
+				rows = append(rows, row{name: n, src: s, built: built})
+			}
+		} else {
+			for n, s := range configManifest.Sources {
+				rows = append(rows, row{name: n, src: s, built: false})
+			}
+		}
+		sort.Slice(rows, func(i, j int) bool {
+			if rows[i].built != rows[j].built {
+				return rows[i].built
+			}
+			if rows[i].src.Enabled != rows[j].src.Enabled {
+				return rows[i].src.Enabled
+			}
+			return strings.ToLower(rows[i].name) < strings.ToLower(rows[j].name)
+		})
+		for _, r := range rows {
+			sourceName := r.name
+			source := r.src
+			// Name column with proper styling and width control
+			var nameStyled string
 			if !source.Enabled {
-				disabledSources = append(disabledSources, name)
+				// Keep the red [Disabled] tag within the name column width
+				tag := " [Disabled]"
+				nameWidth := TableColSrcName - len(tag)
+				if nameWidth < 0 {
+					nameWidth = 0
+				}
+				nameText := truncateString(sourceName, nameWidth)
+				visible := nameText + tag
+				pad := 0
+				if len(visible) < TableColSrcName {
+					pad = TableColSrcName - len(visible)
+				}
+				nameStyled = ui.FormReadOnly.Render(nameText) + ui.FeedbackError.Render(tag) + strings.Repeat(" ", pad)
+			} else {
+				nameText := truncateString(sourceName, TableColSrcName)
+				paddedName := fmt.Sprintf("%-*s", TableColSrcName, nameText)
+				nameStyled = ui.TableSourceName.Render(paddedName)
 			}
-		}
-
-		if len(disabledSources) > 0 {
-			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Disabled Sources"))
-			fmt.Printf("---------------------------------------------\n")
-			for i, name := range disabledSources {
-				if source, exists := config.GetSourceByName(configManifest, name); exists {
-					fmt.Printf("  %d. %s %s\n", i+1, ui.FeedbackWarning.Render(name), ui.ContentText.Render(fmt.Sprintf("(%s)", source.Prefix)))
+			last := "Unknown"
+			if manifest != nil {
+				last = lastUpdated
+			}
+			// Determine Type
+			typ := "Custom"
+			if def, _ := config.GetDefaultManifest(); def != nil {
+				if _, ok := def.Sources[sourceName]; ok {
+					typ = "Built-in"
 				}
 			}
+
+			// Name already includes disabled tag within the column width
+			displayName := nameStyled
+
+			fmt.Printf("%s %-*s %-*s %-*s\n",
+				displayName,
+				TableColSrcPrefix, truncateString(source.Prefix, TableColSrcPrefix),
+				TableColSrcUpdated, truncateString(last, TableColSrcUpdated),
+				TableColSrcType, typ,
+			)
 		}
 
-		fmt.Printf("\n")
-
+		fmt.Println()
 		return nil
 	},
 }
