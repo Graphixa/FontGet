@@ -70,6 +70,44 @@
   - [ ] `cmd/info.go` - Add verbose details (lookup flow, source resolution)
   - [ ] `cmd/sources.go` - Add verbose details (update plan, per-source outcomes)
 
+---
+
+## 🧹 Targeted Cleanup: list.go and platform.go
+
+### list.go
+- [ ] Extract `buildParsedFont(path, scope) ParsedFont` to encapsulate metadata extraction and display-name choice (uses TypographicFamily/Style when present).
+- [ ] Reduce debug noise: keep only
+  - [ ] Scan summary (files scanned per scope)
+  - [ ] Family grouping summary (family name, file count)
+  - [ ] Unique variant count in `--detailed`
+- [ ] Keep performance: one metadata read per file; no re-parsing in grouping/rendering.
+- [ ] Consider style ordering (Thin→Black) for nicer `--detailed` output (non-blocking).
+
+### internal/platform/platform.go
+- [ ] Split `parseNameTable` into smaller helpers:
+  - [ ] `forEachNameRecord(data, fn(record))` – decoding bounds/UTF-16 handling.
+  - [ ] `selectPreferredNames(records)` – policy to choose NameID16/17 with fallback.
+- [ ] Add typed constants for name IDs and platforms (e.g., NameIDFamily=1, NameIDTypoFamily=16, PlatformMicrosoft=3, PlatformUnicode=0, PlatformMacintosh=1).
+- [ ] Ensure `extractFontMetadataFullFile` also populates `TypographicFamily/Style` when available from sfnt (or marks as unavailable) to keep parity with header-only path.
+- [ ] Unit-test `parseNameTable` with synthetic name tables covering:
+  - [ ] Multiple platform/language records
+  - [ ] Absence of NameID16/17 (fallback to 1/2)
+  - [ ] Mixed encodings and language IDs
+
+### Cross‑Platform Name Selection Policy (Important)
+- Current temporary preference leans to Microsoft/English (platform=3, language=1033) when present because it’s the most complete on Windows Nerd Fonts.
+- Final cross‑platform policy to implement and test:
+  1. Prefer NameID16/17 regardless of platform.
+  2. Among multiple 16/17 records, prefer Unicode entries in this order: PlatformUnicode(0) > PlatformMicrosoft(3) > PlatformMacintosh(1).
+  3. Within a platform, prefer language matching system locale; fallback to English (1033) if present; otherwise choose a deterministic Unicode record (Platform 0) if any; if not available, choose the lowest language ID under Microsoft (3). Only if no 16/17 fit these, fall back to NameID 1/2 using the same order, and if still empty, finally use filename parsing.
+  4. Only if 16/17 absent, fall back to NameID 1/2 using the same platform/language order.
+- [ ] Implement the above selection order and verify on macOS/Linux/Windows samples (Roboto, Source Code Pro, JetBrainsMono, ZedMono, Fira Code, Terminess).
+
+### Documentation
+- [ ] Document the final name-table selection policy in `docs/codebase.md` and reference it in `list-plan.md` to avoid regressions.
+
+---
+
 #### **UI Component Extraction** ✅ **COMPLETED**
 - [x] **Create reusable UI components**
   - [x] ~~Extract table components to `internal/components/table.go`~~ **NOT NEEDED** - Table system already well-centralized in `cmd/shared.go`
