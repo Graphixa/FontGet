@@ -8,7 +8,7 @@ This document defines the color scheme and visual hierarchy for FontGet, ensurin
 |------------|----------|-------------------------------------|
 | Rosewater  | #f5e0dc  | -                                   |
 | Flamingo   | #f2cdcd  | -                                   |
-| Pink       | #f5c2e7  | Font names, field labels, examples |
+| Pink       | #f5c2e7  | Font names, field labels, examples, key info |
 | Mauve      | #cba6f7  | Page titles, report titles, info messages |
 | Red        | #e78284  | Error messages, critical warnings   |
 | Maroon     | #eba0ac  | -                                   |
