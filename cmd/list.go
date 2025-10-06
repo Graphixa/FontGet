@@ -56,13 +56,13 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager) 
 				} else {
 					style = md.StyleName
 				}
-				output.GetDebug().State("Parsed: %s -> family='%s' style='%s'", name, family, style)
+				// Debug: per-file parsed details removed for cleaner output
 			} else {
 				// Fallback to filename parsing (minimal)
 				base := strings.TrimSuffix(name, filepath.Ext(name))
 				family = base
 				style = "Regular"
-				output.GetDebug().State("Fallback parse: %s -> family='%s' style='%s' (%v)", name, family, style, err)
+				// Debug: per-file fallback details removed for cleaner output
 			}
 			parsed = append(parsed, ParsedFont{
 				Name:        name,
@@ -74,7 +74,7 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager) 
 			})
 		}
 	}
-	output.GetVerbose().Info("Total parsed fonts: %d", len(parsed))
+	output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
 	return parsed, nil
 }
 
@@ -151,7 +151,7 @@ You can specify the installation scope using the --scope flag:
 			}
 			scopes = []platform.InstallationScope{installScope}
 		}
-		output.GetDebug().State("Scopes=%v family='%s' type='%s' showVariants=%v", scopes, familyFilter, typeFilter, showVariants)
+		// Debug: initial parameter dump removed to reduce noise
 
 		fonts, err := collectFonts(scopes, fm)
 		if err != nil {
@@ -170,7 +170,7 @@ You can specify the installation scope using the --scope flag:
 			}
 			filtered = append(filtered, f)
 		}
-		output.GetVerbose().Info("Filtered count=%d", len(filtered))
+		output.GetVerbose().Info("Filtered files count=%d", len(filtered))
 		if len(filtered) == 0 {
 			fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
 
@@ -193,7 +193,7 @@ You can specify the installation scope using the --scope flag:
 			names = append(names, k)
 		}
 		sort.Strings(names)
-		output.GetVerbose().Info("Family count=%d", len(names))
+		output.GetVerbose().Info("Grouped into %d families", len(names))
 
 		// Header
 		fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
@@ -215,7 +215,7 @@ You can specify the installation scope using the --scope flag:
 
 		for i, fam := range names {
 			group := families[fam]
-			output.GetDebug().State("Family '%s' files=%d", fam, len(group))
+			output.GetDebug().State("Family '%s': %d files", fam, len(group))
 			sort.Slice(group, func(i, j int) bool { return group[i].Style < group[j].Style })
 			rep := group[0]
 			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
@@ -236,7 +236,7 @@ You can specify the installation scope using the --scope flag:
 					}
 				}
 				sort.Strings(styles)
-				output.GetDebug().State("Family '%s' uniqueStyles=%d", fam, len(styles))
+				output.GetDebug().State("Family '%s': %d unique variants", fam, len(styles))
 				for _, s := range styles {
 					row := fmt.Sprintf("  ↳ %s", s)
 					fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
