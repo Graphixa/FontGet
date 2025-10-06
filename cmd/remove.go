@@ -172,45 +172,26 @@ func normalizeFontName(name string) string {
 // extractFontDisplayNameFromFilename converts a font filename to a proper display name
 // e.g., "RobotoMono-Bold.ttf" -> "Roboto Mono Bold"
 func extractFontDisplayNameFromFilename(filename string) string {
-	// Get the base filename without extension
-	baseName := filepath.Base(filename)
-	ext := filepath.Ext(baseName)
-	fileName := strings.TrimSuffix(baseName, ext)
-
-	// Handle fonts with dashes separating base name from variant
-	if strings.Contains(fileName, "-") {
-		parts := strings.Split(fileName, "-")
-		if len(parts) >= 2 {
-			baseFontName := parts[0]
-			variantPart := strings.Join(parts[1:], "-")
-
-			// Convert camelCase to proper spacing for base name
-			// e.g., "RobotoMono" -> "Roboto Mono"
-			baseDisplayName := convertCamelCaseToSpaced(baseFontName)
-
-			// Convert variant to proper case
-			// e.g., "BoldItalic" -> "BoldItalic" (already proper)
-			variantDisplay := convertCamelCaseToSpaced(variantPart)
-
-			return fmt.Sprintf("%s %s", baseDisplayName, variantDisplay)
-		}
-	}
-
-	// If no dashes, just convert camelCase to spaced
-	return convertCamelCaseToSpaced(fileName)
+	return GetDisplayNameFromFilename(filename)
 }
 
-// convertCamelCaseToSpaced converts camelCase to spaced format
-// e.g., "RobotoMono" -> "Roboto Mono"
-func convertCamelCaseToSpaced(s string) string {
-	var result []rune
-	for i, r := range s {
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			result = append(result, ' ')
+// parseFontName extracts a simple family and style from a filename (fallback for removal lookups)
+func parseFontName(filename string) (family, style string) {
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	if strings.Contains(name, " ") {
+		parts := strings.Split(name, " ")
+		if len(parts) > 1 {
+			return parts[0], strings.Join(parts[1:], " ")
 		}
-		result = append(result, r)
+		return name, "Regular"
 	}
-	return string(result)
+	parts := strings.Split(name, "-")
+	if len(parts) == 1 {
+		return parts[0], "Regular"
+	}
+	family = strings.Join(parts[:len(parts)-1], "-")
+	style = parts[len(parts)-1]
+	return
 }
 
 // buildInstalledFontsCache builds a cache of installed font names for efficient suggestions

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 
@@ -206,6 +207,86 @@ func (e *ElevationError) Error() string {
 // runProgressBarWithOptions runs a progress bar with configurable options
 func runProgressBarWithOptions(msg string, totalSteps int, fn func(updateProgress func()) error, hideWhenFinished bool, showHeader bool) error {
 	return components.RunWithProgressOptions(msg, totalSteps, fn, hideWhenFinished, showHeader)
+}
+
+// --- Shared display helpers used by add/remove/list commands ---
+
+// FormatFontNameWithVariant formats a font name with its variant for display.
+func FormatFontNameWithVariant(fontName, variant string) string {
+	if variant == "" || strings.EqualFold(variant, "regular") {
+		return fontName
+	}
+	cleanVariant := strings.ReplaceAll(variant, " ", "")
+	cleanVariant = strings.ReplaceAll(cleanVariant, "-", "")
+	cleanVariant = strings.ReplaceAll(cleanVariant, "_", "")
+
+	cleanFontName := strings.ReplaceAll(fontName, " ", "")
+	cleanFontName = strings.ReplaceAll(cleanFontName, "-", "")
+	cleanFontName = strings.ReplaceAll(cleanFontName, "_", "")
+
+	lv := strings.ToLower(cleanVariant)
+	lfn := strings.ToLower(cleanFontName)
+	if strings.HasPrefix(lv, lfn) {
+		cleanVariant = cleanVariant[len(cleanFontName):]
+	} else if strings.HasPrefix(strings.ToLower(cleanVariant), strings.ToLower(fontName)) {
+		cleanVariant = cleanVariant[len(fontName):]
+	}
+
+	if len(cleanVariant) > 0 {
+		cleanVariant = strings.ToUpper(cleanVariant[:1]) + cleanVariant[1:]
+	}
+
+	if cleanVariant != "" && !strings.EqualFold(cleanVariant, "Regular") {
+		return fontName + " " + cleanVariant
+	}
+	return fontName
+}
+
+// GetFontDisplayName returns a human-friendly display name, handling Nerd Fonts and variants.
+func GetFontDisplayName(fontPath, fontName, variant string) string {
+	baseName := filepath.Base(fontPath)
+	ext := filepath.Ext(baseName)
+	fileName := strings.TrimSuffix(baseName, ext)
+
+	if strings.Contains(fileName, "NerdFont") || strings.Contains(fileName, "Nerd") {
+		displayName := strings.ReplaceAll(fileName, "NerdFont", " Nerd Font ")
+		displayName = strings.ReplaceAll(displayName, "-", " ")
+		for strings.Contains(displayName, "  ") {
+			displayName = strings.ReplaceAll(displayName, "  ", " ")
+		}
+		return strings.TrimSpace(displayName)
+	}
+	return FormatFontNameWithVariant(fontName, variant)
+}
+
+// convertCamelCaseToSpaced converts camelCase to spaced format (e.g., RobotoMono -> Roboto Mono)
+func convertCamelCaseToSpaced(s string) string {
+	var result []rune
+	for i, r := range s {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result = append(result, ' ')
+		}
+		result = append(result, r)
+	}
+	return string(result)
+}
+
+// GetDisplayNameFromFilename builds a display name purely from filename (no metadata required).
+func GetDisplayNameFromFilename(filename string) string {
+	base := filepath.Base(filename)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+	if strings.Contains(name, "-") {
+		parts := strings.Split(name, "-")
+		if len(parts) >= 2 {
+			baseFontName := parts[0]
+			variantPart := strings.Join(parts[1:], "-")
+			baseDisplay := convertCamelCaseToSpaced(baseFontName)
+			variantDisplay := convertCamelCaseToSpaced(variantPart)
+			return fmt.Sprintf("%s %s", baseDisplay, variantDisplay)
+		}
+	}
+	return convertCamelCaseToSpaced(name)
 }
 
 // Table formatting constants for consistent table widths across all commands

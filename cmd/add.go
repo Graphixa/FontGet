@@ -207,60 +207,8 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 }
 
 // formatFontNameWithVariant formats a font name with its variant for display
-func formatFontNameWithVariant(fontName, variant string) string {
-	if variant == "" || variant == "regular" {
-		return fontName
-	}
-	// Clean up the variant name for display
-	cleanVariant := strings.ReplaceAll(variant, " ", "")
-	cleanVariant = strings.ReplaceAll(cleanVariant, "-", "")
-	cleanVariant = strings.ReplaceAll(cleanVariant, "_", "")
-
-	// Remove the font name from the variant if it's duplicated
-	// Try with spaces removed from font name too
-	cleanFontName := strings.ReplaceAll(fontName, " ", "")
-	cleanFontName = strings.ReplaceAll(cleanFontName, "-", "")
-	cleanFontName = strings.ReplaceAll(cleanFontName, "_", "")
-
-	if strings.HasPrefix(strings.ToLower(cleanVariant), strings.ToLower(cleanFontName)) {
-		cleanVariant = cleanVariant[len(cleanFontName):]
-	} else if strings.HasPrefix(strings.ToLower(cleanVariant), strings.ToLower(fontName)) {
-		cleanVariant = cleanVariant[len(fontName):]
-	}
-
-	// Capitalize first letter of variant
-	if len(cleanVariant) > 0 {
-		cleanVariant = strings.ToUpper(cleanVariant[:1]) + cleanVariant[1:]
-	}
-
-	if cleanVariant != "" && cleanVariant != "Regular" {
-		return fmt.Sprintf("%s %s", fontName, cleanVariant)
-	}
-	return fontName
-}
 
 // getFontDisplayName extracts a proper display name from the font file path
-func getFontDisplayName(fontPath, fontName, variant string) string {
-	// Get the base filename without extension
-	baseName := filepath.Base(fontPath)
-	ext := filepath.Ext(baseName)
-	fileName := strings.TrimSuffix(baseName, ext)
-
-	// For Nerd Fonts and similar fonts, use the actual filename
-	// which contains the proper variant information
-	if strings.Contains(fileName, "NerdFont") || strings.Contains(fileName, "Nerd") {
-		// Convert filename to display name
-		// e.g., "HackNerdFontMono-Regular" -> "Hack Nerd Font Mono Regular"
-		displayName := strings.ReplaceAll(fileName, "NerdFont", " Nerd Font ")
-		displayName = strings.ReplaceAll(displayName, "-", " ")
-		displayName = strings.ReplaceAll(displayName, "  ", " ") // Clean up double spaces
-		displayName = strings.TrimSpace(displayName)
-		return displayName
-	}
-
-	// For other fonts, use the original formatting
-	return formatFontNameWithVariant(fontName, variant)
-}
 
 // getSourceName extracts the source name from a font ID (e.g., "google.roboto" -> "Google Fonts")
 func getSourceName(fontID string) string {
@@ -455,7 +403,7 @@ You can specify the installation scope using the --scope flag:
 			GetLogger().Debug("Found %d font files for %s", len(fonts), fontName)
 
 			// Show installation header for this font
-			fontDisplayName := formatFontNameWithVariant(fonts[0].Name, fonts[0].Variant)
+			fontDisplayName := FormatFontNameWithVariant(fonts[0].Name, fonts[0].Variant)
 			if len(fonts) > 1 {
 				fontDisplayName = fonts[0].Name // Use base name for multiple variants
 			}
@@ -542,7 +490,7 @@ You can specify the installation scope using the --scope flag:
 						expectedPath := filepath.Join(fontDir, filepath.Base(fontPath))
 						if _, err := os.Stat(expectedPath); err == nil {
 							status.Skipped++
-							fontDisplayName := getFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
+							fontDisplayName := GetFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
 							msg := fmt.Sprintf("  %s %s - %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackWarning.Render("[Skipped] already installed"))
 							GetLogger().Info("Font already installed: %s", fontDisplayName)
 
@@ -556,7 +504,7 @@ You can specify the installation scope using the --scope flag:
 					}
 
 					// Install the font
-					fontDisplayName := getFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
+					fontDisplayName := GetFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
 					GetLogger().Debug("Installing font: %s", fontDisplayName)
 
 					installErr := fontManager.InstallFont(fontPath, installScope, force)

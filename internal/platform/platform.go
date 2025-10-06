@@ -155,9 +155,19 @@ func OpenDirectory(path string) error {
 
 // FontMetadata represents extracted font metadata
 type FontMetadata struct {
-	FamilyName string
-	StyleName  string
-	FullName   string
+	FamilyName        string
+	StyleName         string
+	FullName          string
+	TypographicFamily string // raw NameID16 if present
+	TypographicStyle  string // raw NameID17 if present
+}
+
+// ComprehensiveFontAnalysis represents detailed font analysis results
+type ComprehensiveFontAnalysis struct {
+	BasicMetadata    FontMetadata
+	NameTableEntries map[int]string // Name ID -> String value
+	FontProperties   map[string]interface{}
+	TechnicalDetails map[string]interface{}
 }
 
 // ExtractFontMetadata extracts font family and style names from a font file
@@ -321,6 +331,15 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 	metadata := &FontMetadata{}
 
 	// Parse name records
+	var typographicFamily string
+	var legacyFamily string
+	var typographicStyle string
+	var legacyStyle string
+	// Preferred (Microsoft/English) variants
+	var prefTypoFamily string
+	var prefTypoStyle string
+	var prefLegacyFamily string
+	var prefLegacyStyle string
 	for i := 0; i < count; i++ {
 		recordOffset := 6 + (i * 12)
 		if recordOffset+12 > len(nameTableData) {
@@ -329,12 +348,14 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 
 		// Read name record
 		platformID := int(nameTableData[recordOffset])<<8 | int(nameTableData[recordOffset+1])
+		_ = int(nameTableData[recordOffset+2])<<8 | int(nameTableData[recordOffset+3]) // encodingID (unused)
+		languageID := int(nameTableData[recordOffset+4])<<8 | int(nameTableData[recordOffset+5])
 		nameID := int(nameTableData[recordOffset+6])<<8 | int(nameTableData[recordOffset+7])
 		length := int(nameTableData[recordOffset+8])<<8 | int(nameTableData[recordOffset+9])
 		offset := int(nameTableData[recordOffset+10])<<8 | int(nameTableData[recordOffset+11])
 
-		// Only process Unicode names (platform ID 3 or 0)
-		if platformID != 3 && platformID != 0 {
+		// Process common platforms: Microsoft(3), Unicode(0), Macintosh(1)
+		if platformID != 3 && platformID != 0 && platformID != 1 {
 			continue
 		}
 
@@ -360,30 +381,83 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 				}
 				name = string(utf16.Decode(utf16Data))
 			}
+		} else if platformID == 1 {
+			// Macintosh Roman (single-byte); best-effort cast
+			name = string(stringData)
 		}
 
-		// Store based on name ID - prioritize Typographic names for better grouping
+		// Accumulate raw candidates, decide after loop
+		isPreferred := (platformID == 3 && languageID == 1033)
 		switch nameID {
-		case 16: // Typographic Family Name (preferred for grouping)
-			if metadata.FamilyName == "" {
-				metadata.FamilyName = name
+		case 16:
+			if name != "" {
+				typographicFamily = name
+				if isPreferred {
+					prefTypoFamily = name
+				}
 			}
-		case 1: // Font Family (fallback)
-			if metadata.FamilyName == "" {
-				metadata.FamilyName = name
+		case 1:
+			if name != "" {
+				if legacyFamily == "" {
+					legacyFamily = name
+				}
+				if isPreferred && prefLegacyFamily == "" {
+					prefLegacyFamily = name
+				}
 			}
-		case 17: // Typographic Subfamily Name (preferred for style)
-			if metadata.StyleName == "" {
-				metadata.StyleName = name
+		case 17:
+			if name != "" {
+				typographicStyle = name
+				if isPreferred {
+					prefTypoStyle = name
+				}
 			}
-		case 2: // Font Subfamily (fallback)
-			if metadata.StyleName == "" {
-				metadata.StyleName = name
+		case 2:
+			if name != "" {
+				if legacyStyle == "" {
+					legacyStyle = name
+				}
+				if isPreferred && prefLegacyStyle == "" {
+					prefLegacyStyle = name
+				}
 			}
-		case 4: // Full Font Name
-			if metadata.FullName == "" {
+		case 4:
+			if metadata.FullName == "" && name != "" {
 				metadata.FullName = name
 			}
+		}
+	}
+
+	// Decide winners with absolute precedence for typographic names
+	// Prefer preferred variants when available
+	if prefTypoFamily != "" {
+		metadata.TypographicFamily = prefTypoFamily
+	} else {
+		metadata.TypographicFamily = typographicFamily
+	}
+	if prefTypoStyle != "" {
+		metadata.TypographicStyle = prefTypoStyle
+	} else {
+		metadata.TypographicStyle = typographicStyle
+	}
+
+	if metadata.TypographicFamily != "" {
+		metadata.FamilyName = typographicFamily
+	} else {
+		// If we captured a preferred legacy, use it; else general legacy
+		if prefLegacyFamily != "" {
+			metadata.FamilyName = prefLegacyFamily
+		} else {
+			metadata.FamilyName = legacyFamily
+		}
+	}
+	if metadata.TypographicStyle != "" {
+		metadata.StyleName = typographicStyle
+	} else {
+		if prefLegacyStyle != "" {
+			metadata.StyleName = prefLegacyStyle
+		} else {
+			metadata.StyleName = legacyStyle
 		}
 	}
 
@@ -445,4 +519,188 @@ func parseFontNameImproved(filename string) (family, style string) {
 	family = strings.Join(parts[:len(parts)-1], "-")
 	style = cases.Title(language.English, cases.NoLower).String(parts[len(parts)-1])
 	return family, style
+}
+
+// AnalyzeFontComprehensively performs detailed SFNT analysis of a font file
+func AnalyzeFontComprehensively(fontPath string) (*ComprehensiveFontAnalysis, error) {
+	// Early font type detection
+	ext := strings.ToLower(filepath.Ext(fontPath))
+	if !isFontFile(ext) {
+		return nil, fmt.Errorf("not a supported font file: %s", ext)
+	}
+
+	// Read font file
+	fontData, err := os.ReadFile(fontPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read font file: %w", err)
+	}
+
+	// Parse SFNT font
+	font, err := sfnt.Parse(fontData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SFNT font: %w", err)
+	}
+
+	analysis := &ComprehensiveFontAnalysis{
+		NameTableEntries: make(map[int]string),
+		FontProperties:   make(map[string]interface{}),
+		TechnicalDetails: make(map[string]interface{}),
+	}
+
+	// Extract basic metadata
+	basicMetadata, err := ExtractFontMetadata(fontPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract basic metadata: %w", err)
+	}
+	analysis.BasicMetadata = *basicMetadata
+
+	// Extract all name table entries
+	err = extractAllNameTableEntries(fontData, analysis)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract name table entries: %w", err)
+	}
+
+	// Extract font properties
+	err = extractFontProperties(font, analysis)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract font properties: %w", err)
+	}
+
+	// Extract technical details
+	err = extractTechnicalDetails(font, analysis)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract technical details: %w", err)
+	}
+
+	return analysis, nil
+}
+
+// extractAllNameTableEntries extracts all name table entries from the font
+func extractAllNameTableEntries(fontData []byte, analysis *ComprehensiveFontAnalysis) error {
+	// Parse the name table to get all name entries
+	nameEntries, err := parseNameTableComprehensive(fontData)
+	if err != nil {
+		return err
+	}
+
+	// Store all name entries
+	for nameID, value := range nameEntries {
+		analysis.NameTableEntries[nameID] = value
+	}
+
+	return nil
+}
+
+// parseNameTableComprehensive parses the name table and returns all name entries
+func parseNameTableComprehensive(fontData []byte) (map[int]string, error) {
+	nameEntries := make(map[int]string)
+
+	// Find the name table offset
+	nameTableOffset, nameTableLength, err := findNameTable(fontData)
+	if err != nil {
+		return nil, err
+	}
+
+	// Read the name table
+	nameTableData := fontData[nameTableOffset : nameTableOffset+nameTableLength]
+
+	// Parse name table header
+	if len(nameTableData) < 6 {
+		return nil, fmt.Errorf("name table too short")
+	}
+
+	count := uint16(nameTableData[2])<<8 | uint16(nameTableData[3])
+	stringOffset := uint16(nameTableData[4])<<8 | uint16(nameTableData[5])
+
+	// Parse name records
+	for i := 0; i < int(count); i++ {
+		recordOffset := 6 + i*12
+		if recordOffset+12 > len(nameTableData) {
+			continue
+		}
+
+		platformID := uint16(nameTableData[recordOffset])<<8 | uint16(nameTableData[recordOffset+1])
+		encodingID := uint16(nameTableData[recordOffset+2])<<8 | uint16(nameTableData[recordOffset+3])
+		languageID := uint16(nameTableData[recordOffset+4])<<8 | uint16(nameTableData[recordOffset+5])
+		nameID := uint16(nameTableData[recordOffset+6])<<8 | uint16(nameTableData[recordOffset+7])
+		length := uint16(nameTableData[recordOffset+8])<<8 | uint16(nameTableData[recordOffset+9])
+		offset := uint16(nameTableData[recordOffset+10])<<8 | uint16(nameTableData[recordOffset+11])
+
+		// Only process English names (platformID 3 = Microsoft, encodingID 1 = Unicode BMP)
+		if platformID == 3 && encodingID == 1 && languageID == 1033 {
+			// Calculate string offset in the name table
+			stringStart := int(stringOffset) + int(offset)
+			stringEnd := stringStart + int(length)
+
+			if stringEnd <= len(nameTableData) {
+				// Decode UTF-16BE string
+				utf16Data := nameTableData[stringStart:stringEnd]
+				if len(utf16Data)%2 == 0 {
+					// Convert to uint16 slice
+					utf16Slice := make([]uint16, len(utf16Data)/2)
+					for j := 0; j < len(utf16Slice); j++ {
+						utf16Slice[j] = uint16(utf16Data[j*2])<<8 | uint16(utf16Data[j*2+1])
+					}
+
+					// Decode to string
+					name := string(utf16.Decode(utf16Slice))
+					nameEntries[int(nameID)] = name
+				}
+			}
+		}
+	}
+
+	return nameEntries, nil
+}
+
+// findNameTable finds the name table offset and length in the font data
+func findNameTable(fontData []byte) (int, int, error) {
+	// Check SFNT header
+	if len(fontData) < 12 {
+		return 0, 0, fmt.Errorf("font data too short")
+	}
+
+	// Read number of tables
+	numTables := uint16(fontData[4])<<8 | uint16(fontData[5])
+
+	// Search for name table
+	for i := 0; i < int(numTables); i++ {
+		tableOffset := 12 + i*16
+		if tableOffset+16 > len(fontData) {
+			continue
+		}
+
+		// Check table tag
+		if string(fontData[tableOffset:tableOffset+4]) == "name" {
+			// Read table length and offset
+			offset := uint32(fontData[tableOffset+8])<<24 | uint32(fontData[tableOffset+9])<<16 | uint32(fontData[tableOffset+10])<<8 | uint32(fontData[tableOffset+11])
+			length := uint32(fontData[tableOffset+12])<<24 | uint32(fontData[tableOffset+13])<<16 | uint32(fontData[tableOffset+14])<<8 | uint32(fontData[tableOffset+15])
+
+			return int(offset), int(length), nil
+		}
+	}
+
+	return 0, 0, fmt.Errorf("name table not found")
+}
+
+// extractFontProperties extracts font properties like weight, style, etc.
+func extractFontProperties(font *sfnt.Font, analysis *ComprehensiveFontAnalysis) error {
+	// Get basic font properties
+	analysis.FontProperties["UnitsPerEm"] = font.UnitsPerEm()
+
+	// TODO: Add more comprehensive font property extraction
+	// This would require more advanced SFNT table parsing
+
+	return nil
+}
+
+// extractTechnicalDetails extracts technical font details
+func extractTechnicalDetails(font *sfnt.Font, analysis *ComprehensiveFontAnalysis) error {
+	// Get basic technical details
+	analysis.TechnicalDetails["UnitsPerEm"] = font.UnitsPerEm()
+
+	// TODO: Add more comprehensive technical details
+	// This would require parsing additional SFNT tables
+
+	return nil
 }
