@@ -87,8 +87,27 @@ func groupByFamily(fonts []ParsedFont) map[string][]ParsedFont {
 }
 
 var listCmd = &cobra.Command{
-	Use:   "list",
+	Use:   "list [query]",
 	Short: "List installed fonts",
+	Long: `List fonts installed on your system.
+
+You can filter the results by providing an optional query string to filter font family names.
+
+You can specify the installation scope using the --scope flag:
+  - user (default): Show fonts installed for current user
+  - machine: Show fonts installed system-wide
+  - all: Show fonts from both user and machine scopes
+
+`,
+	Example: `  fontget list
+  fontget list "jet"
+  fontget list roboto -t ttf
+  fontget list "fira" -f
+  fontget list -s all`,
+	Args: func(cmd *cobra.Command, args []string) error {
+		// Query is optional - no validation needed
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		output.GetDebug().Message("List command start")
 		if err := config.EnsureManifestExists(); err != nil {
@@ -101,9 +120,14 @@ var listCmd = &cobra.Command{
 		}
 
 		scope, _ := cmd.Flags().GetString("scope")
-		familyFilter, _ := cmd.Flags().GetString("filter")
 		typeFilter, _ := cmd.Flags().GetString("type")
 		showVariants, _ := cmd.Flags().GetBool("full")
+
+		// Get query from positional argument
+		var familyFilter string
+		if len(args) > 0 {
+			familyFilter = args[0]
+		}
 
 		var scopes []platform.InstallationScope
 		if scope == "all" {
@@ -149,8 +173,17 @@ var listCmd = &cobra.Command{
 		output.GetVerbose().Info("Filtered count=%d", len(filtered))
 		if len(filtered) == 0 {
 			fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
-			fmt.Println("---------------------------------------------")
-			fmt.Println(ui.FeedbackWarning.Render("No fonts found matching the specified filters"))
+
+			// Show filter info in same format as successful results, just with 0 count
+			if familyFilter != "" || typeFilter != "" {
+				filterInfo := fmt.Sprintf("Found 0 font families installed matching '%s'", ui.TableSourceName.Render(familyFilter))
+				if typeFilter != "" {
+					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
+				}
+				fmt.Printf("\n%s\n\n", filterInfo)
+			} else {
+				fmt.Printf("\n%s\n\n", ui.FeedbackText.Render("Found 0 font families installed"))
+			}
 			return nil
 		}
 
@@ -163,9 +196,20 @@ var listCmd = &cobra.Command{
 		output.GetVerbose().Info("Family count=%d", len(names))
 
 		// Header
-		fmt.Printf("\n%s\n\n", ui.PageTitle.Render("Installed Fonts"))
-		info := fmt.Sprintf("Found %d fonts installed", len(filtered))
-		fmt.Printf("%s\n\n", info)
+		fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
+
+		// Show filter info if filtering is applied (count shows families, not individual files)
+		if familyFilter != "" || typeFilter != "" {
+			filterInfo := fmt.Sprintf("Found %d font families installed matching '%s'", len(names), ui.TableSourceName.Render(familyFilter))
+			if typeFilter != "" {
+				filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
+			}
+			fmt.Printf("\n%s\n\n", filterInfo)
+		} else {
+			info := fmt.Sprintf("Found %d font families installed", len(names))
+			fmt.Printf("%s\n\n", ui.FeedbackText.Render(info))
+		}
+
 		fmt.Println(ui.TableHeader.Render(GetListTableHeader()))
 		fmt.Println(GetTableSeparator())
 
@@ -217,7 +261,6 @@ var listCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().StringP("scope", "s", "", "Installation scope (user, machine, or all)")
-	listCmd.Flags().StringP("filter", "q", "", "Filter by font family name (substring match)")
 	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
 	listCmd.Flags().BoolP("full", "f", false, "Show font styles in hierarchical view")
 }
