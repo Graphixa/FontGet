@@ -19,7 +19,8 @@ var searchCmd = &cobra.Command{
 	Example: `  fontget search fira
   fontget search "Fira Sans"
   fontget search -c "Sans Serif"
-  fontget search "roboto" -c "Sans Serif"`,
+  fontget search "roboto" -c "Sans Serif"
+  fontget search -c`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Get flags
 		category, _ := cmd.Flags().GetString("category")
@@ -79,6 +80,27 @@ var searchCmd = &cobra.Command{
 			query = args[0]
 		}
 
+		// Handle category-only mode (show all categories) - early return
+		// Check if category flag was provided but no value was given (NoOptDefVal = "list")
+		// AND no arguments were provided (meaning user just used -c without a value)
+		if (cmd.Flags().Changed("category") || cmd.Flags().Changed("c")) && category == "list" && len(args) == 0 {
+			// Show all available categories
+			return showAllCategories()
+		}
+
+		// If category is "list" but we have arguments, it means the user provided a category value
+		// but NoOptDefVal is overriding it. We need to extract the actual category from args
+		if category == "list" && len(args) > 0 {
+			// The first argument is actually the category value
+			category = args[0]
+			// Remove the first argument from args since it's the category, not a query
+			if len(args) > 1 {
+				query = args[1]
+			} else {
+				query = ""
+			}
+		}
+
 		GetLogger().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 
 		// Verbose-level information for users
@@ -86,7 +108,7 @@ var searchCmd = &cobra.Command{
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', refresh=%v", query, category, refresh)
 
 		// Print styled title first
-		fmt.Printf("\n%s\n", ui.PageTitle.Render("Font Search Results"))
+		fmt.Printf("\n%s\n", ui.PageTitle.Render("Search Results"))
 
 		// Get repository (handles source updates internally with spinner if needed)
 		var r *repo.Repository
@@ -231,25 +253,84 @@ var searchCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(searchCmd)
-	searchCmd.Flags().StringP("category", "c", "", "Filter by font category (Sans Serif, Serif, Display, Handwriting, Monospace, Other)")
+	searchCmd.Flags().StringP("category", "c", "", "Filter by font category (use without value to see all available categories)")
+	searchCmd.Flags().Lookup("category").NoOptDefVal = "list"
 
 	// Hidden flag for development/testing only
 	searchCmd.Flags().Bool("refresh", false, "Force refresh of font manifest before search")
 	searchCmd.Flags().MarkHidden("refresh")
 
 	// Register completion for both short and long category flags
-	categories := []string{
-		"Sans Serif",
-		"Serif",
-		"Display",
-		"Handwriting",
-		"Monospace",
-		"Other",
-	}
 	searchCmd.RegisterFlagCompletionFunc("category", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		// Get repository to extract categories
+		r, err := repo.GetRepository()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		// Get all unique categories from sources
+		categories := r.GetAllCategories()
 		return categories, cobra.ShellCompDirectiveNoFileComp
 	})
 	searchCmd.RegisterFlagCompletionFunc("c", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		// Get repository to extract categories
+		r, err := repo.GetRepository()
+		if err != nil {
+			return nil, cobra.ShellCompDirectiveError
+		}
+
+		// Get all unique categories from sources
+		categories := r.GetAllCategories()
 		return categories, cobra.ShellCompDirectiveNoFileComp
 	})
+}
+
+// showAllCategories displays all available categories from all sources
+func showAllCategories() error {
+	// Ensure manifest system is initialized
+	if err := config.EnsureManifestExists(); err != nil {
+		return fmt.Errorf("failed to initialize sources: %v", err)
+	}
+
+	// Get repository
+	r, err := repo.GetRepository()
+	if err != nil {
+		return fmt.Errorf("failed to initialize repository: %w", err)
+	}
+
+	// Get all categories
+	categories := r.GetAllCategories()
+
+	if len(categories) == 0 {
+		fmt.Printf("\n%s\n\n", ui.RenderError("No categories found in any sources"))
+		return nil
+	}
+
+	// Display categories
+	fmt.Printf("\n%s\n", ui.PageTitle.Render("Available Categories"))
+	fmt.Printf("\nFound %d categories across all sources:\n\n", len(categories))
+
+	// Display categories in a proper 3-column table format using consistent table styling
+	// Calculate column width: (120 total - 2 spaces between columns) / 3 columns = 39 chars per column
+	columnWidth := 39
+
+	// Display in 3 columns with proper table alignment
+	for i := 0; i < len(categories); i += 3 {
+		// Print up to 3 categories per row
+		for j := 0; j < 3 && i+j < len(categories); j++ {
+			category := categories[i+j]
+			if j == 0 {
+				fmt.Printf("  %-*s", columnWidth, ui.TableSourceName.Render(category))
+			} else {
+				fmt.Printf("  %-*s", columnWidth, ui.TableSourceName.Render(category))
+			}
+		}
+		fmt.Println() // New line after each row
+	}
+
+	// Show usage example
+	fmt.Printf("\n%s\n", ui.FeedbackText.Render("Usage: fontget search -c \"Category Name\""))
+	fmt.Printf("Example: fontget search -c \"Sans Serif\"\n\n")
+
+	return nil
 }

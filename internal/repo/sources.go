@@ -720,3 +720,26 @@ func (r *Repository) filterByCategory(results []SearchResult, category string) [
 	}
 	return filteredResults
 }
+
+// GetAllCategories returns all unique categories from all sources in the manifest
+func (r *Repository) GetAllCategories() []string {
+	categorySet := make(map[string]bool)
+
+	for _, source := range r.manifest.Sources {
+		for _, font := range source.Fonts {
+			for _, category := range font.Categories {
+				if category != "" {
+					categorySet[category] = true
+				}
+			}
+		}
+	}
+
+	var categories []string
+	for cat := range categorySet {
+		categories = append(categories, cat)
+	}
+
+	sort.Strings(categories)
+	return categories
+}
