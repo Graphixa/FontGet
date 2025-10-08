@@ -139,6 +139,7 @@ type Source struct {
 type FontInfo struct {
 	Name         string                       `json:"name"`
 	License      string                       `json:"license"`
+	LicenseURL   string                       `json:"license_url,omitempty"`
 	Variants     []string                     `json:"variants"`
 	Subsets      []string                     `json:"subsets"`
 	Version      string                       `json:"version"`

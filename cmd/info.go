@@ -147,18 +147,11 @@ var infoCmd = &cobra.Command{
 
 		if showLicense {
 			licenseURL := ""
-			// Handle different sources for license URLs
-			if fontSource == "google-fonts" {
-				if strings.ToLower(font.License) == "ofl" {
-					// For OFL fonts, use the GitHub raw URL
-					id := strings.ToLower(strings.ReplaceAll(fontID, " ", ""))
-					licenseURL = "https://raw.githubusercontent.com/google/fonts/main/ofl/" + id + "/OFL.txt"
-				} else if font.SourceURL != "" {
-					// For other Google Fonts, use the source URL with license anchor
-					licenseURL = font.SourceURL + "#license"
-				}
+			// Use the specific license URL if available from the source data
+			if font.LicenseURL != "" {
+				licenseURL = font.LicenseURL
 			} else if font.SourceURL != "" {
-				// Fallback to source URL
+				// Fallback to source URL if no specific license URL is provided
 				licenseURL = font.SourceURL
 			}
 

@@ -239,6 +239,7 @@ func loadAllSourcesFromCacheOnly(manifest *config.Manifest) (*FontManifest, erro
 			fontInfo := FontInfo{
 				Name:        font.Name,
 				License:     font.License,
+				LicenseURL:  font.LicenseURL,
 				Version:     font.Version,
 				Description: font.Description,
 				Categories:  font.Categories,
@@ -355,6 +356,7 @@ func loadAllSourcesWithCache(manifest *config.Manifest, progress ProgressCallbac
 			fontInfo := FontInfo{
 				Name:        font.Name,
 				License:     font.License,
+				LicenseURL:  font.LicenseURL,
 				Version:     font.Version,
 				Description: font.Description,
 				Categories:  font.Categories,
