@@ -110,14 +110,12 @@ var infoCmd = &cobra.Command{
 		// Find font in manifest
 		output.GetVerbose().Info("Searching for font '%s' in manifest", fontID)
 		output.GetDebug().State("Searching %d sources for font '%s'", len(manifest.Sources), fontID)
-		var fontSource string
 		var font repo.FontInfo
 		found := false
 		for sourceKey, source := range manifest.Sources {
 			output.GetDebug().State("Checking source '%s' with %d fonts", sourceKey, len(source.Fonts))
 			if f, ok := source.Fonts[fontID]; ok {
 				font = f
-				fontSource = sourceKey
 				found = true
 				output.GetVerbose().Info("Found font '%s' in source '%s'", fontID, sourceKey)
 				output.GetDebug().State("Font found in source: %s", sourceKey)
@@ -136,14 +134,42 @@ var infoCmd = &cobra.Command{
 		// Note: Metadata-only mode now uses cards instead of raw text display
 
 		// Display font information using card components
+		fmt.Println() // Add space between command and first card
 		var cards []components.Card
 
-		// Always show font details card
+		// Always show font details card with metadata
 		category := "Unknown"
 		if len(font.Categories) > 0 {
 			category = font.Categories[0]
 		}
-		cards = append(cards, components.FontDetailsCard(font.Name, fontID, category))
+
+		// Format tags
+		tags := ""
+		if len(font.Tags) > 0 {
+			tags = strings.Join(font.Tags, ", ")
+		}
+
+		// Format last modified date
+		lastModified := ""
+		if !font.LastModified.IsZero() {
+			lastModified = font.LastModified.Format("02/01/2006 - 15:04")
+		}
+
+		// Format popularity
+		popularity := ""
+		if font.Popularity > 0 {
+			popularity = fmt.Sprintf("%d", font.Popularity)
+		}
+
+		cards = append(cards, components.FontDetailsCard(
+			font.Name,
+			fontID,
+			category,
+			tags,
+			lastModified,
+			font.SourceURL,
+			popularity,
+		))
 
 		if showLicense {
 			licenseURL := ""
@@ -156,44 +182,6 @@ var infoCmd = &cobra.Command{
 			}
 
 			cards = append(cards, components.LicenseInfoCard(font.License, licenseURL))
-		}
-
-		// Always show source information when showing all info
-		if showAll {
-			// Get source information from the manifest
-			if source, exists := manifest.Sources[fontSource]; exists {
-				// Use the source name and description from the manifest
-				sourceName := source.Name
-				if sourceName == "" {
-					sourceName = fontSource // Fallback to source key
-				}
-
-				// Use the source URL from the manifest, or fall back to font's source URL
-				sourceURL := source.URL
-				if sourceURL == "" {
-					sourceURL = font.SourceURL
-				}
-
-				// Only show source info if we have a URL
-				if sourceURL != "" {
-					cards = append(cards, components.SourceInfoCard(sourceName, sourceURL, source.Description))
-				}
-			} else {
-				// Fallback for unknown sources
-				if font.SourceURL != "" {
-					cards = append(cards, components.SourceInfoCard(fontSource, font.SourceURL, ""))
-				}
-			}
-		}
-
-		if showMetadata {
-			// Create metadata card with popularity as string
-			popularityStr := ""
-			if font.Popularity > 0 {
-				popularityStr = fmt.Sprintf("%d", font.Popularity)
-			}
-			lastModifiedStr := font.LastModified.Format("2006-01-02T15:04:05Z")
-			cards = append(cards, components.MetadataCard(lastModifiedStr, font.SourceURL, popularityStr))
 		}
 
 		// Render all cards

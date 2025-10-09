@@ -181,13 +181,31 @@ func (m *CardModel) AddCard(card Card) {
 	m.Cards = append(m.Cards, card)
 }
 
-// FontDetailsCard creates a card for font details
-func FontDetailsCard(name, id, category string) Card {
+// FontDetailsCard creates a comprehensive font details card with tags and metadata
+func FontDetailsCard(name, id, category, tags, lastModified, sourceURL, popularity string) Card {
 	sections := []CardSection{
 		{Label: "Name", Value: name},
 		{Label: "ID", Value: id},
-		{Label: "Category", Value: category},
 	}
+
+	// Add source URL under ID
+	if sourceURL != "" {
+		sections = append(sections, CardSection{Label: "Source URL", Value: sourceURL})
+	}
+
+	// Add spacing before category section
+	sections = append(sections, CardSection{Label: "", Value: ""}) // Empty line
+
+	// Add category, tags, and popularity
+	sections = append(sections, CardSection{Label: "Category", Value: category})
+
+	if tags != "" {
+		sections = append(sections, CardSection{Label: "Tags", Value: tags})
+	}
+	if popularity != "" {
+		sections = append(sections, CardSection{Label: "Popularity", Value: popularity})
+	}
+
 	return NewCardWithSections("Font Details", sections)
 }
 
