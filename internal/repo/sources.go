@@ -18,6 +18,16 @@ import (
 	pinpkg "github.com/yarlson/pin"
 )
 
+// usePopularityScoring controls whether popularity is used in search scoring and sorting
+// This gets set from user config, defaults to true (popularity on)
+var usePopularityScoring = true
+
+// SetPopularityScoring sets the popularity scoring preference from user config
+func SetPopularityScoring() {
+	userPrefs := config.GetUserPreferences()
+	usePopularityScoring = userPrefs.Configuration.UsePopularitySort
+}
+
 // SearchConfig contains all tunable parameters for the search algorithm
 type SearchConfig struct {
 	BaseScore     int
@@ -601,6 +611,9 @@ func pinkToPin(hex string) pinpkg.Color {
 
 // GetRepository returns a new Repository instance, showing spinner if sources need updating
 func GetRepository() (*Repository, error) {
+	// Set popularity scoring preference from user config
+	SetPopularityScoring()
+
 	// Check if sources should be refreshed
 	shouldRefresh, err := config.ShouldRefreshSources()
 	if err != nil {
@@ -655,6 +668,9 @@ func GetRepository() (*Repository, error) {
 
 // GetRepositoryWithRefresh forces a refresh of sources and returns a new Repository instance
 func GetRepositoryWithRefresh() (*Repository, error) {
+	// Set popularity scoring preference from user config
+	SetPopularityScoring()
+
 	// Force refresh of sources with spinner
 	var manifest *FontManifest
 	err := runSpinner("Updating Sources...", "Sources Updated", func() error {
@@ -681,13 +697,16 @@ func (r *Repository) GetManifest() (*FontManifest, error) {
 
 // SearchFonts searches for fonts matching the query using advanced search logic
 func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
-	// Use popularity scoring by default (can be made configurable later)
-	return r.SearchFontsWithOptions(query, category, true)
+	// Load popularity preference from config each time
+	SetPopularityScoring()
+	return r.SearchFontsWithOptions(query, category, usePopularityScoring)
 }
 
 // SearchFontsWithOptions searches for fonts matching the query using advanced search logic
 // with optional popularity scoring
 func (r *Repository) SearchFontsWithOptions(query string, category string, usePopularity bool) ([]SearchResult, error) {
+	// Update global popularity setting from config
+	SetPopularityScoring()
 	query = strings.ToLower(query)
 	var results []SearchResult
 
@@ -698,8 +717,8 @@ func (r *Repository) SearchFontsWithOptions(query string, category string, usePo
 			fontName := strings.ToLower(font.Name)
 			fontID := strings.ToLower(id)
 
-			// Use the advanced scoring algorithm with popularity option
-			score, matchType := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, source.Name, usePopularity)
+			// Use the advanced scoring algorithm (popularity controlled by global variable)
+			score, matchType := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, source.Name)
 			if score > 0 {
 				result := r.createSearchResult(id, font, sourceID, source.Name)
 				result.Score = score
@@ -724,14 +743,14 @@ func (r *Repository) SearchFontsWithOptions(query string, category string, usePo
 func (r *Repository) calculateMatchScore(query, fontName, fontID string, font FontInfo) int {
 	// This function is used in contexts where source name is not available
 	// For now, we'll use a default source name - this should be updated to pass source name
-	score, _ := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, "Unknown", false)
+	score, _ := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, "Unknown")
 	return score
 }
 
 // calculateMatchScoreWithOptions calculates a score for how well a font matches the query
 // using the new configurable algorithm with base score, source priority, and match bonuses
 // Returns both the score and the match type for debugging
-func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID string, font FontInfo, sourceName string, usePopularity bool) (int, string) {
+func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID string, font FontInfo, sourceName string) (int, string) {
 	config := DefaultSearchConfig()
 
 	// Phase 1: Base Score only (source priority applied in sorting logic)
@@ -768,7 +787,7 @@ func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID stri
 	}
 
 	// Phase 3: Popularity - only if enabled and font has popularity
-	if usePopularity && font.Popularity > 0 {
+	if usePopularityScoring && font.Popularity > 0 {
 		// Apply full popularity bonus (no length adjustment here)
 		popularityBonus := float64(font.Popularity) / float64(config.PopularityDivisor)
 		score += int(popularityBonus)
@@ -790,7 +809,7 @@ func (r *Repository) createSearchResult(id string, font FontInfo, sourceID, sour
 	}
 }
 
-// sortResultsByScore sorts results by: Match Score → Popularity → Font Name → Source Priority
+// sortResultsByScore sorts results by: Font Name Groups → Source Priority → Individual Score → Popularity
 // Exact name matches are grouped together and sorted by source priority within each group
 func (r *Repository) sortResultsByScore(results []SearchResult) {
 	// Group fonts by exact name and find the highest score in each group
@@ -826,8 +845,15 @@ func (r *Repository) sortResultsByScore(results []SearchResult) {
 			return results[i].Score > results[j].Score
 		}
 
-		// 5. FINAL: Popularity (highest first) - ultimate tiebreaker
-		return results[i].Popularity > results[j].Popularity
+		// 5. FINAL: Popularity (highest first) - ultimate tiebreaker (only if enabled)
+		if usePopularityScoring {
+			if results[i].Popularity != results[j].Popularity {
+				return results[i].Popularity > results[j].Popularity
+			}
+		}
+
+		// 6. ULTIMATE: Font ID (alphabetically) - final tiebreaker
+		return results[i].ID < results[j].ID
 	})
 }
 

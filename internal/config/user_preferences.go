@@ -19,7 +19,8 @@ type AppConfig struct {
 
 // ConfigurationSection represents the main configuration settings
 type ConfigurationSection struct {
-	DefaultEditor string `yaml:"DefaultEditor"`
+	DefaultEditor     string `yaml:"DefaultEditor"`
+	UsePopularitySort bool   `yaml:"UsePopularitySort"` // Enable/disable popularity scoring
 }
 
 // LoggingSection represents logging configuration
@@ -62,7 +63,8 @@ func GetAppConfigPath() string {
 func DefaultUserPreferences() *AppConfig {
 	return &AppConfig{
 		Configuration: ConfigurationSection{
-			DefaultEditor: "", // Use system default editor
+			DefaultEditor:     "",   // Use system default editor
+			UsePopularitySort: true, // Default to popularity-based sorting
 		},
 		Logging: LoggingSection{
 			LogPath:  "$home/.fontget/logs/fontget.log",
@@ -70,6 +72,37 @@ func DefaultUserPreferences() *AppConfig {
 			MaxFiles: 5,
 		},
 	}
+}
+
+// GetUserPreferences loads user preferences from config file or returns defaults
+func GetUserPreferences() *AppConfig {
+	// Use GetAppConfigPath() to get config.yaml, not GetConfigPath() which returns config.json
+	configPath := GetAppConfigPath()
+
+	// Start with defaults
+	config := DefaultUserPreferences()
+
+	// Try to load existing config and merge with defaults
+	if data, err := os.ReadFile(configPath); err == nil {
+		var loadedConfig AppConfig
+		if err := yaml.Unmarshal(data, &loadedConfig); err == nil {
+			// Merge loaded config with defaults
+			config.Configuration.DefaultEditor = loadedConfig.Configuration.DefaultEditor
+
+			// For bool, we need to check if the field was explicitly set in YAML
+			// Since Go's zero value for bool is false, we can't distinguish between
+			// "not set" and "explicitly set to false". For now, we'll assume if the
+			// file exists and is valid, use the loaded values.
+			config.Configuration.UsePopularitySort = loadedConfig.Configuration.UsePopularitySort
+		}
+	}
+
+	return config
+}
+
+// MarshalYAML marshals the AppConfig to YAML format
+func (a *AppConfig) MarshalYAML() ([]byte, error) {
+	return yaml.Marshal(a)
 }
 
 // GetEditorWithFallback returns the configured editor or system default
@@ -177,7 +210,8 @@ func ValidateUserPreferences(config *AppConfig) error {
 	// Convert structured config to map for validation
 	rawData := map[string]interface{}{
 		"Configuration": map[string]interface{}{
-			"DefaultEditor": config.Configuration.DefaultEditor,
+			"DefaultEditor":     config.Configuration.DefaultEditor,
+			"UsePopularitySort": config.Configuration.UsePopularitySort,
 		},
 		"Logging": map[string]interface{}{
 			"LogPath":  config.Logging.LogPath,

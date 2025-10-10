@@ -18,8 +18,7 @@ var infoCmd = &cobra.Command{
 	Short: "Display detailed information about a font",
 	Long:  "Show comprehensive information about a font including variants, license, and metadata.",
 	Example: `  fontget info "Noto Sans"
-  fontget info "Roboto" -l
-  fontget info "Fira Sans" -m`,
+  fontget info "Roboto" -l`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			fmt.Printf("\n%s\n\n", ui.RenderError("A font ID is required"))
@@ -73,17 +72,13 @@ var infoCmd = &cobra.Command{
 
 		// Get flags
 		showLicense, _ := cmd.Flags().GetBool("license")
-		showMetadata, _ := cmd.Flags().GetBool("metadata")
 
-		// If no specific flags are set, show all info
-		showAll := !showLicense && !showMetadata
-		if showAll {
-			showLicense = true
-			showMetadata = true
-		}
+		// If no specific flags are set, show all info (both font details and license)
+		// If -l flag is set, show only license
+		showAll := !showLicense
 
-		output.GetVerbose().Info("Display options - License: %v, Metadata: %v, Show All: %v", showLicense, showMetadata, showAll)
-		output.GetDebug().State("Info display flags: license=%v, metadata=%v, showAll=%v", showLicense, showMetadata, showAll)
+		output.GetVerbose().Info("Display options - License: %v, Show All: %v", showLicense, showAll)
+		output.GetDebug().State("Info display flags: license=%v, showAll=%v", showLicense, showAll)
 
 		// Get repository
 		output.GetVerbose().Info("Initializing repository for font lookup")
@@ -107,9 +102,9 @@ var infoCmd = &cobra.Command{
 			return fmt.Errorf("failed to get manifest: %w", err)
 		}
 
-		// Find font in manifest
-		output.GetVerbose().Info("Searching for font '%s' in manifest", fontID)
-		output.GetDebug().State("Searching %d sources for font '%s'", len(manifest.Sources), fontID)
+		// First check if it's an exact font ID match
+		output.GetVerbose().Info("Checking for exact font ID match: '%s'", fontID)
+		output.GetDebug().State("Searching %d sources for exact font ID '%s'", len(manifest.Sources), fontID)
 		var font repo.FontInfo
 		found := false
 		for sourceKey, source := range manifest.Sources {
@@ -117,16 +112,76 @@ var infoCmd = &cobra.Command{
 			if f, ok := source.Fonts[fontID]; ok {
 				font = f
 				found = true
-				output.GetVerbose().Info("Found font '%s' in source '%s'", fontID, sourceKey)
+				output.GetVerbose().Info("Found exact font ID '%s' in source '%s'", fontID, sourceKey)
 				output.GetDebug().State("Font found in source: %s", sourceKey)
 				break
 			}
 		}
+
 		if !found {
-			GetLogger().Error("Font '%s' not found", fontID)
-			output.GetVerbose().Error("Font '%s' not found in any source", fontID)
-			output.GetDebug().Error("Font lookup failed: '%s' not found in %d sources", fontID, len(manifest.Sources))
-			return fmt.Errorf("%s", ui.RenderError(fmt.Sprintf("Font '%s' not found", fontID)))
+			// Try to find multiple matches using the same logic as add command
+			output.GetVerbose().Info("No exact match found, searching for multiple matches")
+			output.GetDebug().State("Calling repo.FindFontMatches for: %s", fontID)
+
+			matches, matchErr := repo.FindFontMatches(fontID)
+			if matchErr != nil {
+				output.GetDebug().Error("FindFontMatches failed: %v", matchErr)
+				return fmt.Errorf("failed to search for font: %w", matchErr)
+			}
+
+			if len(matches) == 0 {
+				// No matches found, show similar fonts
+				GetLogger().Error("Font '%s' not found", fontID)
+				output.GetVerbose().Error("Font '%s' not found in any source", fontID)
+				output.GetDebug().Error("Font lookup failed: '%s' not found in %d sources", fontID, len(manifest.Sources))
+
+				// Try to find similar fonts using the same logic as add command
+				output.GetVerbose().Info("Searching for similar fonts to '%s'", fontID)
+				output.GetDebug().State("Calling findSimilarFonts for font: %s", fontID)
+
+				// Get all available fonts for suggestions (use same method as add command)
+				allFonts := repo.GetAllFontsCached()
+				if len(allFonts) == 0 {
+					output.GetDebug().Error("Could not get list of available fonts for suggestions")
+					return fmt.Errorf("%s", ui.RenderError(fmt.Sprintf("Font '%s' not found", fontID)))
+				}
+
+				// Find similar fonts using the same method as add command
+				similar := findSimilarFonts(fontID, allFonts, false) // false = repository fonts
+				GetLogger().Info("Found %d similar fonts for %s", len(similar), fontID)
+
+				// Show suggestions
+				showFontNotFoundWithSuggestions(fontID, similar)
+				return nil
+			} else if len(matches) == 1 {
+				// Single match found, use it
+				output.GetVerbose().Info("Found single match for '%s': %s", fontID, matches[0].ID)
+				output.GetDebug().State("Using single match: %s from source %s", matches[0].ID, matches[0].Source)
+
+				// Get the font info for the single match from the manifest
+				output.GetDebug().State("Looking up font info for ID: %s", matches[0].ID)
+				for sourceKey, source := range manifest.Sources {
+					if f, ok := source.Fonts[matches[0].ID]; ok {
+						font = f
+						found = true
+						output.GetVerbose().Info("Found font info for '%s' in source '%s'", matches[0].ID, sourceKey)
+						output.GetDebug().State("Font info found in source: %s", sourceKey)
+						break
+					}
+				}
+
+				if !found {
+					output.GetDebug().Error("Font info not found for ID %s", matches[0].ID)
+					return fmt.Errorf("no font information available for %s", matches[0].ID)
+				}
+			} else {
+				// Multiple matches found, show them and ask for specific ID
+				output.GetVerbose().Info("Found %d matches for '%s'", len(matches), fontID)
+				output.GetDebug().State("Multiple matches found, showing options")
+
+				showMultipleMatchesAndExit(fontID, matches)
+				return nil
+			}
 		}
 
 		// Note: License-only mode now uses cards instead of raw text display
@@ -137,41 +192,44 @@ var infoCmd = &cobra.Command{
 		fmt.Println() // Add space between command and first card
 		var cards []components.Card
 
-		// Always show font details card with metadata
-		category := "Unknown"
-		if len(font.Categories) > 0 {
-			category = font.Categories[0]
+		// Show font details card only if showing all info
+		if showAll {
+			category := "Unknown"
+			if len(font.Categories) > 0 {
+				category = font.Categories[0]
+			}
+
+			// Format tags
+			tags := ""
+			if len(font.Tags) > 0 {
+				tags = strings.Join(font.Tags, ", ")
+			}
+
+			// Format last modified date
+			lastModified := ""
+			if !font.LastModified.IsZero() {
+				lastModified = font.LastModified.Format("02/01/2006 - 15:04")
+			}
+
+			// Format popularity
+			popularity := ""
+			if font.Popularity > 0 {
+				popularity = fmt.Sprintf("%d", font.Popularity)
+			}
+
+			cards = append(cards, components.FontDetailsCard(
+				font.Name,
+				fontID,
+				category,
+				tags,
+				lastModified,
+				font.SourceURL,
+				popularity,
+			))
 		}
 
-		// Format tags
-		tags := ""
-		if len(font.Tags) > 0 {
-			tags = strings.Join(font.Tags, ", ")
-		}
-
-		// Format last modified date
-		lastModified := ""
-		if !font.LastModified.IsZero() {
-			lastModified = font.LastModified.Format("02/01/2006 - 15:04")
-		}
-
-		// Format popularity
-		popularity := ""
-		if font.Popularity > 0 {
-			popularity = fmt.Sprintf("%d", font.Popularity)
-		}
-
-		cards = append(cards, components.FontDetailsCard(
-			font.Name,
-			fontID,
-			category,
-			tags,
-			lastModified,
-			font.SourceURL,
-			popularity,
-		))
-
-		if showLicense {
+		// Show license card if showing all info OR if license-only flag is set
+		if showAll || showLicense {
 			licenseURL := ""
 			// Use the specific license URL if available from the source data
 			if font.LicenseURL != "" {
@@ -200,5 +258,4 @@ func init() {
 
 	// Add flags
 	infoCmd.Flags().BoolP("license", "l", false, "Show license information only")
-	infoCmd.Flags().BoolP("metadata", "m", false, "Show metadata information only")
 }
