@@ -17,6 +17,14 @@
 
 ### **Phase 3: Complete Command Standardization**
 
+#### **Bug Fixes**
+- [x] **Fix duplicate "manage" command in sources --help** - Removed duplicate `sourcesCmd.AddCommand(sourcesManageCmd)` from `cmd/sources.go`
+
+#### **Info Command Enhancements**
+- [x] **Remove metadata flag from info command** - Remove `-m` flag since metadata is now integrated into font details card
+- [x] **Implement license-only mode** - Make `fontget info -l` show only the license card
+- [x] **Add font suggestion system to info command** - Implement same suggestion logic as add command for ambiguous font names
+
 #### **Remaining Error Handling Standardization**
 - [x] **Update `cmd/sources.go`** - Replace direct color functions with UI components
   - [x] Replace `red()`, `green()`, `yellow()` with `ui.RenderError()`, `ui.RenderSuccess()`, `ui.RenderWarning()`
@@ -26,11 +34,13 @@
   - [x] Standardize success/warning messages
 
 #### **Command Visual Consistency**
-- [ ] **Apply "Gold Standard" to remaining commands** (using `cmd/add.go` and `cmd/search.go` as baseline)
+- [x] **Apply "Gold Standard" to remaining commands** (using `cmd/add.go` and `cmd/search.go` as baseline)
   - [x] `cmd/remove.go` - Visual parity with add.go (already matches)
-  - [ ] `cmd/list.go` - Styling and headers
+  - [x] `cmd/list.go` - Styling and headers (completed)
   - [x] `cmd/info.go` - Card-based layout implemented with modern UI components
-  - [ ] `cmd/sources.go` - Styling parity (info, update, manage) use table like search for sources showing source info such as size in mb
+  - [x] `cmd/sources.go` - Styling parity (info, update, manage) completed
+  - [x] `cmd/sources_update.go` - Modern UI styling implemented
+  - [x] `cmd/sources.go` validate subcommand - UI styling improvements completed to match other commands
 
 #### **Enhanced Command Layouts** (READY FOR IMPLEMENTATION - Based on ideas.md)
 - [x] **Info Command Card-Based Layout** - **COMPLETED**
@@ -46,19 +56,13 @@
   - [x] Hierarchy components implemented with proper indentation and arrows
   - [x] Font families display without indentation, variants with `↳` arrows
   - [x] Proper spacing between different font families
-  - [ ] Show font families with their variants in a tree-like structure
-  - [ ] Use pink color for font family names
-  - [ ] Use regular console color for font variants
-  - [ ] Add `--detailed` or `--full` flag to show font variants
-  - [ ] Default mode shows only font families (compact view)
-  - [ ] Detailed mode shows all variants with indentation
-- [ ] **Dynamic Table System Integration**
-  - [ ] Apply dynamic table widths to all commands using search/add/remove tables
-  - [ ] Update `cmd/add.go` and `cmd/remove.go` to use dynamic widths for suggestion tables
-  - [ ] Ensure consistent table behavior across all commands
+  - [x] Show font families with their variants in a tree-like structure
+  - [x] Use pink color for font family names
+  - [x] Use regular console color for font variants
+  - [x] Add `--detailed` or `--full` flag to show font variants
+  - [x] Default mode shows only font families (compact view)
+  - [x] Detailed mode shows all variants with indentation
 - [ ] **Color Scheme Enhancements**
-  - [ ] Implement pink color for font family names (matching ideas.md)
-  - [ ] Use regular console color for font variants and secondary text
   - [ ] Create consistent color hierarchy across all commands
   - [ ] Add color utilities to `cmd/shared.go` for easy access
 
@@ -68,7 +72,7 @@
   - [ ] `cmd/search.go` - Add verbose details (parameters, filters, counts)
   - [ ] `cmd/list.go` - Add verbose details (scan directories, parsed files, filters)
   - [ ] `cmd/info.go` - Add verbose details (lookup flow, source resolution)
-  - [ ] `cmd/sources.go` - Add verbose details (update plan, per-source outcomes)
+  - [x] `cmd/sources.go` - Add verbose details (update plan, per-source outcomes) - **COMPLETED**
 
 ---
 
@@ -273,11 +277,11 @@
 ## 📋 **SUCCESS CRITERIA**
 
 ### **Phase 3 Completion Criteria:**
-- [ ] All commands use centralized style system
-- [ ] Consistent visual hierarchy across all commands
+- [x] All commands use centralized style system
+- [x] Consistent visual hierarchy across all commands
 - [x] Reusable UI components implemented
 - [x] Error handling standardized across all commands
-- [ ] All commands follow same interaction patterns
+- [x] All commands follow same interaction patterns
 - [ ] Complete verbose/debug support across all commands
 
 ### **Overall Project Success:**
@@ -317,5 +321,5 @@
 
 ---
 
-**Current Status**: 6/7 commands fully standardized, 1 command needs error handling updates, most commands have visual consistency. 
-**COMPLETED**: Shared function consolidation, table standardization, performance optimization for suggestion systems, complete UI component system with modern card components, form elements, confirmation dialogs, hierarchical lists, info command card-based layout implementation, and remove command visual parity with add command.
+**Current Status**: 7/7 commands fully standardized with visual consistency. Only remaining work is completing verbose/debug support across all commands.
+**COMPLETED**: Shared function consolidation, table standardization, performance optimization for suggestion systems, complete UI component system with modern card components, form elements, confirmation dialogs, hierarchical lists, info command card-based layout implementation, remove command visual parity with add command, list command styling, sources command styling, and fixed duplicate manage command bug.
