@@ -19,6 +19,9 @@
 
 #### **Bug Fixes**
 - [x] **Fix duplicate "manage" command in sources --help** - Removed duplicate `sourcesCmd.AddCommand(sourcesManageCmd)` from `cmd/sources.go`
+- [x] **Fix source priority ordering across all commands** - Google Fonts → Nerd Fonts → Font Squirrel → Custom sources now works consistently in add, info, remove, list, and search commands
+- [x] **Fix font matching logic** - Corrected distinction between exact font name matches and partial match suggestions
+- [x] **Fix config loading path** - Corrected `GetUserPreferences()` to use `config.yaml` instead of `config.json`
 
 #### **Info Command Enhancements**
 - [x] **Remove metadata flag from info command** - Remove `-m` flag since metadata is now integrated into font details card
@@ -73,6 +76,43 @@
   - [ ] `cmd/list.go` - Add verbose details (scan directories, parsed files, filters)
   - [ ] `cmd/info.go` - Add verbose details (lookup flow, source resolution)
   - [x] `cmd/sources.go` - Add verbose details (update plan, per-source outcomes) - **COMPLETED**
+- [ ] **Clean up debug messages and logging** - Review and standardize debug output across all commands, remove redundant or unclear debug messages
+
+---
+
+## 🧹 **Code Quality & Cleanup Milestone**
+
+### **Phase 4: Code Quality Audit & Cleanup**
+
+#### **Debug & Logging Cleanup**
+- [ ] **Review debug output consistency** - Ensure all debug messages follow the same format and provide useful information
+- [ ] **Remove redundant debug statements** - Clean up duplicate or unnecessary debug output
+- [ ] **Standardize debug message formatting** - Use consistent patterns for debug output across all commands
+- [ ] **Optimize debug performance** - Ensure debug output doesn't impact performance when disabled
+
+#### **Code Quality Assessment**
+- [ ] **Identify code smells** - Review codebase for common issues like:
+  - [ ] Long functions that should be broken down
+  - [ ] Duplicate code that can be extracted
+  - [ ] Complex conditional logic that can be simplified
+  - [ ] Inconsistent naming conventions
+  - [ ] Unused imports or variables
+- [ ] **Refactor complex functions** - Break down large functions into smaller, more maintainable pieces
+- [ ] **Improve error handling** - Standardize error handling patterns across the codebase
+- [ ] **Add missing documentation** - Ensure all public functions have proper documentation
+- [ ] **Optimize imports** - Remove unused imports and organize import statements
+
+#### **Performance & Memory Optimization**
+- [ ] **Memory usage audit** - Identify potential memory leaks or excessive allocations
+- [ ] **Function call optimization** - Reduce unnecessary function calls in hot paths
+- [ ] **String operations optimization** - Use more efficient string operations where possible
+- [ ] **Goroutine cleanup** - Ensure proper cleanup of goroutines and channels
+
+#### **Testing & Validation**
+- [ ] **Add unit tests for critical functions** - Focus on font matching, source priority, and configuration loading
+- [ ] **Integration test improvements** - Test cross-command consistency
+- [ ] **Performance benchmarking** - Establish baseline performance metrics
+- [ ] **Memory profiling** - Identify memory usage patterns and optimization opportunities
 
 ---
 
@@ -198,7 +238,7 @@
   - [ ] Better compatibility with CI/CD and automated environments
   - [ ] Consistent with other CLI tools' management patterns
 
-#### **Font ID Resolution & Smart Matching** (HIGH PRIORITY)
+#### **Font ID Resolution & Smart Matching** (HIGH PRIORITY) UP NEXT
 
 ##### **Phase 1: Installation Tracking System**
 - [ ] **Add installation tracking system**
@@ -264,6 +304,9 @@
 - [ ] **Add `export` command** - Export installed fonts/collections
   - [ ] Support export by family, source, or all
   - [ ] Output manifest (JSON) with versions and variants
+  - [ ] Exclude fonts like system fonts or non fontget fonts maybe only;
+    - [ ] Export only installed by fontget (some way to track this?? Dicuss); or
+    - [ ] Export fonts that match the current sources that are available??? (Needs discussion)
   - [ ] Include file copy option and dry-run mode
   - [ ] Integrate with verbose/debug output and UI styles
 - [ ] **Add `import` command** - Import fonts from an export manifest
@@ -282,6 +325,8 @@
 - [x] Reusable UI components implemented
 - [x] Error handling standardized across all commands
 - [x] All commands follow same interaction patterns
+- [x] Source priority ordering works consistently across all commands
+- [x] Font matching logic correctly handles exact vs partial matches
 - [ ] Complete verbose/debug support across all commands
 
 ### **Overall Project Success:**
@@ -321,5 +366,5 @@
 
 ---
 
-**Current Status**: 7/7 commands fully standardized with visual consistency. Only remaining work is completing verbose/debug support across all commands.
-**COMPLETED**: Shared function consolidation, table standardization, performance optimization for suggestion systems, complete UI component system with modern card components, form elements, confirmation dialogs, hierarchical lists, info command card-based layout implementation, remove command visual parity with add command, list command styling, sources command styling, and fixed duplicate manage command bug.
+**Current Status**: 7/7 commands fully standardized with visual consistency. Source priority and font matching logic fixed across all commands. Ready for Phase 4: Code Quality & Cleanup milestone.
+**COMPLETED**: Shared function consolidation, table standardization, performance optimization for suggestion systems, complete UI component system with modern card components, form elements, confirmation dialogs, hierarchical lists, info command card-based layout implementation, remove command visual parity with add command, list command styling, sources command styling, fixed duplicate manage command bug, source priority ordering consistency, font matching logic corrections, and unused code cleanup (231 lines removed).
