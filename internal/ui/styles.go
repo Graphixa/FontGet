@@ -31,6 +31,11 @@ var (
 	ContentText = lipgloss.NewStyle().
 			Foreground(lipgloss.NoColor{}) // No color - uses terminal default
 
+	// ContentLabel - Bold label with no color (inline labels like paths)
+	ContentLabel = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.NoColor{})
+
 	// ContentHighlight - Highlighted content (like font names)
 	ContentHighlight = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("#f9e2af")). // Yellow

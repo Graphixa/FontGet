@@ -514,9 +514,7 @@ func init() {
 	// Add subcommands
 	sourcesCmd.AddCommand(sourcesInfoCmd)
 	sourcesCmd.AddCommand(sourcesUpdateCmd)
-	sourcesCmd.AddCommand(sourcesClearCmd)
 	sourcesCmd.AddCommand(sourcesValidateCmd)
-	sourcesCmd.AddCommand(sourcesManageCmd)
 
 	// Add flags
 	sourcesUpdateCmd.Flags().BoolP("verbose", "v", false, "Show detailed error messages for failed sources")
@@ -574,69 +572,16 @@ func formatDuration(d time.Duration) string {
 	}
 }
 
-var sourcesClearCmd = &cobra.Command{
-	Use:   "clear",
-	Short: "Clear cached sources",
-	Long:  `Remove all cached source files. This will force a fresh download on next use.`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		GetLogger().Info("Starting sources clear operation")
-
-		// Debug-level information for developers
-		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
-
-		// Get sources directory
-		output.GetVerbose().Info("Getting sources directory")
-		output.GetDebug().State("Calling os.UserHomeDir()")
-		home, err := os.UserHomeDir()
-		if err != nil {
-			GetLogger().Error("Failed to get home directory: %v", err)
-			output.GetVerbose().Error("Failed to get home directory: %v", err)
-			output.GetDebug().Error("Home directory lookup failed: %v", err)
-			return fmt.Errorf("failed to get home directory: %w", err)
-		}
-
-		sourcesDir := filepath.Join(home, ".fontget", "sources")
-		output.GetVerbose().Info("Clearing sources directory: %s", sourcesDir)
-		output.GetDebug().State("Removing directory: %s", sourcesDir)
-
-		// Check if sources directory exists
-		if _, err := os.Stat(sourcesDir); err != nil {
-			fmt.Println(ui.RenderWarning("Sources directory not found - nothing to clear"))
-			output.GetVerbose().Info("Sources directory does not exist")
-			output.GetDebug().State("Sources directory not found: %s", sourcesDir)
-			return nil
-		}
-
-		// Clear the sources directory
-		if err := os.RemoveAll(sourcesDir); err != nil {
-			GetLogger().Error("Failed to clear sources directory: %v", err)
-			output.GetVerbose().Error("Failed to clear sources directory: %v", err)
-			output.GetDebug().Error("Directory removal failed: %v", err)
-			return fmt.Errorf("failed to clear sources directory: %w", err)
-		}
-
-		// Recreate the sources directory
-		output.GetVerbose().Info("Recreating sources directory")
-		output.GetDebug().State("Creating directory: %s with permissions 0755", sourcesDir)
-		if err := os.MkdirAll(sourcesDir, 0755); err != nil {
-			GetLogger().Error("Failed to recreate sources directory: %v", err)
-			output.GetVerbose().Error("Failed to recreate sources directory: %v", err)
-			output.GetDebug().Error("Directory creation failed: %v", err)
-			return fmt.Errorf("failed to recreate sources directory: %w", err)
-		}
-
-		output.GetVerbose().Success("Sources cleared successfully")
-		output.GetDebug().State("Sources clear operation completed successfully")
-		fmt.Println(ui.RenderSuccess("Sources cleared successfully"))
-		GetLogger().Info("Sources clear operation completed")
-		return nil
-	},
-}
-
 var sourcesValidateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate cached sources integrity",
-	Long:  `Check the integrity of cached source files and report any issues. Useful for troubleshooting custom sources.`,
+	Long: `Check the integrity of cached source files and report any issues. Useful for troubleshooting custom sources.
+
+If validation fails, you can try:
+1. Run 'fontget sources update' to re-download source files and rebuild manifest
+2. Run 'fontget sources validate' again to verify sources have been fixed
+
+For more help, visit: https://github.com/Graphixa/FontGet`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting sources validation operation")
 
@@ -666,10 +611,9 @@ var sourcesValidateCmd = &cobra.Command{
 		}
 
 		// Display page header
-		fmt.Printf("\n%s\n", ui.PageTitle.Render("Sources Validation"))
-		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("%s: %s\n", ui.ContentHighlight.Render("Directory"), sourcesDir)
-		fmt.Printf("\n")
+		fmt.Println() // Space between command and first output
+		fmt.Printf("%s\n\n", ui.PageTitle.Render("Sources Validation"))
+		fmt.Printf("%s %s\n\n", ui.ContentLabel.Render("Sources Path:"), sourcesDir)
 
 		// Validate individual source files
 		entries, err := os.ReadDir(sourcesDir)
@@ -697,15 +641,25 @@ var sourcesValidateCmd = &cobra.Command{
 					// Get file size for display
 					if info, err := os.Stat(filePath); err == nil {
 						size := formatFileSize(info.Size())
-						fmt.Printf("  ✓ %s: Valid (%s)\n", entry.Name(), size)
+						fmt.Printf("  %s %s (%s) | %s\n",
+							ui.FeedbackSuccess.Render("✓"),
+							entry.Name(),
+							size,
+							ui.FeedbackSuccess.Render("Valid"))
 						output.GetDebug().State("File %s is valid, size: %s", entry.Name(), size)
 					} else {
-						fmt.Printf("  ✓ %s: Valid\n", entry.Name())
+						fmt.Printf("  %s %s | %s\n",
+							ui.FeedbackSuccess.Render("✓"),
+							entry.Name(),
+							ui.FeedbackSuccess.Render("Valid"))
 						output.GetDebug().State("File %s is valid", entry.Name())
 					}
 					validCount++
 				} else {
-					fmt.Printf("  ✗ %s: Invalid - Malformed JSON\n", entry.Name())
+					fmt.Printf("  %s %s | %s\n",
+						ui.FeedbackError.Render("✗"),
+						entry.Name(),
+						ui.FeedbackError.Render("Invalid"))
 					invalidCount++
 					output.GetVerbose().Warning("File %s is invalid", entry.Name())
 					output.GetDebug().State("File %s failed validation", entry.Name())
@@ -722,22 +676,15 @@ var sourcesValidateCmd = &cobra.Command{
 			return nil
 		}
 
-		// Print validation results
-		fmt.Printf("\n%s\n", ui.ReportTitle.Render("Validation Results"))
-		fmt.Printf("---------------------------------------------\n")
-		fmt.Printf("%s: %d  |  %s: %d\n",
-			ui.FeedbackSuccess.Render("Valid"), validCount,
-			ui.FeedbackError.Render("Invalid"), invalidCount)
-		fmt.Printf("\n")
-
 		output.GetVerbose().Info("Validation completed - Valid: %d, Invalid: %d", validCount, invalidCount)
 		output.GetDebug().State("Validation results: %d valid, %d invalid", validCount, invalidCount)
 
 		if invalidCount > 0 {
-			fmt.Println(ui.RenderWarning("Some source files are invalid. Consider running 'fontget sources update' to fix."))
+			fmt.Printf("\n%s\n", ui.FeedbackWarning.Render("One or more sources failed to validate."))
+			fmt.Printf("Run 'fontget sources validate --help' for troubleshooting steps.\n\n")
 			output.GetVerbose().Warning("Sources validation found %d invalid files", invalidCount)
 		} else {
-			fmt.Println(ui.RenderSuccess("All source files are valid"))
+			fmt.Printf("\n%s\n", ui.FeedbackSuccess.Render("All source files are valid\n"))
 			output.GetVerbose().Success("All source files are valid")
 		}
 

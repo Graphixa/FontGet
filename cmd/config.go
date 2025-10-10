@@ -153,6 +153,9 @@ var configInfoCmd = &cobra.Command{
 			output.GetVerbose().Info("Using custom editor from configuration")
 		}
 
+		// Show sorting configuration
+		fmt.Printf("  Use Popularity Sort: %t\n", appConfig.Configuration.UsePopularitySort)
+
 		fmt.Printf("  Log Path: %s\n", appConfig.Logging.LogPath)
 		fmt.Printf("  Max Log Size: %s\n", appConfig.Logging.MaxSize)
 

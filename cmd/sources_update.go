@@ -387,7 +387,7 @@ func (m updateModel) View() string {
 
 	// Always show the updating message at the top
 	content.WriteString("\n") // Add space above the message
-	content.WriteString(ui.PageTitle.Render("Updating FontGet Sources"))
+	content.WriteString(ui.PageTitle.Render("Updating Sources"))
 	content.WriteString("\n\n") // Add space between message and source list
 
 	if m.quitting {

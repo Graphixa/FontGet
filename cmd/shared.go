@@ -10,6 +10,7 @@ import (
 
 	"fontget/internal/components"
 	"fontget/internal/platform"
+	"fontget/internal/repo"
 	"fontget/internal/ui"
 
 	"github.com/fatih/color"
@@ -473,19 +474,32 @@ func truncateString(s string, maxLen int) string {
 // findSimilarFonts finds similar fonts using fuzzy matching
 // This is a unified version that works for both repository fonts and installed fonts
 func findSimilarFonts(fontName string, allFonts []string, isInstalledFonts bool) []string {
-	queryLower := strings.ToLower(fontName)
-	queryNorm := strings.ReplaceAll(queryLower, " ", "")
-	queryNorm = strings.ReplaceAll(queryNorm, "-", "")
-	queryNorm = strings.ReplaceAll(queryNorm, "_", "")
-
-	var similar []string
-	seen := make(map[string]bool)
-
 	if isInstalledFonts {
 		// For installed fonts, use simpler matching for speed
+		queryLower := strings.ToLower(fontName)
+		queryNorm := strings.ReplaceAll(queryLower, " ", "")
+		queryNorm = strings.ReplaceAll(queryNorm, "-", "")
+		queryNorm = strings.ReplaceAll(queryNorm, "_", "")
+
+		var similar []string
+		seen := make(map[string]bool)
 		similar = findMatchesInInstalledFonts(queryLower, queryNorm, allFonts, similar, seen, 5)
-	} else {
-		// For repository fonts, separate font names from font IDs for prioritized matching
+		return similar
+	}
+
+	// For repository fonts, use sophisticated scoring algorithm
+	// Use sophisticated scoring (popularity controlled by switch in sources.go)
+	similar, err := findSimilarFontsWithScoring(fontName, false)
+	if err != nil {
+		// Fallback to simple matching if sophisticated scoring fails
+		queryLower := strings.ToLower(fontName)
+		queryNorm := strings.ReplaceAll(queryLower, " ", "")
+		queryNorm = strings.ReplaceAll(queryNorm, "-", "")
+		queryNorm = strings.ReplaceAll(queryNorm, "_", "")
+
+		var fallbackSimilar []string
+
+		// Separate font names from font IDs for prioritized matching
 		var fontNames []string // "Open Sans", "Roboto", etc.
 		var fontIDs []string   // "google.roboto", "nerd.fira-code", etc.
 
@@ -498,16 +512,52 @@ func findSimilarFonts(fontName string, allFonts []string, isInstalledFonts bool)
 		}
 
 		// Phase 1: Check font names first (higher priority)
-		similar = findMatchesInList(queryLower, queryNorm, fontNames, similar, 5)
+		fallbackSimilar = findMatchesInList(queryLower, queryNorm, fontNames, fallbackSimilar, 5)
 
 		// Phase 2: If we need more results, check font IDs
-		if len(similar) < 5 {
-			remaining := 5 - len(similar)
-			similar = findMatchesInList(queryLower, queryNorm, fontIDs, similar, remaining)
+		if len(fallbackSimilar) < 5 {
+			remaining := 5 - len(fallbackSimilar)
+			fallbackSimilar = findMatchesInList(queryLower, queryNorm, fontIDs, fallbackSimilar, remaining)
 		}
+
+		return fallbackSimilar
 	}
 
 	return similar
+}
+
+// findSimilarFontsWithScoring finds similar fonts using the sophisticated scoring algorithm
+// This provides better matching with position-based scoring and optional popularity support
+func findSimilarFontsWithScoring(fontName string, usePopularity bool) ([]string, error) {
+	// Get repository for sophisticated scoring
+	r, err := repo.GetRepository()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize repository: %w", err)
+	}
+
+	// Use the repository's search function (popularity controlled by switch in sources.go)
+	results, err := r.SearchFonts(fontName, "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to search fonts: %w", err)
+	}
+
+	// Convert SearchResults to font names/IDs for display
+	var similar []string
+	for _, result := range results {
+		// Prefer font name if available, otherwise use ID
+		if result.Name != "" {
+			similar = append(similar, result.Name)
+		} else {
+			similar = append(similar, result.ID)
+		}
+
+		// Limit to 5 results
+		if len(similar) >= 5 {
+			break
+		}
+	}
+
+	return similar, nil
 }
 
 // findMatchesInInstalledFonts performs fuzzy matching on installed fonts (simplified for speed)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -641,6 +642,9 @@ func GetAllFontsCached() []string {
 			}
 		}
 	}
+
+	// Sort the results to make them deterministic (Go map iteration order is not guaranteed)
+	sort.Strings(allFonts)
 
 	return allFonts
 }

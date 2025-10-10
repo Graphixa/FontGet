@@ -94,6 +94,37 @@ func validateConfigurationSection(config map[string]interface{}) ValidationError
 	}
 	// If DefaultEditor doesn't exist, that's fine - it's optional
 
+	// Validate UsePopularitySort (required boolean)
+	if usePopularitySort, exists := config["UsePopularitySort"]; exists {
+		switch v := usePopularitySort.(type) {
+		case bool:
+			// Valid boolean value
+		case string:
+			// Try to convert string to bool
+			switch strings.ToLower(v) {
+			case "true", "1", "yes":
+				// Valid boolean string
+			case "false", "0", "no":
+				// Valid boolean string
+			default:
+				errors = append(errors, ValidationError{
+					Field:   "Configuration.UsePopularitySort",
+					Message: fmt.Sprintf("must be a boolean, got string '%s'", v),
+				})
+			}
+		default:
+			errors = append(errors, ValidationError{
+				Field:   "Configuration.UsePopularitySort",
+				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(usePopularitySort)),
+			})
+		}
+	} else {
+		errors = append(errors, ValidationError{
+			Field:   "Configuration.UsePopularitySort",
+			Message: "field is required",
+		})
+	}
+
 	return errors
 }
 

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"fontget/internal/config"
@@ -220,6 +221,43 @@ var searchCmd = &cobra.Command{
 					TableColLicense, truncateString(licenses[i], TableColLicense),
 					TableColCategories, truncateString(categories[i], TableColCategories),
 					TableColSource, truncateString(sources[i], TableColSource))
+				// Add detailed score breakdown for debugging (only when --debug flag is enabled)
+				// This shows the base score + match type + popularity breakdown
+				baseScore := 50 // Base score from config
+				// Check if popularity scoring is enabled
+				userPrefs := config.GetUserPreferences()
+				usePopularity := userPrefs.Configuration.UsePopularitySort
+				var popularityBonus int
+				if usePopularity {
+					popularityBonus = results[i].Popularity / 2 // Correct popularity calculation (divisor = 2)
+				} else {
+					popularityBonus = 0 // No popularity bonus when disabled
+				}
+
+				// Calculate match bonus by reverse-engineering from final score
+				// Account for length penalty by estimating the original score before penalty
+				queryLength := len(query)
+				fontLength := len(results[i].Name)
+				lengthRatio := float64(queryLength) / float64(fontLength)
+
+				// Estimate original score before length penalty
+				var estimatedOriginalScore int
+				if lengthRatio < 0.5 {
+					// Length penalty was applied, estimate original score
+					lengthPenaltyEffectiveness := math.Sqrt(lengthRatio)
+					estimatedOriginalScore = int(float64(results[i].Score) / lengthPenaltyEffectiveness)
+				} else {
+					// No length penalty applied
+					estimatedOriginalScore = results[i].Score
+				}
+
+				matchBonus := estimatedOriginalScore - baseScore - popularityBonus
+
+				// Use the actual match type from the search results
+				matchType := results[i].MatchType
+
+				output.GetDebug().State("Font '%s': Position=%d/%d, Base=%d, Match=%s(+%d), Popularity=%d(+%d), Final=%d",
+					results[i].Name, i+1, len(results), baseScore, matchType, matchBonus, results[i].Popularity, popularityBonus, results[i].Score)
 			}
 		} else {
 			// Use dynamic widths
@@ -238,6 +276,43 @@ var searchCmd = &cobra.Command{
 					maxLicense, licenses[i],
 					maxCategories, categories[i],
 					maxSource, sources[i])
+				// Add detailed score breakdown for debugging (only when --debug flag is enabled)
+				// This shows the base score + match type + popularity breakdown
+				baseScore := 50 // Base score from config
+				// Check if popularity scoring is enabled
+				userPrefs := config.GetUserPreferences()
+				usePopularity := userPrefs.Configuration.UsePopularitySort
+				var popularityBonus int
+				if usePopularity {
+					popularityBonus = results[i].Popularity / 2 // Correct popularity calculation (divisor = 2)
+				} else {
+					popularityBonus = 0 // No popularity bonus when disabled
+				}
+
+				// Calculate match bonus by reverse-engineering from final score
+				// Account for length penalty by estimating the original score before penalty
+				queryLength := len(query)
+				fontLength := len(results[i].Name)
+				lengthRatio := float64(queryLength) / float64(fontLength)
+
+				// Estimate original score before length penalty
+				var estimatedOriginalScore int
+				if lengthRatio < 0.5 {
+					// Length penalty was applied, estimate original score
+					lengthPenaltyEffectiveness := math.Sqrt(lengthRatio)
+					estimatedOriginalScore = int(float64(results[i].Score) / lengthPenaltyEffectiveness)
+				} else {
+					// No length penalty applied
+					estimatedOriginalScore = results[i].Score
+				}
+
+				matchBonus := estimatedOriginalScore - baseScore - popularityBonus
+
+				// Use the actual match type from the search results
+				matchType := results[i].MatchType
+
+				output.GetDebug().State("Font '%s': Position=%d/%d, Base=%d, Match=%s(+%d), Popularity=%d(+%d), Final=%d",
+					results[i].Name, i+1, len(results), baseScore, matchType, matchBonus, results[i].Popularity, popularityBonus, results[i].Score)
 			}
 		}
 

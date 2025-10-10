@@ -8,5 +8,7 @@ type SearchResult struct {
 	SourceName string   `json:"source_name"`
 	License    string   `json:"license"`
 	Categories []string `json:"categories,omitempty"`
+	Popularity int      `json:"popularity,omitempty"`
 	Score      int      `json:"-"` // Internal score for sorting
+	MatchType  string   `json:"-"` // Internal match type for debugging
 }
