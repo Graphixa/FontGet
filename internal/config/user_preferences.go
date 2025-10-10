@@ -191,6 +191,7 @@ func SaveUserPreferences(config *AppConfig) error {
 func saveDefaultAppConfigWithComments(configPath string) error {
 	configContent := `Configuration:
   DefaultEditor: "" # set your own default editor for fontget (e.g. 'code', 'notepad.exe', 'nano', etc.)
+  UsePopularitySort: true # Fonts will be returned by their match and popularity first, then by alphabetical order. This may mean that popular fonts appear higher in search results.
 Logging:
   LogPath: "$home/.fontget/logs/fontget.log"
   MaxSize: "10MB"
