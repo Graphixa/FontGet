@@ -258,7 +258,7 @@ type FontMatch struct {
 
 // FindFontMatches finds all fonts matching the given name across all sources
 func FindFontMatches(fontName string) ([]FontMatch, error) {
-	// Get repository (same as search command)
+	// Get repository
 	r, err := GetRepository()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get repository: %w", err)
@@ -271,8 +271,49 @@ func FindFontMatches(fontName string) ([]FontMatch, error) {
 
 	var matches []FontMatch
 
-	// Search through all sources
+	// Search through all sources in source priority order
+	sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+
+	// First check predefined sources in priority order
+	for _, sourceName := range sourceOrder {
+		if source, exists := manifest.Sources[sourceName]; exists {
+			for id, font := range source.Fonts {
+				// Check both the font name and ID with case-insensitive comparison
+				fontNameLower := strings.ToLower(font.Name)
+				idLower := strings.ToLower(id)
+				fontNameNoSpacesLower := strings.ReplaceAll(fontNameLower, " ", "")
+				idNoSpacesLower := strings.ReplaceAll(idLower, " ", "")
+
+				// Check for exact match
+				if fontNameLower == fontName ||
+					fontNameNoSpacesLower == fontNameNoSpaces ||
+					idLower == fontName ||
+					idNoSpacesLower == fontNameNoSpaces {
+					matches = append(matches, FontMatch{
+						ID:       id,
+						Name:     font.Name,
+						Source:   sourceName,
+						FontInfo: font,
+					})
+				}
+			}
+		}
+	}
+
+	// Then check any custom sources (not in predefined list)
 	for sourceName, source := range manifest.Sources {
+		// Skip if already processed
+		isPredefined := false
+		for _, predefined := range sourceOrder {
+			if sourceName == predefined {
+				isPredefined = true
+				break
+			}
+		}
+		if isPredefined {
+			continue
+		}
+
 		for id, font := range source.Fonts {
 			// Check both the font name and ID with case-insensitive comparison
 			fontNameLower := strings.ToLower(font.Name)

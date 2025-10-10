@@ -30,9 +30,8 @@ func SetPopularityScoring() {
 
 // SearchConfig contains all tunable parameters for the search algorithm
 type SearchConfig struct {
-	BaseScore     int
-	SourceBonuses map[string]int
-	MatchBonuses  struct {
+	BaseScore    int
+	MatchBonuses struct {
 		ExactMatch      int
 		PrefixMatch     int
 		ContainsMatch   int
@@ -48,12 +47,6 @@ type SearchConfig struct {
 func DefaultSearchConfig() SearchConfig {
 	return SearchConfig{
 		BaseScore: 50,
-		SourceBonuses: map[string]int{
-			"Google Fonts":  3,
-			"Nerd Fonts":    2,
-			"Font Squirrel": 1,
-			// Custom sources get +0 (handled in getSourceBonus)
-		},
 		MatchBonuses: struct {
 			ExactMatch      int
 			PrefixMatch     int
@@ -71,14 +64,6 @@ func DefaultSearchConfig() SearchConfig {
 		PopularityDivisor:       2,      // Reduced from 4 to 2 for strong influence (0-50 points)
 		PopularityEffectiveness: "sqrt", // "linear", "sqrt", or "quadratic"
 	}
-}
-
-// getSourceBonus returns the source bonus for a given source name
-func getSourceBonus(sourceName string, config SearchConfig) int {
-	if bonus, exists := config.SourceBonuses[sourceName]; exists {
-		return bonus
-	}
-	return 0 // Custom sources get no bonus
 }
 
 // Source priority order for consistent sorting across all commands
@@ -101,7 +86,6 @@ func getSourcePriority(sourceName string) int {
 
 const (
 	// Directory structure
-	sourcesDir     = "sources"
 	updateInterval = 24 * time.Hour
 
 	// FontGet-Sources URLs
@@ -139,20 +123,6 @@ func getFontGetDir() (string, error) {
 		return "", fmt.Errorf("failed to get user home directory: %w", err)
 	}
 	return filepath.Join(home, ".fontget"), nil
-}
-
-// getSourcesDir returns the path to the user's ~/.fontget/sources directory
-func getSourcesDir() (string, error) {
-	fontGetDir, err := getFontGetDir()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(fontGetDir, sourcesDir), nil
-}
-
-// loadSourceData loads a single source file from FontGet-Sources
-func loadSourceData(url string, sourceName string, progress ProgressCallback) (*SourceData, error) {
-	return loadSourceDataWithCache(url, sourceName, progress, false)
 }
 
 func loadSourceDataWithCache(url string, sourceName string, progress ProgressCallback, forceRefresh bool) (*SourceData, error) {
@@ -238,7 +208,7 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 }
 
 // loadSourceDataFromCacheOnly loads source data from cache only (no refresh)
-func loadSourceDataFromCacheOnly(url string, sourceName string) (*SourceData, error) {
+func loadSourceDataFromCacheOnly(_ string, sourceName string) (*SourceData, error) {
 	// Get cache directory
 	cacheDir, err := getFontGetDir()
 	if err != nil {
@@ -266,11 +236,6 @@ func loadSourceDataFromCacheOnly(url string, sourceName string) (*SourceData, er
 	}
 
 	return &sourceData, nil
-}
-
-// loadAllSources loads all enabled sources and merges them into a combined manifest
-func loadAllSources(manifest *config.Manifest, progress ProgressCallback) (*FontManifest, error) {
-	return loadAllSourcesWithCache(manifest, progress, false)
 }
 
 // loadAllSourcesFromCacheOnly loads all enabled sources from cache only (no refresh)
@@ -493,29 +458,6 @@ func loadAllSourcesWithCache(manifest *config.Manifest, progress ProgressCallbac
 	return fontManifest, nil
 }
 
-// ensureSourcesDir ensures the sources directory exists
-func ensureSourcesDir() (string, error) {
-	// First ensure .fontget directory exists
-	fontGetDir, err := getFontGetDir()
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(fontGetDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create .fontget directory: %w", err)
-	}
-
-	// Then ensure sources directory exists
-	sourcesDir, err := getSourcesDir()
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(sourcesDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create sources directory: %w", err)
-	}
-
-	return sourcesDir, nil
-}
-
 // ProgressCallback is a function type for reporting progress
 type ProgressCallback func(current, total int, message string)
 
@@ -718,7 +660,7 @@ func (r *Repository) SearchFontsWithOptions(query string, category string, usePo
 			fontID := strings.ToLower(id)
 
 			// Use the advanced scoring algorithm (popularity controlled by global variable)
-			score, matchType := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, source.Name)
+			score, matchType := r.calculateMatchScoreWithOptions(query, fontName, fontID, font)
 			if score > 0 {
 				result := r.createSearchResult(id, font, sourceID, source.Name)
 				result.Score = score
@@ -739,18 +681,10 @@ func (r *Repository) SearchFontsWithOptions(query string, category string, usePo
 	return results, nil
 }
 
-// calculateMatchScore calculates a score for how well a font matches the query
-func (r *Repository) calculateMatchScore(query, fontName, fontID string, font FontInfo) int {
-	// This function is used in contexts where source name is not available
-	// For now, we'll use a default source name - this should be updated to pass source name
-	score, _ := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, "Unknown")
-	return score
-}
-
 // calculateMatchScoreWithOptions calculates a score for how well a font matches the query
 // using the new configurable algorithm with base score, source priority, and match bonuses
 // Returns both the score and the match type for debugging
-func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID string, font FontInfo, sourceName string) (int, string) {
+func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID string, font FontInfo) (int, string) {
 	config := DefaultSearchConfig()
 
 	// Phase 1: Base Score only (source priority applied in sorting logic)

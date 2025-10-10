@@ -528,7 +528,7 @@ func findSimilarFonts(fontName string, allFonts []string, isInstalledFonts bool)
 
 // findSimilarFontsWithScoring finds similar fonts using the sophisticated scoring algorithm
 // This provides better matching with position-based scoring and optional popularity support
-func findSimilarFontsWithScoring(fontName string, usePopularity bool) ([]string, error) {
+func findSimilarFontsWithScoring(fontName string, _ bool) ([]string, error) {
 	// Get repository for sophisticated scoring
 	r, err := repo.GetRepository()
 	if err != nil {
@@ -544,12 +544,8 @@ func findSimilarFontsWithScoring(fontName string, usePopularity bool) ([]string,
 	// Convert SearchResults to font names/IDs for display
 	var similar []string
 	for _, result := range results {
-		// Prefer font name if available, otherwise use ID
-		if result.Name != "" {
-			similar = append(similar, result.Name)
-		} else {
-			similar = append(similar, result.ID)
-		}
+		// Use the full ID to preserve source information for proper sorting
+		similar = append(similar, result.ID)
 
 		// Limit to 5 results
 		if len(similar) >= 5 {
