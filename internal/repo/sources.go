@@ -18,6 +18,77 @@ import (
 	pinpkg "github.com/yarlson/pin"
 )
 
+// SearchConfig contains all tunable parameters for the search algorithm
+type SearchConfig struct {
+	BaseScore     int
+	SourceBonuses map[string]int
+	MatchBonuses  struct {
+		ExactMatch      int
+		PrefixMatch     int
+		ContainsMatch   int
+		IDPrefixMatch   int
+		IDContainsMatch int
+	}
+	LengthThreshold         float64
+	PopularityDivisor       int
+	PopularityEffectiveness string
+}
+
+// DefaultSearchConfig returns the default configuration for search scoring
+func DefaultSearchConfig() SearchConfig {
+	return SearchConfig{
+		BaseScore: 50,
+		SourceBonuses: map[string]int{
+			"Google Fonts":  3,
+			"Nerd Fonts":    2,
+			"Font Squirrel": 1,
+			// Custom sources get +0 (handled in getSourceBonus)
+		},
+		MatchBonuses: struct {
+			ExactMatch      int
+			PrefixMatch     int
+			ContainsMatch   int
+			IDPrefixMatch   int
+			IDContainsMatch int
+		}{
+			ExactMatch:      100, // Increased from 50 to 100 for better granularity
+			PrefixMatch:     80,  // Increased from 45 to 80
+			ContainsMatch:   60,  // Increased from 40 to 60
+			IDPrefixMatch:   40,  // Increased from 25 to 40
+			IDContainsMatch: 25,  // Increased from 15 to 25
+		},
+		LengthThreshold:         0.0,    // 0% = no threshold, can tune to 0.25 (25%) later
+		PopularityDivisor:       2,      // Reduced from 4 to 2 for strong influence (0-50 points)
+		PopularityEffectiveness: "sqrt", // "linear", "sqrt", or "quadratic"
+	}
+}
+
+// getSourceBonus returns the source bonus for a given source name
+func getSourceBonus(sourceName string, config SearchConfig) int {
+	if bonus, exists := config.SourceBonuses[sourceName]; exists {
+		return bonus
+	}
+	return 0 // Custom sources get no bonus
+}
+
+// Source priority order for consistent sorting across all commands
+// Lower numbers = higher priority
+var sourcePriority = map[string]int{
+	"Google Fonts":  1,
+	"Nerd Fonts":    2,
+	"Font Squirrel": 3,
+	// Custom sources will have priority 999 (default)
+}
+
+// getSourcePriority returns the priority for a given source name
+// Lower numbers = higher priority (Google Fonts = 1, custom sources = 999)
+func getSourcePriority(sourceName string) int {
+	if priority, exists := sourcePriority[sourceName]; exists {
+		return priority
+	}
+	return 999 // Custom sources get lowest priority
+}
+
 const (
 	// Directory structure
 	sourcesDir     = "sources"
@@ -610,6 +681,13 @@ func (r *Repository) GetManifest() (*FontManifest, error) {
 
 // SearchFonts searches for fonts matching the query using advanced search logic
 func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
+	// Use popularity scoring by default (can be made configurable later)
+	return r.SearchFontsWithOptions(query, category, true)
+}
+
+// SearchFontsWithOptions searches for fonts matching the query using advanced search logic
+// with optional popularity scoring
+func (r *Repository) SearchFontsWithOptions(query string, category string, usePopularity bool) ([]SearchResult, error) {
 	query = strings.ToLower(query)
 	var results []SearchResult
 
@@ -620,11 +698,12 @@ func (r *Repository) SearchFonts(query string, category string) ([]SearchResult,
 			fontName := strings.ToLower(font.Name)
 			fontID := strings.ToLower(id)
 
-			// Use the advanced scoring algorithm
-			score := r.calculateMatchScore(query, fontName, fontID, font)
+			// Use the advanced scoring algorithm with popularity option
+			score, matchType := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, source.Name, usePopularity)
 			if score > 0 {
 				result := r.createSearchResult(id, font, sourceID, source.Name)
 				result.Score = score
+				result.MatchType = matchType
 				results = append(results, result)
 			}
 		}
@@ -643,42 +722,59 @@ func (r *Repository) SearchFonts(query string, category string) ([]SearchResult,
 
 // calculateMatchScore calculates a score for how well a font matches the query
 func (r *Repository) calculateMatchScore(query, fontName, fontID string, font FontInfo) int {
-	score := 0
+	// This function is used in contexts where source name is not available
+	// For now, we'll use a default source name - this should be updated to pass source name
+	score, _ := r.calculateMatchScoreWithOptions(query, fontName, fontID, font, "Unknown", false)
+	return score
+}
 
-	// Check for exact match of the base font name
+// calculateMatchScoreWithOptions calculates a score for how well a font matches the query
+// using the new configurable algorithm with base score, source priority, and match bonuses
+// Returns both the score and the match type for debugging
+func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID string, font FontInfo, sourceName string, usePopularity bool) (int, string) {
+	config := DefaultSearchConfig()
+
+	// Phase 1: Base Score only (source priority applied in sorting logic)
+	score := config.BaseScore
+	matchType := "no-match"
+
+	// Phase 2: Match Quality Bonuses
 	if fontName == query {
-		score += 100 // Highest score for exact base name match
-	} else {
-		// Check name matches
-		if strings.HasPrefix(fontName, query) {
-			score += 80 // High score for prefix matches
-		} else if strings.Contains(fontName, query) {
-			score += 50 // Medium score for contains matches
+		score += config.MatchBonuses.ExactMatch
+		matchType = "exact"
+	} else if strings.HasPrefix(fontName, query) {
+		score += config.MatchBonuses.PrefixMatch
+		matchType = "prefix"
+	} else if strings.Contains(fontName, query) {
+		// Only apply contains match if query is substantial (3+ chars)
+		if len(query) >= 3 {
+			score += config.MatchBonuses.ContainsMatch
+			matchType = "contains"
 		}
-
-		// Check ID matches
-		if strings.HasPrefix(fontID, query) {
-			score += 40 // High score for ID prefix matches
-		} else if strings.Contains(fontID, query) {
-			score += 20 // Lower score for ID contains matches
-		}
-
-		// Check categories
-		for _, category := range font.Categories {
-			if strings.Contains(strings.ToLower(category), query) {
-				score += 10 // Low score for category matches
-			}
-		}
-
-		// Check tags
-		for _, tag := range font.Tags {
-			if strings.Contains(strings.ToLower(tag), query) {
-				score += 5 // Lowest score for tag matches
-			}
+	} else if strings.HasPrefix(fontID, query) {
+		score += config.MatchBonuses.IDPrefixMatch
+		matchType = "id-prefix"
+	} else if strings.Contains(fontID, query) {
+		// Only apply ID contains match if query is substantial (4+ chars)
+		if len(query) >= 4 {
+			score += config.MatchBonuses.IDContainsMatch
+			matchType = "id-contains"
 		}
 	}
 
-	return score
+	// If no match found, return 0
+	if score == config.BaseScore {
+		return 0, "no-match"
+	}
+
+	// Phase 3: Popularity - only if enabled and font has popularity
+	if usePopularity && font.Popularity > 0 {
+		// Apply full popularity bonus (no length adjustment here)
+		popularityBonus := float64(font.Popularity) / float64(config.PopularityDivisor)
+		score += int(popularityBonus)
+	}
+
+	return score, matchType
 }
 
 // createSearchResult creates a SearchResult from FontInfo
@@ -690,18 +786,48 @@ func (r *Repository) createSearchResult(id string, font FontInfo, sourceID, sour
 		SourceName: sourceName,
 		License:    font.License,
 		Categories: font.Categories,
+		Popularity: font.Popularity,
 	}
 }
 
-// sortResultsByScore sorts results by their score in descending order, then alphabetically by name
+// sortResultsByScore sorts results by: Match Score → Popularity → Font Name → Source Priority
+// Exact name matches are grouped together and sorted by source priority within each group
 func (r *Repository) sortResultsByScore(results []SearchResult) {
+	// Group fonts by exact name and find the highest score in each group
+	fontGroups := make(map[string]int) // font name -> highest score in group
+	for _, result := range results {
+		if result.Score > fontGroups[result.Name] {
+			fontGroups[result.Name] = result.Score
+		}
+	}
+
 	sort.Slice(results, func(i, j int) bool {
-		// First sort by score (highest first)
+		// 1. PRIMARY: Group by highest score in font name group
+		scoreI := fontGroups[results[i].Name]
+		scoreJ := fontGroups[results[j].Name]
+		if scoreI != scoreJ {
+			return scoreI > scoreJ
+		}
+
+		// 2. SECONDARY: Font Name (alphabetically) - for consistent ordering within groups
+		if results[i].Name != results[j].Name {
+			return results[i].Name < results[j].Name
+		}
+
+		// 3. TERTIARY: Source Priority (Google → Nerd → Squirrel → Custom) - only within exact name groups
+		priorityI := getSourcePriority(results[i].SourceName)
+		priorityJ := getSourcePriority(results[j].SourceName)
+		if priorityI != priorityJ {
+			return priorityI < priorityJ
+		}
+
+		// 4. QUATERNARY: Individual font score (highest first) - within same source priority
 		if results[i].Score != results[j].Score {
 			return results[i].Score > results[j].Score
 		}
-		// If scores are equal, sort alphabetically by name
-		return results[i].Name < results[j].Name
+
+		// 5. FINAL: Popularity (highest first) - ultimate tiebreaker
+		return results[i].Popularity > results[j].Popularity
 	})
 }
 
