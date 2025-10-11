@@ -80,6 +80,9 @@ fontget list --family "Roboto"
 
 # List fonts by type
 fontget list --type TTF
+
+# Show font styles in hierarchical view
+fontget list --full
 ```
 
 ---
@@ -148,6 +151,7 @@ Users need to control which sources are available and update them
 - `info` - Show sources information
 - `update` - Update source data
 - `manage` - Interactive source management
+- `validate` - Validate cached sources integrity
 
 #### Usage Example
 ```bash
@@ -159,6 +163,9 @@ fontget sources update
 
 # Interactive management
 fontget sources manage
+
+# Validate sources integrity
+fontget sources validate
 
 # Update with verbose output
 fontget sources update --verbose
@@ -204,6 +211,8 @@ Users need to customize behavior and settings
 #### Subcommands
 - `info` - Display current config
 - `edit` - Open config file in editor
+- `validate` - Validate configuration file integrity
+- `reset` - Reset configuration to defaults
 
 #### Usage Example
 ```bash
@@ -214,10 +223,10 @@ fontget config info
 fontget config edit
 
 # Validate configuration
-fontget config --validate
+fontget config validate
 
 # Reset to defaults
-fontget config --reset-defaults --validate
+fontget config reset
 ```
 
 ---
@@ -293,20 +302,23 @@ fontget import --file fonts.csv
 |---------------------|---------|-------|
 | `add` | Install fonts | `--scope, -s`, `--force, -f` |
 | `search` | Find fonts | `--category, -c` |
-| `list` | Show installed fonts | `--scope, -s`, `--family, -a`, `--type, -t` |
+| `list` | Show installed fonts | `--scope, -s`, `--family, -a`, `--type, -t`, `--full, -f` |
 | `remove` | Uninstall fonts | `--scope, -s`, `--force, -f` |
 | `info` | Show font details | `--license, -l`, `--metadata, -m` |
 | `sources` | Manage font sources |  |
 | &nbsp;&nbsp;&nbsp;- `info` | Show sources information |  |
 | &nbsp;&nbsp;&nbsp;- `update` | Update source data | `--verbose, -v` |
 | &nbsp;&nbsp;&nbsp;- `manage` | Interactive management |  |
+| &nbsp;&nbsp;&nbsp;- `validate` | Validate sources integrity |  |
 | `cache` | Manage font cache |  |
 | &nbsp;&nbsp;&nbsp;- `status` | Show cache statistics |  |
 | &nbsp;&nbsp;&nbsp;- `clear` | Clear cached data |  |
 | &nbsp;&nbsp;&nbsp;- `validate` | Validate cache integrity |  |
-| `config` | Manage configuration | `--validate`, `--reset-defaults` |
+| `config` | Manage configuration |  |
 | &nbsp;&nbsp;&nbsp;- `info` | Display current config |  |
 | &nbsp;&nbsp;&nbsp;- `edit` | Open config file in editor |  |
+| &nbsp;&nbsp;&nbsp;- `validate` | Validate configuration |  |
+| &nbsp;&nbsp;&nbsp;- `reset` | Reset to defaults |  |
 | `completion` | Generate completion script |  |
 | _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs` |
 
@@ -344,10 +356,10 @@ fontget import --file fonts.csv
 #### Font Listing
 - `--family, -a` - Filter installed fonts by family name
 - `--type, -t` - Filter installed fonts by file type (TTF, OTF, etc.)
+- `--full, -f` - Show font styles in hierarchical view
 
 #### Configuration
-- `--validate` - Validate the configuration file for errors
-- `--reset-defaults` - Reset configuration to default values (use with --validate)
+- No command-specific flags (use subcommands: `validate`, `reset`)
 
 #### Sources Management
 - `--verbose, -v` - Show detailed error messages during source updates

@@ -159,14 +159,22 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Sources management command
 **Functionality**:
 - Manages font sources (Google Fonts, Nerd Fonts, Font Squirrel)
-- Provides subcommands for info, update, and management
+- Provides subcommands for info, update, management, and validation
 - Handles source configuration and updates
+- Validates cached source integrity
 
 **Key Functions**:
 - `sourcesCmd`: Main sources command
 - `sourcesInfoCmd`: Source information display
 - `sourcesUpdateCmd`: Source update functionality
+- `sourcesValidateCmd`: Validate cached sources integrity
 - `runSourcesUpdateVerbose`: Verbose update mode
+
+**Subcommands**:
+- `info` - Show sources information
+- `update` - Update source data
+- `manage` - Interactive source management (TUI)
+- `validate` - Validate cached sources integrity
 
 **Interfaces**:
 - Uses `internal/config` for manifest management
@@ -225,15 +233,26 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Manages FontGet application configuration
 - Handles configuration file operations
 - Provides configuration validation and migration
+- Supports subcommands for different configuration operations
 
 **Key Functions**:
 - `configCmd`: Main configuration command
-- `showConfig`: Display current configuration
-- `resetConfig`: Reset configuration to defaults
+- `configInfoCmd`: Display current configuration
+- `configEditCmd`: Open configuration file in editor
+- `configValidateCmd`: Validate configuration file integrity
+- `configResetCmd`: Reset configuration to defaults
+
+**Subcommands**:
+- `info` - Display current configuration
+- `edit` - Open config file in editor
+- `validate` - Validate configuration file integrity
+- `reset` - Reset configuration to defaults
 
 **Interfaces**:
 - Uses `internal/config` for configuration operations
 - Uses `internal/output` for verbose/debug output
+- Uses `internal/components` for confirmation dialogs
+- Uses `internal/ui` for user interface
 
 **Status**: ✅ Active - Core functionality
 
