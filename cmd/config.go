@@ -1,16 +1,15 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"os"
 	"os/exec"
 	"runtime"
 
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/ui"
-
-	"errors"
 
 	"github.com/spf13/cobra"
 )
@@ -24,81 +23,8 @@ The config command allows you to view and edit the FontGet application configura
 This includes settings for the default editor, logging preferences, and other application behavior.`,
 	Example: `  fontget config info              # Show configuration information
   fontget config edit              # Open config.yaml in default editor
-  fontget config --validate        # Validate configuration file`,
+  fontget config validate          # Validate configuration file`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Check if --validate flag is set
-		validate, _ := cmd.Flags().GetBool("validate")
-		if validate {
-			// Run validation logic here
-			logger := GetLogger()
-			if logger != nil {
-				logger.Info("Validating configuration file")
-			}
-
-			output.GetVerbose().Info("Starting configuration validation")
-			output.GetDebug().State("Validation process initiated")
-
-			configPath := config.GetAppConfigPath()
-			output.GetVerbose().Info("Loading configuration from: %s", configPath)
-			output.GetDebug().State("Configuration file path: %s", configPath)
-
-			appConfig, err := config.LoadUserPreferences()
-			if err != nil {
-				if logger != nil {
-					logger.Error("Failed to load config: %v", err)
-				}
-
-				output.GetVerbose().Error("Failed to load configuration file")
-				output.GetDebug().Error("Configuration load error: %v", err)
-
-				// Extract validation errors and format them nicely
-				if validationErr, ok := err.(config.ValidationErrors); ok {
-					output.GetVerbose().Error("Configuration file contains validation errors")
-					output.GetDebug().Error("Validation errors: %v", validationErr)
-					fmt.Printf("%s\n", ui.RenderError("Your configuration file is malformed. Please fix the following problems with the file and run 'fontget config --validate' again to confirm."))
-					fmt.Printf("%s\n", validationErr.Error())
-					return nil
-				}
-
-				// Check if it's a wrapped validation error by using errors.As
-				var validationErrors config.ValidationErrors
-				if errors.As(err, &validationErrors) {
-					output.GetVerbose().Error("Configuration file contains wrapped validation errors")
-					output.GetDebug().Error("Wrapped validation errors: %v", validationErrors)
-					fmt.Printf("%s\n", ui.RenderError("Your configuration file is malformed. Please fix the following problems with the file and run 'fontget config --validate' again to confirm."))
-					fmt.Printf("%s\n", validationErrors.Error())
-					return nil
-				}
-
-				// For other errors, show the error but don't show help
-				output.GetVerbose().Error("Configuration validation failed with unexpected error")
-				output.GetDebug().Error("Unexpected validation error: %v", err)
-				fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Configuration validation failed: %v", err)))
-				return nil
-			}
-
-			output.GetVerbose().Info("Configuration file loaded successfully")
-			output.GetDebug().State("Configuration loaded: %+v", appConfig)
-
-			output.GetVerbose().Info("Validating configuration structure and values")
-			output.GetDebug().State("Running ValidateUserPreferences on loaded config")
-
-			if err := config.ValidateUserPreferences(appConfig); err != nil {
-				if logger != nil {
-					logger.Error("Configuration validation failed: %v", err)
-				}
-				output.GetVerbose().Error("Configuration validation failed")
-				output.GetDebug().Error("Validation error: %v", err)
-				fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Configuration validation failed: %v", err)))
-				return nil
-			}
-
-			output.GetVerbose().Success("Configuration validation completed successfully")
-			output.GetDebug().State("Configuration validation process completed")
-			fmt.Printf("%s\n", ui.RenderSuccess("Configuration file is valid"))
-			return nil
-		}
-
 		// If no subcommand is provided, show help
 		return cmd.Help()
 	},
@@ -136,32 +62,43 @@ var configInfoCmd = &cobra.Command{
 		output.GetVerbose().Info("Configuration loaded successfully")
 		output.GetDebug().State("Configuration loaded: %+v", appConfig)
 
-		fmt.Printf("Configuration Information:\n")
-		fmt.Printf("  Location: %s\n", configPath)
-
 		// Show editor information
 		actualEditor := config.GetEditorWithFallback(appConfig)
 		output.GetVerbose().Info("Resolved editor: %s", actualEditor)
 		output.GetDebug().State("Editor resolution - DefaultEditor: '%s', Actual: '%s'", appConfig.Configuration.DefaultEditor, actualEditor)
 
 		if appConfig.Configuration.DefaultEditor == "" {
-			fmt.Printf("  Default Editor: %s (system default)\n", actualEditor)
-			fmt.Printf("  Editor Note: To customize, edit config.yaml and uncomment a DefaultEditor line\n")
 			output.GetVerbose().Info("Using system default editor")
 		} else {
-			fmt.Printf("  Default Editor: %s (custom)\n", actualEditor)
 			output.GetVerbose().Info("Using custom editor from configuration")
 		}
 
-		// Show sorting configuration
-		fmt.Printf("  Use Popularity Sort: %t\n", appConfig.Configuration.UsePopularitySort)
-
-		fmt.Printf("  Log Path: %s\n", appConfig.Logging.LogPath)
-		fmt.Printf("  Max Log Size: %s\n", appConfig.Logging.MaxSize)
-
 		output.GetVerbose().Info("Logging configuration - Path: %s, MaxSize: %s", appConfig.Logging.LogPath, appConfig.Logging.MaxSize)
 		output.GetDebug().State("Logging config: %+v", appConfig.Logging)
-		fmt.Printf("  Max Log Files: %d\n", appConfig.Logging.MaxFiles)
+
+		// Display configuration information using card components
+		fmt.Println() // Add space between command and first card
+		var cards []components.Card
+
+		// Configuration info card
+		cards = append(cards, components.ConfigurationInfoCard(
+			configPath,
+			actualEditor,
+			fmt.Sprintf("%t", appConfig.Configuration.UsePopularitySort),
+		))
+
+		// Logging configuration card
+		cards = append(cards, components.LoggingConfigCard(
+			appConfig.Logging.LogPath,
+			appConfig.Logging.MaxSize,
+			fmt.Sprintf("%d", appConfig.Logging.MaxFiles),
+		))
+
+		// Render all cards
+		if len(cards) > 0 {
+			cardModel := components.NewCardModel("", cards)
+			fmt.Println(cardModel.Render())
+		}
 		return nil
 	},
 }
@@ -261,49 +198,179 @@ var configEditCmd = &cobra.Command{
 	},
 }
 
+var configValidateCmd = &cobra.Command{
+	Use:   "validate",
+	Short: "Validate configuration file integrity",
+	Long: `Check the integrity of the configuration file and report any issues. Useful for troubleshooting configuration problems.
+
+If validation fails, you can try:
+1. Run 'fontget config edit' to open the configuration file in your editor
+2. Fix any syntax errors or invalid values
+3. Run 'fontget config validate' again to verify the configuration is valid
+
+For more help, visit: https://github.com/Graphixa/FontGet`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting configuration validation operation")
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
+		// Get configuration file path
+		output.GetVerbose().Info("Getting configuration file path")
+		output.GetDebug().State("Calling config.GetAppConfigPath()")
+		configPath := config.GetAppConfigPath()
+		output.GetVerbose().Info("Configuration file path: %s", configPath)
+		output.GetDebug().State("Configuration file path: %s", configPath)
+
+		// Display validation header
+		fmt.Printf("\n%s\n\n", ui.PageTitle.Render("Configuration Validation"))
+		fmt.Printf("Configuration Path: %s\n\n", configPath)
+
+		// Load and validate configuration
+		output.GetVerbose().Info("Loading configuration from: %s", configPath)
+		output.GetDebug().State("Calling config.LoadUserPreferences()")
+		appConfig, err := config.LoadUserPreferences()
+		if err != nil {
+			GetLogger().Error("Failed to load config: %v", err)
+			output.GetVerbose().Error("Failed to load configuration file")
+			output.GetDebug().Error("Configuration load error: %v", err)
+
+			// Handle different types of validation errors
+			if validationErr, ok := err.(config.ValidationErrors); ok {
+				output.GetVerbose().Error("Configuration file contains validation errors")
+				output.GetDebug().Error("Validation errors: %v", validationErr)
+				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
+				fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n\n%s\n", validationErr.Error())
+				return nil
+			}
+
+			// Check if it's a wrapped validation error
+			var validationErrors config.ValidationErrors
+			if errors.As(err, &validationErrors) {
+				output.GetVerbose().Error("Configuration file contains wrapped validation errors")
+				output.GetDebug().Error("Wrapped validation errors: %v", validationErrors)
+				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
+				fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n\n%s\n", validationErrors.Error())
+				return nil
+			}
+
+			// For other errors
+			output.GetVerbose().Error("Configuration validation failed with unexpected error")
+			output.GetDebug().Error("Unexpected validation error: %v", err)
+			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
+			fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+			fmt.Printf("Unexpected error: %v\n", err)
+			return nil
+		}
+
+		output.GetVerbose().Info("Configuration file loaded successfully")
+		output.GetDebug().State("Configuration loaded: %+v", appConfig)
+
+		// Validate configuration structure and values
+		output.GetVerbose().Info("Validating configuration structure and values")
+		output.GetDebug().State("Calling config.ValidateUserPreferences()")
+		if err := config.ValidateUserPreferences(appConfig); err != nil {
+			GetLogger().Error("Configuration validation failed: %v", err)
+			output.GetVerbose().Error("Configuration validation failed")
+			output.GetDebug().Error("Validation error: %v", err)
+			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
+			fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+			fmt.Printf("Validation error: %v\n", err)
+			return nil
+		}
+
+		// Success - show validation results
+		output.GetVerbose().Success("Configuration validation completed successfully")
+		output.GetDebug().State("Configuration validation process completed")
+		fmt.Printf("  ✓ %s | %s\n", "config.yaml", ui.FeedbackSuccess.Render("Valid"))
+		fmt.Printf("\n%s\n", ui.FeedbackSuccess.Render("Configuration file is valid"))
+
+		GetLogger().Info("Configuration validation operation completed successfully")
+		return nil
+	},
+}
+
+var configResetCmd = &cobra.Command{
+	Use:   "reset",
+	Short: "Reset configuration to defaults",
+	Long: `Reset the FontGet configuration file to default values. This is useful when your configuration file becomes corrupted or you want to start fresh.
+
+This command will:
+1. Generate a new default configuration file
+2. Replace the existing configuration file
+3. Preserve any existing log files
+
+For more help, visit: https://github.com/Graphixa/FontGet`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting configuration reset operation")
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
+		// Get configuration file path
+		output.GetVerbose().Info("Getting configuration file path")
+		output.GetDebug().State("Calling config.GetAppConfigPath()")
+		configPath := config.GetAppConfigPath()
+		output.GetVerbose().Info("Configuration file path: %s", configPath)
+		output.GetDebug().State("Configuration file path: %s", configPath)
+
+		// Show confirmation dialog
+		output.GetVerbose().Info("Showing confirmation dialog")
+		output.GetDebug().State("Creating confirmation dialog for config reset")
+
+		confirmed, err := components.RunConfirm(
+			"Reset Configuration",
+			"Are you sure you want to reset your configuration to defaults?\nThis will set all settings back to their default values.",
+		)
+		if err != nil {
+			GetLogger().Error("Confirmation dialog failed: %v", err)
+			output.GetVerbose().Error("Confirmation dialog failed")
+			output.GetDebug().Error("Dialog error: %v", err)
+			fmt.Printf("%s\n", ui.FeedbackError.Render("Confirmation dialog failed\n"))
+			return fmt.Errorf("confirmation dialog failed: %w", err)
+		}
+
+		if !confirmed {
+			output.GetVerbose().Info("User cancelled configuration reset")
+			output.GetDebug().State("User chose not to reset configuration")
+			fmt.Printf("%s\n", ui.FeedbackWarning.Render("Configuration reset cancelled, no changes have been made.\n"))
+			return nil
+		}
+
+		// User confirmed - proceed with reset
+		output.GetVerbose().Info("User confirmed configuration reset")
+		output.GetDebug().State("Proceeding with configuration reset")
+
+		// Generate default configuration
+		output.GetVerbose().Info("Generating default configuration")
+		output.GetDebug().State("Calling config.GenerateInitialUserPreferences()")
+		if err := config.GenerateInitialUserPreferences(); err != nil {
+			GetLogger().Error("Failed to generate default config: %v", err)
+			output.GetVerbose().Error("Failed to generate default configuration")
+			output.GetDebug().Error("Configuration generation error: %v", err)
+			fmt.Printf("%s\n", ui.FeedbackError.Render("Configuration reset failed\n"))
+			fmt.Printf("Failed to generate default configuration: %v\n", err)
+			return nil
+		}
+
+		// Success - show reset results
+		output.GetVerbose().Success("Configuration reset completed successfully\n")
+		output.GetDebug().State("Configuration reset process completed")
+		fmt.Printf("%s\n", ui.FeedbackSuccess.Render("Configuration has been reset to defaults\n"))
+
+		GetLogger().Info("Configuration reset operation completed successfully")
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
 
 	// Add subcommands
 	configCmd.AddCommand(configInfoCmd)
 	configCmd.AddCommand(configEditCmd)
-
-	// Add validate flag (no alias to avoid conflicts)
-	configCmd.Flags().Bool("validate", false, "Validate configuration file")
-	// Add reset-defaults flag
-	configCmd.Flags().Bool("reset-defaults", false, "Reset configuration to defaults (use with --validate)")
-
-	// Handle reset-defaults logic in PreRunE
-	configCmd.PreRunE = func(cmd *cobra.Command, args []string) error {
-		resetDefaults, _ := cmd.Flags().GetBool("reset-defaults")
-
-		if resetDefaults {
-			logger := GetLogger()
-			if logger != nil {
-				logger.Info("Resetting configuration to defaults")
-			}
-
-			output.GetVerbose().Info("Starting configuration reset to defaults")
-			output.GetDebug().State("Reset defaults command initiated")
-
-			output.GetVerbose().Info("Generating initial user preferences")
-			output.GetDebug().State("Calling config.GenerateInitialUserPreferences()")
-
-			if err := config.GenerateInitialUserPreferences(); err != nil {
-				if logger != nil {
-					logger.Error("Failed to generate default config: %v", err)
-				}
-				output.GetVerbose().Error("Failed to generate default configuration")
-				output.GetDebug().Error("Configuration generation error: %v", err)
-				return fmt.Errorf("failed to reset configuration: %w", err)
-			}
-
-			output.GetVerbose().Success("Configuration reset to defaults completed successfully")
-			output.GetDebug().State("Configuration reset process completed")
-			fmt.Printf("%s\n", ui.RenderSuccess("Configuration reset to defaults successfully"))
-			// Exit early to prevent help from showing
-			os.Exit(0)
-		}
-		return nil
-	}
+	configCmd.AddCommand(configValidateCmd)
+	configCmd.AddCommand(configResetCmd)
 }

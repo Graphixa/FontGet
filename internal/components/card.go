@@ -296,3 +296,37 @@ func CustomCard(title, content string) Card {
 func CustomCardWithSections(title string, sections []CardSection) Card {
 	return NewCardWithSections(title, sections)
 }
+
+// ConfigurationInfoCard creates a card for configuration information
+func ConfigurationInfoCard(configPath, editor, usePopularitySort string) Card {
+	sections := []CardSection{
+		{Label: "Location", Value: configPath},
+		{Label: "Default Editor", Value: editor},
+		{Label: "Use Popularity Sort", Value: usePopularitySort},
+	}
+
+	return NewCardWithSections("Configuration Information", sections)
+}
+
+// LoggingConfigCard creates a card for logging configuration
+func LoggingConfigCard(logPath, maxSize, maxFiles string) Card {
+	sections := []CardSection{
+		{Label: "Log Path", Value: logPath},
+		{Label: "Max Log Size", Value: maxSize},
+		{Label: "Max Log Files", Value: maxFiles},
+	}
+
+	return NewCardWithSections("Log Settings", sections)
+}
+
+// ValidationResultCard creates a card for validation results
+func ValidationResultCard(isValid bool, message string) Card {
+	title := "Configuration Validation"
+	if isValid {
+		title = "✓ Configuration Validation"
+	} else {
+		title = "✗ Configuration Validation"
+	}
+
+	return NewCard(title, message)
+}
