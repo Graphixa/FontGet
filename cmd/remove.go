@@ -499,6 +499,9 @@ Use --force to override critical system font protection.
 			output.GetVerbose().Info("Scope: %s", scopeDisplay)
 			output.GetVerbose().Info("Force mode: %v", forceFlag)
 			output.GetVerbose().Info("Removing %d font(s)", len(args))
+			// Add single blank line after verbose output (matches add command behavior)
+			// This creates the blank line between verbose info and "not found" message when no fonts found
+			fmt.Println()
 		}
 
 		// Determine which scopes to check
@@ -608,6 +611,35 @@ Use --force to override critical system font protection.
 					}
 				}
 			}
+		}
+
+		// If no fonts to remove, show not found message and exit (don't show progress bar)
+		if len(foundFonts) == 0 {
+			// Show not found fonts message
+			if len(notFoundFonts) > 0 {
+				// In verbose mode, verbose output already ends with \n, so we need one more for blank line
+				// In non-verbose mode, we need to add a blank line before the message
+				// Match add command behavior: only add blank line in non-verbose mode
+				if !IsVerbose() {
+					fmt.Println()
+				}
+				// Format scope for display
+				scopeDisplay := scopeFlag
+				if scopeDisplay == "" {
+					scopeDisplay = "user"
+				}
+				// Format message to match add command style
+				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following fonts were not found installed in the '%s' scope:", scopeDisplay)))
+				for _, fontName := range notFoundFonts {
+					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
+				}
+				// Add blank line before "Try using..." message
+				fmt.Println()
+				fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
+				// Add blank line after message before prompt
+				fmt.Println()
+			}
+			return nil
 		}
 
 		// For --all scope, require elevation upfront
@@ -837,12 +869,24 @@ Use --force to override critical system font protection.
 
 			// Show not found fonts right after progress bar output (before status report)
 			if len(notFoundFonts) > 0 {
-				// Add blank line to separate from removal list
+				// Progress bar ends with \n - add \n to create blank line before "not found" messages
 				fmt.Println()
-				for _, fontName := range notFoundFonts {
-					errorMsg := fmt.Sprintf("'%s' not found - use 'Fontget List' to show currently installed fonts", fontName)
-					fmt.Printf("%s\n", ui.FeedbackError.Render(errorMsg))
+				// Format scope for display
+				scopeDisplay := scopeFlag
+				if scopeDisplay == "" {
+					scopeDisplay = "user"
 				}
+				// Format message to match add command style
+				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following fonts were not found installed in the '%s' scope:", scopeDisplay)))
+				for _, fontName := range notFoundFonts {
+					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
+				}
+				// Add blank line before "Try using..." message
+				fmt.Println()
+				fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
+				// Add blank line after "not found" messages before prompt
+				// (Status report will only show if there were operations, so we need spacing here)
+				fmt.Println()
 			}
 
 			// Print status report last (after error messages)
@@ -1213,16 +1257,29 @@ Use --force to override critical system font protection.
 
 		// Show not found fonts right after progress bar output (before status report)
 		if len(notFoundFonts) > 0 {
-			// Add blank line to separate from removal list
+			// Progress bar ends with \n - add \n to create blank line before "not found" messages
 			fmt.Println()
-			for _, fontName := range notFoundFonts {
-				errorMsg := fmt.Sprintf("'%s' not found - use 'Fontget List' to show currently installed fonts", fontName)
-				fmt.Printf("%s\n", ui.FeedbackError.Render(errorMsg))
+			// Format scope for display
+			scopeDisplay := scopeFlag
+			if scopeDisplay == "" {
+				scopeDisplay = "user"
 			}
+			// Format message to match add command style
+			fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following fonts were not found installed in the '%s' scope:", scopeDisplay)))
+			for _, fontName := range notFoundFonts {
+				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
+			}
+			// Add blank line before "Try using..." message
+			fmt.Println()
+			fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
+			// Add blank line after "not found" messages before prompt
+			// (Status report will only show if there were operations, so we need spacing here)
+			fmt.Println()
 		}
 
 		// Show informational message about fonts in both scopes (before status report)
 		if len(fontsInMachineScope) > 0 {
+			// Add blank line before machine scope messages
 			fmt.Println()
 			for _, fontName := range fontsInMachineScope {
 				output.GetVerbose().Info("%s is also installed in the machine scope", fontName)
@@ -1239,8 +1296,10 @@ Use --force to override critical system font protection.
 			FailedLabel:  "Failed",
 		})
 
-		// Add blank line after status report before command prompt returns
-		if !IsVerbose() {
+		// If no status report and no other messages, add blank line before prompt
+		// (Status report already ends with \n\n, so no need to add another blank line)
+		if !IsVerbose() && len(notFoundFonts) == 0 && len(fontsInMachineScope) == 0 {
+			// Progress bar ends with \n - add \n to create blank line before prompt
 			fmt.Println()
 		}
 
