@@ -628,16 +628,86 @@ Use --force to override critical system font protection.
 				if scopeDisplay == "" {
 					scopeDisplay = "user"
 				}
-				// Format message to match add command style
-				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following fonts were not found installed in the '%s' scope:", scopeDisplay)))
-				for _, fontName := range notFoundFonts {
-					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
+				// Check if fonts are available in the opposite scope (only for single scope operations)
+				fontsInOppositeScope := make(map[string]string) // Maps search name to proper name in opposite scope
+				oppositeScopeName := ""
+				if len(scopes) == 1 {
+					var oppositeScope platform.InstallationScope
+					if scopes[0] == platform.UserScope {
+						oppositeScope = platform.MachineScope
+						oppositeScopeName = "machine"
+					} else if scopes[0] == platform.MachineScope {
+						oppositeScope = platform.UserScope
+						oppositeScopeName = "user"
+					}
+
+					// Check each not found font in the opposite scope
+					if oppositeScope != "" {
+						for _, fontName := range notFoundFonts {
+							// Try direct match first
+							matchingFonts := findFontFamilyFiles(fontName, fontManager, oppositeScope)
+							if len(matchingFonts) == 0 {
+								// Try repository search
+								results, err := r.SearchFonts(fontName, "false")
+								if err == nil && len(results) > 0 {
+									searchName := results[0].Name
+									matchingFonts = findFontFamilyFiles(searchName, fontManager, oppositeScope)
+								}
+							}
+							if len(matchingFonts) > 0 {
+								// Extract proper name for display
+								fontDir := fontManager.GetFontDir(oppositeScope)
+								firstFontPath := filepath.Join(fontDir, matchingFonts[0])
+								properName := extractFontFamilyNameFromPath(firstFontPath)
+								fontsInOppositeScope[fontName] = properName
+							}
+						}
+					}
 				}
-				// Add blank line before "Try using..." message
-				fmt.Println()
-				fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
-				// Add blank line after message before prompt
-				fmt.Println()
+
+				// Separate fonts into two groups: truly not found vs found in opposite scope
+				trulyNotFound := []string{}
+				for _, fontName := range notFoundFonts {
+					if _, foundInOpposite := fontsInOppositeScope[fontName]; !foundInOpposite {
+						trulyNotFound = append(trulyNotFound, fontName)
+					}
+				}
+
+				// Display truly not found fonts (only if there are any)
+				if len(trulyNotFound) > 0 {
+					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
+					for _, fontName := range trulyNotFound {
+						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
+					}
+				}
+
+				// Display fonts found in opposite scope as a separate section
+				if len(fontsInOppositeScope) > 0 {
+					// Add blank line before the opposite scope section (if we showed "not found" section)
+					if len(trulyNotFound) > 0 {
+						fmt.Println()
+					}
+					// Use FeedbackWarning (yellow, no bold) for the header message
+					fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
+					for _, fontName := range notFoundFonts {
+						if properName, foundInOpposite := fontsInOppositeScope[fontName]; foundInOpposite {
+							fmt.Printf("  - %s\n", properName)
+						}
+					}
+					// Add blank line after the list before prompt
+					fmt.Println()
+				} else {
+					// No fonts in opposite scope, but we might have truly not found fonts
+					// Add blank line before hint message
+					fmt.Println()
+					// Show appropriate hint message
+					if len(trulyNotFound) > 0 {
+						// Some fonts are truly not found
+						fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
+						// Add blank line after message before prompt
+						fmt.Println()
+					}
+				}
 			}
 			return nil
 		}
@@ -877,7 +947,7 @@ Use --force to override critical system font protection.
 					scopeDisplay = "user"
 				}
 				// Format message to match add command style
-				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following fonts were not found installed in the '%s' scope:", scopeDisplay)))
+				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
 				for _, fontName := range notFoundFonts {
 					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
 				}
@@ -1000,7 +1070,7 @@ Use --force to override critical system font protection.
 		}
 
 		// Run unified progress for font removal (TUI mode)
-		fontsInMachineScope := []string{} // Track fonts that exist in both scopes
+		fontsInOppositeScope := []string{} // Track fonts that still exist in opposite scope after removal
 		progressErr := components.RunProgressBar(
 			"Removing Fonts",
 			operationItems,
@@ -1082,10 +1152,9 @@ Use --force to override critical system font protection.
 							percent = float64(i+1) / float64(len(fontNames)) * 100
 							send(components.ProgressUpdateMsg{Percent: percent})
 							continue
-						} else if len(userFonts) > 0 && len(machineFonts) > 0 {
-							// Font exists in both scopes - track for later display at the end
-							fontsInMachineScope = append(fontsInMachineScope, properFontName)
 						}
+						// Note: We'll check if font still exists in opposite scope AFTER removal
+						// Don't track here to avoid duplicates
 
 						// properFontName already set from fontNameMap above
 
@@ -1142,6 +1211,20 @@ Use --force to override critical system font protection.
 
 							if result.Success > 0 {
 								finalScopeLabel = "user scope"
+								// After successful removal from user scope, check if font still exists in machine scope
+								machineFonts := findFontFamilyFiles(fontName, fontManager, platform.MachineScope)
+								if len(machineFonts) == 0 {
+									// Try repository search
+									results, err := r.SearchFonts(fontName, "false")
+									if err == nil && len(results) > 0 {
+										searchName := results[0].Name
+										machineFonts = findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
+									}
+								}
+								if len(machineFonts) > 0 {
+									// Font still exists in machine scope - track for display
+									fontsInOppositeScope = append(fontsInOppositeScope, properFontName)
+								}
 							}
 						}
 					} else {
@@ -1214,6 +1297,30 @@ Use --force to override critical system font protection.
 
 							if result.Success > 0 {
 								finalScopeLabel = scopeLabelName + " scope"
+								// After successful removal, check if font still exists in opposite scope (only for single scope operations)
+								if len(scopes) == 1 {
+									var oppositeScope platform.InstallationScope
+									if scopeType == platform.UserScope {
+										oppositeScope = platform.MachineScope
+									} else if scopeType == platform.MachineScope {
+										oppositeScope = platform.UserScope
+									}
+									if oppositeScope != "" {
+										oppositeFonts := findFontFamilyFiles(fontName, fontManager, oppositeScope)
+										if len(oppositeFonts) == 0 {
+											// Try repository search
+											results, err := r.SearchFonts(fontName, "false")
+											if err == nil && len(results) > 0 {
+												searchName := results[0].Name
+												oppositeFonts = findFontFamilyFiles(searchName, fontManager, oppositeScope)
+											}
+										}
+										if len(oppositeFonts) > 0 {
+											// Font still exists in opposite scope - track for display
+											fontsInOppositeScope = append(fontsInOppositeScope, properFontName)
+										}
+									}
+								}
 							}
 						}
 					}
@@ -1265,24 +1372,54 @@ Use --force to override critical system font protection.
 				scopeDisplay = "user"
 			}
 			// Format message to match add command style
-			fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following fonts were not found installed in the '%s' scope:", scopeDisplay)))
+			fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
 			for _, fontName := range notFoundFonts {
 				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
 			}
 			// Add blank line before "Try using..." message
 			fmt.Println()
 			fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
-			// Add blank line after "not found" messages before prompt
-			// (Status report will only show if there were operations, so we need spacing here)
-			fmt.Println()
+			// Only add blank line after "Try using..." if there are no fonts in opposite scope
+			// (If there are fonts in opposite scope, that section will handle spacing)
+			if len(fontsInOppositeScope) == 0 {
+				fmt.Println()
+			}
 		}
 
-		// Show informational message about fonts in both scopes (before status report)
-		if len(fontsInMachineScope) > 0 {
-			// Add blank line before machine scope messages
-			fmt.Println()
-			for _, fontName := range fontsInMachineScope {
-				output.GetVerbose().Info("%s is also installed in the machine scope", fontName)
+		// Show fonts that still exist in opposite scope after removal (before status report)
+		if len(fontsInOppositeScope) > 0 {
+			// Determine opposite scope name for display
+			var oppositeScopeName string
+			if len(scopes) == 1 {
+				if scopes[0] == platform.UserScope {
+					oppositeScopeName = "machine"
+				} else if scopes[0] == platform.MachineScope {
+					oppositeScopeName = "user"
+				}
+			}
+
+			if oppositeScopeName != "" {
+				// Remove duplicates from the list
+				seen := make(map[string]bool)
+				uniqueFonts := []string{}
+				for _, fontName := range fontsInOppositeScope {
+					if !seen[fontName] {
+						seen[fontName] = true
+						uniqueFonts = append(uniqueFonts, fontName)
+					}
+				}
+
+				// Add blank line before opposite scope messages
+				// (If "not found" section was shown, "Try using..." already ended with \n, so this creates the blank line)
+				// (If no "not found" section, progress bar ended with \n, so this creates the blank line)
+				fmt.Println()
+				// Use FeedbackWarning (yellow, no bold) for the header message
+				fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
+				for _, fontName := range uniqueFonts {
+					fmt.Printf("  - %s\n", fontName)
+				}
+				// Add blank line after the list before prompt
+				fmt.Println()
 			}
 		}
 
@@ -1298,7 +1435,7 @@ Use --force to override critical system font protection.
 
 		// If no status report and no other messages, add blank line before prompt
 		// (Status report already ends with \n\n, so no need to add another blank line)
-		if !IsVerbose() && len(notFoundFonts) == 0 && len(fontsInMachineScope) == 0 {
+		if !IsVerbose() && len(notFoundFonts) == 0 && len(fontsInOppositeScope) == 0 {
 			// Progress bar ends with \n - add \n to create blank line before prompt
 			fmt.Println()
 		}

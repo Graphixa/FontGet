@@ -204,14 +204,6 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 	fmt.Printf("\n%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Multiple fonts found matching '%s'.", fontName)))
 	fmt.Printf("%s\n\n", ui.FeedbackText.Render("Please specify the exact font ID to install from a specific source."))
 
-	fmt.Printf("%s\n", ui.ContentText.Render("Suggestions:"))
-
-	// Show examples for each match
-	for _, match := range matches {
-		fmt.Printf("  - fontget add %s\n", ui.CommandExample.Render(match.ID))
-	}
-
-	fmt.Printf("\n")
 	// Use consistent column widths and apply styling to the entire formatted string
 	fmt.Printf("%s\n", ui.TableHeader.Render(GetSearchTableHeader()))
 	fmt.Printf("%s\n", GetTableSeparator())
