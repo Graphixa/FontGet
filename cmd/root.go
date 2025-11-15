@@ -17,6 +17,7 @@ import (
 
 var (
 	verbose bool
+	list    bool
 	debug   bool
 	logs    bool
 	logger  *logging.Logger
@@ -101,6 +102,9 @@ var rootCmd = &cobra.Command{
 func init() {
 	// Add verbose flag - shows detailed operation information (user-friendly)
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed operation information")
+
+	// Add list flag - shows file/variant listings in progress display (for add and remove commands)
+	rootCmd.PersistentFlags().BoolVarP(&list, "list", "l", false, "Show file/variant listings during add/remove operations")
 
 	// Add debug flag - shows full diagnostic logs with timestamps (for developers)
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show debug logs with timestamps (for troubleshooting)")
@@ -224,6 +228,11 @@ func GetLogger() *logging.Logger {
 // IsVerbose returns true if verbose mode is enabled
 func IsVerbose() bool {
 	return verbose
+}
+
+// IsList returns true if list mode is enabled
+func IsList() bool {
+	return list
 }
 
 // IsDebug returns true if debug mode is enabled

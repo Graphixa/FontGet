@@ -6,14 +6,15 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -28,12 +29,46 @@ const (
 	ShowProgressBarHeader = false
 )
 
-// InstallationStatus tracks the status of font installations
+// InstallationStatus tracks the status of font installations.
+// This is kept separate from OperationStatus for command-specific clarity and backward compatibility.
+// It provides clearer field names (Installed vs Success) for the add command context.
 type InstallationStatus struct {
 	Installed int
 	Skipped   int
 	Failed    int
 	Details   []string
+	Errors    []string // Track individual error messages
+}
+
+// FontOperationDetails tracks detailed information about each font operation
+type FontOperationDetails struct {
+	FontName       string
+	SourceName     string
+	TotalVariants  int
+	InstalledFiles []string
+	SkippedFiles   []string
+	FailedFiles    []string
+	TempDir        string
+	DownloadSize   int64 // Total size of downloaded files in bytes
+}
+
+// InstallResult tracks the result of installing a single font
+type InstallResult struct {
+	Success      int
+	Skipped      int
+	Failed       int
+	Status       string // "completed", "failed", "skipped"
+	Message      string
+	Details      []string // Categorized: installed files, then skipped, then failed
+	Errors       []string
+	DownloadSize int64 // Total size of downloaded files in bytes
+}
+
+// FontToInstall represents a font family to be installed
+type FontToInstall struct {
+	Fonts      []repo.FontFile
+	SourceName string
+	FontName   string
 }
 
 // showFontNotFoundWithSuggestions displays font not found error with suggestions in table format
@@ -206,10 +241,6 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 	fmt.Printf("\n")
 }
 
-// formatFontNameWithVariant formats a font name with its variant for display
-
-// getFontDisplayName extracts a proper display name from the font file path
-
 // getSourceName extracts the source name from a font ID (e.g., "google.roboto" -> "Google Fonts")
 func getSourceName(fontID string) string {
 	// Extract source prefix from font ID (e.g., "google.roboto" -> "google")
@@ -268,7 +299,7 @@ You can specify the installation scope using the --scope flag:
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		GetLogger().Info("Starting font installation operation")
+		// GetLogger().Info("Starting font installation operation")
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
@@ -291,10 +322,11 @@ You can specify the installation scope using the --scope flag:
 		scope, _ := cmd.Flags().GetString("scope")
 		force, _ := cmd.Flags().GetBool("force")
 
-		GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scope, force)
+		// GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scope, force)
 
 		// Debug-level information for developers
-		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+		// Note: Suppressed to avoid TUI interference
+		// output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Auto-detect scope if not explicitly provided
 		if scope == "" {
@@ -305,11 +337,11 @@ You can specify the installation scope using the --scope flag:
 				scope = "user"
 			} else if isElevated {
 				scope = "machine"
-				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'machine' scope")
-				fmt.Println(ui.FeedbackInfo.Render("Auto-detected administrator privileges - installing system-wide"))
+				// GetLogger().Info("Auto-detected elevated privileges, defaulting to 'machine' scope")
+				// Note: Suppressed to avoid TUI interference
 			} else {
 				scope = "user"
-				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
+				// GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
 			}
 		}
 
@@ -335,30 +367,42 @@ You can specify the installation scope using the --scope flag:
 		// Process font names from arguments
 		fontNames := ParseFontNames(args)
 
-		GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
+		// GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
 
 		// Get font directory for the specified scope
 		fontDir := fontManager.GetFontDir(installScope)
 		GetLogger().Debug("Using font directory: %s", fontDir)
 
-		// Verbose-level information for users
-		output.GetVerbose().Info("Installing fonts to: %s", fontDir)
+		// Verbose-level information for users - show operational details before progress bar
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Installation scope: %s", scope)
+			output.GetVerbose().Info("Font directory: %s", fontDir)
+			output.GetVerbose().Info("Force mode: %v", force)
+			output.GetVerbose().Info("Processing %d font family(s)", len(fontNames))
+		}
 
 		// Initialize status tracking
-		status := InstallationStatus{
+		status := &InstallationStatus{
 			Details: make([]string, 0),
 		}
+
+		// Track detailed operations for each font (for verbose mode)
+		var operationDetails []FontOperationDetails
 
 		// Get all available fonts for suggestions (use cached version for speed)
 		allFonts := repo.GetAllFontsCached()
 		if len(allFonts) == 0 {
 			GetLogger().Warn("Could not get list of available fonts for suggestions")
-			fmt.Println(ui.RenderError("Warning: Could not get list of available fonts for suggestions"))
+			// Note: Suppressed to avoid TUI interference
+			// fmt.Println(ui.RenderError("Warning: Could not get list of available fonts for suggestions"))
 		}
 
-		// Process each font
+		// Collect all fonts first
+		var fontsToInstall []FontToInstall
+
+		// Process each font name to collect all fonts
 		for _, fontName := range fontNames {
-			GetLogger().Info("Processing font: %s", fontName)
+			// GetLogger().Info("Processing font: %s", fontName)
 
 			// Check if this is already a specific font ID (contains a dot like "google.roboto")
 			var fonts []repo.FontFile
@@ -395,151 +439,290 @@ You can specify the installation scope using the --scope flag:
 
 				// Try to find similar fonts
 				similar := findSimilarFonts(fontName, allFonts, false) // false = repository fonts
-				GetLogger().Info("Found %d similar fonts for %s", len(similar), fontName)
+				// GetLogger().Info("Found %d similar fonts for %s", len(similar), fontName)
 				showFontNotFoundWithSuggestions(fontName, similar)
 				continue // Skip to next font
 			}
 
 			GetLogger().Debug("Found %d font files for %s", len(fonts), fontName)
 
-			// Show installation header for this font
-			fontDisplayName := FormatFontNameWithVariant(fonts[0].Name, fonts[0].Variant)
-			if len(fonts) > 1 {
-				fontDisplayName = fonts[0].Name // Use base name for multiple variants
+			// Add to collection
+			fontsToInstall = append(fontsToInstall, FontToInstall{
+				Fonts:      fonts,
+				SourceName: sourceName,
+				FontName:   fontName,
+			})
+		}
+
+		// If no fonts to install, exit
+		if len(fontsToInstall) == 0 {
+			return nil
+		}
+
+		// No need for separate header - the progress bar will show the title
+
+		// Check if flags are set
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		debug, _ := cmd.Flags().GetBool("debug")
+
+		// Determine scope label for verbose output
+		scopeLabel := "user scope"
+		if installScope == platform.MachineScope {
+			scopeLabel = "machine scope"
+		}
+
+		// For debug mode: bypass TUI and use plain text output for easier parsing/logging
+		if IsDebug() {
+			return installFontsInDebugMode(fontManager, fontsToInstall, installScope, force, fontDir, status)
+		}
+
+		// For verbose mode: process fonts one at a time with TUI + details
+		if IsVerbose() && !IsDebug() {
+			return installFontsOneAtATime(fontManager, fontsToInstall, installScope, force, fontDir, status, scopeLabel)
+		}
+
+		// Create operation items for unified progress - one item per font family
+		var operationItems []components.OperationItem
+		for _, fontGroup := range fontsToInstall {
+			// Group variants by font name
+			fontName := fontGroup.Fonts[0].Name
+			var variantNames []string
+			for _, font := range fontGroup.Fonts {
+				variantNames = append(variantNames, font.Variant)
 			}
 
-			// Phase 1: Download with progress bar (combined header)
-			// Add blank line before each font header
-			fmt.Println()
+			operationItems = append(operationItems, components.OperationItem{
+				Name:          fontName,
+				SourceName:    fontGroup.SourceName,
+				Status:        "pending",
+				StatusMessage: "Pending",
+				Variants:      variantNames,
+				Scope:         "",
+			})
+		}
 
-			headerMessage := fmt.Sprintf("Downloading and Installing '%s' from '%s'", fontDisplayName, sourceName)
-			fmt.Println(ui.FeedbackInfo.Render(headerMessage))
-			downloadHeader := "" // Don't pass header to progress bar since we already displayed it
+		// Run unified progress for download and install
+		progressErr := components.RunProgressBar(
+			"Installing Fonts",
+			operationItems,
+			list,    // List mode: show file/variant listings
+			verbose, // Verbose mode: show operational details
+			debug,   // Debug mode: show technical details
+			func(send func(msg tea.Msg)) error {
+				// Process each font group (one per font family)
+				for itemIndex, fontGroup := range fontsToInstall {
+					// Start downloading - update status to show we're working on this item
+					send(components.ItemUpdateMsg{
+						Index:   itemIndex,
+						Status:  "in_progress",
+						Message: "Downloading from " + fontGroup.SourceName,
+					})
 
-			// For single-font archives (like Nerd Fonts), show more detailed progress
-			var totalSteps int
-			if len(fonts) == 1 {
-				totalSteps = 3 // Download, Extract, Complete
-			} else {
-				totalSteps = len(fonts) // One step per font file
-			}
+					// Update progress based on items started (not completed yet)
+					// This shows progress as we work through items, but won't reach 100% until done
+					percent := float64(itemIndex) / float64(len(fontsToInstall)) * 100
+					send(components.ProgressUpdateMsg{Percent: percent})
 
-			// Store downloaded font paths for installation
-			type downloadedFont struct {
-				font      repo.FontFile
-				fontPaths []string
-			}
-			var downloadedFonts []downloadedFont
+					// Install the font using the installFont helper
+					result, err := installFont(
+						fontGroup.Fonts,
+						fontManager,
+						installScope,
+						force,
+						fontDir,
+					)
 
-			progressErr := runProgressBarWithOptions(downloadHeader, totalSteps, func(updateProgress func()) error {
-				// Download each font file
-				for _, font := range fonts {
-					// Download font to temp directory (handles archives automatically)
-					tempDir := filepath.Join(os.TempDir(), "Fontget", "fonts")
-					GetLogger().Debug("Downloading font to temp directory: %s", tempDir)
-
-					if len(fonts) == 1 {
-						// For single archives, show detailed progress
-						updateProgress() // Step 1: Starting download
-						time.Sleep(200 * time.Millisecond)
-					}
-
-					fontPaths, downloadErr := repo.DownloadAndExtractFont(&font, tempDir)
-
-					if downloadErr != nil {
-						status.Failed++
-						GetLogger().Error("Failed to download font %s: %v", font.Name, downloadErr)
-						updateProgress() // Update progress even on failure
+					if err != nil {
+						status.Failed += result.Failed
+						GetLogger().Error("Failed to process font %s: %v", fontGroup.FontName, err)
+						// Create a brief error message from the error
+						errorMsg := err.Error()
+						if len(errorMsg) > 100 {
+							errorMsg = errorMsg[:97] + "..."
+						}
+						send(components.ItemUpdateMsg{
+							Index:        itemIndex,
+							Status:       "failed",
+							Message:      "Operation failed",
+							ErrorMessage: errorMsg,
+						})
 						continue
 					}
 
-					// Store for installation phase
-					downloadedFonts = append(downloadedFonts, downloadedFont{
-						font:      font,
-						fontPaths: fontPaths,
+					// Update status
+					status.Installed += result.Success
+					status.Skipped += result.Skipped
+					status.Failed += result.Failed
+					status.Errors = append(status.Errors, result.Errors...)
+
+					// Store details for verbose mode - need to categorize files
+					// Result.Details contains: installed files, then skipped, then failed
+					installedCount := result.Success
+					skippedCount := result.Skipped
+					failedCount := result.Failed
+
+					var installedFiles, skippedFiles, failedFiles []string
+					idx := 0
+					if installedCount > 0 && idx < len(result.Details) {
+						installedFiles = result.Details[idx : idx+installedCount]
+						idx += installedCount
+					}
+					if skippedCount > 0 && idx < len(result.Details) {
+						skippedFiles = result.Details[idx : idx+skippedCount]
+						idx += skippedCount
+					}
+					if failedCount > 0 && idx < len(result.Details) {
+						failedFiles = result.Details[idx : idx+failedCount]
+					}
+
+					fontDetails := FontOperationDetails{
+						FontName:       fontGroup.FontName,
+						SourceName:     fontGroup.SourceName,
+						TotalVariants:  len(fontGroup.Fonts),
+						InstalledFiles: installedFiles,
+						SkippedFiles:   skippedFiles,
+						FailedFiles:    failedFiles,
+						DownloadSize:   result.DownloadSize,
+					}
+					operationDetails = append(operationDetails, fontDetails)
+
+					// Determine final status based on what happened
+					scope := "user scope"
+					if installScope == platform.MachineScope {
+						scope = "machine scope"
+					}
+
+					// Determine status based on results
+					finalStatus := result.Status
+
+					// Build variants list with status information for verbose mode only
+					var variantsWithStatus []string
+					if verbose {
+						// Verbose mode: Combine all file statuses with inline status
+						for _, file := range fontDetails.InstalledFiles {
+							variantsWithStatus = append(variantsWithStatus, file+" (installed)")
+						}
+						for _, file := range fontDetails.SkippedFiles {
+							variantsWithStatus = append(variantsWithStatus, file+" (skipped - already installed)")
+						}
+						for _, file := range fontDetails.FailedFiles {
+							variantsWithStatus = append(variantsWithStatus, file+" (failed)")
+						}
+					} else if list {
+						// List mode: Just show variant names without status - collect ALL variants
+						variantsWithStatus = append(variantsWithStatus, fontDetails.InstalledFiles...)
+						variantsWithStatus = append(variantsWithStatus, fontDetails.SkippedFiles...)
+						variantsWithStatus = append(variantsWithStatus, fontDetails.FailedFiles...)
+					}
+					// else: Default mode - don't show variants at all
+
+					// Get first error message if status is failed
+					var errorMsg string
+					if finalStatus == "failed" && len(result.Errors) > 0 {
+						errorMsg = result.Errors[0]
+					}
+
+					send(components.ItemUpdateMsg{
+						Index:        itemIndex,
+						Status:       finalStatus,
+						Message:      "Installed", // Message is overridden by View() based on status
+						ErrorMessage: errorMsg,
+						Variants:     variantsWithStatus,
+						Scope:        scope,
 					})
 
-					if len(fonts) == 1 {
-						// For single archives, show extraction progress
-						updateProgress() // Step 2: Extracting
-						time.Sleep(200 * time.Millisecond)
-						updateProgress() // Step 3: Complete
-						time.Sleep(200 * time.Millisecond)
-					} else {
-						// For multiple files, one step per file
-						updateProgress()
-						time.Sleep(50 * time.Millisecond)
-					}
+					// Update progress percentage - now based on actual completion
+					percent = float64(itemIndex+1) / float64(len(fontsToInstall)) * 100
+					send(components.ProgressUpdateMsg{Percent: percent})
 				}
+
 				return nil
-			}, HideProgressBarWhenFinished, ShowProgressBarHeader)
+			},
+		)
 
-			if progressErr != nil {
-				GetLogger().Error("Failed to download font %s: %v", fontDisplayName, progressErr)
-				continue // Skip to next font
+		if progressErr != nil {
+			GetLogger().Error("Failed to install fonts: %v", progressErr)
+			return progressErr
+		}
+
+		// Verbose-level information after progress bar - show final operational details and errors
+		if IsVerbose() && !IsDebug() {
+			// Show variant details for each font (verbose only, not debug)
+			for _, details := range operationDetails {
+				if details.TotalVariants > 0 {
+					// Extract variant name helper function
+					extractVariant := func(file, fontName string) string {
+						displayName := GetDisplayNameFromFilename(file)
+						variantName := displayName
+						if strings.HasPrefix(displayName, fontName) {
+							variantName = strings.TrimSpace(strings.TrimPrefix(displayName, fontName))
+							if variantName == "" {
+								variantName = "Regular"
+							}
+						}
+						return variantName
+					}
+
+					output.GetVerbose().DisplayFontOperationDetails(
+						details.FontName,
+						details.SourceName,
+						details.InstalledFiles,
+						details.SkippedFiles,
+						details.FailedFiles,
+						FormatFileSize(details.DownloadSize),
+						fontDir,
+						scopeLabel,
+						extractVariant,
+					)
+				}
 			}
+			fmt.Println() // Blank line before status report
 
-			// Add blank line after progress bar
-			fmt.Println()
-
-			// Phase 2: Install downloaded fonts (normal terminal output)
-			for _, downloaded := range downloadedFonts {
-				for _, fontPath := range downloaded.fontPaths {
-					// Check if font is already installed (unless force flag is set)
-					if !force {
-						expectedPath := filepath.Join(fontDir, filepath.Base(fontPath))
-						if _, err := os.Stat(expectedPath); err == nil {
-							status.Skipped++
-							fontDisplayName := GetFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
-							msg := fmt.Sprintf("  %s %s - %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackWarning.Render("[Skipped] already installed"))
-							GetLogger().Info("Font already installed: %s", fontDisplayName)
-
-							// Verbose mode shows additional info about skipped fonts
-							output.GetVerbose().Detail("Info", "Font exists at: %s", expectedPath)
-
-							fmt.Println(ui.ContentText.Render(msg))
-							os.Remove(fontPath) // Clean up temp file
-							continue
+			// Show error details in verbose mode - one inline message per failed font
+			if len(status.Errors) > 0 {
+				// Get the unique font families that failed by tracking what was processed
+				// We need to map errors back to the font families
+				if len(fontsToInstall) > 0 && status.Failed > 0 {
+					// Find which font families failed and count variants per family
+					failedFamilies := make(map[string]int)
+					for _, err := range status.Errors {
+						// Extract base font name from error message
+						parts := strings.Split(err, " ")
+						if len(parts) > 0 {
+							fontFile := strings.TrimSpace(parts[0])
+							fontFile = strings.TrimSuffix(fontFile, ".ttf")
+							fontParts := strings.Split(fontFile, "-")
+							if len(fontParts) > 0 {
+								familyName := fontParts[0]
+								failedFamilies[familyName]++
+							}
 						}
 					}
 
-					// Install the font
-					fontDisplayName := GetFontDisplayName(fontPath, downloaded.font.Name, downloaded.font.Variant)
-					GetLogger().Debug("Installing font: %s", fontDisplayName)
-
-					installErr := fontManager.InstallFont(fontPath, installScope, force)
-
-					if installErr != nil {
-						os.Remove(fontPath) // Clean up temp file
-						status.Failed++
-
-						// Simple, clean error message for all platforms
-						msg := fmt.Sprintf("  %s %s - %s", ui.FeedbackError.Render("✗"), ui.TableRow.Render(fontDisplayName), ui.FeedbackError.Render("[Failed] to overwrite existing font"))
-						fmt.Println(ui.ContentText.Render(msg))
-
-						// Show detailed error in verbose mode (user-friendly, no timestamps)
-						output.GetVerbose().Detail("Error", "%s", installErr.Error())
-
-						GetLogger().Error("Failed to install font %s: %v", fontDisplayName, installErr)
-						continue
+					// Show one error message per failed font family with variant count
+					for name, variantCount := range failedFamilies {
+						var forceMsg string
+						variantText := ""
+						if variantCount > 1 {
+							variantText = fmt.Sprintf(" (%d variants)", variantCount)
+						}
+						if force {
+							forceMsg = fmt.Sprintf("\"%s\"%s could not be removed for reinstallation as it's being used by another application. Try closing the app or process using this font and try again.", name, variantText)
+						} else {
+							forceMsg = fmt.Sprintf("\"%s\"%s could not be installed as it's in use by another application. Try closing the app or process using this font and try again.", name, variantText)
+						}
+						output.GetVerbose().Error("%s", forceMsg)
 					}
-
-					// Clean up temp file
-					os.Remove(fontPath)
-					status.Installed++
-					msg := fmt.Sprintf("  %s %s - %s", ui.FeedbackSuccess.Render("✓"), ui.TableRow.Render(fontDisplayName), ui.FeedbackSuccess.Render("[Installed] to "+scope+" scope"))
-					GetLogger().Info("Successfully installed font: %s to %s scope", fontDisplayName, scope)
-
-					// Verbose mode shows installation path
-					finalPath := filepath.Join(fontDir, filepath.Base(fontPath))
-					output.GetVerbose().Detail("Info", "Installed to: %s", finalPath)
-
-					fmt.Println(ui.ContentText.Render(msg))
 				}
 			}
 		}
 
-		// Print status report only if there were actual operations
+		// Add blank line after progress bar output (for clean spacing before command prompt)
+		if !IsVerbose() {
+			fmt.Println()
+		}
+
+		// Print status report after progress bar completes (this should be last)
 		PrintStatusReport(StatusReport{
 			Success:      status.Installed,
 			Skipped:      status.Skipped,
@@ -558,8 +741,377 @@ You can specify the installation scope using the --scope flag:
 	},
 }
 
-// FontInstallationError is a custom error type for font installation failures
-// FontInstallationError is now defined in shared.go
+// installFontsInDebugMode processes fonts with plain text output (no TUI) for easier parsing/logging
+func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []FontToInstall, installScope platform.InstallationScope, force bool, fontDir string, status *InstallationStatus) error {
+	output.GetDebug().State("Starting font installation operation")
+	output.GetDebug().State("Total fonts: %d", len(fontsToInstall))
+
+	// Process each font
+	for i, fontGroup := range fontsToInstall {
+		output.GetDebug().State("Processing font %d/%d: %s", i+1, len(fontsToInstall), fontGroup.FontName)
+
+		result, err := installFont(
+			fontGroup.Fonts,
+			fontManager,
+			installScope,
+			force,
+			fontDir,
+		)
+
+		if err != nil {
+			output.GetDebug().State("Error processing font %s: %v", fontGroup.FontName, err)
+			if result != nil {
+				status.Failed += result.Failed
+				status.Skipped += result.Skipped
+				status.Errors = append(status.Errors, result.Errors...)
+			}
+			continue
+		}
+
+		// Update status
+		status.Installed += result.Success
+		status.Skipped += result.Skipped
+		status.Failed += result.Failed
+		status.Errors = append(status.Errors, result.Errors...)
+
+		output.GetDebug().State("Font %s completed: %s - %s", fontGroup.FontName, result.Status, result.Message)
+	}
+
+	output.GetDebug().State("Operation complete - Installed: %d, Skipped: %d, Failed: %d",
+		status.Installed, status.Skipped, status.Failed)
+
+	// Print status report
+	fmt.Println()
+	PrintStatusReport(StatusReport{
+		Success:      status.Installed,
+		Skipped:      status.Skipped,
+		Failed:       status.Failed,
+		SuccessLabel: "Installed",
+		SkippedLabel: "Skipped",
+		FailedLabel:  "Failed",
+	})
+
+	GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d",
+		status.Installed, status.Skipped, status.Failed)
+	return nil
+}
+
+// installFontsOneAtATime processes fonts one at a time with TUI + variant details
+func installFontsOneAtATime(fontManager platform.FontManager, fontsToInstall []FontToInstall, installScope platform.InstallationScope, force bool, fontDir string, status *InstallationStatus, scopeLabel string) error {
+	// Process each font one at a time with its own TUI
+	for _, fontGroup := range fontsToInstall {
+		fontName := fontGroup.Fonts[0].Name
+
+		// Create operation item for just this one font
+		var variantNames []string
+		for _, font := range fontGroup.Fonts {
+			variantNames = append(variantNames, font.Variant)
+		}
+
+		operationItem := components.OperationItem{
+			Name:          fontName,
+			SourceName:    fontGroup.SourceName,
+			Status:        "pending",
+			StatusMessage: "Pending",
+			Variants:      variantNames,
+			Scope:         scopeLabel,
+		}
+
+		// Store result outside closure for verbose output
+		var result *InstallResult
+
+		// Run TUI for this one font
+		progressErr := components.RunProgressBar(
+			"Installing Fonts",
+			[]components.OperationItem{operationItem},
+			false, // List mode
+			true,  // Verbose mode
+			false, // Debug mode
+			func(send func(msg tea.Msg)) error {
+				// Install the font using the installFont helper
+				var err error
+				result, err = installFont(
+					fontGroup.Fonts,
+					fontManager,
+					installScope,
+					force,
+					fontDir,
+				)
+
+				if err != nil {
+					status.Failed += result.Failed
+					// Create a brief error message from the error
+					errorMsg := err.Error()
+					if len(errorMsg) > 100 {
+						errorMsg = errorMsg[:97] + "..."
+					}
+					send(components.ItemUpdateMsg{
+						Index:        0,
+						Status:       "failed",
+						Message:      "Operation failed",
+						ErrorMessage: errorMsg,
+					})
+					return nil
+				}
+
+				// Update status
+				status.Installed += result.Success
+				status.Skipped += result.Skipped
+				status.Failed += result.Failed
+				status.Errors = append(status.Errors, result.Errors...)
+
+				// Store download size for verbose display
+				_ = result.DownloadSize // Will be used in verbose display
+
+				// Get first error message if status is failed
+				var errorMsg string
+				if result.Status == "failed" && len(result.Errors) > 0 {
+					errorMsg = result.Errors[0]
+				}
+
+				// Update TUI
+				send(components.ItemUpdateMsg{
+					Index:        0,
+					Status:       result.Status,
+					Message:      result.Message,
+					ErrorMessage: errorMsg,
+					Variants:     []string{},
+					Scope:        scopeLabel,
+				})
+
+				// Update progress to 100%
+				send(components.ProgressUpdateMsg{Percent: 100})
+				return nil
+			})
+
+		if progressErr != nil {
+			return progressErr
+		}
+
+		// Categorize files from result for verbose output
+		if result == nil {
+			continue
+		}
+
+		installedCount := result.Success
+		skippedCount := result.Skipped
+		failedCount := result.Failed
+
+		var installedFiles, skippedFiles, failedFiles []string
+		idx := 0
+		if installedCount > 0 && idx < len(result.Details) {
+			installedFiles = result.Details[idx : idx+installedCount]
+			idx += installedCount
+		}
+		if skippedCount > 0 && idx < len(result.Details) {
+			skippedFiles = result.Details[idx : idx+skippedCount]
+			idx += skippedCount
+		}
+		if failedCount > 0 && idx < len(result.Details) {
+			failedFiles = result.Details[idx : idx+failedCount]
+		}
+
+		// After TUI completes, append variant details (only in verbose mode)
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().DisplayFontOperationDetails(
+				fontName,
+				fontGroup.SourceName,
+				installedFiles,
+				skippedFiles,
+				failedFiles,
+				FormatFileSize(result.DownloadSize),
+				fontDir,
+				scopeLabel,
+				extractVariantNameFromFile,
+			)
+		}
+	}
+
+	// Show Status Report
+	fmt.Println()
+	PrintStatusReport(StatusReport{
+		Success:      status.Installed,
+		Skipped:      status.Skipped,
+		Failed:       status.Failed,
+		SuccessLabel: "Installed",
+		SkippedLabel: "Skipped",
+		FailedLabel:  "Failed",
+	})
+
+	return nil
+}
+
+// extractVariantNameFromFile extracts just the variant name from a font filename
+func extractVariantNameFromFile(filename string, fontName string) string {
+	base := filepath.Base(filename)
+	ext := filepath.Ext(base)
+	nameWithoutExt := strings.TrimSuffix(base, ext)
+
+	// Check if this is just the base font name (e.g., "ABeeZee.ttf" or "RobotoMono.ttf")
+	// Normalize by removing spaces for comparison
+	normalizedFilename := strings.ReplaceAll(nameWithoutExt, " ", "")
+	normalizedFontName := strings.ReplaceAll(fontName, " ", "")
+	if strings.EqualFold(normalizedFilename, normalizedFontName) {
+		return "Regular"
+	}
+
+	// Try to extract variant after font name + hyphen
+	// e.g., "ABeeZee-Italic.ttf" → fontName is "ABeeZee" → variant is "Italic"
+	if strings.HasPrefix(strings.ToLower(nameWithoutExt), strings.ToLower(normalizedFontName)+"-") {
+		variantPart := strings.TrimPrefix(nameWithoutExt, normalizedFontName)
+		variantPart = strings.TrimPrefix(variantPart, "-")
+		if variantPart != "" {
+			return convertCamelCaseToSpaced(variantPart)
+		}
+	}
+
+	// Fallback: check if display name equals font name (i.e., Regular variant)
+	displayName := GetDisplayNameFromFilename(filename)
+	if strings.EqualFold(displayName, fontName) {
+		return "Regular"
+	}
+
+	// Extract variant from display name
+	if strings.HasPrefix(displayName, fontName) {
+		variantPart := strings.TrimSpace(strings.TrimPrefix(displayName, fontName))
+		if variantPart != "" {
+			return variantPart
+		}
+	}
+
+	return displayName
+}
+
+// installFont handles the core installation logic for a single font
+func installFont(
+	fontFiles []repo.FontFile,
+	fontManager platform.FontManager,
+	installScope platform.InstallationScope,
+	force bool,
+	fontDir string,
+) (*InstallResult, error) {
+	result := &InstallResult{
+		Details: make([]string, 0),
+		Errors:  make([]string, 0),
+	}
+
+	// Download all variants of this font family
+	tempDir := filepath.Join(os.TempDir(), "Fontget", "fonts")
+	output.GetDebug().State("Temp directory: %s", tempDir)
+
+	var allFontPaths []string
+	var downloadErr error
+
+	// Download each variant - only log errors and unusual cases
+	for _, fontFile := range fontFiles {
+		output.GetDebug().State("Calling repo.DownloadAndExtractFont() for variant: %s from %s", fontFile.Variant, fontFile.DownloadURL)
+		fontPaths, err := repo.DownloadAndExtractFont(&fontFile, tempDir)
+		if err != nil {
+			downloadErr = err
+			output.GetDebug().State("repo.DownloadAndExtractFont() failed for variant %s: %v", fontFile.Variant, err)
+			break
+		}
+		allFontPaths = append(allFontPaths, fontPaths...)
+		// Only log if multiple files extracted (unusual case worth noting)
+		if len(fontPaths) > 1 {
+			output.GetDebug().State("Extracted %d file(s) from variant: %s", len(fontPaths), fontFile.Variant)
+		}
+	}
+
+	if downloadErr != nil {
+		result.Status = "failed"
+		result.Message = "Download failed"
+		result.Failed = len(fontFiles)
+		return result, downloadErr
+	}
+
+	// Install downloaded fonts
+	var installedFiles []string
+	var skippedFiles []string
+	var failedFiles []string
+
+	for _, fontPath := range allFontPaths {
+		fontDisplayName := filepath.Base(fontPath)
+
+		// Get file size before we potentially remove it
+		if fileInfo, err := os.Stat(fontPath); err == nil {
+			result.DownloadSize += fileInfo.Size()
+		}
+
+		// Check if font is already installed (unless force flag is set)
+		if !force {
+			expectedPath := filepath.Join(fontDir, fontDisplayName)
+			if _, err := os.Stat(expectedPath); err == nil {
+				result.Skipped++
+				os.Remove(fontPath) // Clean up temp file
+				skippedFiles = append(skippedFiles, fontDisplayName)
+				continue
+			}
+		}
+
+		// Install the font
+		installErr := fontManager.InstallFont(fontPath, installScope, force)
+
+		if installErr != nil {
+			os.Remove(fontPath) // Clean up temp file
+			result.Failed++
+			errorMsg := makeUserFriendlyError(fontDisplayName, installErr)
+			result.Errors = append(result.Errors, errorMsg)
+			failedFiles = append(failedFiles, fontDisplayName)
+			output.GetDebug().State("fontManager.InstallFont() failed for %s: %v", fontDisplayName, installErr)
+			continue
+		}
+
+		// Clean up temp file
+		os.Remove(fontPath)
+		result.Success++
+		installedFiles = append(installedFiles, fontDisplayName)
+	}
+
+	// Store categorized details
+	result.Details = append(result.Details, installedFiles...)
+	result.Details = append(result.Details, skippedFiles...)
+	result.Details = append(result.Details, failedFiles...)
+
+	// Determine final status
+	if result.Success > 0 {
+		result.Status = "completed"
+		result.Message = "Installed"
+	} else if result.Failed > 0 {
+		result.Status = "failed"
+		result.Message = "Installation failed"
+	} else if result.Skipped > 0 {
+		result.Status = "skipped"
+		result.Message = "Already installed"
+	}
+
+	return result, nil
+}
+
+// makeUserFriendlyError converts technical error messages to user-friendly explanations
+func makeUserFriendlyError(fontName string, err error) string {
+	errStr := strings.ToLower(err.Error())
+
+	// Check for common error patterns and provide user-friendly messages
+	if strings.Contains(errStr, "cannot access the file because it is being used") {
+		return fmt.Sprintf("%s could not be installed as it's in use by another application. Try closing the app or process using this font and try again.", fontName)
+	}
+
+	if strings.Contains(errStr, "access denied") {
+		return fmt.Sprintf("%s could not be installed due to access denied. You may need administrator privileges.", fontName)
+	}
+
+	if strings.Contains(errStr, "already exists") {
+		return fmt.Sprintf("%s is already installed.", fontName)
+	}
+
+	if strings.Contains(errStr, "file in use") {
+		return fmt.Sprintf("%s could not be installed as it's in use by another application. Try closing the app or process using this font and try again.", fontName)
+	}
+
+	// For unknown errors, show a simplified version
+	return fmt.Sprintf("%s could not be installed. Check logs for details.", fontName)
+}
 
 func init() {
 	rootCmd.AddCommand(addCmd)

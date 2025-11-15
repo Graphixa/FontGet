@@ -17,6 +17,11 @@ var (
 			Background(lipgloss.Color("#313244")). // Surface 0
 			Padding(0, 1)
 
+	// OperationTitle - Progress operation titles
+	OperationTitle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("#cba6f7")) // Mauve
+
 	// PageSubtitle - Section subtitles and secondary headers
 	PageSubtitle = lipgloss.NewStyle().
 			Bold(true).

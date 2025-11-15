@@ -8,7 +8,6 @@ import (
 	"runtime"
 	"strings"
 
-	"fontget/internal/components"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
@@ -118,7 +117,8 @@ type StatusReport struct {
 
 // PrintStatusReport prints a formatted status report if there were actual operations
 func PrintStatusReport(report StatusReport) {
-	if report.Success > 0 || report.Skipped > 0 || report.Failed > 0 {
+	// Only show status report in verbose mode
+	if IsVerbose() && (report.Success > 0 || report.Skipped > 0 || report.Failed > 0) {
 		fmt.Printf("\n%s\n", ui.ReportTitle.Render("Status Report"))
 		fmt.Println("---------------------------------------------")
 		fmt.Printf("%s: %d  |  %s: %d  |  %s: %d\n\n",
@@ -205,11 +205,6 @@ func (e *ElevationError) Error() string {
 	return fmt.Sprintf("elevation required for operation '%s' on platform '%s'", e.Operation, e.Platform)
 }
 
-// runProgressBarWithOptions runs a progress bar with configurable options
-func runProgressBarWithOptions(msg string, totalSteps int, fn func(updateProgress func()) error, hideWhenFinished bool, showHeader bool) error {
-	return components.RunWithProgressOptions(msg, totalSteps, fn, hideWhenFinished, showHeader)
-}
-
 // --- Shared display helpers used by add/remove/list commands ---
 
 // FormatFontNameWithVariant formats a font name with its variant for display.
@@ -288,6 +283,26 @@ func GetDisplayNameFromFilename(filename string) string {
 		}
 	}
 	return convertCamelCaseToSpaced(name)
+}
+
+// GetFontFamilyNameFromFilename extracts just the font family name (without variant) from a filename.
+// This is useful for getting the font name from installed font files.
+// e.g., "ABeeZee-Italic.ttf" -> "ABeeZee", "RobotoMono-Bold.ttf" -> "RobotoMono"
+func GetFontFamilyNameFromFilename(filename string) string {
+	base := filepath.Base(filename)
+	ext := filepath.Ext(base)
+	name := strings.TrimSuffix(base, ext)
+
+	// Split on hyphen to separate family from variant
+	if strings.Contains(name, "-") {
+		parts := strings.Split(name, "-")
+		if len(parts) >= 2 {
+			// Return the base font name (first part) without spacing conversion
+			// This matches the repository format (e.g., "ABeeZee" not "A Bee Zee")
+			return parts[0]
+		}
+	}
+	return name
 }
 
 // Table formatting constants for consistent table widths across all commands
@@ -630,4 +645,24 @@ func findMatchesInList(queryLower, queryNorm string, fontList []string, existing
 	}
 
 	return similar
+}
+
+// FormatFileSize formats bytes into human-readable format (KB, MB)
+// This is a general utility function that can be used anywhere file sizes need to be displayed
+func FormatFileSize(bytes int64) string {
+	if bytes == 0 {
+		return ""
+	}
+
+	const (
+		KB = 1024
+		MB = KB * 1024
+	)
+
+	if bytes >= MB {
+		return fmt.Sprintf("%.1fMB", float64(bytes)/float64(MB))
+	} else if bytes >= KB {
+		return fmt.Sprintf("%.0fKB", float64(bytes)/float64(KB))
+	}
+	return fmt.Sprintf("%dB", bytes)
 }

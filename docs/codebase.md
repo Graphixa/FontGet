@@ -69,10 +69,12 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Manages font installation with progress tracking
 - Supports different installation scopes (user/system)
 - Provides detailed error handling and suggestions
+- Uses shared operation infrastructure for consistent behavior
 
 **Key Functions**:
 - `addCmd.RunE`: Main command execution
-- `installFont`: Core installation logic
+- `installFontsInDebugMode`: Debug mode installation (plain text output)
+- `installFontsOneAtATime`: Verbose mode installation (TUI with details)
 - `getSourceDisplayName`: Source name resolution
 - `showFontSuggestions`: Error handling with suggestions
 
@@ -81,6 +83,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/platform` for OS-specific operations
 - Uses `internal/output` for verbose/debug output
 - Uses `internal/ui` for user interface
+- Uses `cmd/operations` for shared operation logic
+- Uses `cmd/handlers` for operation output handlers
 
 **Status**: ✅ Active - Core functionality
 
@@ -142,16 +146,22 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Font removal command
 **Functionality**:
 - Removes fonts from the system
-- Handles different removal scopes
-- Provides confirmation prompts
+- Handles different removal scopes (user, machine, all)
+- Extracts font names from installed font metadata (SFNT name table)
+- Provides consistent verbose/debug output matching add command
+- Uses shared operation infrastructure for consistent behavior
 
 **Key Functions**:
 - `removeCmd.RunE`: Main removal execution
-- `removeFont`: Core removal logic
+- `findFontFamilyFiles`: Locates font files by family name
+- `showInstalledFontNotFoundWithSuggestionsCached`: Error handling with suggestions
 
 **Interfaces**:
-- Uses `internal/platform` for OS-specific operations
+- Uses `internal/platform` for OS-specific operations and font metadata extraction
 - Uses `internal/output` for verbose/debug output
+- Uses `internal/repo` for font repository access
+- Uses `cmd/operations` for shared operation logic
+- Uses `cmd/handlers` for operation output handlers
 
 **Status**: ✅ Active - Core functionality
 
@@ -270,18 +280,79 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Status**: ✅ Active - Core functionality
 
+### `operations.go`
+**Purpose**: Shared font operation infrastructure
+**Functionality**:
+- Defines core operation types and interfaces
+- Provides unified operation execution logic
+- Handles font installation and removal operations
+- Tracks operation status and results
+- Manages download size tracking
+
+**Key Types**:
+- `OperationHandler`: Interface for operation output handlers
+- `FontOperationType`: Distinguishes install vs remove operations
+- `OperationStatus`: Tracks success/skipped/failed counts
+- `FontToProcess`: Represents a font to be processed
+- `FontOperation`: Complete operation definition
+- `ItemResult`: Result of processing a single font
+
+**Key Functions**:
+- `executeFontOperation`: Orchestrates operation execution
+- `processFontInstall`: Handles download, extraction, and installation
+- `processFontRemove`: Handles font finding and removal
+
+**Interfaces**:
+- Used by `add.go` and `remove.go` commands
+- Uses `internal/platform` for font operations
+- Uses `internal/repo` for font data
+
+**Status**: ✅ Active - Shared operation infrastructure
+
+### `handlers.go`
+**Purpose**: Operation output handlers
+**Functionality**:
+- Provides different implementations of `OperationHandler` interface
+- Handles output formatting for different modes (debug, verbose, normal, TUI)
+- Separates output concerns from operation logic
+
+**Key Types**:
+- `DebugHandler`: Plain text output for debug mode
+- `VerboseHandler`: Detailed output for verbose mode (prepared for future use)
+- `NormalHandler`: Standard output handler (prepared for future use)
+- `noOpHandler`: Silent handler when TUI manages all output
+
+**Interfaces**:
+- Implements `OperationHandler` interface
+- Uses `internal/output` for verbose/debug output
+- Uses `internal/components` for TUI integration
+
+**Status**: ✅ Active - Output handler implementations
+
 
 ### `shared.go`
 **Purpose**: Shared command utilities
 **Functionality**:
 - Provides common utilities used across commands
 - Handles shared functionality and helpers
+- Font name parsing and formatting utilities
+- File size formatting utilities
+- Table formatting constants and helpers
+- Error types for font operations
 
 **Key Functions**:
-- Various utility functions for command operations
+- `ParseFontNames`: Parses comma-separated font names from arguments
+- `FormatFontNameWithVariant`: Formats font names with variants
+- `GetFontDisplayName`: Returns human-friendly display names
+- `GetFontFamilyNameFromFilename`: Extracts font family name from filename
+- `FormatFileSize`: Formats bytes into human-readable format (KB, MB)
+- `findSimilarFonts`: Fuzzy matching for font names
+- `PrintStatusReport`: Prints formatted status reports
 
 **Interfaces**:
 - Used by multiple command files
+- Uses `internal/ui` for styling
+- Uses `internal/platform` for platform operations
 
 **Status**: ✅ Active - Utility functions
 
@@ -315,13 +386,20 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `internal/platform/`
 **Purpose**: Cross-platform operations
 **Files**:
-- `platform.go`: Platform abstraction
+- `platform.go`: Platform abstraction and font metadata extraction
 - `windows.go`: Windows-specific operations
 - `darwin.go`: macOS-specific operations
 - `linux.go`: Linux-specific operations
 - `elevation.go`: Privilege elevation
 - `temp.go`: Temporary file operations
 - `windows_utils.go`: Windows utilities
+- `testutil/`: Test utilities for platform operations
+
+**Key Features**:
+- **Font Metadata Extraction**: `ExtractFontMetadata()` reads font family name, style name, and full name directly from font file SFNT name table
+- **Cross-platform Font Management**: Unified interface for font installation/removal across Windows, macOS, and Linux
+- **Elevation Detection**: Platform-specific privilege checking
+- **Font Directory Management**: Scope-aware font directory resolution
 
 **Status**: ✅ Active - Cross-platform support
 
@@ -336,8 +414,14 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `internal/output/`
 **Purpose**: Output management
 **Files**:
-- `verbose.go`: Verbose output handling
+- `verbose.go`: Verbose output handling with operation details display
 - `debug.go`: Debug output handling
+
+**Key Features**:
+- **Consistent Formatting**: Standardized `[INFO]`, `[WARNING]`, `[ERROR]` prefixes
+- **Operation Details Display**: `DisplayFontOperationDetails()` shows formatted installation/removal details
+- **Download Size Tracking**: Integrated file size display in verbose output
+- **Clean API**: Interface-based design prevents circular imports
 
 **Status**: ✅ Active - Output system
 
@@ -381,20 +465,25 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `internal/components/`
 **Purpose**: Reusable UI components
 **Files**:
-- `progress.go`: Progress bar component with Bubble Tea integration
+- `progress_bar.go`: Unified progress bar component with inline display and gradient rendering
 - `card.go`: Card components with integrated titles and flexible padding
 - `form.go`: Form input components for TUI interfaces
 - `confirm.go`: Confirmation dialog components
 - `hierarchy.go`: Hierarchical list components for structured data display
 
 **Key Features**:
+- **Unified Progress Bar**: Single component for all progress displays with inline title integration
+  - Inline progress bar with gradient color interpolation
+  - Compact single-line display (title + item count + progress bar)
+  - Manual gradient rendering using lipgloss for accurate color display
+  - Supports verbose/debug mode with title suppression
 - **Card System**: Modern card components with integrated titles in borders, configurable padding (vertical/horizontal), and consistent styling
 - **Form Components**: Reusable form elements for interactive TUI interfaces
-- **Progress Indicators**: Animated progress bars with customizable styling
 - **Confirmation Dialogs**: Standardized confirmation prompts with consistent styling
 - **Hierarchical Lists**: Tree-like display components for structured data (e.g., font families with variants)
 
 **Usage Examples**:
+- **Add/Remove Commands**: Uses progress bar for font installation/removal progress
 - **Info Command**: Uses card components for displaying font details, license info, and metadata
 - **Sources Management**: Uses form and confirmation components for interactive source editing
 - **List Command**: Uses hierarchy components for displaying font families with variants

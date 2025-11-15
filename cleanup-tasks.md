@@ -96,6 +96,49 @@ This file contains actionable tasks for cleaning up the FontGet codebase. Each t
 
 ---
 
+## ✅ **PHASE 5: Progress Components Implementation (COMPLETED)**
+
+### **Unified Progress Bar Implementation**
+- [x] **Create reusable `OperationProgressModel` component** in `internal/components/operation_progress.go`
+  - Supports real-time updates via Bubble Tea
+  - Single progress bar for entire operation
+  - Dynamic item list (items appear as completed)
+  - Verbose mode: hierarchical variant display
+  - Status indicators: ✓ ⏳ ○ ✗
+
+- [x] **Implement unified progress in `cmd/add.go`**
+  - Replace per-font progress with single operation progress
+  - Show "Downloading and Installing Fonts (X of Y)"
+  - Real-time updates as fonts complete
+  - Verbose: Show variant hierarchy with indentation
+
+- [x] **Implement unified progress in `cmd/remove.go`**
+  - Add progress indication (was missing)
+  - Show "Finding and Removing Fonts (X of Y)"
+  - Real-time updates as fonts are removed
+  - Verbose: Show removed file list with indentation
+
+- [x] **Establish verbose vs debug messaging guidelines**
+  - Create `docs/maintenance/logging-guidelines.md`
+  - Comprehensive guidelines for message classification
+  - Clear criteria: verbose for user info, debug for technical details
+
+### **Visual Design Implementation**
+- [x] **Single overall progress bar** for both add and remove commands
+- [x] **Real-time updates** showing current operation status
+- [x] **Hierarchical variant display** in verbose mode
+- [x] **Status indicators** for completed, in-progress, pending, and failed items
+- [x] **Consistent visual style** with existing non-card design
+
+### **Files Modified**
+- [x] `internal/components/operation_progress.go` (new)
+- [x] `internal/ui/styles.go` (added OperationTitle style)
+- [x] `cmd/add.go` (replaced per-font progress with unified progress)
+- [x] `cmd/remove.go` (added unified progress bar)
+- [x] `docs/maintenance/logging-guidelines.md` (new)
+
+---
+
 ## 🧪 **TESTING CRITERIA**
 
 ### **Phase 1 Tests - Function Removal**
@@ -119,6 +162,16 @@ This file contains actionable tasks for cleaning up the FontGet codebase. Each t
 - [ ] **Test 4.2**: Run `fontget sources manage` - should show confirmation dialogs for changes
 - [ ] **Test 4.3**: Run `fontget add "large-font"` - should show progress indication during download
 - [ ] **Test 4.4**: Run `fontget config edit` - should open interactive form (if implemented)
+
+### **Phase 5 Tests - Progress Components Implementation**
+- [x] **Test 5.1**: Run `fontget add "test-font"` - should show unified progress bar
+- [x] **Test 5.2**: Run `fontget add "test-font" --verbose` - should show variant hierarchy
+- [x] **Test 5.3**: Run `fontget remove "test-font"` - should show unified progress bar
+- [x] **Test 5.4**: Run `fontget remove "test-font" --verbose` - should show removed file hierarchy
+- [x] **Test 5.5**: Test with multiple fonts - should show real-time updates
+- [x] **Test 5.6**: Test with failures - should show ✗ status correctly
+- [x] **Test 5.7**: Test with skipped fonts - should show appropriate status
+- [x] **Test 5.8**: Visual consistency - add and remove commands should have similar format
 
 ### **Integration Tests**
 - [ ] **Test I.1**: Run all commands with `--help` - should work without errors
