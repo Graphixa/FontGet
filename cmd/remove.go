@@ -1418,8 +1418,11 @@ Use --force to override critical system font protection.
 				for _, fontName := range uniqueFonts {
 					fmt.Printf("  - %s\n", fontName)
 				}
-				// Add blank line after the list before prompt
-				fmt.Println()
+				// Add blank line after the list, but only if not in verbose mode
+				// (In verbose mode, PrintStatusReport will add spacing)
+				if !IsVerbose() {
+					fmt.Println()
+				}
 			}
 		}
 
