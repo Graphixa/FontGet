@@ -71,9 +71,9 @@
 
 #### **Verbose/Debug Implementation**
 - [ ] **Complete verbose/debug framework for remaining commands**
-  - [ ] `cmd/remove.go` - Add verbose details (files removed, scope/elevation, protected detection)
+  - [x] `cmd/remove.go` - Add verbose details (files removed, scope/elevation, protected detection) - **COMPLETED**
   - [ ] `cmd/search.go` - Add verbose details (parameters, filters, counts)
-  - [ ] `cmd/list.go` - Add verbose details (scan directories, parsed files, filters)
+  - [x] `cmd/list.go` - Add verbose details (scan directories, parsed files, filters, matching) - **COMPLETED**
   - [ ] `cmd/info.go` - Add verbose details (lookup flow, source resolution)
   - [x] `cmd/sources.go` - Add verbose details (update plan, per-source outcomes) - **COMPLETED**
 - [ ] **Clean up debug messages and logging** - Review and standardize debug output across all commands, remove redundant or unclear debug messages
@@ -171,7 +171,7 @@
 #### **Shared Function Consolidation** (HIGH PRIORITY)
 - [x] **Table standardization system** - Created flexible table system in `cmd/shared.go`
   - [x] `GetSearchTableHeader()` - Font search/add/remove tables (5 columns)
-  - [x] `GetListTableHeader()` - Font list tables (5 columns) 
+  - [x] `GetListTableHeader()` - Font list tables (7 columns: Name, Font ID, License, Categories, Type, Scope, Source)
   - [x] `GetTableSeparator()` - Consistent separator line
   - [x] Column width constants for all table types
   - [x] Maximum table width: 120 characters (full terminal width)
@@ -231,47 +231,50 @@
   - [ ] `--remove <name>` - Remove source without TUI (can't remove built-in sources, can only disable/enable)
   - [ ] `--enable <name>` - Enable source without TUI
   - [ ] `--disable <name>` - Disable source without TUI
-  - [ ] `--priority <name> --priority <number>` - Set source priority without TUI
+  - [ ] `--priority <name> <rank>` - Set source priority without TUI
 - [ ] **Benefits for automation**
   - [ ] Bypass TUI when not available or desired
   - [ ] Enable AI agents and scripts to manage sources
   - [ ] Better compatibility with CI/CD and automated environments
   - [ ] Consistent with other CLI tools' management patterns
 
-#### **Font ID Resolution & Smart Matching** (HIGH PRIORITY) UP NEXT
+#### **Font ID Resolution & Smart Matching** ✅ **COMPLETED**
 
 ##### **Phase 1: Installation Tracking System**
-- [ ] **Add installation tracking system**
+- [ ] **Add installation tracking system** - **NOT IMPLEMENTED**
   - [ ] Create `~/.fontget/installed.json` to track font ID → system name mappings
   - [ ] Update install process to record font ID when installing via FontGet
-- [ ] **Smart font detection (winget-style)**
+- [ ] **Smart font detection (winget-style)** - **NOT IMPLEMENTED**
   - [ ] Add tracking for font variants and their system names
   - [ ] Handle font updates and reinstallations
 
-##### **Phase 2: Smart Font Detection (winget-style)**
-- [ ] **Smart font detection**
-  - [ ] Scan system fonts against all FontGet sources
-  - [ ] Match system fonts to FontGet sources by priority order
-  - [ ] Show Font ID for detected fonts, blank for unknown fonts
-  - [ ] Cache detection results for performance
-- [ ] **Dynamic source detection for remove command**
-  - [ ] Replace "System" placeholder with actual source name (e.g., "Google Fonts", "Nerd Fonts")
-  - [ ] Show Font ID instead of "N/A" when font is detected in sources
-  - [ ] Display license and categories when available from source
-  - [ ] Fall back to "System Font" only for fonts not found in any source
-- [ ] **Enhanced list command**
-  - [ ] Show Font Name, Font ID, Variants, Categories (e.g. Display, Serif etc. if possible) and Source columns
-  - [ ] Display detected fonts with their Font ID from highest priority source
-  - [ ] Leave Font ID blank for fonts not in any FontGet source
-  - [ ] Add filtering by source and Font ID
+##### **Phase 2: Smart Font Detection (winget-style)** ✅ **COMPLETED**
+- [x] **Smart font detection**
+  - [x] Scan system fonts against all FontGet sources
+  - [x] Match system fonts to FontGet sources by priority order
+  - [x] Show Font ID for detected fonts, blank for unknown fonts
+  - [x] ~~Cache detection results for performance~~ - **REMOVED** - Using optimized in-memory index instead
+- [x] **Dynamic source detection for remove command**
+  - [x] Show Font ID when font is detected in sources
+  - [x] Display license and categories when available from source
+  - [x] Fall back to blank fields for fonts not found in any source
+- [x] **Enhanced list command**
+  - [x] Show Font Name, Font ID, License, Categories, Type, Scope, and Source columns
+  - [x] Display detected fonts with their Font ID from highest priority source
+  - [x] Leave Font ID blank for fonts not in any FontGet source
+  - [x] Default scope is "all" (shows fonts from both user and machine scopes)
+  - [x] Optimized index-based matching for O(1) lookups
+  - [x] Protected system fonts are not matched
+  - [x] Nerd Fonts matching handles variants correctly
 
-##### **Phase 3: Enhanced Remove Command**
-- [ ] **Enhanced remove command**
-  - [ ] Support both font IDs (`nerd.fira-code`) and system names (`Fira Code`)
-  - [ ] Add suggestion system like add command
-  - [ ] Support partial matches (`open-sans` matches across multiple sources)
-  - [ ] Show source resolution when multiple sources match
-  - [ ] Integrate with installation tracking system
+##### **Phase 3: Enhanced Remove Command** ✅ **COMPLETED**
+- [x] **Enhanced remove command**
+  - [x] Support both font IDs (`google.roboto`) and system names (`Roboto`)
+  - [x] Font ID resolution via `resolveFontNameOrID()` function
+  - [x] Auto-detects scope based on elevation (admin defaults to "all", user defaults to "user")
+  - [x] Shows separate progress entries for each scope when removing from "all" scopes
+  - [x] Improved error messages when fonts found in opposite scope
+  - [x] Removed `--force` flag (was not functional)
 
 #### **Update System** (MEDIUM PRIORITY)
 
@@ -366,5 +369,5 @@
 
 ---
 
-**Current Status**: 7/7 commands fully standardized with visual consistency. Source priority and font matching logic fixed across all commands. Ready for Phase 4: Code Quality & Cleanup milestone.
-**COMPLETED**: Shared function consolidation, table standardization, performance optimization for suggestion systems, complete UI component system with modern card components, form elements, confirmation dialogs, hierarchical lists, info command card-based layout implementation, remove command visual parity with add command, list command styling, sources command styling, fixed duplicate manage command bug, source priority ordering consistency, font matching logic corrections, and unused code cleanup (231 lines removed).
+**Current Status**: 7/7 commands fully standardized with visual consistency. Source priority and font matching logic fixed across all commands. Font matching feature completed with optimized index-based matching. Font ID support added to add and remove commands. Ready for Phase 4: Code Quality & Cleanup milestone.
+**COMPLETED**: Shared function consolidation, table standardization, performance optimization for suggestion systems, complete UI component system with modern card components, form elements, confirmation dialogs, hierarchical lists, info command card-based layout implementation, remove command visual parity with add command, list command styling and font matching feature, sources command styling, fixed duplicate manage command bug, source priority ordering consistency, font matching logic corrections, Font ID support in add/remove commands, optimized font matching with in-memory index, protected system font filtering, Nerd Fonts variant handling, and unused code cleanup (231 lines removed).

@@ -65,6 +65,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Font installation command
 **Functionality**:
 - Installs fonts from various sources (Google Fonts, Nerd Fonts, Font Squirrel)
+- Supports both font names (e.g., "Roboto") and Font IDs (e.g., "google.roboto")
 - Handles font search and fuzzy matching
 - Manages font installation with progress tracking
 - Supports different installation scopes (user/system)
@@ -112,16 +113,22 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Font listing command
 **Functionality**:
 - Lists installed fonts on the system
+- Matches installed fonts to repository entries to show Font IDs, License, Categories, and Source
 - Provides filtering and formatting options
 - Shows font details and metadata
+- Default scope is "all" (shows fonts from both user and machine scopes)
+- Displays columns: Name, Font ID, License, Categories, Type, Scope, Source
 
 **Key Functions**:
 - `listCmd.RunE`: Main listing execution
-- `listInstalledFonts`: Core listing logic
+- `collectFonts`: Collects fonts from specified scopes
+- `IsCriticalSystemFont`: Checks if a font is a protected system font
 
 **Interfaces**:
 - Uses `internal/platform` for OS-specific font detection
 - Uses `internal/output` for verbose/debug output
+- Uses `internal/repo` for font matching and repository access
+- Uses `cmd/shared` for protected font checking
 
 **Status**: ✅ Active - Core functionality
 
@@ -146,24 +153,29 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Font removal command
 **Functionality**:
 - Removes fonts from the system
+- Supports both font names (e.g., "Roboto") and Font IDs (e.g., "google.roboto")
 - Handles different removal scopes (user, machine, all)
+- When removing from "all" scopes, shows separate progress entries for each scope
 - Extracts font names from installed font metadata (SFNT name table)
+- Protects critical system fonts from removal
 - Provides consistent verbose/debug output matching add command
-- Uses shared operation infrastructure for consistent behavior
+- Auto-detects scope based on elevation (admin/sudo defaults to "all", user defaults to "user")
 
 **Key Functions**:
 - `removeCmd.RunE`: Main removal execution
 - `findFontFamilyFiles`: Locates font files by family name
 - `removeFont`: Core font removal logic
+- `resolveFontNameOrID`: Resolves Font IDs to font names for lookup
 - `extractFontFamilyNameFromPath`: Extracts font family name from file path using SFNT metadata
 - `extractFontDisplayNameFromPath`: Extracts display name from file path using SFNT metadata
+- `isCriticalSystemFont`: Checks if a font file is a protected system font
 
 **Interfaces**:
 - Uses `internal/platform` for OS-specific operations and font metadata extraction
 - Uses `internal/output` for verbose/debug output
-- Uses `internal/repo` for font repository access
-- Uses `cmd/operations` for shared operation logic
-- Uses `cmd/handlers` for operation output handlers
+- Uses `internal/repo` for font repository access and Font ID resolution
+- Uses `internal/components` for progress bar display
+- Uses `cmd/shared` for protected font checking and status reporting
 
 **Status**: ✅ Active - Core functionality
 
@@ -341,6 +353,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - File size formatting utilities
 - Table formatting constants and helpers
 - Error types for font operations
+- Protected system font checking
 
 **Key Functions**:
 - `ParseFontNames`: Parses comma-separated font names from arguments
@@ -350,6 +363,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `FormatFileSize`: Formats bytes into human-readable format (KB, MB)
 - `findSimilarFonts`: Fuzzy matching for font names
 - `PrintStatusReport`: Prints formatted status reports
+- `IsCriticalSystemFont`: Checks if a font is a protected system font (used by list and remove commands)
 
 **Interfaces**:
 - Used by multiple command files
@@ -378,10 +392,17 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `sources.go`: Source data loading and caching
 - `manifest.go`: Font manifest operations
 - `search.go`: Font search functionality
-- `font.go`: Font data structures
+- `font.go`: Font data structures and Font ID resolution
+- `font_matches.go`: Font matching logic for installed fonts to repository entries
 - `metadata.go`: Font metadata handling
 - `archive.go`: Archive operations
 - `types.go`: Type definitions
+
+**Key Features**:
+- **Font Matching**: Optimized index-based matching of installed fonts to repository entries
+- **Font ID Resolution**: Resolves Font IDs (e.g., "google.roboto") to font names
+- **Source Priority**: Handles multiple repository matches using predefined source priority order
+- **Nerd Fonts Support**: Special handling for Nerd Fonts naming conventions and variants
 
 **Status**: ✅ Active - Core repository system
 
@@ -610,6 +631,30 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Reusable components reduce code duplication
   - Better maintainability and styling control
   - Enhanced visual hierarchy and user experience
+
+#### **Font Matching and Font ID Support (2025-01-XX)**
+- **Font Matching Feature**: Added `internal/repo/font_matches.go` with optimized index-based matching
+  - Matches installed fonts to repository entries to display Font IDs, License, Categories, and Source
+  - Uses O(1) lookup index instead of O(n) iteration for better performance
+  - Handles Nerd Fonts naming conventions and variant suffixes (NL, Propo, etc.)
+  - Protects critical system fonts from being matched
+- **Font ID Support**: Commands now accept both font names and Font IDs
+  - `add` command: Supports Font IDs (e.g., "google.roboto") in addition to font names
+  - `remove` command: Supports Font IDs for accurate font removal
+  - `list` command: Displays Font IDs for matched fonts
+- **List Command Enhancements**:
+  - Default scope changed to "all" (shows fonts from both user and machine scopes)
+  - New columns: Font ID, License, Categories, Source (replaced "Installed" date)
+  - Removed "all" option from --scope flag (now default behavior)
+- **Remove Command Enhancements**:
+  - Auto-detects scope based on elevation (admin defaults to "all", user defaults to "user")
+  - Shows separate progress entries for each scope when removing from "all" scopes
+  - Removed `--force` flag (was not functional)
+- **Benefits**:
+  - Better user experience with Font ID support
+  - More informative font listings with license and source information
+  - Improved performance with optimized matching algorithm
+  - Cleaner command interface with sensible defaults
 
 ---
 
