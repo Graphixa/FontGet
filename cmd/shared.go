@@ -22,7 +22,7 @@ var ErrElevationRequired = errors.New("elevation required")
 
 // printElevationHelp prints platform-specific elevation instructions
 func printElevationHelp(cmd *cobra.Command, platform string) {
-	fmt.Println()
+	// No leading blank line - commands already start with a blank line per spacing framework
 
 	// Build the exact command the user ran (prefer root name over executable filename)
 	fullCmd := strings.TrimSpace(fmt.Sprintf("%s %s", cmd.Root().Name(), strings.Join(os.Args[1:], " ")))
@@ -119,7 +119,8 @@ type StatusReport struct {
 func PrintStatusReport(report StatusReport) {
 	// Only show status report in verbose mode
 	if IsVerbose() && (report.Success > 0 || report.Skipped > 0 || report.Failed > 0) {
-		fmt.Printf("\n%s\n", ui.ReportTitle.Render("Status Report"))
+		// No leading blank line - previous section already ends with blank line per spacing framework
+		fmt.Printf("%s\n", ui.ReportTitle.Render("Status Report"))
 		fmt.Println("---------------------------------------------")
 		fmt.Printf("%s: %d  |  %s: %d  |  %s: %d\n\n",
 			ui.FeedbackSuccess.Render(report.SuccessLabel), report.Success,

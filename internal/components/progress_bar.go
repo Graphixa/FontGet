@@ -238,7 +238,8 @@ func (m ProgressBarModel) View() string {
 
 		// Combine into single line - no styling on text, only progress bar has gradient
 		// Title ends with \n\n to create blank line before items, and last item ends with \n
-		titleLine := fmt.Sprintf("\n%s %s %s\n\n", titleText, countText, progressBar)
+		// No leading \n - commands already start with a blank line per spacing framework
+		titleLine := fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
 		b.WriteString(titleLine)
 	} else {
 		// For verbose/debug, don't show title line at all (redundant with verbose output)
@@ -362,8 +363,11 @@ func (m ProgressBarModel) View() string {
 		}
 	}
 
-	// Progress bar output always ends with exactly one \n (from last item)
-	// Commands are responsible for adding spacing after the progress bar as needed
+	// Progress bar output always ends with \n\n (one \n from last item, one \n for blank line)
+	// This ensures consistent spacing between sections per the spacing framework
+	if len(m.Items) > 0 {
+		b.WriteString("\n")
+	}
 
 	return b.String()
 }
