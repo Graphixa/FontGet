@@ -117,8 +117,7 @@ func init() {
 	output.SetDebugChecker(IsDebug)
 
 	// Set custom help template
-	rootCmd.SetHelpTemplate(`
-{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
+	rootCmd.SetHelpTemplate(`{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
 
 {{end}}{{if .Runnable}}Usage:
   {{.UseLine}}
@@ -131,12 +130,10 @@ Examples:
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
-{{end}}{{end}}{{end}}
-`)
+{{end}}{{end}}{{end}}`)
 
 	// Set custom usage template with extra spacing
-	rootCmd.SetUsageTemplate(`
-{{if .Runnable}}Usage:
+	rootCmd.SetUsageTemplate(`{{if .Runnable}}Usage:
   {{.UseLine}}
 {{end}}{{if .HasAvailableFlags}}
 Flags:
@@ -148,8 +145,7 @@ Examples:
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
 {{end}}{{end}}
-{{end}}
-`)
+{{end}}`)
 
 	// Add completion command
 	completionCmd := &cobra.Command{

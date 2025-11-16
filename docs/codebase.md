@@ -74,9 +74,9 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Key Functions**:
 - `addCmd.RunE`: Main command execution
 - `installFontsInDebugMode`: Debug mode installation (plain text output)
-- `installFontsOneAtATime`: Verbose mode installation (TUI with details)
-- `getSourceDisplayName`: Source name resolution
-- `showFontSuggestions`: Error handling with suggestions
+- `installFont`: Core font installation logic
+- `getSourceName`: Source name resolution
+- `showFontNotFoundWithSuggestions`: Error handling with suggestions
 
 **Interfaces**:
 - Uses `internal/repo` for font data
@@ -154,7 +154,9 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Key Functions**:
 - `removeCmd.RunE`: Main removal execution
 - `findFontFamilyFiles`: Locates font files by family name
-- `showInstalledFontNotFoundWithSuggestionsCached`: Error handling with suggestions
+- `removeFont`: Core font removal logic
+- `extractFontFamilyNameFromPath`: Extracts font family name from file path using SFNT metadata
+- `extractFontDisplayNameFromPath`: Extracts display name from file path using SFNT metadata
 
 **Interfaces**:
 - Uses `internal/platform` for OS-specific operations and font metadata extraction

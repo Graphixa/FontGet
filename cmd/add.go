@@ -268,8 +268,10 @@ var addCmd = &cobra.Command{
 	SilenceUsage: true,
 	Long: `Install fonts from available font repositories.
 
-You can specify multiple fonts by separating them with spaces. 
-Font names with spaces should be wrapped in quotes. Comma-separated lists are also supported.
+You can install fonts by their name or ID, e.g. "Roboto" or "google.roboto".
+You can specify multiple fonts by separating them with a space or comma. 
+
+Font names with spaces in their name should be wrapped in quotes, e.g. "Open Sans".
 
 You can specify the installation scope using the --scope flag:
   - user (default): Install font for current user
@@ -277,9 +279,9 @@ You can specify the installation scope using the --scope flag:
 
 `,
 	Example: `  fontget add "Roboto"
+  fontget add "google.roboto"
   fontget add "Open Sans" "Fira Sans" "Noto Sans"
-  fontget add roboto firasans notosans
-  fontget add "roboto, firasans, notosans"
+  fontget add "roboto firasans notosans"
   fontget add "Open Sans" -s machine
   fontget add "roboto" -f`,
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -298,7 +300,9 @@ You can specify the installation scope using the --scope flag:
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
-			return fmt.Errorf("failed to initialize sources: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %v", err)
 		}
 
 		// Double check args to prevent panic
@@ -309,8 +313,9 @@ You can specify the installation scope using the --scope flag:
 		// Create font manager
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
-			GetLogger().Error("Failed to initialize font manager: %v", err)
-			return fmt.Errorf("failed to initialize font manager: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
+			return fmt.Errorf("unable to access system fonts: %v", err)
 		}
 
 		// Get scope from flag
@@ -345,8 +350,10 @@ You can specify the installation scope using the --scope flag:
 		if scope != "user" {
 			installScope = platform.InstallationScope(scope)
 			if installScope != platform.UserScope && installScope != platform.MachineScope {
-				GetLogger().Error("Invalid scope '%s'", scope)
-				return fmt.Errorf("invalid scope '%s'. Must be 'user' or 'machine'", scope)
+				err := fmt.Errorf("invalid scope '%s'. Valid options are: 'user' or 'machine'", scope)
+				output.GetVerbose().Error("%v", err)
+				output.GetDebug().Error("Invalid scope provided: '%s'", scope)
+				return err
 			}
 		}
 
@@ -355,8 +362,9 @@ You can specify the installation scope using the --scope flag:
 			if errors.Is(err, ErrElevationRequired) {
 				return nil // Already printed user-friendly message
 			}
-			GetLogger().Error("Elevation check failed: %v", err)
-			return err
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("checkElevation() failed: %v", err)
+			return fmt.Errorf("unable to verify system permissions: %v", err)
 		}
 
 		// Process font names from arguments

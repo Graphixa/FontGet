@@ -20,6 +20,112 @@ import (
 // user-facing elevation instructions and no further error output is needed.
 var ErrElevationRequired = errors.New("elevation required")
 
+// List of critical system fonts to not remove or match (filenames and families, case-insensitive, no extension)
+var criticalSystemFonts = map[string]bool{
+	// Windows core fonts
+	"arial":                 true,
+	"arialbold":             true,
+	"arialitalic":           true,
+	"arialbolditalic":       true,
+	"calibri":               true,
+	"calibribold":           true,
+	"calibriitalic":         true,
+	"calibribolditalic":     true,
+	"segoeui":               true,
+	"segoeuibold":           true,
+	"segoeuiitalic":         true,
+	"segoeuibolditalic":     true,
+	"times":                 true,
+	"timesnewroman":         true,
+	"timesnewromanpsmt":     true,
+	"courier":               true,
+	"tahoma":                true,
+	"verdana":               true,
+	"symbol":                true,
+	"wingdings":             true,
+	"consolas":              true,
+	"georgia":               true,
+	"georgiabold":           true,
+	"georgiaitalic":         true,
+	"georgiabolditalic":     true,
+	"comicsansms":           true,
+	"comicsansmsbold":       true,
+	"impact":                true,
+	"trebuchetms":           true,
+	"trebuchetmsbold":       true,
+	"trebuchetmsitalic":     true,
+	"trebuchetmsbolditalic": true,
+	"palatino":              true,
+	"palatinolinotype":      true,
+	"bookantiqua":           true,
+	"centurygothic":         true,
+	"franklingothic":        true,
+	"gillsans":              true,
+	"gillsansmt":            true,
+
+	// macOS core fonts
+	"cambria":              true,
+	"sfnsdisplay":          true,
+	"sfnsrounded":          true,
+	"sfnstext":             true,
+	"geneva":               true,
+	"monaco":               true,
+	"lucida grande":        true,
+	"menlo":                true,
+	"helvetica":            true,
+	"helveticaneue":        true,
+	"myriad":               true,
+	"myriadpro":            true,
+	"myriadset":            true,
+	"myriadsemibold":       true,
+	"myriadsemibolditalic": true,
+	"sanfrancisco":         true,
+	"sfprodisplay":         true,
+	"sfprotext":            true,
+	"sfprorounded":         true,
+	"athelas":              true,
+	"seravek":              true,
+	"seraveklight":         true,
+	"seravekmedium":        true,
+	"seraveksemibold":      true,
+	"seravekbold":          true,
+	"applegaramond":        true,
+	"garamond":             true,
+	"garamonditalic":       true,
+	"garamondbold":         true,
+	"garamondbolditalic":   true,
+	"optima":               true,
+	"optimabold":           true,
+	"optimaitalic":         true,
+	"optimabolditalic":     true,
+	"futura":               true,
+	"futurabold":           true,
+	"futuraitalic":         true,
+	"futurabolditalic":     true,
+
+	// Linux system fonts
+	"ubuntu":              true,
+	"ubuntumono":          true,
+	"ubuntubold":          true,
+	"ubuntuitalic":        true,
+	"ubuntubolditalic":    true,
+	"cantarell":           true,
+	"cantarellbold":       true,
+	"cantarellitalic":     true,
+	"cantarellbolditalic": true,
+}
+
+// IsCriticalSystemFont checks if a font is a critical system font
+// This function normalizes the font name (lowercase, removes spaces/hyphens/underscores) before checking
+func IsCriticalSystemFont(fontName string) bool {
+	name := strings.ToLower(fontName)
+	name = strings.ReplaceAll(name, " ", "")
+	name = strings.ReplaceAll(name, "-", "")
+	name = strings.ReplaceAll(name, "_", "")
+	// Note: We don't remove file extension here since we're checking family names, not filenames
+	return criticalSystemFonts[name]
+}
+
 // printElevationHelp prints platform-specific elevation instructions
 func printElevationHelp(cmd *cobra.Command, platform string) {
 	// No leading blank line - commands already start with a blank line per spacing framework
@@ -315,13 +421,15 @@ const (
 	TableColCategories = 16 // Categories (wider for multiple categories)
 	TableColSource     = 18 // Source (wider for source names)
 
-	// Font List Tables (5 columns, total: 120 chars)
-	TableColListName = 42 // Font family name (wider)
-	TableColListID   = 34 // Font ID (for future ID matching)
-	TableColType     = 10 // File type
-	TableColDate     = 20 // Installation date
-	TableColScope    = 10 // Scope (user/machine)
-	// Total: 42 + 34 + 10 + 20 + 10 + 4 spaces = 120 chars (exactly 120)
+	// Font List Tables (7 columns, total: 120 chars)
+	TableColListName     = 30 // Font family name
+	TableColListID       = 28 // Font ID
+	TableColListLicense  = 8  // License
+	TableColListCategory = 16 // Categories
+	TableColType         = 8  // File type
+	TableColScope        = 8  // Scope (user/machine)
+	TableColListSource   = 16 // Source
+	// Total: 30 + 28 + 8 + 16 + 8 + 8 + 16 + 6 spaces = 120 chars (exactly 120)
 
 	// Sources Management Tables (2 columns, total: 120 chars)
 	TableColStatus     = 10  // Checkbox/status
@@ -453,14 +561,16 @@ func GetTableSeparator() string {
 	return strings.Repeat("-", TableTotalWidth)
 }
 
-// GetListTableHeader returns a formatted table header for font list tables (Name, ID, Type, Installed, Scope)
+// GetListTableHeader returns a formatted table header for font list tables (Name, Font ID, License, Categories, Type, Scope, Source)
 func GetListTableHeader() string {
-	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
+	return fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s",
 		TableColListName, "Name",
-		TableColListID, "ID",
+		TableColListID, "Font ID",
+		TableColListLicense, "License",
+		TableColListCategory, "Categories",
 		TableColType, "Type",
-		TableColDate, "Installed",
-		TableColScope, "Scope")
+		TableColScope, "Scope",
+		TableColListSource, "Source")
 }
 
 // GetSourcesTableHeader returns a formatted table header for sources management tables

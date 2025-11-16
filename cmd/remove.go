@@ -38,102 +38,8 @@ type RemoveResult struct {
 	Errors  []string
 }
 
-// List of critical system fonts to not remove (filenames and families, case-insensitive, no extension)
-var criticalSystemFonts = map[string]bool{
-	// Windows core fonts
-	"arial":                 true,
-	"arialbold":             true,
-	"arialitalic":           true,
-	"arialbolditalic":       true,
-	"calibri":               true,
-	"calibribold":           true,
-	"calibriitalic":         true,
-	"calibribolditalic":     true,
-	"segoeui":               true,
-	"segoeuibold":           true,
-	"segoeuiitalic":         true,
-	"segoeuibolditalic":     true,
-	"times":                 true,
-	"timesnewroman":         true,
-	"timesnewromanpsmt":     true,
-	"courier":               true,
-	"tahoma":                true,
-	"verdana":               true,
-	"symbol":                true,
-	"wingdings":             true,
-	"consolas":              true,
-	"georgia":               true,
-	"georgiabold":           true,
-	"georgiaitalic":         true,
-	"georgiabolditalic":     true,
-	"comicsansms":           true,
-	"comicsansmsbold":       true,
-	"impact":                true,
-	"trebuchetms":           true,
-	"trebuchetmsbold":       true,
-	"trebuchetmsitalic":     true,
-	"trebuchetmsbolditalic": true,
-	"palatino":              true,
-	"palatinolinotype":      true,
-	"bookantiqua":           true,
-	"centurygothic":         true,
-	"franklingothic":        true,
-	"gillsans":              true,
-	"gillsansmt":            true,
-
-	// macOS core fonts
-	"cambria":              true,
-	"sfnsdisplay":          true,
-	"sfnsrounded":          true,
-	"sfnstext":             true,
-	"geneva":               true,
-	"monaco":               true,
-	"lucida grande":        true,
-	"menlo":                true,
-	"helvetica":            true,
-	"helveticaneue":        true,
-	"myriad":               true,
-	"myriadpro":            true,
-	"myriadset":            true,
-	"myriadsemibold":       true,
-	"myriadsemibolditalic": true,
-	"sanfrancisco":         true,
-	"sfprodisplay":         true,
-	"sfprotext":            true,
-	"sfprorounded":         true,
-	"athelas":              true,
-	"seravek":              true,
-	"seraveklight":         true,
-	"seravekmedium":        true,
-	"seraveksemibold":      true,
-	"seravekbold":          true,
-	"applegaramond":        true,
-	"garamond":             true,
-	"garamonditalic":       true,
-	"garamondbold":         true,
-	"garamondbolditalic":   true,
-	"optima":               true,
-	"optimabold":           true,
-	"optimaitalic":         true,
-	"optimabolditalic":     true,
-	"futura":               true,
-	"futurabold":           true,
-	"futuraitalic":         true,
-	"futurabolditalic":     true,
-
-	// Linux system fonts
-	"ubuntu":              true,
-	"ubuntumono":          true,
-	"ubuntubold":          true,
-	"ubuntuitalic":        true,
-	"ubuntubolditalic":    true,
-	"cantarell":           true,
-	"cantarellbold":       true,
-	"cantarellitalic":     true,
-	"cantarellbolditalic": true,
-}
-
-// isCriticalSystemFont checks if a font is a critical system font
+// isCriticalSystemFont checks if a font is a critical system font (for filenames)
+// This is a wrapper that handles file extensions for the remove command
 func isCriticalSystemFont(fontName string) bool {
 	name := strings.ToLower(fontName)
 	name = strings.ReplaceAll(name, " ", "")
@@ -184,6 +90,32 @@ func normalizeFontName(name string) string {
 	return name
 }
 
+// resolveFontNameOrID resolves a Font ID to a font name, or returns the original if it's already a font name
+// This allows the remove command to accept both Font IDs (e.g., "google.noto-sans") and font names (e.g., "Noto Sans")
+func resolveFontNameOrID(input string, repository *repo.Repository) string {
+	// Check if this is a Font ID (contains a dot like "google.noto-sans")
+	if !strings.Contains(input, ".") {
+		// Not a Font ID, return as-is
+		return input
+	}
+
+	// This is a Font ID, try to resolve it to a font name
+	if repository == nil {
+		// No repository available, return original
+		return input
+	}
+
+	fontID := strings.ToLower(input)
+	fonts, err := repo.GetFontByID(fontID)
+	if err == nil && len(fonts) > 0 {
+		// Successfully resolved Font ID to font name
+		return fonts[0].Name
+	}
+
+	// Font ID not found in repository, return original (will be handled as font name)
+	return input
+}
+
 // extractFontDisplayNameFromPath extracts the proper display name from a font file path
 // Uses font metadata (SFNT name table) for accurate font names, falls back to filename parsing
 func extractFontDisplayNameFromPath(fontPath string) string {
@@ -232,12 +164,15 @@ func removeFont(
 		Errors:  make([]string, 0),
 	}
 
+	// Resolve Font ID to font name if needed (supports both Font IDs and font names)
+	searchName := resolveFontNameOrID(fontName, repository)
+
 	// Find font files in the specified scope
-	matchingFonts := findFontFamilyFiles(fontName, fontManager, scope)
+	matchingFonts := findFontFamilyFiles(searchName, fontManager, scope)
 
 	// If no direct matches, try repository search
 	if len(matchingFonts) == 0 && repository != nil {
-		results, err := repository.SearchFonts(fontName, "false")
+		results, err := repository.SearchFonts(searchName, "false")
 		if err == nil && len(results) > 0 {
 			matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
 		}
@@ -254,11 +189,12 @@ func removeFont(
 		// Construct full font path for metadata extraction
 		fontPath := filepath.Join(fontDir, matchingFont)
 
-		// Check for protected system fonts
+		// Check for protected system fonts - ALWAYS enforced
+		// Critical system fonts should never be removable for system stability
 		if isCriticalSystemFont != nil && isCriticalSystemFont(matchingFont) {
 			result.Skipped++
 			fontDisplayName := extractFontDisplayNameFromPath(fontPath)
-			result.Details = append(result.Details, fontDisplayName+" (Skipped)")
+			result.Details = append(result.Details, fontDisplayName+" (Skipped - Protected system font)")
 			continue
 		}
 
@@ -337,23 +273,23 @@ var removeCmd = &cobra.Command{
 	SilenceUsage: true,
 	Long: `Remove fonts from your system. 
 	
-You can specify multiple fonts by separating them with spaces.
-Font names with spaces should be wrapped in quotes. Comma-separated lists are also supported.
+You can remove fonts by their name or ID, e.g. "Roboto" or "google.roboto".
+You can remove multiple fonts by separating them with a space or comma. 
+
+Font names with spaces in their name should be wrapped in quotes, e.g. "Open Sans".
 
 You can specify the removal scope using the --scope flag:
   - user (default): Remove font from current user
   - machine: Remove font system-wide (requires elevation)
   - all: Remove from both user and machine scopes (requires elevation)
 
-Use --force to override critical system font protection.
 `,
 	Example: `  fontget remove "Roboto"
+  fontget remove "google.roboto"
   fontget remove "Open Sans" "Fira Sans" "Noto Sans"
-  fontget remove roboto firasans notosans
   fontget remove "roboto, firasans, notosans"
-  fontget remove "Open Sans" -s machine -f
-  fontget remove "Roboto" -s user
-  fontget remove "opensans" --force`,
+  fontget remove "Open Sans" -s machine
+  fontget remove "Roboto" -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			fmt.Printf("\n%s\n\n", ui.RenderError("A font ID is required"))
@@ -367,30 +303,26 @@ Use --force to override critical system font protection.
 		// Always start with a blank line for consistent spacing from command prompt
 		fmt.Println()
 
-		// Debug-level information for developers
-		// Note: Suppressed to avoid TUI interference (consistent with add command)
-		// output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
-
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			return nil
 		}
 
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
-			GetLogger().Error("Failed to initialize font manager: %v", err)
-			return fmt.Errorf("failed to initialize font manager: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
+			return fmt.Errorf("unable to access system fonts: %v", err)
 		}
 
 		scopeFlag, _ := cmd.Flags().GetString("scope")
-		forceFlag, _ := cmd.Flags().GetBool("force")
-		// Note: Scope will be logged after auto-detection in debug mode
 
 		status := RemovalStatus{Details: make([]string, 0)}
 
 		r, err := repo.GetRepository()
 		if err != nil {
-			GetLogger().Error("Failed to initialize repository: %v", err)
-			return fmt.Errorf("failed to initialize repository: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %v", err)
 		}
 
 		// Auto-detect scope if not explicitly provided
@@ -404,17 +336,14 @@ Use --force to override critical system font protection.
 			} else if isElevated {
 				scopeFlag = "all"
 				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
-				// Note: Suppressed to avoid TUI interference (consistent with add command)
 			} else {
 				scopeFlag = "user"
 				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
-				// Note: Suppressed to avoid TUI interference (consistent with add command)
-				// output.GetVerbose().Info("Auto-detected user privileges, defaulting to 'user' scope")
 			}
 		}
 
 		// Log removal parameters after scope is determined (for debug mode)
-		GetLogger().Info("Removal parameters - Scope: %s, Force: %v", scopeFlag, forceFlag)
+		GetLogger().Info("Removal parameters - Scope: %s", scopeFlag)
 		// Format font list as a bulleted list
 		GetLogger().Info("Removing %d Font(s):", len(args))
 		for _, fontName := range args {
@@ -430,7 +359,6 @@ Use --force to override critical system font protection.
 				scopeDisplay = "all (user and machine)"
 			}
 			output.GetVerbose().Info("Scope: %s", scopeDisplay)
-			output.GetVerbose().Info("Force mode: %v", forceFlag)
 			output.GetVerbose().Info("Removing %d font(s)", len(args))
 			// Section ends with blank line per spacing framework
 			fmt.Println()
@@ -445,8 +373,10 @@ Use --force to override critical system font protection.
 		} else {
 			s := platform.InstallationScope(scopeFlag)
 			if s != platform.UserScope && s != platform.MachineScope {
-				GetLogger().Error("Invalid scope '%s'", scopeFlag)
-				return fmt.Errorf("invalid scope '%s'. Must be 'user', 'machine', or 'all'", scopeFlag)
+				err := fmt.Errorf("invalid scope '%s'. Valid options are: 'user' or 'machine'", scopeFlag)
+				output.GetVerbose().Error("%v", err)
+				output.GetDebug().Error("Invalid scope provided: '%s'", scopeFlag)
+				return err
 			}
 			scopes = []platform.InstallationScope{s}
 			scopeLabel = []string{scopeFlag}
@@ -458,8 +388,9 @@ Use --force to override critical system font protection.
 				if errors.Is(err, ErrElevationRequired) {
 					return nil // Already printed user-friendly message
 				}
-				GetLogger().Error("Elevation check failed for --scope machine: %v", err)
-				return err
+				output.GetVerbose().Error("%v", err)
+				output.GetDebug().Error("checkElevation() failed: %v", err)
+				return fmt.Errorf("unable to verify system permissions: %v", err)
 			}
 		}
 
@@ -483,32 +414,70 @@ Use --force to override critical system font protection.
 			properName := ""
 			fontFound := false
 
+			// Resolve Font ID to font name if needed (supports both Font IDs and font names)
+			searchName := resolveFontNameOrID(fontName, r)
+
 			// Try to find the font and extract its proper name
+			// For "all" scope, check all scopes to find the font (don't break early)
+			// For single scope, break after first match
 			for _, scopeType := range scopes {
-				matchingFonts := findFontFamilyFiles(fontName, fontManager, scopeType)
+				matchingFonts := findFontFamilyFiles(searchName, fontManager, scopeType)
 				if len(matchingFonts) > 0 {
 					fontDir := fontManager.GetFontDir(scopeType)
 					firstFontPath := filepath.Join(fontDir, matchingFonts[0])
-					properName = extractFontFamilyNameFromPath(firstFontPath)
+					// Extract proper name (use first one found, but continue checking for "all" scope)
+					if properName == "" {
+						properName = extractFontFamilyNameFromPath(firstFontPath)
+					}
 					fontFound = true
-					break
+					// For single scope, break after first match
+					if len(scopes) == 1 {
+						break
+					}
+					// For "all" scope, continue checking all scopes
 				}
 			}
 			// If no direct matches, try repository search
 			if !fontFound {
-				results, err := r.SearchFonts(fontName, "false")
+				results, err := r.SearchFonts(searchName, "false")
 				if err == nil && len(results) > 0 {
-					searchName := results[0].Name
+					repoSearchName := results[0].Name
 					for _, scopeType := range scopes {
-						matchingFonts := findFontFamilyFiles(searchName, fontManager, scopeType)
+						matchingFonts := findFontFamilyFiles(repoSearchName, fontManager, scopeType)
 						if len(matchingFonts) > 0 {
 							fontDir := fontManager.GetFontDir(scopeType)
 							firstFontPath := filepath.Join(fontDir, matchingFonts[0])
-							properName = extractFontFamilyNameFromPath(firstFontPath)
+							// Extract proper name (use first one found, but continue checking for "all" scope)
+							if properName == "" {
+								properName = extractFontFamilyNameFromPath(firstFontPath)
+							}
 							fontFound = true
-							break
+							// For single scope, break after first match
+							if len(scopes) == 1 {
+								break
+							}
+							// For "all" scope, continue checking all scopes
 						}
 					}
+				}
+			}
+
+			// If still not found and we're checking a single scope, check the opposite scope
+			// This provides better UX by detecting fonts in the opposite scope early
+			if !fontFound && len(scopes) == 1 {
+				var oppositeScope platform.InstallationScope
+				switch scopes[0] {
+				case platform.UserScope:
+					oppositeScope = platform.MachineScope
+				case platform.MachineScope:
+					oppositeScope = platform.UserScope
+				}
+
+				if oppositeScope != "" {
+					// Always add to notFoundFonts - the message handler will check the opposite scope
+					// and show the helpful message about using --scope if the font is found there
+					notFoundFonts = append(notFoundFonts, fontName)
+					continue // Skip adding to foundFonts
 				}
 			}
 
@@ -519,7 +488,7 @@ Use --force to override critical system font protection.
 					ProperName: properName,
 				})
 				fontNameMap[fontName] = properName
-			} else {
+			} else if !fontFound {
 				// Font not found - add to not found list
 				notFoundFonts = append(notFoundFonts, fontName)
 			}
@@ -536,13 +505,15 @@ Use --force to override critical system font protection.
 				GetLogger().Info("  - %s", fontName)
 				// Check if font exists in machine scope (only for user scope operations)
 				if len(scopes) == 1 && scopes[0] == platform.UserScope {
-					machineFonts := findFontFamilyFiles(fontName, fontManager, platform.MachineScope)
+					// Resolve Font ID to font name if needed
+					searchName := resolveFontNameOrID(fontName, r)
+					machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
 					if len(machineFonts) == 0 {
 						// Try repository search
-						results, err := r.SearchFonts(fontName, "false")
+						results, err := r.SearchFonts(searchName, "false")
 						if err == nil && len(results) > 0 {
-							searchName := results[0].Name
-							machineFonts = findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
+							repoSearchName := results[0].Name
+							machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope)
 						}
 					}
 					if len(machineFonts) > 0 {
@@ -582,14 +553,16 @@ Use --force to override critical system font protection.
 					// Check each not found font in the opposite scope
 					if oppositeScope != "" {
 						for _, fontName := range notFoundFonts {
+							// Resolve Font ID to font name if needed
+							searchName := resolveFontNameOrID(fontName, r)
 							// Try direct match first
-							matchingFonts := findFontFamilyFiles(fontName, fontManager, oppositeScope)
+							matchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
 							if len(matchingFonts) == 0 {
 								// Try repository search
-								results, err := r.SearchFonts(fontName, "false")
+								results, err := r.SearchFonts(searchName, "false")
 								if err == nil && len(results) > 0 {
-									searchName := results[0].Name
-									matchingFonts = findFontFamilyFiles(searchName, fontManager, oppositeScope)
+									repoSearchName := results[0].Name
+									matchingFonts = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
 								}
 							}
 							if len(matchingFonts) > 0 {
@@ -657,12 +630,71 @@ Use --force to override critical system font protection.
 				if errors.Is(err, ErrElevationRequired) {
 					return nil // Already printed user-friendly message
 				}
-				GetLogger().Error("Elevation check failed for --scope all: %v", err)
-				return err
+				output.GetVerbose().Error("%v", err)
+				output.GetDebug().Error("checkElevation() failed for --scope all: %v", err)
+				return fmt.Errorf("unable to verify system permissions: %v", err)
 			}
+		}
 
-			// Create operation items only for found fonts - use proper names from the start
-			var operationItems []components.OperationItem
+		// Handle single scope operations (user or machine) - use TUI like add command
+		// For "all" scope: Check each font in each scope individually and only create items
+		// for scopes where the font actually exists (using existing detection logic)
+		var operationItems []components.OperationItem
+		type FontScopeItem struct {
+			FontName   string
+			ProperName string
+			ScopeType  platform.InstallationScope
+			ScopeLabel string
+			ItemIndex  int
+		}
+		var fontScopeItems []FontScopeItem
+
+		if len(scopes) > 1 {
+			// "all" scope - check each font in each scope individually
+			itemIndex := 0
+			for _, fontInfo := range foundFonts {
+				searchName := resolveFontNameOrID(fontInfo.SearchName, r)
+				for j, scopeType := range scopes {
+					scopeLabelName := scopeLabel[j]
+					// Check if font exists in this scope
+					matchingFonts := findFontFamilyFiles(searchName, fontManager, scopeType)
+					if len(matchingFonts) == 0 {
+						// Try repository search
+						results, err := r.SearchFonts(searchName, "false")
+						if err == nil && len(results) > 0 {
+							repoSearchName := results[0].Name
+							matchingFonts = findFontFamilyFiles(repoSearchName, fontManager, scopeType)
+						}
+					}
+					// Only create item if font exists in this scope
+					if len(matchingFonts) > 0 {
+						// Extract proper name if not already set
+						properName := fontInfo.ProperName
+						if properName == "" {
+							fontDir := fontManager.GetFontDir(scopeType)
+							firstFontPath := filepath.Join(fontDir, matchingFonts[0])
+							properName = extractFontFamilyNameFromPath(firstFontPath)
+						}
+						operationItems = append(operationItems, components.OperationItem{
+							Name:          properName,
+							Status:        "pending",
+							StatusMessage: "Pending",
+							Variants:      []string{},
+							Scope:         scopeLabelName + " scope",
+						})
+						fontScopeItems = append(fontScopeItems, FontScopeItem{
+							FontName:   fontInfo.SearchName,
+							ProperName: properName,
+							ScopeType:  scopeType,
+							ScopeLabel: scopeLabelName,
+							ItemIndex:  itemIndex,
+						})
+						itemIndex++
+					}
+				}
+			}
+		} else {
+			// Single scope - one item per font
 			for _, fontInfo := range foundFonts {
 				operationItems = append(operationItems, components.OperationItem{
 					Name:          fontInfo.ProperName,
@@ -672,253 +704,6 @@ Use --force to override critical system font protection.
 					Scope:         "",
 				})
 			}
-
-			// Check if flags are set
-			list, _ := cmd.Flags().GetBool("list")
-			verbose, _ := cmd.Flags().GetBool("verbose")
-			debug, _ := cmd.Flags().GetBool("debug")
-
-			// For debug mode: bypass TUI and use plain text output
-			if IsDebug() {
-				output.GetDebug().State("Starting font removal operation")
-				output.GetDebug().State("Total fonts: %d", len(foundFonts))
-
-				// Process each found font across all scopes
-				for i, fontInfo := range foundFonts {
-					output.GetDebug().State("Removing font %d/%d: %s", i+1, len(foundFonts), fontInfo.SearchName)
-
-					// Process each scope separately
-					for j, scopeType := range scopes {
-						scopeLabelName := scopeLabel[j]
-						fontDir := fontManager.GetFontDir(scopeType)
-						output.GetDebug().State("Removing font %s in %s scope (directory: %s)", fontInfo.SearchName, scopeLabelName, fontDir)
-
-						result, err := removeFont(
-							fontInfo.SearchName,
-							fontManager,
-							scopeType,
-							fontDir,
-							r,
-							isCriticalSystemFont,
-						)
-
-						if err != nil {
-							output.GetDebug().State("Error removing font %s in %s scope: %v", fontInfo.SearchName, scopeLabelName, err)
-							if result != nil {
-								status.Failed += result.Failed
-								status.Skipped += result.Skipped
-								if len(result.Details) > 0 {
-									// Format failed variants as a list with hyphens
-									output.GetDebug().State("Failed variants:")
-									for _, detail := range result.Details {
-										output.GetDebug().State("  - %s", detail)
-									}
-								}
-							}
-							continue
-						}
-
-						status.Removed += result.Success
-						status.Skipped += result.Skipped
-						status.Failed += result.Failed
-
-						// Show detailed result information in debug mode
-						if len(result.Details) > 0 {
-							output.GetDebug().State("Removed variants:")
-							for _, detail := range result.Details {
-								// Remove status suffixes like " (Skipped)" or " (Failed)" for cleaner output
-								variantName := strings.TrimSuffix(strings.TrimSuffix(detail, " (Skipped)"), " (Failed)")
-								output.GetDebug().State("  - %s", variantName)
-							}
-						}
-						output.GetDebug().State("Font %s in %s scope completed: %s - %s (Removed: %d, Skipped: %d, Failed: %d)",
-							fontInfo.SearchName, scopeLabelName, result.Status, result.Message, result.Success, result.Skipped, result.Failed)
-					}
-				}
-
-				output.GetDebug().State("Operation complete - Removed: %d, Skipped: %d, Failed: %d",
-					status.Removed, status.Skipped, status.Failed)
-
-				// Print status report
-				PrintStatusReport(StatusReport{
-					Success:      status.Removed,
-					Skipped:      status.Skipped,
-					Failed:       status.Failed,
-					SuccessLabel: "Removed",
-					SkippedLabel: "Skipped",
-					FailedLabel:  "Failed",
-				})
-
-				GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
-					status.Removed, status.Skipped, status.Failed)
-				return nil
-			}
-
-			// Run unified progress for font removal (TUI mode)
-			progressErr := components.RunProgressBar(
-				"Removing Fonts",
-				operationItems,
-				list,    // List mode: show file listings
-				verbose, // Verbose mode: show operational details
-				debug,   // Debug mode: show technical details
-				func(send func(msg tea.Msg)) error {
-					// Process each found font across all scopes
-					for i, fontInfo := range foundFonts {
-						// Use proper font name from pre-extracted map
-						properFontName := fontInfo.ProperName
-						fontName := fontInfo.SearchName
-
-						send(components.ItemUpdateMsg{
-							Index:   i,
-							Name:    properFontName, // Use proper name from the start
-							Status:  "in_progress",
-							Message: "Finding fonts...",
-						})
-
-						GetLogger().Info("Removing font: %s", fontName)
-
-						var allRemovedVariants []string
-						var fontStatus string = "completed"
-						var statusMessage string = "Removed"
-						var finalScopeLabel string = ""
-						var allErrors []string // Collect errors from all scopes
-
-						// Process each scope
-						for j, scopeType := range scopes {
-							scopeLabelName := scopeLabel[j]
-							fontDir := fontManager.GetFontDir(scopeType)
-
-							// Remove the font using the removeFont helper
-							result, err := removeFont(
-								fontName,
-								fontManager,
-								scopeType,
-								fontDir,
-								r,
-								isCriticalSystemFont,
-							)
-
-							if err != nil {
-								// Font not found - mark as failed and continue with other fonts
-								if strings.Contains(err.Error(), "not found") {
-									fontStatus = "failed"
-									statusMessage = "Font not found"
-									allErrors = append(allErrors, "Font not found")
-									status.Failed++
-									// Continue to next font instead of exiting
-									break // Break out of scope loop, continue to next font
-								}
-								// Other errors - continue to next scope
-								continue
-							}
-
-							// Update status
-							status.Removed += result.Success
-							status.Skipped += result.Skipped
-							status.Failed += result.Failed
-
-							// Collect errors
-							allErrors = append(allErrors, result.Errors...)
-
-							// Collect variants for display
-							allRemovedVariants = append(allRemovedVariants, result.Details...)
-
-							// Determine overall status
-							if result.Status == "failed" {
-								fontStatus = "failed"
-								statusMessage = result.Message
-							} else if result.Status == "skipped" && fontStatus != "failed" {
-								fontStatus = "skipped"
-								statusMessage = result.Message
-							}
-
-							if result.Success > 0 {
-								finalScopeLabel = scopeLabelName
-							}
-						}
-
-						// Get first error message if status is failed
-						var errorMsg string
-						if fontStatus == "failed" && len(allErrors) > 0 {
-							errorMsg = allErrors[0]
-						}
-
-						// Mark as completed - use proper font name if we found it
-						updateMsg := components.ItemUpdateMsg{
-							Index:        i,
-							Status:       fontStatus,
-							Message:      statusMessage,
-							ErrorMessage: errorMsg,
-							Variants:     allRemovedVariants,
-							Scope:        finalScopeLabel,
-						}
-						if properFontName != "" {
-							updateMsg.Name = properFontName
-						}
-						send(updateMsg)
-
-						// Update progress percentage
-						percent := float64(i+1) / float64(len(foundFonts)) * 100
-						send(components.ProgressUpdateMsg{Percent: percent})
-					}
-
-					return nil
-				},
-			)
-
-			if progressErr != nil {
-				GetLogger().Error("Failed to process font removal: %v", progressErr)
-				return progressErr
-			}
-
-			GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
-				status.Removed, status.Skipped, status.Failed)
-
-			// Show not found fonts right after progress bar output (before status report)
-			if len(notFoundFonts) > 0 {
-				// Format scope for display
-				scopeDisplay := scopeFlag
-				if scopeDisplay == "" {
-					scopeDisplay = "user"
-				}
-				// Format message to match add command style
-				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
-				for _, fontName := range notFoundFonts {
-					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
-				}
-				// Add blank line before "Try using..." message (within section)
-				fmt.Println()
-				fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
-				// Section ends with blank line per spacing framework
-				fmt.Println()
-			}
-
-			// Print status report last (after error messages)
-			PrintStatusReport(StatusReport{
-				Success:      status.Removed,
-				Skipped:      status.Skipped,
-				Failed:       status.Failed,
-				SuccessLabel: "Removed",
-				SkippedLabel: "Skipped",
-				FailedLabel:  "Failed",
-			})
-
-			// Don't return error for removal failures since we already show detailed status report
-			// This prevents duplicate error messages while maintaining proper exit codes
-			return nil
-		}
-
-		// Handle single scope operations (user or machine) - use TUI like add command
-		// Create operation items only for found fonts - use proper names from the start
-		var operationItems []components.OperationItem
-		for _, fontInfo := range foundFonts {
-			operationItems = append(operationItems, components.OperationItem{
-				Name:          fontInfo.ProperName,
-				Status:        "pending",
-				StatusMessage: "Pending",
-				Variants:      []string{},
-				Scope:         "",
-			})
 		}
 
 		// Check if flags are set
@@ -1011,175 +796,175 @@ Use --force to override critical system font protection.
 			verbose, // Verbose mode: show operational details
 			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg)) error {
-				// Process each found font
-				for i, fontInfo := range foundFonts {
-					// Use proper font name from pre-extracted map
-					properFontName := fontInfo.ProperName
-					fontName := fontInfo.SearchName
+				// Process items based on scope mode
+				if len(scopes) > 1 {
+					// "all" scope - process each font+scope combination individually
+					for _, item := range fontScopeItems {
+						// Send initial "in_progress" message
+						send(components.ItemUpdateMsg{
+							Index:   item.ItemIndex,
+							Name:    item.ProperName,
+							Status:  "in_progress",
+							Message: "Removing...",
+						})
 
-					send(components.ItemUpdateMsg{
-						Index:   i,
-						Name:    properFontName, // Use proper name from the start
-						Status:  "in_progress",
-						Message: "Finding fonts...",
-					})
+						GetLogger().Info("Processing font: %s in %s scope", item.FontName, item.ScopeLabel)
 
-					GetLogger().Info("Processing font: %s", fontName)
-
-					var allRemovedVariants []string
-					var fontStatus string = "completed"
-					var statusMessage string = "Removed"
-					var finalScopeLabel string = ""
-					var allErrors []string // Collect errors from all scopes
-					var percent float64    // Progress percentage
-
-					// Special handling for user scope only: check both scopes for better UX
-					if len(scopes) == 1 && scopes[0] == platform.UserScope {
-						// Check both scopes efficiently
-						machineFonts := findFontFamilyFiles(fontName, fontManager, platform.MachineScope)
-						userFonts := findFontFamilyFiles(fontName, fontManager, platform.UserScope)
-
-						// If no direct matches, try repository search to find the font
-						if len(machineFonts) == 0 && len(userFonts) == 0 {
-							results, err := r.SearchFonts(fontName, "false")
-							if err == nil && len(results) > 0 {
-								searchName := results[0].Name
-								machineFonts = findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
-								userFonts = findFontFamilyFiles(searchName, fontManager, platform.UserScope)
-							}
-						}
-
-						// Handle different scenarios
-						if len(userFonts) == 0 && len(machineFonts) == 0 {
-							// Font not found in either scope - mark as failed and continue
-							fontStatus = "failed"
-							statusMessage = "Font not found"
-							status.Failed++
-							// Send update with proper name and update progress
-							// Note: ErrorMessage is set directly, no need to append to allErrors since we continue
-							send(components.ItemUpdateMsg{
-								Index:        i,
-								Name:         properFontName, // Use proper name from map
-								Status:       fontStatus,
-								Message:      statusMessage,
-								ErrorMessage: "Font not found",
-							})
-							// Update progress percentage
-							percent = float64(i+1) / float64(len(foundFonts)) * 100
-							send(components.ProgressUpdateMsg{Percent: percent})
-							// Continue to next font instead of exiting
-							continue
-						} else if len(userFonts) == 0 && len(machineFonts) > 0 {
-							// Font only exists in machine scope
-							status.Skipped++
-							fontStatus = "skipped"
-							statusMessage = "Only installed in machine scope"
-							// Send update before continuing
-							send(components.ItemUpdateMsg{
-								Index:   i,
-								Name:    properFontName,
-								Status:  fontStatus,
-								Message: statusMessage,
-							})
-							// Update progress percentage
-							percent = float64(i+1) / float64(len(fontNames)) * 100
-							send(components.ProgressUpdateMsg{Percent: percent})
-							continue
-						}
-						// Note: We'll check if font still exists in opposite scope AFTER removal
-						// Don't track here to avoid duplicates
-
-						// properFontName already set from fontNameMap above
-
-						// Process removal from user scope
-						fontDir := fontManager.GetFontDir(platform.UserScope)
+						fontDir := fontManager.GetFontDir(item.ScopeType)
 						result, err := removeFont(
-							fontName,
+							item.FontName,
 							fontManager,
-							platform.UserScope,
+							item.ScopeType,
 							fontDir,
 							r,
 							isCriticalSystemFont,
 						)
 
+						// Collect variants for display (only in verbose/list mode)
+						scopeVariants := []string{}
+						if verbose || list {
+							scopeVariants = result.Details
+						}
+
+						// Determine status
+						scopeStatus := "completed"
+						scopeMessage := "Removed"
 						if err != nil {
 							if strings.Contains(err.Error(), "not found") {
-								// Font not found - mark as failed and continue
-								fontStatus = "failed"
-								statusMessage = "Font not found"
-								allErrors = append(allErrors, "Font not found")
-								status.Failed++
-								// Continue to next font instead of exiting
-							} else {
-								fontStatus = "failed"
-								statusMessage = err.Error()
-								// Add error message
-								allErrors = append(allErrors, err.Error())
-								if result != nil {
-									status.Failed += result.Failed
-									allErrors = append(allErrors, result.Errors...)
-								}
+								// Font not found in this scope - skip (shouldn't happen since we checked)
+								continue
 							}
-						} else {
-
+							scopeStatus = "failed"
+							scopeMessage = err.Error()
+							status.Failed++
+							if result != nil {
+								status.Failed += result.Failed
+								status.Skipped += result.Skipped
+							}
+						} else if result != nil {
 							status.Removed += result.Success
 							status.Skipped += result.Skipped
 							status.Failed += result.Failed
 
-							// Collect errors
-							allErrors = append(allErrors, result.Errors...)
-
-							// Collect variants for display (only in verbose/list mode)
-							if verbose || list {
-								allRemovedVariants = append(allRemovedVariants, result.Details...)
-							}
-
 							if result.Status == "failed" {
-								fontStatus = "failed"
-								statusMessage = result.Message
-							} else if result.Status == "skipped" && fontStatus != "failed" {
-								fontStatus = "skipped"
-								statusMessage = result.Message
-							}
-
-							if result.Success > 0 {
-								finalScopeLabel = "user scope"
-								// After successful removal from user scope, check if font still exists in machine scope
-								machineFonts := findFontFamilyFiles(fontName, fontManager, platform.MachineScope)
-								if len(machineFonts) == 0 {
-									// Try repository search
-									results, err := r.SearchFonts(fontName, "false")
-									if err == nil && len(results) > 0 {
-										searchName := results[0].Name
-										machineFonts = findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
-									}
-								}
-								if len(machineFonts) > 0 {
-									// Font still exists in machine scope - track for display
-									fontsInOppositeScope = append(fontsInOppositeScope, properFontName)
-								}
+								scopeStatus = "failed"
+								scopeMessage = result.Message
+							} else if result.Status == "skipped" {
+								scopeStatus = "skipped"
+								scopeMessage = result.Message
 							}
 						}
-					} else {
-						// Handle machine scope or all scopes
-						for j, scopeType := range scopes {
-							scopeLabelName := scopeLabel[j]
-							fontDir := fontManager.GetFontDir(scopeType)
 
-							// Extract proper font family name from first matching font file BEFORE removal
-							if properFontName == "" {
-								matchingFonts := findFontFamilyFiles(fontName, fontManager, scopeType)
-								if len(matchingFonts) > 0 {
-									firstFontPath := filepath.Join(fontDir, matchingFonts[0])
-									properFontName = extractFontFamilyNameFromPath(firstFontPath)
+						// Send update for this scope
+						errorMsg := ""
+						if scopeStatus == "failed" && err != nil {
+							errorMsg = err.Error()
+						} else if scopeStatus == "failed" && result != nil {
+							errorMsg = result.Message
+						}
+						send(components.ItemUpdateMsg{
+							Index:        item.ItemIndex,
+							Name:         item.ProperName,
+							Status:       scopeStatus,
+							Message:      scopeMessage,
+							ErrorMessage: errorMsg,
+							Variants:     scopeVariants,
+							Scope:        item.ScopeLabel + " scope",
+						})
+
+						// Update progress percentage
+						percent := float64(item.ItemIndex+1) / float64(len(operationItems)) * 100
+						send(components.ProgressUpdateMsg{Percent: percent})
+					}
+				} else {
+					// Single scope - process each found font
+					for i, fontInfo := range foundFonts {
+						// Use proper font name from pre-extracted map
+						properFontName := fontInfo.ProperName
+						fontName := fontInfo.SearchName
+
+						// Send initial "in_progress" message
+						send(components.ItemUpdateMsg{
+							Index:   i,
+							Name:    properFontName, // Use proper name from the start
+							Status:  "in_progress",
+							Message: "Finding fonts...",
+						})
+
+						GetLogger().Info("Processing font: %s", fontName)
+
+						var allRemovedVariants []string
+						var fontStatus string = "completed"
+						var statusMessage string = "Removed"
+						var allErrors []string // Collect errors from all scopes
+						var percent float64    // Progress percentage
+
+						// Special handling for user scope only: check both scopes for better UX
+						if len(scopes) == 1 && scopes[0] == platform.UserScope {
+							// Resolve Font ID to font name if needed
+							searchName := resolveFontNameOrID(fontName, r)
+							// Check both scopes efficiently
+							machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
+							userFonts := findFontFamilyFiles(searchName, fontManager, platform.UserScope)
+
+							// If no direct matches, try repository search to find the font
+							if len(machineFonts) == 0 && len(userFonts) == 0 {
+								results, err := r.SearchFonts(searchName, "false")
+								if err == nil && len(results) > 0 {
+									repoSearchName := results[0].Name
+									machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope)
+									userFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.UserScope)
 								}
 							}
 
-							// Remove the font using the removeFont helper
+							// Handle different scenarios
+							if len(userFonts) == 0 && len(machineFonts) == 0 {
+								// Font not found in either scope - mark as failed and continue
+								fontStatus = "failed"
+								statusMessage = "Font not found"
+								status.Failed++
+								// Send update with proper name and update progress
+								// Note: ErrorMessage is set directly, no need to append to allErrors since we continue
+								send(components.ItemUpdateMsg{
+									Index:        i,
+									Name:         properFontName, // Use proper name from map
+									Status:       fontStatus,
+									Message:      statusMessage,
+									ErrorMessage: "Font not found",
+								})
+								// Update progress percentage
+								percent = float64(i+1) / float64(len(foundFonts)) * 100
+								send(components.ProgressUpdateMsg{Percent: percent})
+								// Continue to next font instead of exiting
+								continue
+							} else if len(userFonts) == 0 && len(machineFonts) > 0 {
+								// Font only exists in machine scope
+								status.Skipped++
+								fontStatus = "skipped"
+								statusMessage = "Only installed in machine scope"
+								// Send update before continuing
+								send(components.ItemUpdateMsg{
+									Index:   i,
+									Name:    properFontName,
+									Status:  fontStatus,
+									Message: statusMessage,
+								})
+								// Update progress percentage
+								percent = float64(i+1) / float64(len(foundFonts)) * 100
+								send(components.ProgressUpdateMsg{Percent: percent})
+								continue
+							}
+							// Note: We'll check if font still exists in opposite scope AFTER removal
+							// Don't track here to avoid duplicates
+
+							// properFontName already set from fontNameMap above
+
+							// Process removal from user scope
+							fontDir := fontManager.GetFontDir(platform.UserScope)
 							result, err := removeFont(
 								fontName,
 								fontManager,
-								scopeType,
+								platform.UserScope,
 								fontDir,
 								r,
 								isCriticalSystemFont,
@@ -1192,46 +977,126 @@ Use --force to override critical system font protection.
 									statusMessage = "Font not found"
 									allErrors = append(allErrors, "Font not found")
 									status.Failed++
-									// Continue to next scope or font instead of exiting
-									continue
+									// Continue to next font instead of exiting
+								} else {
+									fontStatus = "failed"
+									statusMessage = err.Error()
+									// Add error message
+									allErrors = append(allErrors, err.Error())
+									if result != nil {
+										status.Failed += result.Failed
+										allErrors = append(allErrors, result.Errors...)
+									}
 								}
-								fontStatus = "failed"
-								statusMessage = err.Error()
-								// Add error message
-								allErrors = append(allErrors, err.Error())
-								if result != nil {
-									status.Failed += result.Failed
-									allErrors = append(allErrors, result.Errors...)
+							} else {
+								status.Removed += result.Success
+								status.Skipped += result.Skipped
+								status.Failed += result.Failed
+
+								// Collect errors
+								allErrors = append(allErrors, result.Errors...)
+
+								// Collect variants for display (only in verbose/list mode)
+								if verbose || list {
+									allRemovedVariants = append(allRemovedVariants, result.Details...)
 								}
-								continue
+
+								if result.Status == "failed" {
+									fontStatus = "failed"
+									statusMessage = result.Message
+								} else if result.Status == "skipped" && fontStatus != "failed" {
+									fontStatus = "skipped"
+									statusMessage = result.Message
+								}
+
+								if result.Success > 0 {
+									// After successful removal from user scope, check if font still exists in machine scope
+									// Resolve Font ID to font name if needed
+									searchName := resolveFontNameOrID(fontName, r)
+									machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
+									if len(machineFonts) == 0 {
+										// Try repository search
+										results, err := r.SearchFonts(searchName, "false")
+										if err == nil && len(results) > 0 {
+											repoSearchName := results[0].Name
+											machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope)
+										}
+									}
+									if len(machineFonts) > 0 {
+										// Font still exists in machine scope - track for display
+										fontsInOppositeScope = append(fontsInOppositeScope, properFontName)
+									}
+								}
 							}
 
-							// Update status
-							status.Removed += result.Success
-							status.Skipped += result.Skipped
-							status.Failed += result.Failed
-
-							// Collect errors
-							allErrors = append(allErrors, result.Errors...)
-
-							// Collect variants for display (only in verbose/list mode)
-							if verbose || list {
-								allRemovedVariants = append(allRemovedVariants, result.Details...)
+							// Send update message for user scope
+							errorMsg := ""
+							if fontStatus == "failed" && len(allErrors) > 0 {
+								errorMsg = allErrors[0]
 							}
+							send(components.ItemUpdateMsg{
+								Index:        i,
+								Name:         properFontName,
+								Status:       fontStatus,
+								Message:      statusMessage,
+								ErrorMessage: errorMsg,
+								Variants:     allRemovedVariants,
+								Scope:        "user scope",
+							})
+						} else {
+							// Handle machine scope (single scope)
+							scopeType := scopes[0]
+							scopeLabelName := scopeLabel[0]
+							fontDir := fontManager.GetFontDir(scopeType)
 
-							// Determine overall status
-							if result.Status == "failed" {
-								fontStatus = "failed"
-								statusMessage = result.Message
-							} else if result.Status == "skipped" && fontStatus != "failed" {
-								fontStatus = "skipped"
-								statusMessage = result.Message
-							}
+							// Remove the font using the removeFont helper (it will handle Font ID resolution internally)
+							result, err := removeFont(
+								fontName,
+								fontManager,
+								scopeType,
+								fontDir,
+								r,
+								isCriticalSystemFont,
+							)
 
-							if result.Success > 0 {
-								finalScopeLabel = scopeLabelName + " scope"
-								// After successful removal, check if font still exists in opposite scope (only for single scope operations)
-								if len(scopes) == 1 {
+							if err != nil {
+								if strings.Contains(err.Error(), "not found") {
+									fontStatus = "failed"
+									statusMessage = "Font not found"
+									allErrors = append(allErrors, "Font not found")
+									status.Failed++
+								} else {
+									fontStatus = "failed"
+									statusMessage = err.Error()
+									allErrors = append(allErrors, err.Error())
+									if result != nil {
+										status.Failed += result.Failed
+										allErrors = append(allErrors, result.Errors...)
+									}
+								}
+							} else {
+								status.Removed += result.Success
+								status.Skipped += result.Skipped
+								status.Failed += result.Failed
+
+								// Collect errors
+								allErrors = append(allErrors, result.Errors...)
+
+								// Collect variants for display (only in verbose/list mode)
+								if verbose || list {
+									allRemovedVariants = append(allRemovedVariants, result.Details...)
+								}
+
+								if result.Status == "failed" {
+									fontStatus = "failed"
+									statusMessage = result.Message
+								} else if result.Status == "skipped" && fontStatus != "failed" {
+									fontStatus = "skipped"
+									statusMessage = result.Message
+								}
+
+								// After successful removal, check if font still exists in opposite scope
+								if result.Success > 0 {
 									var oppositeScope platform.InstallationScope
 									switch scopeType {
 									case platform.UserScope:
@@ -1240,13 +1105,15 @@ Use --force to override critical system font protection.
 										oppositeScope = platform.UserScope
 									}
 									if oppositeScope != "" {
-										oppositeFonts := findFontFamilyFiles(fontName, fontManager, oppositeScope)
+										// Resolve Font ID to font name if needed
+										searchName := resolveFontNameOrID(fontName, r)
+										oppositeFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
 										if len(oppositeFonts) == 0 {
 											// Try repository search
-											results, err := r.SearchFonts(fontName, "false")
+											results, err := r.SearchFonts(searchName, "false")
 											if err == nil && len(results) > 0 {
-												searchName := results[0].Name
-												oppositeFonts = findFontFamilyFiles(searchName, fontManager, oppositeScope)
+												repoSearchName := results[0].Name
+												oppositeFonts = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
 											}
 										}
 										if len(oppositeFonts) > 0 {
@@ -1256,32 +1123,27 @@ Use --force to override critical system font protection.
 									}
 								}
 							}
+
+							// Send update message for single scope
+							errorMsg := ""
+							if fontStatus == "failed" && len(allErrors) > 0 {
+								errorMsg = allErrors[0]
+							}
+							send(components.ItemUpdateMsg{
+								Index:        i,
+								Name:         properFontName,
+								Status:       fontStatus,
+								Message:      statusMessage,
+								ErrorMessage: errorMsg,
+								Variants:     allRemovedVariants,
+								Scope:        scopeLabelName + " scope",
+							})
 						}
-					}
 
-					// Get first error message if status is failed
-					var errorMsg string
-					if fontStatus == "failed" && len(allErrors) > 0 {
-						errorMsg = allErrors[0]
+						// Update progress percentage
+						percent = float64(i+1) / float64(len(foundFonts)) * 100
+						send(components.ProgressUpdateMsg{Percent: percent})
 					}
-
-					// Mark as completed - use proper font name if we found it
-					updateMsg := components.ItemUpdateMsg{
-						Index:        i,
-						Status:       fontStatus,
-						Message:      statusMessage,
-						ErrorMessage: errorMsg,
-						Variants:     allRemovedVariants,
-						Scope:        finalScopeLabel,
-					}
-					if properFontName != "" {
-						updateMsg.Name = properFontName
-					}
-					send(updateMsg)
-
-					// Update progress percentage
-					percent = float64(i+1) / float64(len(foundFonts)) * 100
-					send(components.ProgressUpdateMsg{Percent: percent})
 				}
 
 				return nil
@@ -1371,5 +1233,4 @@ Use --force to override critical system font protection.
 func init() {
 	rootCmd.AddCommand(removeCmd)
 	removeCmd.Flags().StringP("scope", "s", "", "Installation scope (user, machine, or all)")
-	removeCmd.Flags().BoolP("force", "f", false, "Force removal of critical system fonts")
 }

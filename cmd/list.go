@@ -6,6 +6,7 @@ import (
 	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/platform"
+	"fontget/internal/repo"
 	"fontget/internal/ui"
 	"os"
 	"path/filepath"
@@ -23,6 +24,11 @@ type ParsedFont struct {
 	Type        string
 	InstallDate time.Time
 	Scope       string
+	// Repository match fields
+	FontID     string
+	License    string
+	Categories []string
+	Source     string
 }
 
 func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager) ([]ParsedFont, error) {
@@ -93,17 +99,18 @@ var listCmd = &cobra.Command{
 
 You can filter the results by providing an optional query string to filter font family names.
 
-You can specify the installation scope using the --scope flag:
-  - user (default): Show fonts installed for current user
-  - machine: Show fonts installed system-wide
-  - all: Show fonts from both user and machine scopes
+By default, fonts from both user and machine scopes are shown.
+
+You can filter to a specific scope using the --scope flag:
+  - user: Show fonts installed for current user only
+  - machine: Show fonts installed system-wide only
 
 `,
 	Example: `  fontget list
   fontget list "jet"
   fontget list roboto -t ttf
   fontget list "fira" -f
-  fontget list -s all`,
+  fontget list -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Query is optional - no validation needed
 		return nil
@@ -111,12 +118,16 @@ You can specify the installation scope using the --scope flag:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		output.GetDebug().Message("List command start")
 		if err := config.EnsureManifestExists(); err != nil {
-			return fmt.Errorf("failed to initialize sources: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %v", err)
 		}
 
 		fm, err := platform.NewFontManager()
 		if err != nil {
-			return err
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
+			return fmt.Errorf("unable to access system fonts: %v", err)
 		}
 
 		scope, _ := cmd.Flags().GetString("scope")
@@ -130,15 +141,17 @@ You can specify the installation scope using the --scope flag:
 		}
 
 		var scopes []platform.InstallationScope
-		if scope == "all" {
+		// Default to "all" (both scopes) if no scope specified
+		if scope == "" {
 			scopes = []platform.InstallationScope{platform.UserScope, platform.MachineScope}
 		} else {
-			installScope := platform.UserScope
-			if scope != "" && scope != "user" {
-				installScope = platform.InstallationScope(scope)
-				if installScope != platform.UserScope && installScope != platform.MachineScope {
-					return fmt.Errorf("invalid scope '%s'", scope)
-				}
+			// Validate scope - only "user" or "machine" are valid
+			installScope := platform.InstallationScope(scope)
+			if installScope != platform.UserScope && installScope != platform.MachineScope {
+				err := fmt.Errorf("invalid scope '%s'. Valid options are: user, machine", scope)
+				output.GetVerbose().Error("%v", err)
+				output.GetDebug().Error("Invalid scope provided: '%s'", scope)
+				return err
 			}
 			// machine scope requires elevation
 			if installScope == platform.MachineScope {
@@ -146,7 +159,9 @@ You can specify the installation scope using the --scope flag:
 					if errors.Is(err, ErrElevationRequired) {
 						return nil
 					}
-					return err
+					output.GetVerbose().Error("%v", err)
+					output.GetDebug().Error("checkElevation() failed: %v", err)
+					return fmt.Errorf("unable to verify system permissions: %v", err)
 				}
 			}
 			scopes = []platform.InstallationScope{installScope}
@@ -155,9 +170,11 @@ You can specify the installation scope using the --scope flag:
 
 		fonts, err := collectFonts(scopes, fm)
 		if err != nil {
-			return err
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("collectFonts() failed: %v", err)
+			return fmt.Errorf("unable to read installed fonts: %v", err)
 		}
-		output.GetVerbose().Info("Collected %d fonts before filter", len(fonts))
+		output.GetDebug().State("Collected %d font files before filtering", len(fonts))
 
 		// Apply filters
 		filtered := make([]ParsedFont, 0, len(fonts))
@@ -170,7 +187,7 @@ You can specify the installation scope using the --scope flag:
 			}
 			filtered = append(filtered, f)
 		}
-		output.GetVerbose().Info("Filtered files count=%d", len(filtered))
+		output.GetDebug().State("After filtering: %d font files remaining", len(filtered))
 		if len(filtered) == 0 {
 			fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
 
@@ -193,7 +210,39 @@ You can specify the installation scope using the --scope flag:
 			names = append(names, k)
 		}
 		sort.Strings(names)
-		output.GetVerbose().Info("Grouped into %d families", len(names))
+		output.GetDebug().State("Grouped %d font files into %d unique families", len(filtered), len(names))
+
+		// Match installed fonts to repository
+		output.GetVerbose().Info("Matching installed fonts to repository...")
+		output.GetDebug().State("Matching %d font families against repository", len(names))
+		matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
+		if err != nil {
+			output.GetDebug().Error("Font matching failed: %v", err)
+			// Continue without matches (fonts will show blank fields)
+			matches = make(map[string]*repo.InstalledFontMatch)
+		} else {
+			matchCount := 0
+			for _, match := range matches {
+				if match != nil {
+					matchCount++
+				}
+			}
+			output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(names))
+		}
+
+		// Populate match data into ParsedFont structs
+		for familyName, fontGroup := range families {
+			if match, exists := matches[familyName]; exists && match != nil {
+				// Update all fonts in this family group with match data
+				for i := range fontGroup {
+					fontGroup[i].FontID = match.FontID
+					fontGroup[i].License = match.License
+					fontGroup[i].Categories = match.Categories
+					fontGroup[i].Source = match.Source
+				}
+				families[familyName] = fontGroup
+			}
+		}
 
 		// Header
 		fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
@@ -218,12 +267,30 @@ You can specify the installation scope using the --scope flag:
 			output.GetDebug().State("Family '%s': %d files", fam, len(group))
 			sort.Slice(group, func(i, j int) bool { return group[i].Style < group[j].Style })
 			rep := group[0]
-			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+
+			// Format Font ID
+			fontID := rep.FontID
+
+			// Format License
+			license := rep.License
+
+			// Format Categories (first category only, like search command)
+			categories := ""
+			if len(rep.Categories) > 0 {
+				categories = rep.Categories[0]
+			}
+
+			// Format Source
+			source := rep.Source
+
+			fmt.Printf("%s %-*s %-*s %-*s %-*s %-*s %-*s\n",
 				ui.TableSourceName.Render(fmt.Sprintf("%-*s", TableColListName, truncateString(fam, TableColListName))),
-				TableColListID, "",
+				TableColListID, truncateString(fontID, TableColListID),
+				TableColListLicense, truncateString(license, TableColListLicense),
+				TableColListCategory, truncateString(categories, TableColListCategory),
 				TableColType, rep.Type,
-				TableColDate, rep.InstallDate.Format("2006-01-02 15:04"),
 				TableColScope, rep.Scope,
+				TableColListSource, truncateString(source, TableColListSource),
 			)
 
 			if showVariants {
@@ -239,12 +306,14 @@ You can specify the installation scope using the --scope flag:
 				output.GetDebug().State("Family '%s': %d unique variants", fam, len(styles))
 				for _, s := range styles {
 					row := fmt.Sprintf("  ↳ %s", s)
-					fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
+					fmt.Printf("%s %-*s %-*s %-*s %-*s %-*s %-*s\n",
 						fmt.Sprintf("%-*s", TableColListName, row),
 						TableColListID, "",
+						TableColListLicense, "",
+						TableColListCategory, "",
 						TableColType, "",
-						TableColDate, "",
 						TableColScope, "",
+						TableColListSource, "",
 					)
 				}
 				if i < len(names)-1 {
@@ -260,7 +329,7 @@ You can specify the installation scope using the --scope flag:
 
 func init() {
 	rootCmd.AddCommand(listCmd)
-	listCmd.Flags().StringP("scope", "s", "", "Installation scope (user, machine, or all)")
+	listCmd.Flags().StringP("scope", "s", "", "Filter by installation scope (user or machine). Default: show all scopes")
 	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
 	listCmd.Flags().BoolP("full", "f", false, "Show font styles in hierarchical view")
 }
