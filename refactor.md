@@ -1,147 +1,172 @@
 # FontGet Refactoring Plan
 
-## ✅ **COMPLETED FOUNDATION**
+## 🎯 **CURRENT PRIORITY: Beta Preparation**
 
+### **Phase 1: CI/CD Pipeline (HIGH PRIORITY - Beta Blocking)**
+
+#### **GitHub Actions Setup**
+- [ ] **Create cross-platform build workflow**
+  - [ ] Windows build (amd64, arm64)
+  - [ ] macOS build (amd64, arm64)
+  - [ ] Linux build (amd64, arm64)
+  - [ ] Build matrix configuration
+  - [ ] Artifact upload and naming conventions
+
+#### **Release Automation**
+- [ ] **Automated version tagging and releases**
+  - [ ] Semantic versioning support
+  - [ ] Automated changelog generation
+  - [ ] Release notes automation
+  - [ ] Binary verification and checksums (SHA256)
+  - [ ] GitHub Releases integration
+
+#### **Testing & Quality Assurance**
+- [ ] **Automated testing pipeline**
+  - [ ] Unit test execution on all platforms
+  - [ ] Integration test suite
+  - [ ] Cross-platform compatibility testing
+  - [ ] Build verification tests
+
+#### **Distribution Preparation**
+- [ ] **Package manager preparation**
+  - [ ] Homebrew formula (macOS)
+  - [ ] Chocolatey package (Windows)
+  - [ ] Linux package formats (deb, rpm) - if applicable
+  - [ ] Installation script updates
+
+#### **Code Signing & Security** (if applicable)
+- [ ] **Code signing setup**
+  - [ ] Windows code signing certificate
+  - [ ] macOS notarization setup
+  - [ ] GPG signing for releases
 
 ---
 
-## **List Command Changes**
-- [ ] Change --full flag to something else that better matches the hierarchy view (working name)
+## 🧹 **Code Quality & Polish**
 
-## 🎯 **CURRENT FOCUS: Command Consistency & Polish**
+### **Phase 2: Help Text & Documentation**
 
-- [ ] **Color Scheme Enhancements**
-  - [ ] Create consistent color hierarchy across all commands
-  - [ ] Add color utilities to `cmd/shared.go` for easy access
+#### **Help Text Improvements** ✅ **COMPLETED**
+- [x] Review all command help text
+- [x] Apply verbose/debug principles to all commands
+- [x] Standardize terminology and wording
+- [x] Remove redundancy and improve clarity
 
+#### **Documentation Updates**
+- [ ] **Update user documentation**
+  - [ ] Update README with improved help text examples
+  - [ ] Update command reference documentation
+  - [ ] Add troubleshooting guide
+  - [ ] Update installation instructions for CI/CD releases
 
-## 🧹 **Code Quality & Cleanup Milestone**
+---
 
-### **Phase 4: Code Quality Audit & Cleanup**
+## 🔧 **Code Quality Improvements**
+
+### **Phase 3: Code Cleanup & Refactoring**
 
 #### **Debug & Logging Cleanup**
-- [ ] **Review debug output consistency** - Ensure all debug messages follow the same format and provide useful information
-- [ ] **Remove redundant debug statements** - Clean up duplicate or unnecessary debug output
-- [ ] **Standardize debug message formatting** - Use consistent patterns for debug output across all commands
-- [ ] **Optimize debug performance** - Ensure debug output doesn't impact performance when disabled
+- [ ] **Review debug output consistency**
+  - [ ] Ensure all debug messages follow the same format
+  - [ ] Verify debug output provides useful information
+  - [ ] Standardize debug message formatting across all commands
+  - [ ] Optimize debug performance (ensure no impact when disabled)
 
 #### **Code Quality Assessment**
-- [ ] **Identify code smells** - Review codebase for common issues like:
-  - [ ] Long functions that should be broken down
-  - [ ] Duplicate code that can be extracted
-  - [ ] Complex conditional logic that can be simplified
-  - [ ] Inconsistent naming conventions
-  - [ ] Unused imports or variables
-- [ ] **Refactor complex functions** - Break down large functions into smaller, more maintainable pieces
-- [ ] **Improve error handling** - Standardize error handling patterns across the codebase
-- [ ] **Add missing documentation** - Ensure all public functions have proper documentation
-- [ ] **Optimize imports** - Remove unused imports and organize import statements
+- [ ] **Identify and fix code smells**
+  - [ ] Review for long functions that should be broken down
+  - [ ] Extract duplicate code into shared utilities
+  - [ ] Simplify complex conditional logic
+  - [ ] Standardize naming conventions
+  - [ ] Remove unused imports or variables
 
-#### **Performance & Memory Optimization**
-- [ ] **Memory usage audit** - Identify potential memory leaks or excessive allocations
-- [ ] **Function call optimization** - Reduce unnecessary function calls in hot paths
-- [ ] **String operations optimization** - Use more efficient string operations where possible
-- [ ] **Goroutine cleanup** - Ensure proper cleanup of goroutines and channels
+#### **Targeted Refactoring**
+- [ ] **list.go improvements**
+  - [ ] Extract `buildParsedFont(path, scope) ParsedFont` function
+  - [ ] Reduce debug noise (keep only essential debug output)
+  - [ ] Optimize metadata extraction (one read per file)
+  - [ ] Consider style ordering for `--full` output (non-blocking)
 
-#### **Testing & Validation**
-- [ ] **Add unit tests for critical functions** - Focus on font matching, source priority, and configuration loading
-- [ ] **Integration test improvements** - Test cross-command consistency
-- [ ] **Performance benchmarking** - Establish baseline performance metrics
-- [ ] **Memory profiling** - Identify memory usage patterns and optimization opportunities
+- [ ] **internal/platform/platform.go improvements**
+  - [ ] Split `parseNameTable` into smaller helper functions
+  - [ ] Add typed constants for name IDs and platforms
+  - [ ] Ensure `extractFontMetadataFullFile` populates TypographicFamily/Style
+  - [ ] Add unit tests for `parseNameTable` with synthetic name tables
+  - [ ] Implement cross-platform name selection policy (see details below)
 
----
-
-## 🧹 Targeted Cleanup: list.go and platform.go
-
-### list.go
-- [ ] Extract `buildParsedFont(path, scope) ParsedFont` to encapsulate metadata extraction and display-name choice (uses TypographicFamily/Style when present).
-- [ ] Reduce debug noise: keep only
-  - [ ] Scan summary (files scanned per scope)
-  - [ ] Family grouping summary (family name, file count)
-  - [ ] Unique variant count in `--detailed`
-- [ ] Keep performance: one metadata read per file; no re-parsing in grouping/rendering.
-- [ ] Consider style ordering (Thin→Black) for nicer `--detailed` output (non-blocking).
-
-### internal/platform/platform.go
-- [ ] Split `parseNameTable` into smaller helpers:
-  - [ ] `forEachNameRecord(data, fn(record))` – decoding bounds/UTF-16 handling.
-  - [ ] `selectPreferredNames(records)` – policy to choose NameID16/17 with fallback.
-- [ ] Add typed constants for name IDs and platforms (e.g., NameIDFamily=1, NameIDTypoFamily=16, PlatformMicrosoft=3, PlatformUnicode=0, PlatformMacintosh=1).
-- [ ] Ensure `extractFontMetadataFullFile` also populates `TypographicFamily/Style` when available from sfnt (or marks as unavailable) to keep parity with header-only path.
-- [ ] Unit-test `parseNameTable` with synthetic name tables covering:
-  - [ ] Multiple platform/language records
-  - [ ] Absence of NameID16/17 (fallback to 1/2)
-  - [ ] Mixed encodings and language IDs
-
-### Cross‑Platform Name Selection Policy (Important)
-- Current temporary preference leans to Microsoft/English (platform=3, language=1033) when present because it’s the most complete on Windows Nerd Fonts.
-- Final cross‑platform policy to implement and test:
-  1. Prefer NameID16/17 regardless of platform.
-  2. Among multiple 16/17 records, prefer Unicode entries in this order: PlatformUnicode(0) > PlatformMicrosoft(3) > PlatformMacintosh(1).
-  3. Within a platform, prefer language matching system locale; fallback to English (1033) if present; otherwise choose a deterministic Unicode record (Platform 0) if any; if not available, choose the lowest language ID under Microsoft (3). Only if no 16/17 fit these, fall back to NameID 1/2 using the same order, and if still empty, finally use filename parsing.
-  4. Only if 16/17 absent, fall back to NameID 1/2 using the same platform/language order.
-- [ ] Implement the above selection order and verify on macOS/Linux/Windows samples (Roboto, Source Code Pro, JetBrainsMono, ZedMono, Fira Code, Terminess).
-
-### Documentation
-- [ ] Document the final name-table selection policy in `docs/codebase.md` and reference it in `list-plan.md` to avoid regressions.
+#### **Cross-Platform Name Selection Policy**
+- [ ] **Implement final name-table selection order**
+  1. Prefer NameID16/17 (Typographic Family/Style) regardless of platform
+  2. Among multiple 16/17 records, prefer: PlatformUnicode(0) > PlatformMicrosoft(3) > PlatformMacintosh(1)
+  3. Within a platform, prefer language matching system locale; fallback to English (1033)
+  4. If 16/17 absent, fall back to NameID 1/2 using same platform/language order
+  5. Final fallback: filename parsing
+- [ ] **Test on cross-platform samples**
+  - [ ] Test on Windows, macOS, and Linux
+  - [ ] Verify with: Roboto, Source Code Pro, JetBrainsMono, ZedMono, Fira Code, Terminess
+- [ ] **Document the policy**
+  - [ ] Add to `docs/codebase.md`
+  - [ ] Reference in relevant command documentation
 
 ---
 
+## 🎨 **User Experience Enhancements**
 
-#### **Evaluate Performance Optimisations** (LOW PRIORITY)
-- [x] **Font suggestion performance optimization** - Optimized add command suggestion table performance
-  - [x] Analyzed performance bottlenecks in suggestion display
-  - [x] Implemented fresh data approach (90ms vs 10ms - imperceptible to humans)
-  - [x] Maintained dynamic source detection without caching complexity
-  - [x] Verified remove command performance (~10ms) remains optimal
-- [ ] **Add parallel processing**
-  - [ ] Parallel font downloads for multiple fonts
-  - [ ] Worker pool with configurable concurrency (default: 3-5 workers)
+### **Phase 4: Command Improvements**
+
+#### **List Command Enhancements**
+- [ ] **Flag naming improvement**
+  - [ ] Rename `--full` flag to better match hierarchy view (e.g., `--tree`)
+  - [ ] Update help text and documentation
+
+#### **Color Scheme Consistency**
+- [ ] **Standardize color usage**
+  - [ ] Create consistent color hierarchy across all commands
+  - [ ] Add color utilities to `cmd/shared.go` for easy access
+  - [ ] Document color usage guidelines
+
+---
+
+## 🚀 **Performance Optimizations** (LOW PRIORITY - Post-Beta)
+
+### **Phase 5: Performance Improvements**
+
+#### **Parallel Processing**
   - [ ] Rate limiting to avoid overwhelming sources
   - [ ] Retry logic with exponential backoff for failed downloads
-- [ ] **Caching improvements**
-  - [ ] Font metadata caching to reduce API calls
+
+#### **Caching Improvements**
+- [ ] **Font metadata caching**
+  - [ ] Cache font metadata to reduce API calls
   - [ ] Smart cache invalidation based on source timestamps
   - [ ] Compressed cache storage for large font collections
-- [ ] **Memory optimizations**
-  - [ ] Stream processing for large font files instead of loading into memory
+
+#### **Memory Optimizations**
+- [ ] **Stream processing for large files**
+  - [ ] Stream font files instead of loading into memory
   - [ ] Lazy loading of font metadata
   - [ ] Memory-efficient font variant processing
-- [ ] **Network optimizations** - Needs to respect rate limits
-  - [ ] HTTP/2 support for faster concurrent requests
+
+#### **Network Optimizations** - Investigate
+- [ ] **HTTP/2 support**
+  - [ ] HTTP/2 for faster concurrent requests
   - [ ] Connection pooling and keep-alive
   - [ ] Request batching where possible
-- [ ] **Benchmarking and metrics**
+  - [ ] Respect rate limits from sources
+
+#### **Benchmarking and Metrics**
+- [ ] **Performance monitoring**
   - [ ] Performance benchmarks for different scenarios
   - [ ] Memory usage profiling
   - [ ] Download speed metrics and reporting
 
-#### **Sources Management CLI Flags** (LOW PRIORITY)
-- [ ] **Add CLI flags to `sources manage` command**
-  - [ ] `--add <name> --prefix <prefix> --url <url> [--priority <number>]` - Add new source without TUI
-  - [ ] `--remove <name>` - Remove source without TUI (can't remove built-in sources, can only disable/enable)
-  - [ ] `--enable <name>` - Enable source without TUI
-  - [ ] `--disable <name>` - Disable source without TUI
-  - [ ] `--priority <name> <rank>` - Set source priority without TUI
-- [ ] **Benefits for automation**
-  - [ ] Bypass TUI when not available or desired
-  - [ ] Enable AI agents and scripts to manage sources
-  - [ ] Better compatibility with CI/CD and automated environments
-  - [ ] Consistent with other CLI tools' management patterns
+---
 
-#### **Font ID Resolution & Smart Matching** ✅ **COMPLETED**
+## 📦 **Future Features** (POST-BETA)
 
-##### **Phase 1: Installation Tracking System**
-- [ ] **Add installation tracking system** - **NOT IMPLEMENTED**
-  - [ ] Create `~/.fontget/installed.json` to track font ID → system name mappings
-  - [ ] Update install process to record font ID when installing via FontGet
-- [ ] **Smart font detection (winget-style)** - **NOT IMPLEMENTED**
-  - [ ] Add tracking for font variants and their system names
-  - [ ] Handle font updates and reinstallations
+### **Phase 6: New Commands & Features**
 
-#### **Update System** (MEDIUM PRIORITY)
-
-##### **Phase 1: Update Command Implementation**
+#### **Update System**
 - [ ] **Add `update` command**
   - [ ] `fontget update` - Check and update if newer version available
   - [ ] `fontget update --check` - Just check for updates without installing
@@ -150,24 +175,9 @@
   - [ ] Backup current version before update
   - [ ] Rollback capability if update fails
 
-##### **Phase 2: GitHub Actions Setup**
-- [ ] **Set up GitHub Actions for automated builds**
-  - [ ] Cross-platform build workflow (Windows, macOS, Linux)
-  - [ ] Automated version tagging and releases
-  - [ ] Build matrix for different architectures
-  - [ ] Artifact upload and release creation
-  - [ ] Automated testing on multiple platforms
-
-##### **Phase 3: Build System & Distribution**
-- [ ] **Complete CI/CD pipeline**
-  - [ ] Code signing for Windows/macOS
-  - [ ] Automated changelog generation
-  - [ ] Release notes automation
-  - [ ] Binary verification and checksums
-  - [ ] Distribution to package managers (Homebrew, Chocolatey, etc.)
-
-#### **Future Commands**
-- [ ] **Add `export` command** - Export installed fonts/collections
+#### **Export/Import System**
+- [ ] **Add `export` command**
+  - [ ] Export installed fonts/collections
   - [ ] Support export by family, source, or all
   - [ ] Output manifest (JSON) with versions and variants
   - [ ] Exclude fonts like system fonts or non fontget fonts maybe only;
@@ -175,29 +185,75 @@
     - [ ] Export fonts that match the current sources that are available??? (Needs discussion)
   - [ ] Include file copy option and dry-run mode
   - [ ] Integrate with verbose/debug output and UI styles
-- [ ] **Add `import` command** - Import fonts from an export manifest
-  - [ ] Validate manifest structure and availability
+
+- [ ] **Add `import` command**
+  - [ ] Import fonts from a fontget export file
+  - [ ] Validate import file structure and font availability
   - [ ] Resolve sources and install missing fonts
   - [ ] Show per-font status with consistent reporting
   - [ ] Integrate with verbose/debug output and UI styles
+
+#### **Sources Management CLI Flags**
+- [ ] **Add non-TUI flags to `sources manage`**
+  - [ ] `--add <name> --prefix <prefix> --url <url> [--priority <number>]` - Add source without TUI
+  - [ ] `--remove <name>` - Remove source without TUI
+  - [ ] `--enable <name>` - Enable source without TUI
+  - [ ] `--disable <name>` - Disable source without TUI
+  - [ ] `--priority <name> <rank>` - Set source priority without TUI
+  - [ ] Benefits: Automation support, CI/CD compatibility, script-friendly
+
+---
+
+## ✅ **COMPLETED WORK**
+
+### **Foundation & Architecture**
+- [x] Manifest-based sources system implementation
+- [x] Output system redesign (verbose/debug interfaces)
+- [x] Configuration consolidation
+- [x] Priority system implementation
+- [x] UI component system (cards, forms, confirmations, hierarchical lists)
+
+### **Command Standardization**
+- [x] Verbose/debug support across all commands (add, remove, search, list, info, config, sources)
+- [x] Visual consistency across all commands
+- [x] Shared function consolidation
+- [x] Table standardization
+- [x] Error handling standardization
+
+### **Font Management Features**
+- [x] Font matching feature with optimized index-based matching
+- [x] Font ID support in add and remove commands
+- [x] Protected system font filtering
+- [x] Nerd Fonts variant handling
+- [x] List command enhancements (Font ID, License, Categories, Source columns)
+
+### **Performance Optimizations**
+- [x] Font suggestion performance optimization (90ms → 10ms)
+- [x] Optimized font matching with in-memory index
+
+### **Code Cleanup**
+- [x] Removed 231 lines of unused code
+- [x] Fixed duplicate manage command bug
+- [x] Source priority ordering consistency
+- [x] Font matching logic corrections
 
 ---
 
 ## 📋 **SUCCESS CRITERIA**
 
-### **Phase 3 Completion Criteria:**
-- [ ] Complete verbose/debug support across all commands
+### **Beta Release Readiness:**
+- [ ] CI/CD pipeline fully operational
+- [ ] Automated builds for all target platforms
+- [ ] Automated release process
+- [ ] All help text reviewed and improved
+- [ ] Code quality improvements completed
+- [ ] Cross-platform testing verified
 
-### **Overall Project Success:**
-- [ ] **REMAINING**: Complete visual consistency across all commands
-- [ ] **REMAINING**: Reusable UI components implemented
-
-### **Testing & Quality**
-- [ ] **Add comprehensive testing**
-  - [ ] Unit tests for new components and utilities
-  - [ ] Integration tests for updated commands
-  - [ ] Cross-platform compatibility testing
-  - [ ] Documentation accuracy testing
+### **Post-Beta Goals:**
+- [ ] Performance optimizations implemented
+- [ ] Export/import functionality added
+- [ ] Update system implemented
+- [ ] Comprehensive test coverage
 
 ---
 
@@ -205,8 +261,8 @@
 
 ### **For Each Command Update:**
 1. **Styling** - Use `ui.PageTitle`, `ui.PageSubtitle`, `ui.FeedbackError`, etc.
-2. **Verbose Framework** - Replace prints with `output.GetVerbose().Info/Warning/Error/Success`
-3. **Debug Framework** - Add `output.GetDebug().Message/State/Performance/Error/Warning`
+2. **Verbose Framework** - Use `output.GetVerbose().Info/Warning/Error/Success`
+3. **Debug Framework** - Use `output.GetDebug().Message/State/Performance/Error/Warning`
 4. **Error Handling** - Use unified helpers (`ui.RenderError`, `ui.RenderWarning`, etc.)
 5. **Testing** - Verify with `--verbose`, `--debug`, and `--verbose --debug` flags
 
@@ -216,8 +272,18 @@
 - [ ] Default mode remains clean
 - [ ] Consistent status reporting
 - [ ] No direct prints; all routed through output/ui helpers
+- [ ] Help text follows CLI best practices
 
 ---
 
-**Current Status**: 7/7 commands fully standardized with visual consistency. Source priority and font matching logic fixed across all commands. Font matching feature completed with optimized index-based matching. Font ID support added to add and remove commands. Ready for Phase 4: Code Quality & Cleanup milestone.
-**COMPLETED**: Shared function consolidation, table standardization, performance optimization for suggestion systems, complete UI component system with modern card components, form elements, confirmation dialogs, hierarchical lists, info command card-based layout implementation, remove command visual parity with add command, list command styling and font matching feature, sources command styling, fixed duplicate manage command bug, source priority ordering consistency, font matching logic corrections, Font ID support in add/remove commands, optimized font matching with in-memory index, protected system font filtering, Nerd Fonts variant handling, and unused code cleanup (231 lines removed).
+## 📊 **Current Status**
+
+**Overall Progress**: Foundation complete, commands standardized, ready for beta preparation
+
+**Next Steps**: 
+1. **IMMEDIATE**: Set up CI/CD pipeline (Phase 1)
+2. **SHORT TERM**: Code quality improvements (Phase 3)
+3. **MEDIUM TERM**: UX enhancements (Phase 4)
+4. **LONG TERM**: Performance optimizations and new features (Phases 5-6)
+
+**Blockers for Beta**: CI/CD pipeline setup
