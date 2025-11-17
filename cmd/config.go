@@ -54,9 +54,9 @@ var configInfoCmd = &cobra.Command{
 			if logger != nil {
 				logger.Error("Failed to load config: %v", err)
 			}
-			output.GetVerbose().Error("Failed to load configuration file")
-			output.GetDebug().Error("Configuration load error: %v", err)
-			return fmt.Errorf("failed to load config: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.LoadUserPreferences() failed: %v", err)
+			return fmt.Errorf("unable to load configuration: %v", err)
 		}
 
 		output.GetVerbose().Info("Configuration loaded successfully")
@@ -131,9 +131,9 @@ var configEditCmd = &cobra.Command{
 			if logger != nil {
 				logger.Error("Failed to load config: %v", err)
 			}
-			output.GetVerbose().Error("Failed to load configuration file")
-			output.GetDebug().Error("Configuration load error: %v", err)
-			return fmt.Errorf("failed to load config: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.LoadUserPreferences() failed: %v", err)
+			return fmt.Errorf("unable to load configuration: %v", err)
 		}
 
 		output.GetVerbose().Info("Configuration loaded successfully")
@@ -147,9 +147,9 @@ var configEditCmd = &cobra.Command{
 			if logger != nil {
 				logger.Error("Failed to save config: %v", err)
 			}
-			output.GetVerbose().Error("Failed to save configuration file")
-			output.GetDebug().Error("Configuration save error: %v", err)
-			return fmt.Errorf("failed to save config: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.SaveUserPreferences() failed: %v", err)
+			return fmt.Errorf("unable to save configuration: %v", err)
 		}
 
 		output.GetVerbose().Info("Configuration file saved successfully")
@@ -186,9 +186,9 @@ var configEditCmd = &cobra.Command{
 			if logger != nil {
 				logger.Error("Failed to open editor: %v", err)
 			}
-			output.GetVerbose().Error("Failed to start editor process")
-			output.GetDebug().Error("Editor execution error: %v", err)
-			return fmt.Errorf("failed to open editor '%s': %w", editor, err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("execCmd.Start() failed: %v", err)
+			return fmt.Errorf("unable to open editor '%s': %v", editor, err)
 		}
 
 		output.GetVerbose().Success("Editor opened successfully")
@@ -232,12 +232,12 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 		appConfig, err := config.LoadUserPreferences()
 		if err != nil {
 			GetLogger().Error("Failed to load config: %v", err)
-			output.GetVerbose().Error("Failed to load configuration file")
-			output.GetDebug().Error("Configuration load error: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.LoadUserPreferences() failed: %v", err)
 
 			// Handle different types of validation errors
 			if validationErr, ok := err.(config.ValidationErrors); ok {
-				output.GetVerbose().Error("Configuration file contains validation errors")
+				output.GetVerbose().Error("%v", validationErr)
 				output.GetDebug().Error("Validation errors: %v", validationErr)
 				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
 				fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
@@ -248,7 +248,7 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 			// Check if it's a wrapped validation error
 			var validationErrors config.ValidationErrors
 			if errors.As(err, &validationErrors) {
-				output.GetVerbose().Error("Configuration file contains wrapped validation errors")
+				output.GetVerbose().Error("%v", validationErrors)
 				output.GetDebug().Error("Wrapped validation errors: %v", validationErrors)
 				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
 				fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
@@ -257,7 +257,7 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 			}
 
 			// For other errors
-			output.GetVerbose().Error("Configuration validation failed with unexpected error")
+			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("Unexpected validation error: %v", err)
 			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
 			fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
@@ -273,8 +273,8 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 		output.GetDebug().State("Calling config.ValidateUserPreferences()")
 		if err := config.ValidateUserPreferences(appConfig); err != nil {
 			GetLogger().Error("Configuration validation failed: %v", err)
-			output.GetVerbose().Error("Configuration validation failed")
-			output.GetDebug().Error("Validation error: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.ValidateUserPreferences() failed: %v", err)
 			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
 			fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
 			fmt.Printf("Validation error: %v\n", err)
@@ -326,10 +326,10 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 		)
 		if err != nil {
 			GetLogger().Error("Confirmation dialog failed: %v", err)
-			output.GetVerbose().Error("Confirmation dialog failed")
-			output.GetDebug().Error("Dialog error: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("components.RunConfirm() failed: %v", err)
 			fmt.Printf("%s\n", ui.FeedbackError.Render("Confirmation dialog failed\n"))
-			return fmt.Errorf("confirmation dialog failed: %w", err)
+			return fmt.Errorf("unable to show confirmation dialog: %v", err)
 		}
 
 		if !confirmed {
@@ -348,8 +348,8 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 		output.GetDebug().State("Calling config.GenerateInitialUserPreferences()")
 		if err := config.GenerateInitialUserPreferences(); err != nil {
 			GetLogger().Error("Failed to generate default config: %v", err)
-			output.GetVerbose().Error("Failed to generate default configuration")
-			output.GetDebug().Error("Configuration generation error: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.GenerateInitialUserPreferences() failed: %v", err)
 			fmt.Printf("%s\n", ui.FeedbackError.Render("Configuration reset failed\n"))
 			fmt.Printf("Failed to generate default configuration: %v\n", err)
 			return nil

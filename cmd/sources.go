@@ -53,7 +53,9 @@ var sourcesInfoCmd = &cobra.Command{
 			if logger != nil {
 				logger.Error("Failed to load manifest: %v", err)
 			}
-			return fmt.Errorf("failed to load manifest: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.LoadManifest() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %v", err)
 		}
 
 		// Check if source files actually exist - if not, force refresh with spinner
@@ -250,7 +252,9 @@ func updateSourceConfigurations() error {
 		if logger != nil {
 			logger.Error("Failed to load manifest: %v", err)
 		}
-		return fmt.Errorf("failed to load manifest: %w", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("config.LoadManifest() failed: %v", err)
+		return fmt.Errorf("unable to load font repository: %v", err)
 	}
 
 	// Get default manifest for comparison
@@ -259,7 +263,9 @@ func updateSourceConfigurations() error {
 		if logger != nil {
 			logger.Error("Failed to get default manifest: %v", err)
 		}
-		return fmt.Errorf("failed to get default manifest: %w", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("config.GetDefaultManifest() failed: %v", err)
+		return fmt.Errorf("unable to load default manifest: %v", err)
 	}
 
 	// Update sources to use FontGet-Sources URLs
@@ -289,7 +295,9 @@ func updateSourceConfigurations() error {
 			if logger != nil {
 				logger.Error("Failed to save updated sources config: %v", err)
 			}
-			return fmt.Errorf("failed to save updated sources config: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.SaveManifest() failed: %v", err)
+			return fmt.Errorf("unable to save sources configuration: %v", err)
 		}
 	}
 
@@ -310,7 +318,9 @@ func runSourcesUpdateVerbose() error {
 		if logger != nil {
 			logger.Error("Failed to load manifest: %v", err)
 		}
-		return fmt.Errorf("failed to load manifest: %w", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("config.LoadManifest() failed: %v", err)
+		return fmt.Errorf("unable to load font repository: %v", err)
 	}
 
 	// Get enabled sources
@@ -467,25 +477,25 @@ usage: fontget sources update [--verbose]`,
 		home, err := os.UserHomeDir()
 		if err != nil {
 			GetLogger().Error("Failed to get home directory: %v", err)
-			output.GetVerbose().Error("Failed to get home directory: %v", err)
-			output.GetDebug().Error("Home directory lookup failed: %v", err)
-			return fmt.Errorf("failed to get home directory: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("os.UserHomeDir() failed: %v", err)
+			return fmt.Errorf("unable to access home directory: %v", err)
 		}
 
 		sourcesDir := filepath.Join(home, ".fontget", "sources")
 		if err := os.RemoveAll(sourcesDir); err != nil {
 			GetLogger().Error("Failed to clear sources directory: %v", err)
-			output.GetVerbose().Error("Failed to clear sources directory: %v", err)
-			output.GetDebug().Error("Sources directory removal failed: %v", err)
-			return fmt.Errorf("failed to clear sources directory: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("os.RemoveAll() failed: %v", err)
+			return fmt.Errorf("unable to clear sources directory: %v", err)
 		}
 
 		// Recreate the sources directory
 		if err := os.MkdirAll(sourcesDir, 0755); err != nil {
 			GetLogger().Error("Failed to recreate sources directory: %v", err)
-			output.GetVerbose().Error("Failed to recreate sources directory: %v", err)
-			output.GetDebug().Error("Sources directory creation failed: %v", err)
-			return fmt.Errorf("failed to recreate sources directory: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("os.MkdirAll() failed: %v", err)
+			return fmt.Errorf("unable to create sources directory: %v", err)
 		}
 
 		output.GetVerbose().Success("Cleared existing cached sources")
@@ -594,9 +604,9 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 		home, err := os.UserHomeDir()
 		if err != nil {
 			GetLogger().Error("Failed to get home directory: %v", err)
-			output.GetVerbose().Error("Failed to get home directory: %v", err)
-			output.GetDebug().Error("Home directory lookup failed: %v", err)
-			return fmt.Errorf("failed to get home directory: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("os.UserHomeDir() failed: %v", err)
+			return fmt.Errorf("unable to access home directory: %v", err)
 		}
 
 		sourcesDir := filepath.Join(home, ".fontget", "sources")
@@ -619,9 +629,9 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 		entries, err := os.ReadDir(sourcesDir)
 		if err != nil {
 			GetLogger().Error("Failed to read sources directory: %v", err)
-			output.GetVerbose().Error("Failed to read sources directory: %v", err)
-			output.GetDebug().Error("Directory read failed: %v", err)
-			return fmt.Errorf("failed to read sources directory: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("os.ReadDir() failed: %v", err)
+			return fmt.Errorf("unable to read sources directory: %v", err)
 		}
 
 		validCount := 0

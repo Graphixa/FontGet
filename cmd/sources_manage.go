@@ -7,6 +7,7 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/functions"
+	"fontget/internal/output"
 	"fontget/internal/ui"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -40,7 +41,9 @@ type sourcesModel struct {
 func NewSourcesModel() (*sourcesModel, error) {
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		return nil, fmt.Errorf("failed to load manifest: %w", err)
+		// Note: This is called from TUI, so verbose/debug output may not be appropriate here
+		// The error will be returned and handled by the calling command
+		return nil, fmt.Errorf("unable to load font repository: %v", err)
 	}
 
 	sm := &sourcesModel{
@@ -853,7 +856,9 @@ usage: fontget sources manage`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		model, err := NewSourcesModel()
 		if err != nil {
-			return fmt.Errorf("failed to initialize source manager: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("NewSourcesModel() failed: %v", err)
+			return fmt.Errorf("unable to initialize source manager: %v", err)
 		}
 
 		p := tea.NewProgram(model, tea.WithAltScreen())

@@ -116,7 +116,9 @@ You can filter to a specific scope using the --scope flag:
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		output.GetDebug().Message("List command start")
+		// Debug-level information for developers
+		// Note: Suppressed to avoid TUI interference
+		// output.GetDebug().Message("List command start")
 		if err := config.EnsureManifestExists(); err != nil {
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
@@ -217,7 +219,8 @@ You can filter to a specific scope using the --scope flag:
 		output.GetDebug().State("Matching %d font families against repository", len(names))
 		matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
 		if err != nil {
-			output.GetDebug().Error("Font matching failed: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
 			// Continue without matches (fonts will show blank fields)
 			matches = make(map[string]*repo.InstalledFontMatch)
 		} else {

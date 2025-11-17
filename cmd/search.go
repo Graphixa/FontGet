@@ -66,11 +66,14 @@ var searchCmd = &cobra.Command{
 		GetLogger().Info("Starting font search operation")
 
 		// Debug-level information for developers
-		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+		// Note: Suppressed to avoid TUI interference
+		// output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
-			return fmt.Errorf("failed to initialize sources: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %v", err)
 		}
 
 		// Get arguments (already validated by Args function)
@@ -104,8 +107,10 @@ var searchCmd = &cobra.Command{
 
 		GetLogger().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 
-		// Verbose-level information for users
-		output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
+		// Verbose-level information for users - show operational details
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
+		}
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', refresh=%v", query, category, refresh)
 
 		// Print styled title first
@@ -116,33 +121,39 @@ var searchCmd = &cobra.Command{
 		var err error
 		if refresh {
 			// Force refresh of font manifest before search
-			output.GetVerbose().Info("Forcing refresh of font manifest before search")
+			if IsVerbose() && !IsDebug() {
+				output.GetVerbose().Info("Forcing refresh of font manifest before search")
+			}
 			output.GetDebug().State("Using GetRepositoryWithRefresh() to force source updates")
 			r, err = repo.GetRepositoryWithRefresh()
 		} else {
-			output.GetVerbose().Info("Using cached font manifest for search")
+			if IsVerbose() && !IsDebug() {
+				output.GetVerbose().Info("Using cached font manifest for search")
+			}
 			output.GetDebug().State("Using GetRepository() with cached sources")
 			r, err = repo.GetRepository()
 		}
 		if err != nil {
-			GetLogger().Error("Failed to initialize repository: %v", err)
-			output.GetVerbose().Error("Failed to initialize repository: %v", err)
-			output.GetDebug().Error("Repository initialization failed: %v", err)
-			return fmt.Errorf("failed to initialize repository: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %v", err)
 		}
 
 		// Search fonts
-		output.GetVerbose().Info("Searching fonts with query: '%s' and category: '%s'", query, category)
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Searching fonts with query: '%s' and category: '%s'", query, category)
+		}
 		output.GetDebug().State("Calling r.SearchFonts(query='%s', category='%s')", query, category)
 		results, err := r.SearchFonts(query, category)
 		if err != nil {
-			GetLogger().Error("Failed to search fonts: %v", err)
-			output.GetVerbose().Error("Search operation failed: %v", err)
-			output.GetDebug().Error("Font search failed: %v", err)
-			return fmt.Errorf("failed to search fonts: %w", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("r.SearchFonts() failed: %v", err)
+			return fmt.Errorf("unable to search fonts: %v", err)
 		}
 
-		output.GetVerbose().Info("Search completed - found %d results", len(results))
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Search completed - found %d results", len(results))
+		}
 		output.GetDebug().State("Search returned %d font results", len(results))
 		// Build the search result message
 		searchMsg := fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.TableSourceName.Render(query))
@@ -364,13 +375,17 @@ func init() {
 func showAllCategories() error {
 	// Ensure manifest system is initialized
 	if err := config.EnsureManifestExists(); err != nil {
-		return fmt.Errorf("failed to initialize sources: %v", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
+		return fmt.Errorf("unable to load font repository: %v", err)
 	}
 
 	// Get repository
 	r, err := repo.GetRepository()
 	if err != nil {
-		return fmt.Errorf("failed to initialize repository: %w", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("repo.GetRepository() failed: %v", err)
+		return fmt.Errorf("unable to load font repository: %v", err)
 	}
 
 	// Get all categories
