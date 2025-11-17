@@ -24,9 +24,10 @@ import (
 var sourcesCmd = &cobra.Command{
 	Use:   "sources",
 	Short: "Manage FontGet font sources",
-	Long: `Manage sources with the sub-commands. A source provides the data for you to discover and install fonts. Only add a new source if you trust it as a secure location.
+	Long: `Manage font sources.
 
-usage: fontget sources [<command>] [<options>]`,
+Font sources provide the data needed to discover and install fonts. Only add
+sources from trusted locations.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If no subcommand is provided, show help
 		return cmd.Help()
@@ -36,7 +37,7 @@ usage: fontget sources [<command>] [<options>]`,
 var sourcesInfoCmd = &cobra.Command{
 	Use:          "info",
 	Short:        "Show sources information",
-	Long:         `Display detailed information about the current FontGet sources configuration.`,
+	Long:         `Display information about configured font sources.`,
 	SilenceUsage: true, // Don't show usage info on errors
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
@@ -457,9 +458,9 @@ func runSourcesUpdateVerbose() error {
 var sourcesUpdateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update source configuration and refresh cache",
-	Long: `Update source configuration to use FontGet-Sources URLs and refresh the font data cache.
+	Long: `Update source configurations and refresh the font database.
 
-usage: fontget sources update [--verbose]`,
+Downloads the latest font data from all enabled sources.`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true, // Don't show usage info on errors
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -585,13 +586,9 @@ func formatDuration(d time.Duration) string {
 var sourcesValidateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate cached sources integrity",
-	Long: `Check the integrity of cached source files and report any issues. Useful for troubleshooting custom sources.
+	Long: `Validate source files and report any issues.
 
-If validation fails, you can try:
-1. Run 'fontget sources update' to re-download source files and rebuild manifest
-2. Run 'fontget sources validate' again to verify sources have been fixed
-
-For more help, visit: https://github.com/Graphixa/FontGet`,
+If validation fails, run 'fontget sources update' to refresh the source files.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting sources validation operation")
 

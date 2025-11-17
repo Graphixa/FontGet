@@ -97,13 +97,13 @@ var listCmd = &cobra.Command{
 	Short: "List installed fonts",
 	Long: `List fonts installed on your system.
 
-You can filter the results by providing an optional query string to filter font family names.
+By default, shows fonts from both user and system-wide installations.
+Results can be filtered by font family name, type, or scope.
 
-By default, fonts from both user and machine scopes are shown.
-
-You can filter to a specific scope using the --scope flag:
-  - user: Show fonts installed for current user only
-  - machine: Show fonts installed system-wide only
+Flags:
+  --scope, -s    Filter by installation scope (user, machine)
+  --type, -t     Filter by font type (TTF, OTF, etc.)
+  --full, -f     Show all font variants in hierarchical view
 
 `,
 	Example: `  fontget list

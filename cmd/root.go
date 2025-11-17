@@ -151,27 +151,9 @@ Available Commands:
 	completionCmd := &cobra.Command{
 		Use:   "completion",
 		Short: "Generate completion script",
-		Long: `To load completions:
+		Long: `Generate shell completion scripts.
 
-Bash:
-  $ source <(go run main.go completion bash)
-
-  # To load completions for each session, execute once:
-  # Linux:
-  $ go run main.go completion bash > ~/.fontget-completion.bash
-  $ source ~/.fontget-completion.bash
-  # macOS:
-  $ go run main.go completion bash > /usr/local/etc/bash_completion.d/fontget
-
-Zsh:
-  $ source <(go run main.go completion zsh)
-
-  # To load completions for each session, execute once:
-  $ go run main.go completion zsh > "${fpath[1]}/_fontget"
-
-PowerShell:
-  PS> go run main.go completion powershell > fontget.ps1
-  PS> . ./fontget.ps1`,
+Supports bash, zsh, and PowerShell. See documentation for installation instructions.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			shell := args[0]
 			switch shell {

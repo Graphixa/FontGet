@@ -15,8 +15,16 @@ import (
 
 var searchCmd = &cobra.Command{
 	Use:   "search <query>",
-	Short: "Search for fonts that are downloadable with FontGet",
-	Long:  "Searches for fonts from Google Fonts and other added sources.",
+	Short: "Search for available fonts",
+	Long: `Search for fonts from all configured sources.
+
+The search query matches font names. Use the --category flag to filter by
+font category (e.g., "Sans Serif", "Serif", "Monospace").
+
+Examples:
+  fontget search fira              # Search for fonts matching "fira"
+  fontget search -c "Sans Serif"   # List all fonts in "Sans Serif" category
+  fontget search -c                # List all available categories`,
 	Example: `  fontget search fira
   fontget search "Fira Sans"
   fontget search -c "Sans Serif"

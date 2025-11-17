@@ -266,16 +266,16 @@ var addCmd = &cobra.Command{
 	Aliases:      []string{"install"},
 	Short:        "Install fonts on your system",
 	SilenceUsage: true,
-	Long: `Install fonts from available font repositories.
+	Long: `Install fonts from available font sources.
 
-You can install fonts by their name or ID, e.g. "Roboto" or "google.roboto".
-You can specify multiple fonts by separating them with a space or comma. 
+Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
+Multiple fonts can be installed in a single command.
 
-Font names with spaces in their name should be wrapped in quotes, e.g. "Open Sans".
+Font names with spaces must be wrapped in quotes (e.g., "Open Sans").
 
-You can specify the installation scope using the --scope flag:
-  - user (default): Install font for current user
-  - machine: Install font system-wide (requires elevation)
+Installation scope can be specified with the --scope flag:
+  - user (default): Install for current user only
+  - machine: Install system-wide (requires administrator privileges)
 
 `,
 	Example: `  fontget add "Roboto"

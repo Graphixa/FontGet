@@ -848,9 +848,7 @@ Navigation:
   a           - Add new source
   e           - Edit selected source (view built-in details)
   d           - Delete selected source (non-built-in only)
-  esc         - Quit (prompts to save if changes made)
-
-usage: fontget sources manage`,
+  esc         - Quit (prompts to save if changes made)`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {

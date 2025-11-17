@@ -16,7 +16,7 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage FontGet application configuration",
+	Short: "Manage FontGet settings and configuration",
 	Long: `Manage FontGet application configuration settings.
 
 The config command allows you to view and edit the FontGet application configuration file (config.yaml).
@@ -201,14 +201,10 @@ var configEditCmd = &cobra.Command{
 var configValidateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate configuration file integrity",
-	Long: `Check the integrity of the configuration file and report any issues. Useful for troubleshooting configuration problems.
+	Long: `Validate the configuration file and report any issues.
 
-If validation fails, you can try:
-1. Run 'fontget config edit' to open the configuration file in your editor
-2. Fix any syntax errors or invalid values
-3. Run 'fontget config validate' again to verify the configuration is valid
-
-For more help, visit: https://github.com/Graphixa/FontGet`,
+If validation fails, use 'fontget config edit' to open and fix the configuration file.
+If all else fails, use 'fontget config reset' to restore to default settings.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration validation operation")
 
@@ -295,14 +291,10 @@ For more help, visit: https://github.com/Graphixa/FontGet`,
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Reset configuration to defaults",
-	Long: `Reset the FontGet configuration file to default values. This is useful when your configuration file becomes corrupted or you want to start fresh.
+	Long: `Reset the configuration file to default values.
 
-This command will:
-1. Generate a new default configuration file
-2. Replace the existing configuration file
-3. Preserve any existing log files
-
-For more help, visit: https://github.com/Graphixa/FontGet`,
+Replaces the existing configuration file with defaults while preserving log files.
+Useful when the configuration file is corrupted or you want to start fresh.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration reset operation")
 
