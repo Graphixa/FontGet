@@ -2,83 +2,18 @@
 
 ## ✅ **COMPLETED FOUNDATION**
 
-### **Core Infrastructure (COMPLETED)**
-- [x] **Style System** - Centralized UI components with Catppuccin Mocha palette
-- [x] **Verbose/Debug Framework** - Clean output interface with `output.GetVerbose()` and `output.GetDebug()`
-- [x] **Sources Architecture** - Manifest-based system with auto-bootstrapping
-- [x] **Archive Handling** - ZIP/TAR.XZ extraction for all font sources
-- [x] **Documentation Structure** - Organized docs with help.md, codebase.md, contributing.md
-- [x] **Error Handling** - Standardized UI components (5/7 commands updated)
-- [x] **Font Installation Feedback** - Detailed variant reporting with symbols
 
 ---
 
+## **List Command Changes**
+- [ ] Change --full flag to something else that better matches the hierarchy view (working name)
+
 ## 🎯 **CURRENT FOCUS: Command Consistency & Polish**
 
-### **Phase 3: Complete Command Standardization**
-
-#### **Bug Fixes**
-- [x] **Fix duplicate "manage" command in sources --help** - Removed duplicate `sourcesCmd.AddCommand(sourcesManageCmd)` from `cmd/sources.go`
-- [x] **Fix source priority ordering across all commands** - Google Fonts → Nerd Fonts → Font Squirrel → Custom sources now works consistently in add, info, remove, list, and search commands
-- [x] **Fix font matching logic** - Corrected distinction between exact font name matches and partial match suggestions
-- [x] **Fix config loading path** - Corrected `GetUserPreferences()` to use `config.yaml` instead of `config.json`
-
-#### **Info Command Enhancements**
-- [x] **Remove metadata flag from info command** - Remove `-m` flag since metadata is now integrated into font details card
-- [x] **Implement license-only mode** - Make `fontget info -l` show only the license card
-- [x] **Add font suggestion system to info command** - Implement same suggestion logic as add command for ambiguous font names
-
-#### **Remaining Error Handling Standardization**
-- [x] **Update `cmd/sources.go`** - Replace direct color functions with UI components
-  - [x] Replace `red()`, `green()`, `yellow()` with `ui.RenderError()`, `ui.RenderSuccess()`, `ui.RenderWarning()`
-  - [x] Standardize error message formatting
-- [x] **Update `cmd/config.go`** - Replace direct color functions with UI components
-  - [x] Replace `color.New(color.FgRed).SprintFunc()` with `ui.RenderError()`
-  - [x] Standardize success/warning messages
-
-#### **Command Visual Consistency**
-- [x] **Apply "Gold Standard" to remaining commands** (using `cmd/add.go` and `cmd/search.go` as baseline)
-  - [x] `cmd/remove.go` - Visual parity with add.go (already matches)
-  - [x] `cmd/list.go` - Styling and headers (completed)
-  - [x] `cmd/info.go` - Card-based layout implemented with modern UI components
-  - [x] `cmd/sources.go` - Styling parity (info, update, manage) completed
-  - [x] `cmd/sources_update.go` - Modern UI styling implemented
-  - [x] `cmd/sources.go` validate subcommand - UI styling improvements completed to match other commands
-
-#### **Enhanced Command Layouts** (READY FOR IMPLEMENTATION - Based on ideas.md)
-- [x] **Info Command Card-Based Layout** - **COMPLETED**
-  - [x] Card components implemented with integrated titles and flexible padding
-  - [x] Helper functions available: `FontDetailsCard()`, `LicenseInfoCard()`, `AvailableFilesCard()`, `MetadataCard()`
-  - [x] Implement bordered card sections for different information categories
-  - [x] Font Details card (Name, ID, Category) - **IMPLEMENTED**
-  - [x] License Info card (License, URL) - **IMPLEMENTED**
-  - [x] Available Files card (Download URLs) - **IMPLEMENTED**
-  - [x] Metadata card (Last Modified, Source URL, Popularity) - **IMPLEMENTED**
-  - [x] Use charmbracelet TUI components for consistent styling - **COMPLETED**
-- [ ] **List Command Hierarchical Display** - **COMPONENTS READY**
-  - [x] Hierarchy components implemented with proper indentation and arrows
-  - [x] Font families display without indentation, variants with `↳` arrows
-  - [x] Proper spacing between different font families
-  - [x] Show font families with their variants in a tree-like structure
-  - [x] Use pink color for font family names
-  - [x] Use regular console color for font variants
-  - [x] Add `--detailed` or `--full` flag to show font variants
-  - [x] Default mode shows only font families (compact view)
-  - [x] Detailed mode shows all variants with indentation
 - [ ] **Color Scheme Enhancements**
   - [ ] Create consistent color hierarchy across all commands
   - [ ] Add color utilities to `cmd/shared.go` for easy access
 
-#### **Verbose/Debug Implementation**
-- [ ] **Complete verbose/debug framework for remaining commands**
-  - [x] `cmd/remove.go` - Add verbose details (files removed, scope/elevation, protected detection) - **COMPLETED**
-  - [ ] `cmd/search.go` - Add verbose details (parameters, filters, counts)
-  - [x] `cmd/list.go` - Add verbose details (scan directories, parsed files, filters, matching) - **COMPLETED**
-  - [ ] `cmd/info.go` - Add verbose details (lookup flow, source resolution)
-  - [x] `cmd/sources.go` - Add verbose details (update plan, per-source outcomes) - **COMPLETED**
-- [ ] **Clean up debug messages and logging** - Review and standardize debug output across all commands, remove redundant or unclear debug messages
-
----
 
 ## 🧹 **Code Quality & Cleanup Milestone**
 
@@ -152,50 +87,6 @@
 
 ---
 
-#### **UI Component Extraction** ✅ **COMPLETED**
-- [x] **Create reusable UI components**
-  - [x] ~~Extract table components to `internal/components/table.go`~~ **NOT NEEDED** - Table system already well-centralized in `cmd/shared.go`
-  - [x] Extract form components to `internal/components/form.go` - **COMPLETED** - Reusable form elements for TUI interfaces
-  - [x] Extract progress indicators to `internal/components/progress.go` - **COMPLETED** - Already existed, enhanced with Bubble Tea integration
-  - [x] Extract confirmation dialogs to `internal/components/confirm.go` - **COMPLETED** - Standardized confirmation prompts with consistent styling
-  - [x] Extract card components to `internal/components/card.go` - **COMPLETED** - Modern card system with integrated titles and flexible padding
-  - [x] Extract hierarchical list components to `internal/components/hierarchy.go` - **COMPLETED** - Tree-like display for structured data (font families with variants)
-  - [x] ~~Extract color scheme utilities to `internal/components/colors.go`~~ **NOT NEEDED** - Color scheme already well-centralized in `internal/ui/styles.go`
-- [x] **Card System Enhancement** - **COMPLETED**
-  - [x] Integrated title rendering in card borders with proper styling
-  - [x] Flexible padding controls (vertical and horizontal) for different use cases
-  - [x] Consistent styling using `ui.CardTitle`, `ui.CardLabel`, `ui.CardContent` styles
-  - [x] Proper border color matching and ANSI escape code handling
-  - [x] Backward compatibility maintained with existing API
-
-#### **Shared Function Consolidation** (HIGH PRIORITY)
-- [x] **Table standardization system** - Created flexible table system in `cmd/shared.go`
-  - [x] `GetSearchTableHeader()` - Font search/add/remove tables (5 columns)
-  - [x] `GetListTableHeader()` - Font list tables (7 columns: Name, Font ID, License, Categories, Type, Scope, Source)
-  - [x] `GetTableSeparator()` - Consistent separator line
-  - [x] Column width constants for all table types
-  - [x] Maximum table width: 120 characters (full terminal width)
-  - [x] `GetSourcesTableHeader()` - Reserved for future sources info table (not currently used)
-- [x] **Update commands to use shared table system**
-  - [x] `cmd/list.go` - Replace custom table formatting with `GetListTableHeader()`
-  - [x] `cmd/search.go` - Replace custom table formatting with `GetSearchTableHeader()`
-  - [x] `cmd/sources.go` - Currently uses simple text formatting, no table needed
-  - [x] `cmd/add.go` - Already using `GetSearchTableHeader()`
-  - [x] `cmd/remove.go` - Already using `GetSearchTableHeader()`
-- [x] **Move remaining duplicate functions to `cmd/shared.go`**
-  - [x] `truncateString()` - Used in both add.go and remove.go
-  - [x] `findSimilarFonts()` and `findSimilarInstalledFonts()` - Font suggestion logic (consolidated into unified `findSimilarFonts()`)
-  - [x] `showFontNotFoundWithSuggestions()` and `showInstalledFontNotFoundWithSuggestionsCached()` - Suggestion display (kept command-specific as they differ significantly)
-  - [x] `formatFontNameWithVariant()` - Font name formatting (only in add.go, not duplicated)
-  - [x] `extractFontDisplayNameFromFilename()` - Font filename parsing (only in remove.go, not duplicated)
-  - [x] `convertCamelCaseToSpaced()` - String formatting utilities (only in remove.go, not duplicated)
-  - [x] `buildInstalledFontsCache()` - Font discovery caching (only in remove.go, not duplicated)
-- [x] **Benefits of consolidation**
-  - [x] Eliminate code duplication between add/remove commands
-  - [x] Centralize font suggestion and display logic
-  - [x] Easier maintenance and consistency
-  - [x] Reduced binary size
-  - [x] Single source of truth for font handling utilities
 
 #### **Evaluate Performance Optimisations** (LOW PRIORITY)
 - [x] **Font suggestion performance optimization** - Optimized add command suggestion table performance
@@ -216,7 +107,7 @@
   - [ ] Stream processing for large font files instead of loading into memory
   - [ ] Lazy loading of font metadata
   - [ ] Memory-efficient font variant processing
-- [ ] **Network optimizations**
+- [ ] **Network optimizations** - Needs to respect rate limits
   - [ ] HTTP/2 support for faster concurrent requests
   - [ ] Connection pooling and keep-alive
   - [ ] Request batching where possible
@@ -247,34 +138,6 @@
 - [ ] **Smart font detection (winget-style)** - **NOT IMPLEMENTED**
   - [ ] Add tracking for font variants and their system names
   - [ ] Handle font updates and reinstallations
-
-##### **Phase 2: Smart Font Detection (winget-style)** ✅ **COMPLETED**
-- [x] **Smart font detection**
-  - [x] Scan system fonts against all FontGet sources
-  - [x] Match system fonts to FontGet sources by priority order
-  - [x] Show Font ID for detected fonts, blank for unknown fonts
-  - [x] ~~Cache detection results for performance~~ - **REMOVED** - Using optimized in-memory index instead
-- [x] **Dynamic source detection for remove command**
-  - [x] Show Font ID when font is detected in sources
-  - [x] Display license and categories when available from source
-  - [x] Fall back to blank fields for fonts not found in any source
-- [x] **Enhanced list command**
-  - [x] Show Font Name, Font ID, License, Categories, Type, Scope, and Source columns
-  - [x] Display detected fonts with their Font ID from highest priority source
-  - [x] Leave Font ID blank for fonts not in any FontGet source
-  - [x] Default scope is "all" (shows fonts from both user and machine scopes)
-  - [x] Optimized index-based matching for O(1) lookups
-  - [x] Protected system fonts are not matched
-  - [x] Nerd Fonts matching handles variants correctly
-
-##### **Phase 3: Enhanced Remove Command** ✅ **COMPLETED**
-- [x] **Enhanced remove command**
-  - [x] Support both font IDs (`google.roboto`) and system names (`Roboto`)
-  - [x] Font ID resolution via `resolveFontNameOrID()` function
-  - [x] Auto-detects scope based on elevation (admin defaults to "all", user defaults to "user")
-  - [x] Shows separate progress entries for each scope when removing from "all" scopes
-  - [x] Improved error messages when fonts found in opposite scope
-  - [x] Removed `--force` flag (was not functional)
 
 #### **Update System** (MEDIUM PRIORITY)
 
@@ -323,22 +186,9 @@
 ## 📋 **SUCCESS CRITERIA**
 
 ### **Phase 3 Completion Criteria:**
-- [x] All commands use centralized style system
-- [x] Consistent visual hierarchy across all commands
-- [x] Reusable UI components implemented
-- [x] Error handling standardized across all commands
-- [x] All commands follow same interaction patterns
-- [x] Source priority ordering works consistently across all commands
-- [x] Font matching logic correctly handles exact vs partial matches
 - [ ] Complete verbose/debug support across all commands
 
 ### **Overall Project Success:**
-- [x] All major font sources functional (Google Fonts, Nerd Fonts, Font Squirrel)
-- [x] Archive handling implemented (ZIP/TAR.XZ support)
-- [x] Smart font naming for extracted archives
-- [x] Documentation restructure and organization
-- [x] Dead code cleanup and reference consistency
-- [x] Audit script improvements and maintenance tools
 - [ ] **REMAINING**: Complete visual consistency across all commands
 - [ ] **REMAINING**: Reusable UI components implemented
 
