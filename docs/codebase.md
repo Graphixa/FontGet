@@ -36,8 +36,9 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Lists all required dependencies including:
   - Cobra (CLI framework)
   - Bubble Tea (TUI framework)
-  - Lipgloss (styling)
-  - Color (terminal colors)
+  - Lipgloss (styling and terminal colors)
+  - XZ (archive extraction)
+  - Pin (spinner/loading indicators)
   - Various other utilities
 
 **Status**: ✅ Active - Essential for Go module system

@@ -2,7 +2,10 @@
 
 ## 📋 Overview
 
-This document outlines the CI/CD strategy for FontGet, including developer workflows, release triggers, and automated build processes. The pipeline uses GitHub Actions to build, test, and release FontGet across multiple platforms.
+This document outlines the CI/CD strategy for FontGet, including developer workflows, release triggers, and automated build processes. The pipeline uses **GoReleaser** (OSS) with **GitHub Actions** to build, test, and release FontGet across multiple platforms and package managers.
+
+**Related Plans:**
+- **Self-Update System**: See `docs/maintenance/UPDATE_SYSTEM_PLAN.md` for update functionality
 
 ---
 
@@ -156,6 +159,33 @@ This is handled automatically by the Makefile and GitHub Actions.
 
 ---
 
+## 🛠️ Build Tool: GoReleaser
+
+FontGet uses **GoReleaser OSS** (free, open-source) as the build and release automation tool. GoReleaser handles:
+- Cross-platform binary compilation
+- Archive generation (`.zip`, `.tar.gz`)
+- Package creation (`.deb`, `.rpm`, Chocolatey, Homebrew, Scoop, Winget)
+- GitHub Releases automation
+- Checksum generation
+
+### **Project Structure**
+
+**Actual Project Layout:**
+```
+FontGet/
+  main.go            # Entry point (at root, not ./cmd/Fontget/main.go)
+  cmd/               # Command implementations (Cobra commands)
+  internal/...       # Internal packages
+  go.mod             # module fontget (lowercase)
+```
+
+**⚠️ Important Configuration Notes:**
+- Binary naming must use **hyphens** (not underscores): `fontget-windows-amd64.exe`
+- Binary name must be **lowercase**: `fontget` (not `Fontget`)
+- Required for self-update system compatibility (see `docs/maintenance/UPDATE_SYSTEM_PLAN.md`)
+
+---
+
 ## 🔧 GitHub Actions Workflows
 
 ### **Workflow Structure**
@@ -175,13 +205,15 @@ The CI/CD pipeline consists of two main workflows:
 
 #### **2. Release Workflow** (`release.yml`)
 - **Triggers:** Only when a tag matching `v*` is pushed (e.g., `v1.2.3`)
-- **Purpose:** Create GitHub release with binaries
+- **Purpose:** Create GitHub release with binaries and packages
 - **Actions:**
+  - Run GoReleaser in release mode
   - Build for all platforms and architectures
   - Run full test suite
   - Create GitHub Release
   - Upload binaries as release assets
   - Generate and upload checksums (SHA256)
+  - Create packages (`.deb`, `.rpm`, Chocolatey, Homebrew, Scoop, Winget)
   - Optionally: Generate release notes
 
 ### **Workflow Files Location**
@@ -190,12 +222,62 @@ The CI/CD pipeline consists of two main workflows:
 .github/
   workflows/
     ci.yml          # Continuous Integration (build + test)
-    release.yml     # Release automation (tag-triggered)
+    release.yml     # Release automation (tag-triggered, uses GoReleaser)
 ```
+
+### **GitHub Actions Workflow Example**
+
+Create `.github/workflows/release.yml`:
+
+```yaml
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"  # Match your go.mod version
+
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          WINGET_PUSH_TOKEN: ${{ secrets.WINGET_PUSH_TOKEN }}
+```
+
+### **Required GitHub Secrets**
+
+Set these in GitHub repository settings (Settings → Secrets and variables → Actions):
+
+- `GITHUB_TOKEN` - Automatically provided by GitHub
+- `CHOCOLATEY_API_KEY` - For publishing to Chocolatey (optional)
+- `HOMEBREW_TAP_TOKEN` - Personal Access Token with push access to `ORG/homebrew-tap` (optional)
+- `SCOOP_BUCKET_TOKEN` - Personal Access Token with push access to `ORG/scoop-bucket` (optional)
+- `WINGET_PUSH_TOKEN` - Personal Access Token for winget manifest repo (optional)
+
+**Note:** Package manager tokens are only needed if you want to auto-publish to those platforms. GitHub Releases will work without them.
 
 ---
 
-## 📦 Build Matrix
+## 📦 Build Matrix & Distribution
 
 ### **Supported Platforms**
 
@@ -205,12 +287,75 @@ The CI/CD pipeline consists of two main workflows:
 | macOS    | amd64, arm64 | `fontget-darwin-amd64`, `fontget-darwin-arm64` |
 | Linux    | amd64, arm64 | `fontget-linux-amd64`, `fontget-linux-arm64` |
 
+**⚠️ IMPORTANT**: Binary naming must match exactly for self-update system to work. The `rhysd/go-github-selfupdate` library expects this naming pattern: `{cmd}_{goos}_{goarch}{.ext}` (with hyphens, not underscores).
+
 ### **Build Artifacts**
 
 Each release includes:
-- 6 binary files (one per platform/arch combination)
-- `checksums.txt` file with SHA256 hashes
-- Source code archive (automatically included by GitHub)
+- **Raw binaries**: 6 binary files (one per platform/arch combination)
+- **Archives**: `.zip` (Windows) and `.tar.gz` (macOS/Linux) for each platform
+- **Checksums**: `checksums.txt` file with SHA256 hashes (required for self-update system)
+- **Packages** (via GoReleaser):
+  - `.deb` packages for Debian/Ubuntu
+  - `.rpm` packages for Fedora/RHEL/CentOS
+  - Chocolatey `.nupkg` package (if configured)
+  - Homebrew formula (if tap repo configured)
+  - Scoop manifest (if bucket repo configured)
+  - Winget manifest (if configured)
+- **Source code archive** (automatically included by GitHub)
+
+### **Package Distribution**
+
+GoReleaser can automatically publish to multiple package managers:
+
+1. **GitHub Releases** (always enabled)
+   - Raw binaries
+   - Archives
+   - Checksums
+   - Source code
+
+2. **Linux Packages** (via NFPM)
+   - `.deb` for Debian/Ubuntu
+   - `.rpm` for Fedora/RHEL/CentOS
+   - Uploaded to GitHub Releases
+
+3. **Homebrew** (optional, requires tap repo)
+   - Auto-generates formula
+   - Pushes to `ORG/homebrew-tap` repository
+   - Requires `HOMEBREW_TAP_TOKEN` secret
+
+4. **Scoop** (optional, requires bucket repo)
+   - Auto-generates manifest
+   - Pushes to `ORG/scoop-bucket` repository
+   - Requires `SCOOP_BUCKET_TOKEN` secret
+
+5. **Chocolatey** (optional)
+   - Auto-generates `.nupkg` package
+   - Publishes to Chocolatey.org
+   - Requires `CHOCOLATEY_API_KEY` secret
+
+6. **Winget** (optional)
+   - Auto-generates manifest
+   - Can push to dedicated repo or fork of `microsoft/winget-pkgs`
+   - Requires `WINGET_PUSH_TOKEN` secret
+
+**Future Work (Manual):**
+- Submitting to official Debian/Ubuntu repositories
+- Submitting to official Fedora repositories
+
+### **Checksums File Format**
+
+The `checksums.txt` file must follow this format for the self-update library:
+```
+SHA256(fontget-windows-amd64.exe)= abc123...
+SHA256(fontget-windows-arm64.exe)= def456...
+SHA256(fontget-darwin-amd64)= ghi789...
+SHA256(fontget-darwin-arm64)= jkl012...
+SHA256(fontget-linux-amd64)= mno345...
+SHA256(fontget-linux-arm64)= pqr678...
+```
+
+**Action Required**: Ensure GitHub Actions workflow generates `checksums.txt` with this exact format.
 
 ---
 
@@ -387,35 +532,199 @@ git tag -a v2.0.0 -m "Release v2.0.0: Redesign configuration system"
 
 ---
 
+## ⚙️ GoReleaser Configuration
+
+### **Configuration File**
+
+Create `.goreleaser.yaml` at the repository root. This file controls all build and release behavior.
+
+### **GoReleaser Configuration Skeleton**
+
+```yaml
+project_name: fontget  # Lowercase to match module name and self-update requirements
+dist: dist
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: fontget
+    main: .                    # Root main.go (not ./cmd/Fontget/main.go)
+    binary: fontget            # Lowercase (not Fontget) - required for self-update system
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64  # if not supported initially
+
+archives:
+  - id: default
+    builds:
+      - fontget
+    format_overrides:
+      - goos: windows
+        format: zip
+    # Archive filename can use underscores, but binary inside must use hyphens
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # ⚠️ IMPORTANT: Binary inside archive will be named based on 'binary' field above
+    # For self-update system, we may need to upload raw binaries with hyphenated names
+    # OR configure GoReleaser to rename binaries inside archives
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ .Tag }}-SNAPSHOT"
+
+changelog:
+  use: git
+
+# Linux packages via NFPM (deb/rpm)
+nfpms:
+  - id: linux-packages
+    package_name: fontget
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    formats:
+      - deb
+      - rpm
+    maintainer: "FontGet Maintainers <maintainers@example.com>"
+    description: "FontGet CLI tool for managing fonts"
+    license: "MIT"
+    vendor: "FontGet"
+    homepage: "https://github.com/Graphixa/FontGet"
+    section: "utils"
+    bindir: /usr/bin
+    contents:
+      - src: ./dist/fontget_{{ .Os }}_{{ .Arch }}/fontget
+        dst: /usr/bin/fontget
+
+# Homebrew tap (optional)
+brews:
+  - name: fontget
+    tap:
+      owner: Graphixa
+      name: homebrew-tap
+    commit_author:
+      name: goreleaserbot
+      email: bot@example.com
+    folder: Formula
+    homepage: "https://github.com/Graphixa/FontGet"
+    description: "FontGet CLI tool for managing fonts"
+    license: "MIT"
+    install: |
+      bin.install "fontget"
+
+# Scoop manifest (optional)
+scoop:
+  bucket:
+    owner: Graphixa
+    name: scoop-bucket
+  homepage: "https://github.com/Graphixa/FontGet"
+  description: "FontGet CLI tool for managing fonts"
+  license: "MIT"
+  commit_author:
+    name: goreleaserbot
+    email: bot@example.com
+  url_template: "https://github.com/Graphixa/FontGet/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+
+# Chocolatey package (optional)
+chocolatey:
+  - name: fontget
+    title: "FontGet CLI"
+    authors: "FontGet Team"
+    project_url: "https://github.com/Graphixa/FontGet"
+    tags: "cli tools fonts"
+    summary: "FontGet CLI tool for managing fonts"
+    description: "FontGet is a command-line font manager for installing and managing fonts."
+    license_url: "https://github.com/Graphixa/FontGet/blob/main/LICENSE"
+    docs_url: "https://github.com/Graphixa/FontGet"
+    bug_tracker_url: "https://github.com/Graphixa/FontGet/issues"
+    release_notes_url: "https://github.com/Graphixa/FontGet/releases/tag/{{ .Tag }}"
+    files:
+      - id: default
+    api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
+    source_repo: "https://push.chocolatey.org/"
+
+# Winget manifest (optional)
+winget:
+  # Option A: generate into current repo under /dist/winget
+  # Option B: configure to push to a separate repo (fork of winget-pkgs)
+  - publisher: "Graphixa"
+    publisher_url: "https://github.com/Graphixa"
+    author: "Graphixa"
+    short_description: "FontGet CLI tool for managing fonts"
+    package_identifier: "Graphixa.FontGet"
+    homepage: "https://github.com/Graphixa/FontGet"
+    license: "MIT"
+    tags:
+      - cli
+      - tools
+      - fonts
+    # url and SHA will be auto filled from artifacts
+```
+
+### **Configuration Notes**
+
+**⚠️ CRITICAL for Self-Update System:**
+- Set `binary: fontget` (lowercase, not `Fontget`)
+- Set `main: .` (root main.go, not `./cmd/Fontget/main.go`)
+- Ensure binary naming uses hyphens (handled by GoReleaser based on binary name)
+- Verify checksums file format matches self-update library expectations
+
+**Before Using:**
+- Update all `ORG`/`Graphixa` placeholders with actual values
+- Update email addresses and URLs
+- Ensure NFPM `contents.src` path matches actual built binary path
+- Configure package manager sections only if you plan to use them
+- Test configuration with `goreleaser release --snapshot` first
+
+---
+
 ## 🎯 Next Steps
 
 ### **To Set Up CI/CD Pipeline:**
 
-1. **Create `.github/workflows/` directory:**
+1. **Create `.goreleaser.yaml` configuration:**
+   - Copy the skeleton above
+   - Update with your actual repository details
+   - Test locally: `goreleaser release --snapshot`
+
+2. **Create `.github/workflows/` directory:**
    ```bash
    mkdir -p .github/workflows
    ```
 
-2. **Create workflow files:**
+3. **Create workflow files:**
    - `ci.yml` - For continuous integration
-   - `release.yml` - For automated releases
+   - `release.yml` - For automated releases (uses GoReleaser)
 
-3. **Test the workflows:**
+4. **Test the workflows:**
    - Push a commit to trigger CI workflow
    - Create a test tag to verify release workflow
 
-4. **Configure GitHub repository:**
+5. **Configure GitHub repository:**
    - Ensure Actions are enabled
-   - Set up any required secrets (if needed for code signing)
+   - Set up required secrets (if using package managers)
+   - Test with a pre-release tag first
 
 ---
 
 ## 📖 Additional Resources
 
+- [GoReleaser Documentation](https://goreleaser.com/)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Semantic Versioning](https://semver.org/)
 - [Go Build Constraints](https://pkg.go.dev/cmd/go#hdr-Build_constraints)
 - [Git Tagging Best Practices](https://git-scm.com/book/en/v2/Git-Basics-Tagging)
+- [Self-Update System Plan](docs/maintenance/UPDATE_SYSTEM_PLAN.md) - Binary naming requirements
 
 ---
 

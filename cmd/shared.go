@@ -12,7 +12,6 @@ import (
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 
-	"github.com/fatih/color"
 	"github.com/spf13/cobra"
 )
 
@@ -176,39 +175,6 @@ func checkElevation(cmd *cobra.Command, fontManager platform.FontManager, scope 
 		}
 	}
 	return nil
-}
-
-// Common color functions to reduce duplication across commands
-var (
-	// Basic colors
-	Red    = color.New(color.FgRed).SprintFunc()
-	Green  = color.New(color.FgGreen).SprintFunc()
-	Yellow = color.New(color.FgYellow).SprintFunc()
-	Cyan   = color.New(color.FgCyan).SprintFunc()
-	Bold   = color.New(color.Bold).SprintFunc()
-	White  = color.New(color.FgWhite).SprintFunc()
-
-	// Combined colors
-	BoldRed    = color.New(color.FgRed, color.Bold).SprintFunc()
-	BoldGreen  = color.New(color.FgGreen, color.Bold).SprintFunc()
-	BoldYellow = color.New(color.FgYellow, color.Bold).SprintFunc()
-	BoldCyan   = color.New(color.FgCyan, color.Bold).SprintFunc()
-)
-
-// GetColorFunctions returns a map of commonly used color functions
-func GetColorFunctions() map[string]func(a ...interface{}) string {
-	return map[string]func(a ...interface{}) string{
-		"red":        Red,
-		"green":      Green,
-		"yellow":     Yellow,
-		"cyan":       Cyan,
-		"bold":       Bold,
-		"white":      White,
-		"boldRed":    BoldRed,
-		"boldGreen":  BoldGreen,
-		"boldYellow": BoldYellow,
-		"boldCyan":   BoldCyan,
-	}
 }
 
 // StatusReport represents a status report for operations

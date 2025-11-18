@@ -166,14 +166,83 @@
 
 ### **Phase 6: New Commands & Features**
 
-#### **Update System**
-- [ ] **Add `update` command**
-  - [ ] `fontget update` - Check and update if newer version available
-  - [ ] `fontget update --check` - Just check for updates without installing
-  - [ ] Integration with GitHub Releases API
-  - [ ] Version comparison and update logic
-  - [ ] Backup current version before update
-  - [ ] Rollback capability if update fails
+#### **Self-Update System** (HIGH PRIORITY - Post-Beta)
+- [ ] **Library Integration**
+  - [ ] Add `github.com/rhysd/go-github-selfupdate/selfupdate` to `go.mod`
+  - [ ] Create `internal/update/` package (wrapper around library)
+  - [ ] Implement `CheckForUpdates()` function using library
+  - [ ] Implement `UpdateToLatest()` function using library
+  - [ ] **Note**: Library handles GitHub API, version comparison, platform detection, checksum verification, and binary replacement automatically
+
+- [ ] **Update Command Implementation**
+  - [ ] `fontget update` - Check for updates and prompt to install
+  - [ ] `fontget update --check` - Only check for updates, don't install
+  - [ ] `fontget update -y` - Skip confirmation prompt
+  - [ ] `fontget update --version / -v <version>` - Update to specific version (should we support downgrading from here???)
+  - [ ] Show current vs. available version
+  - [ ] Display release notes/changelog from GitHub release
+  - [ ] Atomic binary replacement (cross-platform safe)
+
+- [ ] **Cross-Platform Binary Replacement** ✅ **Handled by Library**
+  - [x] Library handles Windows binary replacement (atomic with rollback)
+  - [x] Library handles macOS/Linux binary replacement (atomic with rollback)
+  - [x] Library handles "file in use" errors
+  - [x] Library handles backup and rollback automatically
+  - [ ] **Action Required**: Ensure CI/CD builds binaries with naming: `fontget-{os}-{arch}{.ext}`
+  - [ ] **Action Required**: Ensure CI/CD generates `checksums.txt` with SHA256 checksums
+
+- [ ] **Configuration Integration**
+  - [ ] Add `Update` section to `config.yaml`:
+    ```yaml
+    Update:
+      AutoCheck: true          # Check for updates on startup
+      AutoUpdate: false        # Automatically install updates (manual by default)
+      CheckInterval: 24        # Hours between checks
+      LastChecked: ""          # Timestamp of last check
+      UpdateChannel: "stable"  # stable/dev (future)
+    ```
+  - [ ] First-run prompt: "Would you like FontGet to check for updates automatically?"
+  - [ ] Configurable via `fontget config edit`
+  - [ ] Respect `--no-check` flag to skip startup checks
+
+- [ ] **Startup Update Check** (Optional)
+  - [ ] Check `Update.AutoCheck` and `Update.CheckInterval`
+  - [ ] Only check if interval has passed
+  - [ ] Non-blocking check (don't delay startup)
+  - [ ] Show notification if update available: "FontGet v1.2.3 is available (you have v1.2.2). Run 'fontget update' to upgrade."
+  - [ ] Suppress notification if `--quiet` flag used
+
+- [ ] **Error Handling & Edge Cases**
+  - [ ] Map library errors to user-friendly messages
+  - [ ] Network errors: "Unable to check for updates. Check your internet connection."
+  - [ ] GitHub API errors: "Unable to fetch update information. GitHub API may be unavailable."
+  - [ ] Invalid checksums: Library handles retry, show user-friendly error
+  - [ ] Insufficient permissions: "Insufficient permissions. Try running as administrator/sudo."
+  - [ ] Binary locked/in use: "FontGet is currently running. Please close other instances."
+  - [ ] Handle pre-release versions (respect UpdateChannel) - may need custom filtering
+
+- [ ] **User Experience**
+  - [ ] Clear progress indicators during download
+  - [ ] Show download size and speed
+  - [ ] Confirmation prompt with version info
+  - [ ] Success message with new version
+  - [ ] Verbose/debug output support
+  - [ ] Integration with existing UI styles
+
+- [ ] **Testing Requirements**
+  - [ ] Integration tests with library (test update flow)
+  - [ ] Manual testing on Windows, macOS, Linux
+  - [ ] Test rollback mechanism (library handles, but verify)
+  - [ ] Test edge cases (no internet, API down, etc.)
+  - [ ] Test error message mapping
+  - [ ] Verify binary naming matches library expectations
+
+- [ ] **Security Considerations** ✅ **Handled by Library**
+  - [x] Library verifies SHA256 checksums before installation
+  - [x] Library uses HTTPS for all downloads
+  - [x] Library doesn't execute binary until verified
+  - [x] Library clears temp files after update
+  - [ ] **Future**: Code signing verification (library doesn't support, can add later)
 
 #### **Export/Import System**
 - [ ] **Add `export` command**
