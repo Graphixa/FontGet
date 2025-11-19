@@ -189,6 +189,27 @@ var (
 				Padding(0, 2) // Add some padding around the progress bar
 )
 
+// ============================================================================
+// SPINNER STYLES - Loading indicators
+// ============================================================================
+var (
+	// SpinnerColor - Color for the spinner animation
+	SpinnerColor = "#cba6f7" // Mauve - matches PageTitle, OperationTitle, FeedbackInfo
+
+	// SpinnerDoneColor - Color for the done checkmark symbol
+	SpinnerDoneColor = "#a6e3a1" // Green - matches FeedbackSuccess
+
+	// PinColorMap - Maps hex color strings to pin package color names
+	// Used for converting hex colors to pin.Color constants
+	// The pin package uses its own color constants and doesn't accept hex strings directly
+	PinColorMap = map[string]string{
+		"#a6e3a1": "green",   // Green - matches FeedbackSuccess, SpinnerDoneColor
+		"#cba6f7": "magenta", // Mauve - matches PageTitle, OperationTitle, FeedbackInfo, SpinnerColor
+		"#b4befe": "blue",    // Blue - available for future use
+		"#a6adc8": "cyan",    // Cyan - available for future use
+	}
+)
+
 // GetProgressBarGradient returns the gradient colors for the progress bar
 func GetProgressBarGradient() (string, string) {
 	return "#cba6f7", "#eba0ac" // Mauve to Peach

@@ -1,10 +1,12 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	pinpkg "github.com/yarlson/pin"
 )
 
 // Utility functions for consistent UI rendering
@@ -93,4 +95,55 @@ func RenderSuccessScreen(title, message string) string {
 		RenderSuccess(message),
 		CommandLabel.Render("Press 'Q' to quit"),
 	)
+}
+
+// RunSpinner runs a pin spinner while the provided function executes
+// Always stops with a green check symbol on success
+func RunSpinner(msg, doneMsg string, fn func() error) error {
+	// Configure spinner with colors from styles.go
+	p := pinpkg.New(msg,
+		pinpkg.WithSpinnerColor(hexToPinColor(SpinnerColor)),
+		pinpkg.WithDoneSymbol('✓'),
+		pinpkg.WithDoneSymbolColor(hexToPinColor(SpinnerDoneColor)),
+	)
+	// Start spinner; it auto-disables animation when output is piped
+	cancel := p.Start(context.Background())
+	defer cancel()
+
+	err := fn()
+	if err != nil {
+		// Show failure with red X, but return the error
+		p.Fail("✗ " + err.Error())
+		return err
+	}
+	// Use plain text for completion message (no styling)
+	if doneMsg == "" {
+		doneMsg = msg
+	}
+	p.Stop(doneMsg)
+	return nil
+}
+
+// hexToPinColor maps hex color strings to pin package color constants
+// Uses PinColorMap from styles.go for the color mapping
+// The pin package uses its own color constants and doesn't accept hex strings directly
+func hexToPinColor(hex string) pinpkg.Color {
+	hexLower := strings.ToLower(hex)
+	colorName, exists := PinColorMap[hexLower]
+	if !exists {
+		return pinpkg.ColorDefault
+	}
+
+	switch colorName {
+	case "green":
+		return pinpkg.ColorGreen
+	case "magenta":
+		return pinpkg.ColorMagenta
+	case "blue":
+		return pinpkg.ColorBlue
+	case "cyan":
+		return pinpkg.ColorCyan
+	default:
+		return pinpkg.ColorDefault
+	}
 }

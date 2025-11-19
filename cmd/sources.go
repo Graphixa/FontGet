@@ -415,7 +415,10 @@ func runSourcesUpdateVerbose() error {
 			failed++
 			continue
 		}
-		cachePath := filepath.Join(homeDir, ".fontget", "cache", fmt.Sprintf("%s.json", sourceName))
+		// Sanitize source name for filename (same as in repo package)
+		sanitizedName := strings.ToLower(sourceName)
+		sanitizedName = strings.ReplaceAll(sanitizedName, " ", "_")
+		cachePath := filepath.Join(homeDir, ".fontget", "sources", fmt.Sprintf("%s.json", sanitizedName))
 		fmt.Printf("%s\n\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to %s (%d bytes)", cachePath, len(body))))
 		successful++
 	}

@@ -11,11 +11,7 @@ import (
 	"time"
 
 	"fontget/internal/config"
-
-	"context"
-
-	"github.com/charmbracelet/lipgloss"
-	pinpkg "github.com/yarlson/pin"
+	"fontget/internal/ui"
 )
 
 // usePopularityScoring controls whether popularity is used in search scoring and sorting
@@ -125,6 +121,16 @@ func getFontGetDir() (string, error) {
 	return filepath.Join(home, ".fontget"), nil
 }
 
+// sanitizeSourceNameForFilename converts a source name to a safe filename
+// by converting to lowercase and replacing spaces with underscores
+func sanitizeSourceNameForFilename(sourceName string) string {
+	// Convert to lowercase
+	sanitized := strings.ToLower(sourceName)
+	// Replace spaces with underscores
+	sanitized = strings.ReplaceAll(sanitized, " ", "_")
+	return sanitized
+}
+
 func loadSourceDataWithCache(url string, sourceName string, progress ProgressCallback, forceRefresh bool) (*SourceData, error) {
 	if progress != nil {
 		progress(0, 1, fmt.Sprintf("Loading %s source...", sourceName))
@@ -141,7 +147,7 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 	}
 
 	// Create cache filename based on source name
-	cacheFile := filepath.Join(sourcesCacheDir, fmt.Sprintf("%s.json", strings.ToLower(sourceName)))
+	cacheFile := filepath.Join(sourcesCacheDir, fmt.Sprintf("%s.json", sanitizeSourceNameForFilename(sourceName)))
 
 	// Check if we should use cached data
 	useCache := false
@@ -217,7 +223,7 @@ func loadSourceDataFromCacheOnly(_ string, sourceName string) (*SourceData, erro
 	sourcesCacheDir := filepath.Join(cacheDir, "sources")
 
 	// Create cache filename based on source name
-	cacheFile := filepath.Join(sourcesCacheDir, fmt.Sprintf("%s.json", strings.ToLower(sourceName)))
+	cacheFile := filepath.Join(sourcesCacheDir, fmt.Sprintf("%s.json", sanitizeSourceNameForFilename(sourceName)))
 
 	// Check if cache file exists
 	if _, err := os.Stat(cacheFile); err != nil {
@@ -500,57 +506,6 @@ type Repository struct {
 	manifest *FontManifest
 }
 
-// runSpinner runs a lightweight spinner while fn executes. Always stops with a green check style.
-func runSpinner(msg, doneMsg string, fn func() error) error {
-	// Pre-style the message with lipgloss for any hex color
-	styledMsg := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#a6adc8")). // Gray
-		Render(msg)
-
-	// Configure spinner with pre-styled message
-	p := pinpkg.New(styledMsg,
-		pinpkg.WithSpinnerColor(pinkToPin("#cba6f7")), // spinner mauve
-		pinpkg.WithDoneSymbol('✓'),
-		pinpkg.WithDoneSymbolColor(pinkToPin("#a6e3a1")), // green check
-	)
-	// Start spinner; it auto-disables animation when output is piped
-	cancel := p.Start(context.Background())
-	defer cancel()
-
-	err := fn()
-	if err != nil {
-		// Show failure with red X, but return the error
-		p.Fail("✗ " + err.Error())
-		return err
-	}
-	// Style the completion message with the same color
-	styledDoneMsg := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#a6adc8")). // Gray
-		Render(doneMsg)
-
-	if doneMsg == "" {
-		styledDoneMsg = styledMsg
-	}
-	p.Stop(styledDoneMsg)
-	return nil
-}
-
-// pinkToPin maps hex-ish choice to nearest pin color (simple mapping to keep code local)
-func pinkToPin(hex string) pinpkg.Color {
-	switch strings.ToLower(hex) {
-	case "#a6e3a1":
-		return pinpkg.ColorGreen
-	case "#cba6f7":
-		return pinpkg.ColorMagenta
-	case "#b4befe":
-		return pinpkg.ColorBlue
-	case "#a6adc8":
-		return pinpkg.ColorCyan
-	default:
-		return pinpkg.ColorDefault
-	}
-}
-
 // GetRepository returns a new Repository instance, showing spinner if sources need updating
 func GetRepository() (*Repository, error) {
 	// Set popularity scoring preference from user config
@@ -577,7 +532,7 @@ func GetRepository() (*Repository, error) {
 	if shouldRefresh {
 		// Sources are stale, run spinner while refreshing and building
 		var manifest *FontManifest
-		err := runSpinner("Updating Sources...", "Sources Updated", func() error {
+		err := ui.RunSpinner("Updating Sources...", "Sources Updated", func() error {
 			m, e := GetManifest(nil, nil)
 			if e != nil {
 				return e
@@ -615,7 +570,7 @@ func GetRepositoryWithRefresh() (*Repository, error) {
 
 	// Force refresh of sources with spinner
 	var manifest *FontManifest
-	err := runSpinner("Updating Sources...", "Sources Updated", func() error {
+	err := ui.RunSpinner("Updating Sources...", "Sources Updated", func() error {
 		m, e := GetManifest(nil, nil)
 		if e != nil {
 			return e
