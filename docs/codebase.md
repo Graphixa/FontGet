@@ -180,6 +180,72 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Status**: ✅ Active - Core functionality
 
+### `export.go`
+**Purpose**: Font export command
+**Functionality**:
+- Exports installed fonts to a JSON manifest file
+- Matches installed fonts to repository entries to include Font IDs, License, Categories, and Source
+- Supports filtering by match string, source, or export all fonts
+- System fonts are always excluded from exports
+- Supports output to directory (creates fonts-export.json) or specific file path via -o flag
+- Uses pin spinner for progress feedback during export
+- Provides verbose/debug output following logging guidelines
+- **Nerd Fonts Support**: Groups families by Font ID to handle cases where one Font ID installs multiple families (e.g., ZedMono installs ZedMono, ZedMono Mono, and ZedMono Propo)
+
+**Key Functions**:
+- `exportCmd.RunE`: Main export execution
+- `performFullExportWithResult`: Complete export process with result tracking (groups by Font ID)
+- `performFullExport`: Export process for debug mode
+- `collectFonts`: Collects fonts from specified scopes (reused from list.go)
+- `groupByFamily`: Groups fonts by family name (reused from list.go)
+
+**Key Features**:
+- **Directory Support**: `-o` flag accepts directories (creates default filename) or file paths (winget-style)
+- **Font Matching**: Uses optimized index-based matching to repository entries
+- **Filtering**: Supports `--match`, `--source`, `--all`, and `--matched` flags
+- **Export Manifest**: JSON structure with metadata, font details, and variants
+- **Nerd Fonts Handling**: Groups multiple families under one Font ID entry with `family_names` array
+
+**Interfaces**:
+- Uses `internal/platform` for OS-specific font detection
+- Uses `internal/output` for verbose/debug output
+- Uses `internal/repo` for font matching and repository access
+- Uses `internal/ui` for spinner components
+- Uses `cmd/shared` for protected font checking
+
+**Status**: ✅ Active - Core functionality
+
+### `import.go`
+**Purpose**: Font import command
+**Functionality**:
+- Imports fonts from an export manifest file
+- Validates export file structure and font availability
+- Resolves Font IDs and installs missing fonts
+- Shows per-font installation status
+- Provides progress feedback during import
+- **Nerd Fonts Support**: Deduplicates by Font ID and displays comma-separated family names in success messages
+
+**Key Functions**:
+- `importCmd.RunE`: Main import execution
+- `importFontsInDebugMode`: Debug mode import processing
+- Font deduplication by Font ID to prevent duplicate installations
+
+**Key Features**:
+- **Manifest Validation**: Validates export file structure and version
+- **Font Resolution**: Resolves Font IDs to font names for installation
+- **Status Reporting**: Shows installation status for each font with comma-separated family names for Nerd Fonts
+- **Error Handling**: Handles missing fonts, invalid Font IDs, and installation failures
+- **Backward Compatibility**: Handles both old format (`family_name`) and new format (`family_names` array)
+- **Nerd Fonts Handling**: Deduplicates by Font ID and shows all families in success message (e.g., "Installed ZedMono, ZedMono Mono, ZedMono Propo")
+
+**Interfaces**:
+- Uses `internal/repo` for font repository access and Font ID resolution
+- Uses `internal/output` for verbose/debug output
+- Uses `internal/ui` for user interface
+- Uses `cmd/add` for font installation logic
+
+**Status**: ✅ Active - Core functionality (UI/UX improvements pending)
+
 ### `sources.go`
 **Purpose**: Sources management command
 **Functionality**:
@@ -430,8 +496,25 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `internal/ui/`
 **Purpose**: User interface components
 **Files**:
-- `components.go`: UI component definitions
-- `styles.go`: Styling and theming
+- `components.go`: UI component definitions and utilities
+  - `RunSpinner`: Pin spinner wrapper with progress feedback
+  - `hexToPinColor`: Converts hex colors to pin package color constants
+  - Various rendering utilities for titles, errors, success messages
+- `styles.go`: Centralized styling and theming
+  - Catppuccin Mocha color palette
+  - Page structure styles (titles, subtitles, content)
+  - User feedback styles (info, warning, error, success)
+  - Data display styles (tables, lists)
+  - Form styles (labels, inputs, placeholders)
+  - Command styles (keys, labels, examples)
+  - Card styles (titles, labels, content, borders)
+  - Progress bar styles (headers, text, containers)
+  - **Spinner styles**: Color constants and pin package color mapping (`SpinnerColor`, `SpinnerDoneColor`, `PinColorMap`)
+
+**Key Features**:
+- **Centralized Styling**: All colors and styles defined in `styles.go` for consistency
+- **Spinner Integration**: Pin spinner colors mapped from hex to pin package constants
+- **Color Mapping**: `PinColorMap` provides hex-to-pin color conversion for spinner components
 
 **Status**: ✅ Active - UI system
 

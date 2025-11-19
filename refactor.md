@@ -245,22 +245,33 @@
   - [ ] **Future**: Code signing verification (library doesn't support, can add later)
 
 #### **Export/Import System**
-- [ ] **Add `export` command**
-  - [ ] Export installed fonts/collections
-  - [ ] Support export by family, source, or all
-  - [ ] Output manifest (JSON) with versions and variants
-  - [ ] Exclude fonts like system fonts or non fontget fonts maybe only;
-    - [ ] Export only installed by fontget (some way to track this?? Dicuss); or
-    - [ ] Export fonts that match the current sources that are available??? (Needs discussion)
-  - [ ] Include file copy option and dry-run mode
-  - [ ] Integrate with verbose/debug output and UI styles
+- [x] **Add `export` command**
+  - [x] Export installed fonts/collections
+  - [x] Support export by match string, source, or all
+  - [x] Output manifest (JSON) with versions and variants
+  - [x] Exclude system fonts (always excluded)
+  - [x] Export fonts that match repository entries (Font IDs available)
+  - [x] Support directory or file path via -o flag (winget-style)
+  - [x] Integrate with verbose/debug output and UI styles
+  - [x] Use pin spinner for progress feedback
+  - [x] **Nerd Fonts handling**: Groups families by Font ID (one Font ID can install multiple families like ZedMono, ZedMono Mono, ZedMono Propo)
 
-- [ ] **Add `import` command**
-  - [ ] Import fonts from a fontget export file
-  - [ ] Validate import file structure and font availability
-  - [ ] Resolve sources and install missing fonts
-  - [ ] Show per-font status with consistent reporting
-  - [ ] Integrate with verbose/debug output and UI styles
+- [x] **Add `import` command**
+  - [x] Import fonts from a fontget export file
+  - [x] Validate import file structure and font availability
+  - [x] Resolve Font IDs and install missing fonts
+  - [x] Show per-font status with consistent reporting
+  - [x] Integrate with verbose/debug output and UI styles
+  - [x] **Nerd Fonts handling**: Deduplicates by Font ID and displays comma-separated family names (e.g., "Installed ZedMono, ZedMono Mono, ZedMono Propo")
+  - [ ] **TODO**: Improve UI/UX - show line-by-line progress with counter (x of y) instead of full list
+  - [ ] **TODO**: Source availability detection - When importing fonts with Font IDs that reference disabled/unavailable sources, detect and inform the user:
+    - [ ] Check if source from export file exists in current manifest
+    - [ ] Check if source is enabled (if it exists)
+    - [ ] Group fonts by missing/disabled source
+    - [ ] **If source exists but is disabled**: Display message like "The following fonts require '{Source Name}' which is currently disabled. Enable this source via 'fontget sources manage' to import these fonts: [list of font families]"
+    - [ ] **If source doesn't exist** (custom source): Display message like "The following fonts require '{Source Name}' which is not available in your sources. Add this source via 'fontget sources manage' to import these fonts: [list of font families]"
+    - [ ] For built-in sources that don't exist: Suggest running `fontget sources update` to refresh sources
+    - [ ] Handle both built-in sources (can be refreshed) and custom sources (must be manually added with URL/prefix)
 
 #### **Sources Management CLI Flags**
 - [ ] **Add non-TUI flags to `sources manage`**
@@ -305,6 +316,8 @@
 - [x] Fixed duplicate manage command bug
 - [x] Source priority ordering consistency
 - [x] Font matching logic corrections
+- [x] Centralized spinner color configuration in styles.go
+- [x] Improved color mapping with PinColorMap for pin package integration
 
 ---
 
