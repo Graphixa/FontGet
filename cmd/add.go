@@ -69,6 +69,7 @@ type FontToInstall struct {
 	Fonts      []repo.FontFile
 	SourceName string
 	FontName   string
+	FontID     string // Font ID for checking if already installed
 }
 
 // showFontNotFoundWithSuggestions displays font not found error with suggestions in table format
@@ -417,12 +418,13 @@ Installation scope can be specified with the --scope flag:
 			// Check if this is already a specific font ID (contains a dot like "google.roboto")
 			var fonts []repo.FontFile
 			var sourceName string
+			var fontID string // Store font ID for checking if already installed
 			var err error
 
 			if strings.Contains(fontName, ".") {
 				// This is a specific font ID, use it directly
 				// Convert to lowercase for consistent matching
-				fontID := strings.ToLower(fontName)
+				fontID = strings.ToLower(fontName)
 				fonts, err = repo.GetFontByID(fontID)
 				sourceName = getSourceName(fontID)
 			} else {
@@ -434,7 +436,8 @@ Installation scope can be specified with the --scope flag:
 					err = fmt.Errorf("font not found: %s", fontName)
 				} else if len(matches) == 1 {
 					// Single match, proceed normally
-					fonts, err = repo.GetFontByID(matches[0].ID)
+					fontID = matches[0].ID
+					fonts, err = repo.GetFontByID(fontID)
 					sourceName = matches[0].Source
 				} else {
 					// Multiple matches - show search results and prompt for specific ID
@@ -453,11 +456,12 @@ Installation scope can be specified with the --scope flag:
 
 			GetLogger().Debug("Found %d font files for %s", len(fonts), fontName)
 
-			// Add to collection
+			// Add to collection (fonts will be checked for installation status during installFont)
 			fontsToInstall = append(fontsToInstall, FontToInstall{
 				Fonts:      fonts,
 				SourceName: sourceName,
 				FontName:   fontName,
+				FontID:     fontID, // Store font ID for checking if already installed
 			})
 		}
 
@@ -561,6 +565,7 @@ Installation scope can be specified with the --scope flag:
 					// Install the font using the installFont helper
 					result, err := installFont(
 						fontGroup.Fonts,
+						fontGroup.FontID,
 						fontManager,
 						installScope,
 						force,
@@ -723,6 +728,7 @@ func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []
 
 		result, err := installFont(
 			fontGroup.Fonts,
+			fontGroup.FontID,
 			fontManager,
 			installScope,
 			force,
@@ -825,6 +831,7 @@ func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []
 // installFont handles the core installation logic for a single font
 func installFont(
 	fontFiles []repo.FontFile,
+	fontID string,
 	fontManager platform.FontManager,
 	installScope platform.InstallationScope,
 	force bool,
@@ -833,6 +840,33 @@ func installFont(
 	result := &InstallResult{
 		Details: make([]string, 0),
 		Errors:  make([]string, 0),
+	}
+
+	// Check if font is already installed BEFORE downloading (unless force flag is set)
+	// This saves bandwidth by skipping downloads for already-installed fonts
+	if !force && fontID != "" && len(fontFiles) > 0 {
+		// Get font name from first font file (all files in a family should have the same name)
+		fontName := ""
+		if len(fontFiles) > 0 && fontFiles[0].Name != "" {
+			fontName = fontFiles[0].Name
+		}
+		alreadyInstalled, checkErr := checkFontsAlreadyInstalled(fontID, fontName, installScope, fontManager)
+		if checkErr != nil {
+			// Log warning but continue with installation (fail-safe behavior)
+			GetLogger().Warn("Failed to check if font is already installed (ID: %s): %v. Proceeding with installation.", fontID, checkErr)
+		} else if alreadyInstalled {
+			// Font is already installed - skip download and mark all variants as skipped
+			output.GetDebug().State("Font %s (ID: %s) is already installed, skipping download", fontName, fontID)
+			result.Status = "skipped"
+			result.Message = "Already installed"
+			result.Skipped = len(fontFiles)
+
+			// Mark all variants as skipped (use variant names for display)
+			for _, fontFile := range fontFiles {
+				result.Details = append(result.Details, fontFile.Variant)
+			}
+			return result, nil
+		}
 	}
 
 	// Download all variants of this font family

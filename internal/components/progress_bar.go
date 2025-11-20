@@ -312,7 +312,7 @@ func (m ProgressBarModel) View() string {
 			}
 		case "skipped":
 			// Show "Skipped... already installed" (no scope info for cleaner output)
-			statusText = "Skipped... already installed"
+			statusText = "Already installed... skipping"
 		case "failed":
 			// Show brief error message in error color (if available), otherwise show generic message
 			if item.ErrorMessage != "" {

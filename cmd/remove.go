@@ -793,7 +793,7 @@ Removal scope can be specified with the --scope flag:
 			title = "Removing Fonts for All Users"
 		} else if len(scopes) > 1 {
 			// "all" scope - show both scopes in title
-			title = "Removing Fonts for All Scopes (Machine & User)"
+			title = "Removing Fonts for both Machine & User scopes"
 		}
 
 		// Run unified progress for font removal (TUI mode)

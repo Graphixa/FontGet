@@ -743,3 +743,88 @@ func FormatFileSize(bytes int64) string {
 	}
 	return fmt.Sprintf("%dB", bytes)
 }
+
+// checkFontsAlreadyInstalled checks if a font is already installed in the specified scope
+// It uses the same matching logic as the list command (collectFonts and MatchAllInstalledFonts)
+// to match by Font ID (most accurate) and family name (fallback)
+// Returns true if the font is already installed, false otherwise
+// Note: This function scans the font directory each time it's called. For multiple fonts,
+// consider pre-collecting fonts and using a cached approach for better performance.
+func checkFontsAlreadyInstalled(fontID string, fontName string, scope platform.InstallationScope, fontManager platform.FontManager) (bool, error) {
+	// Early return if fontID is empty (can't check without ID)
+	if fontID == "" {
+		return false, nil
+	}
+
+	// Collect installed fonts from the target scope
+	scopes := []platform.InstallationScope{scope}
+	fonts, err := collectFonts(scopes, fontManager)
+	if err != nil {
+		return false, fmt.Errorf("failed to collect installed fonts: %w", err)
+	}
+
+	// Early return if no fonts found
+	if len(fonts) == 0 {
+		return false, nil
+	}
+
+	// Group fonts by family name
+	families := groupByFamily(fonts)
+	if len(families) == 0 {
+		return false, nil
+	}
+
+	// Get all family names
+	var familyNames []string
+	for familyName := range families {
+		familyNames = append(familyNames, familyName)
+	}
+
+	// Match installed fonts to repository entries
+	matches, err := repo.MatchAllInstalledFonts(familyNames, IsCriticalSystemFont)
+	if err != nil {
+		// If matching fails, we can't determine if font is installed, so return false
+		// This allows the installation to proceed (fail-safe)
+		// Note: Error is not returned to caller, but this is intentional for fail-safe behavior
+		return false, nil
+	}
+
+	// Normalize font ID for comparison (case-insensitive) - do this once
+	fontIDLower := strings.ToLower(fontID)
+
+	// Check if any installed font matches the target Font ID (most accurate match)
+	for _, match := range matches {
+		if match != nil {
+			// Match by Font ID (most accurate)
+			matchIDLower := strings.ToLower(match.FontID)
+			if matchIDLower == fontIDLower {
+				return true, nil
+			}
+		}
+	}
+
+	// Fallback: check by family name if Font ID didn't match
+	// This handles cases where the font might be installed but not matched to repository
+	// Note: This fallback may have false positives (e.g., "Roboto" might match "Roboto Mono")
+	// but it's acceptable as a fallback for fonts not in the repository
+	if fontName != "" {
+		fontNameLower := strings.ToLower(fontName)
+		fontNameNorm := strings.ReplaceAll(fontNameLower, " ", "")
+		fontNameNorm = strings.ReplaceAll(fontNameNorm, "-", "")
+		fontNameNorm = strings.ReplaceAll(fontNameNorm, "_", "")
+
+		for familyName := range families {
+			familyLower := strings.ToLower(familyName)
+			familyNorm := strings.ReplaceAll(familyLower, " ", "")
+			familyNorm = strings.ReplaceAll(familyNorm, "-", "")
+			familyNorm = strings.ReplaceAll(familyNorm, "_", "")
+
+			// Check for exact match (normalized)
+			if familyLower == fontNameLower || familyNorm == fontNameNorm {
+				return true, nil
+			}
+		}
+	}
+
+	return false, nil
+}

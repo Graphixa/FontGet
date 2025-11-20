@@ -550,60 +550,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	return exportedFonts, totalVariants, nil
 }
 
-// performExport performs the actual export work (legacy - kept for compatibility)
-func performExport(exportedFonts []ExportedFont, totalVariants int, outputFile, copyFiles, matchFilter, sourceFilter string, onlyMatched bool) error {
-	// Build manifest
-	manifest := ExportManifest{
-		Version:    "1.0",
-		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-		ExportedBy: "fontget",
-		Fonts:      exportedFonts,
-		Metadata: ExportMetadata{
-			TotalFonts:     len(exportedFonts),
-			TotalVariants:  totalVariants,
-			FilterByMatch:  matchFilter,
-			FilterBySource: sourceFilter,
-			OnlyMatched:    onlyMatched,
-		},
-	}
-
-	// Copy files if requested
-	// TODO: Improve this to package font files into organized zipped directory
-	if copyFiles != "" {
-		output.GetVerbose().Info("Copying font files...")
-		if err := os.MkdirAll(copyFiles, 0755); err != nil {
-			return fmt.Errorf("unable to create directory: %v", err)
-		}
-
-		copiedCount := 0
-		for _, exportedFont := range exportedFonts {
-			for _, filePath := range exportedFont.FilePaths {
-				if _, err := os.Stat(filePath); err == nil {
-					destPath := filepath.Join(copyFiles, filepath.Base(filePath))
-					if err := copyFile(filePath, destPath); err != nil {
-						output.GetVerbose().Warning("Failed to copy %s: %v", filePath, err)
-						continue
-					}
-					copiedCount++
-				}
-			}
-		}
-		output.GetVerbose().Info("Copied %d font files to %s", copiedCount, copyFiles)
-	}
-
-	// Write manifest
-	jsonData, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("unable to marshal manifest: %v", err)
-	}
-
-	if err := os.WriteFile(outputFile, jsonData, 0644); err != nil {
-		return fmt.Errorf("unable to write export file: %v", err)
-	}
-
-	return nil
-}
-
 // copyFile copies a file from src to dst
 func copyFile(src, dst string) error {
 	data, err := os.ReadFile(src)

@@ -236,7 +236,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 
 		// Convert to FontToInstall slice
 		var fontsToInstall []FontToInstall
-		for _, info := range fontsByID {
+		for fontID, info := range fontsByID {
 			// Use first family name as primary name for FontToInstall (for display purposes)
 			primaryName := info.familyNames[0]
 			if len(info.familyNames) > 1 {
@@ -244,10 +244,12 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 				primaryName = strings.Join(info.familyNames, ", ")
 			}
 
+			// Add to collection (fonts will be checked for installation status during installFont)
 			fontsToInstall = append(fontsToInstall, FontToInstall{
 				Fonts:      info.fonts,
 				SourceName: info.sourceName,
 				FontName:   primaryName, // This will be used for display (comma-separated for Nerd Fonts)
+				FontID:     fontID,      // Store font ID for checking if already installed
 			})
 		}
 
@@ -382,6 +384,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 					// Install the font
 					result, err := installFont(
 						fontGroup.Fonts,
+						fontGroup.FontID,
 						fontManager,
 						installScope,
 						force,
@@ -439,10 +442,6 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			return progressErr
 		}
 
-		// Reset terminal state after Bubble Tea exits to ensure proper color rendering
-		ui.ResetTerminalAfterBubbleTea()
-		warningStyle := ui.NewWarningStyleAfterBubbleTea()
-
 		// Print status report
 		PrintStatusReport(StatusReport{
 			Success:      status.Installed,
@@ -457,17 +456,20 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		if !IsDebug() {
 			// Show disabled sources
 			for sourceName, fontNames := range disabledSourceFonts {
-				fmt.Printf("%s\n", warningStyle(fmt.Sprintf("The following fonts require '%s' which is currently disabled:", sourceName)))
+				fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following fonts require '%s' which is currently disabled:", sourceName)))
 				for _, fontName := range fontNames {
 					fmt.Printf("  - %s\n", fontName)
 				}
+				// Blank line before help text (within section, per spacing framework)
+				fmt.Println()
 				fmt.Printf("Enable this source via 'fontget sources manage' to import these fonts.\n")
+				// Section ends with blank line (per spacing framework)
 				fmt.Println()
 			}
 
 			// Show missing sources
 			for sourceName, fontNames := range missingSourceFonts {
-				fmt.Printf("%s\n", warningStyle(fmt.Sprintf("The following fonts require '%s' which is not available in your sources:", sourceName)))
+				fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following fonts require '%s' which is not available in your sources:", sourceName)))
 				for _, fontName := range fontNames {
 					fmt.Printf("  - %s\n", fontName)
 				}
@@ -481,7 +483,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 
 			// Show invalid fonts (no Font ID)
 			if len(invalidFonts) > 0 {
-				fmt.Printf("%s\n", warningStyle("The following fonts in the manifest have no Font ID and will be skipped:"))
+				fmt.Printf("%s\n", ui.FeedbackWarning.Render("The following fonts in the manifest have no Font ID and will be skipped:"))
 				for _, fontName := range invalidFonts {
 					fmt.Printf("  - %s\n", fontName)
 				}
@@ -525,7 +527,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 				}
 
 				if len(remainingNotFound) > 0 {
-					fmt.Printf("%s\n", warningStyle("The following fonts were not found in the repository:"))
+					fmt.Printf("%s\n", ui.FeedbackWarning.Render("The following fonts were not found in the repository:"))
 					for _, fontName := range remainingNotFound {
 						fmt.Printf("  - %s\n", fontName)
 					}
@@ -559,6 +561,7 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 
 		result, err := installFont(
 			fontGroup.Fonts,
+			fontGroup.FontID,
 			fontManager,
 			installScope,
 			force,
