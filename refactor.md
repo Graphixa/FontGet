@@ -311,6 +311,7 @@
 - [x] Protected system font filtering
 - [x] Nerd Fonts variant handling
 - [x] List command enhancements (Font ID, License, Categories, Source columns)
+- [x] Pre-installation font checking (detects already-installed fonts before downloading)
 
 ### **Performance Optimizations**
 - [x] Font suggestion performance optimization (90ms → 10ms)

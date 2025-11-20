@@ -72,11 +72,12 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Supports different installation scopes (user/system)
 - Provides detailed error handling and suggestions
 - Uses shared operation infrastructure for consistent behavior
+- **Pre-installation Check**: Checks if fonts are already installed before downloading to save bandwidth and time
 
 **Key Functions**:
 - `addCmd.RunE`: Main command execution
 - `installFontsInDebugMode`: Debug mode installation (plain text output)
-- `installFont`: Core font installation logic
+- `installFont`: Core font installation logic (includes pre-download check for already-installed fonts)
 - `getSourceName`: Source name resolution
 - `showFontNotFoundWithSuggestions`: Error handling with suggestions
 
@@ -224,6 +225,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Shows per-font installation status
 - Provides progress feedback during import
 - **Nerd Fonts Support**: Deduplicates by Font ID and displays comma-separated family names in success messages
+- **Pre-installation Check**: Checks if fonts are already installed before downloading to save bandwidth and time
 
 **Key Functions**:
 - `importCmd.RunE`: Main import execution
@@ -237,6 +239,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Error Handling**: Handles missing fonts, invalid Font IDs, and installation failures
 - **Backward Compatibility**: Handles both old format (`family_name`) and new format (`family_names` array)
 - **Nerd Fonts Handling**: Deduplicates by Font ID and shows all families in success message (e.g., "Installed ZedMono, ZedMono Mono, ZedMono Propo")
+- **Already-Installed Detection**: Uses same matching logic as list command to detect already-installed fonts before downloading
 
 **Interfaces**:
 - Uses `internal/repo` for font repository access and Font ID resolution
@@ -421,6 +424,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Table formatting constants and helpers
 - Error types for font operations
 - Protected system font checking
+- Font installation status checking
 
 **Key Functions**:
 - `ParseFontNames`: Parses comma-separated font names from arguments
@@ -431,6 +435,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `findSimilarFonts`: Fuzzy matching for font names
 - `PrintStatusReport`: Prints formatted status reports
 - `IsCriticalSystemFont`: Checks if a font is a protected system font (used by list and remove commands)
+- `checkFontsAlreadyInstalled`: Checks if a font is already installed in the specified scope using the same matching logic as the list command (matches by Font ID and family name)
 
 **Interfaces**:
 - Used by multiple command files
@@ -739,6 +744,23 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - More informative font listings with license and source information
   - Improved performance with optimized matching algorithm
   - Cleaner command interface with sensible defaults
+
+#### **Pre-Installation Font Checking (2025-01-XX)**
+- **Already-Installed Detection**: Added `checkFontsAlreadyInstalled()` function in `cmd/shared.go`
+  - Checks if fonts are already installed before downloading to save bandwidth and time
+  - Uses the same matching logic as the `list` command for consistency
+  - Matches by Font ID (most accurate) with family name fallback
+  - Respects installation scope (user or machine) for accurate checking
+- **Integration**:
+  - `add` command: Checks fonts before downloading during installation
+  - `import` command: Checks fonts before downloading during import
+  - Fonts still appear in UI/progress bar but skip download if already installed
+  - Skips are tracked and displayed in status reports
+- **Benefits**:
+  - Faster installations by skipping unnecessary downloads
+  - Bandwidth savings for already-installed fonts
+  - Consistent matching logic across commands
+  - Accurate detection using Font ID and family name matching
 
 ---
 
