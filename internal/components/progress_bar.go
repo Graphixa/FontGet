@@ -246,8 +246,13 @@ func (m ProgressBarModel) View() string {
 		// No newline here - let the command handle spacing to avoid double spacing
 	}
 
-	// Items - show ALL items (pending, in_progress, completed, failed)
+	// Items - show only items that have started (not pending) for line-by-line streaming display
 	for _, item := range m.Items {
+		// Skip pending items - only show items that have started or completed
+		if item.Status == "pending" {
+			continue
+		}
+
 		// Get icon based on status - ensure all icons are the same width for alignment
 		var styledIcon string
 		switch item.Status {
@@ -268,7 +273,7 @@ func (m ProgressBarModel) View() string {
 				styledIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("#cba6f7")).Render(styledIcon)
 			}
 		default:
-			// Pending items - use a space to maintain alignment
+			// Other statuses - use a space to maintain alignment
 			styledIcon = " "
 		}
 
@@ -285,7 +290,8 @@ func (m ProgressBarModel) View() string {
 		var statusText string
 		switch item.Status {
 		case "completed":
-			// Use the actual status message (e.g., "Installed" or "Removed")
+			// For install operations: show "Installed" (no scope info)
+			// For remove operations: show "Removed from <scope>" (scope info needed)
 			actionWord := item.StatusMessage
 			if actionWord == "" {
 				actionWord = "Installed" // Default fallback
@@ -294,18 +300,19 @@ func (m ProgressBarModel) View() string {
 			preposition := "to"
 			if strings.EqualFold(actionWord, "Removed") {
 				preposition = "from"
-			}
-			if item.Scope != "" {
-				statusText = fmt.Sprintf("%s %s %s", actionWord, preposition, item.Scope)
+				// For remove operations, include scope
+				if item.Scope != "" {
+					statusText = fmt.Sprintf("%s %s %s", actionWord, preposition, item.Scope)
+				} else {
+					statusText = actionWord
+				}
 			} else {
+				// For install operations, don't show scope (cleaner output)
 				statusText = actionWord
 			}
 		case "skipped":
-			if item.Scope != "" {
-				statusText = fmt.Sprintf("already installed to %s", item.Scope)
-			} else {
-				statusText = "already installed"
-			}
+			// Show "Skipped... already installed" (no scope info for cleaner output)
+			statusText = "Skipped... already installed"
 		case "failed":
 			// Show brief error message in error color (if available), otherwise show generic message
 			if item.ErrorMessage != "" {
@@ -344,15 +351,16 @@ func (m ProgressBarModel) View() string {
 				statusText = "Installing..."
 			}
 		default:
-			// Pending or other status
+			// Other statuses
 			if item.StatusMessage != "" {
 				statusText = item.StatusMessage
 			} else {
-				statusText = "Pending"
+				statusText = "Pending..."
 			}
 		}
 
 		// Format the font item: "  ✓ Font Name [Source] - Status text"
+		// Counter is shown in the progress bar title, not on individual items
 		b.WriteString(fmt.Sprintf("  %s %s%s - %s\n", styledIcon, fontName, sourcePart, statusText))
 
 		// Show variants if list mode is enabled

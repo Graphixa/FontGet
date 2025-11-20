@@ -153,6 +153,13 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		var notFoundFonts []string
 		var invalidFonts []string
 
+		// Track fonts by source for availability detection
+		type sourceFontInfo struct {
+			fontID      string
+			familyNames []string
+		}
+		fontsBySource := make(map[string][]sourceFontInfo) // source name -> list of fonts
+
 		for _, exportedFont := range exportManifest.Fonts {
 			// Skip fonts without Font IDs
 			if exportedFont.FontID == "" {
@@ -171,41 +178,49 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 				continue
 			}
 
+			// Get source name from export file
+			sourceName := exportedFont.Source
+			if sourceName == "" {
+				sourceName = getSourceName(exportedFont.FontID)
+			}
+
+			// Get family names for tracking
+			var familyNames []string
+			if len(exportedFont.FamilyNames) > 0 {
+				familyNames = exportedFont.FamilyNames
+			} else if exportedFont.FamilyName != "" {
+				familyNames = []string{exportedFont.FamilyName}
+			}
+
+			// Track this font by source for availability detection
+			if sourceName != "" {
+				fontsBySource[sourceName] = append(fontsBySource[sourceName], sourceFontInfo{
+					fontID:      exportedFont.FontID,
+					familyNames: familyNames,
+				})
+			}
+
 			// Get font files from repository
 			fonts, err := repo.GetFontByID(exportedFont.FontID)
 			if err != nil {
 				output.GetDebug().State("Font ID %s not found in repository: %v", exportedFont.FontID, err)
 				// Handle both old format (FamilyName) and new format (FamilyNames)
-				if len(exportedFont.FamilyNames) > 0 {
-					notFoundFonts = append(notFoundFonts, strings.Join(exportedFont.FamilyNames, ", "))
-				} else if exportedFont.FamilyName != "" {
-					notFoundFonts = append(notFoundFonts, exportedFont.FamilyName)
+				if len(familyNames) > 0 {
+					notFoundFonts = append(notFoundFonts, strings.Join(familyNames, ", "))
 				}
 				continue
 			}
 
 			if len(fonts) == 0 {
 				// Handle both old format (FamilyName) and new format (FamilyNames)
-				if len(exportedFont.FamilyNames) > 0 {
-					notFoundFonts = append(notFoundFonts, strings.Join(exportedFont.FamilyNames, ", "))
-				} else if exportedFont.FamilyName != "" {
-					notFoundFonts = append(notFoundFonts, exportedFont.FamilyName)
+				if len(familyNames) > 0 {
+					notFoundFonts = append(notFoundFonts, strings.Join(familyNames, ", "))
 				}
 				continue
 			}
 
-			sourceName := exportedFont.Source
-			if sourceName == "" {
-				sourceName = getSourceName(exportedFont.FontID)
-			}
-
-			// Get family names - prefer new format (FamilyNames), fallback to old format (FamilyName)
-			var familyNames []string
-			if len(exportedFont.FamilyNames) > 0 {
-				familyNames = exportedFont.FamilyNames
-			} else if exportedFont.FamilyName != "" {
-				familyNames = []string{exportedFont.FamilyName}
-			} else {
+			// Use family names we already extracted, or fallback to repository
+			if len(familyNames) == 0 {
 				// Fallback to font name from repository
 				if len(fonts) > 0 {
 					familyNames = []string{fonts[0].Name}
@@ -236,22 +251,46 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			})
 		}
 
-		// Show warnings for invalid/not found fonts
-		if len(invalidFonts) > 0 && !IsDebug() {
-			fmt.Printf("%s\n", ui.FeedbackWarning.Render("The following fonts in the manifest have no Font ID and will be skipped:"))
-			for _, fontName := range invalidFonts {
-				fmt.Printf("  - %s\n", fontName)
-			}
-			fmt.Println()
+		// Check source availability for fonts that weren't found
+		// Load config manifest to check source availability
+		configManifest, err := config.LoadManifest()
+		if err != nil {
+			output.GetDebug().Error("Failed to load config manifest: %v", err)
 		}
 
-		if len(notFoundFonts) > 0 && !IsDebug() {
-			fmt.Printf("%s\n", ui.FeedbackWarning.Render("The following fonts were not found in the repository:"))
-			for _, fontName := range notFoundFonts {
-				fmt.Printf("  - %s\n", fontName)
+		// Group not found fonts by source availability
+		var missingSourceFonts = make(map[string][]string)  // source name -> font names
+		var disabledSourceFonts = make(map[string][]string) // source name -> font names
+		var builtInSources = map[string]bool{
+			"Google Fonts":  true,
+			"Nerd Fonts":    true,
+			"Font Squirrel": true,
+		}
+
+		if configManifest != nil {
+			for sourceName, fontList := range fontsBySource {
+				// Check if any fonts from this source were not found
+				var missingFromSource []string
+				for _, fontInfo := range fontList {
+					// Check if this font was found (exists in fontsByID)
+					if _, found := fontsByID[fontInfo.fontID]; !found {
+						if len(fontInfo.familyNames) > 0 {
+							missingFromSource = append(missingFromSource, strings.Join(fontInfo.familyNames, ", "))
+						}
+					}
+				}
+
+				if len(missingFromSource) > 0 {
+					sourceConfig, exists := configManifest.Sources[sourceName]
+					if !exists {
+						// Source doesn't exist
+						missingSourceFonts[sourceName] = missingFromSource
+					} else if !sourceConfig.Enabled {
+						// Source exists but is disabled
+						disabledSourceFonts[sourceName] = missingFromSource
+					}
+				}
 			}
-			fmt.Printf("Try running 'fontget sources update' to refresh the repository.\n")
-			fmt.Println()
 		}
 
 		// Debug output
@@ -263,6 +302,16 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			}
 			if len(notFoundFonts) > 0 {
 				GetLogger().Info("Skipping %d fonts not found in repository", len(notFoundFonts))
+			}
+			if len(disabledSourceFonts) > 0 {
+				for sourceName, fontNames := range disabledSourceFonts {
+					GetLogger().Info("Source '%s' is disabled - %d fonts affected: %v", sourceName, len(fontNames), fontNames)
+				}
+			}
+			if len(missingSourceFonts) > 0 {
+				for sourceName, fontNames := range missingSourceFonts {
+					GetLogger().Info("Source '%s' is missing - %d fonts affected: %v", sourceName, len(fontNames), fontNames)
+				}
 			}
 			GetLogger().Info("Installing %d fonts", len(fontsToInstall))
 		}
@@ -303,11 +352,17 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			})
 		}
 
+		// Determine title based on scope
+		title := "Importing Fonts"
+		if installScope == platform.MachineScope {
+			title = "Importing Fonts for All Users"
+		}
+
 		// Run unified progress for download and install
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		debug, _ := cmd.Flags().GetBool("debug")
 		progressErr := components.RunProgressBar(
-			"Importing Fonts",
+			title,
 			operationItems,
 			list,    // List mode
 			verbose, // Verbose mode
@@ -355,26 +410,20 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 					status.Failed += result.Failed
 					status.Errors = append(status.Errors, result.Errors...)
 
-					// Determine scope label
-					scopeLabel := "user scope"
-					if installScope == platform.MachineScope {
-						scopeLabel = "machine scope"
-					}
-
 					// Get error message if failed
 					var errorMsg string
 					if result.Status == "failed" && len(result.Errors) > 0 {
 						errorMsg = result.Errors[0]
 					}
 
-					// Use FontName which already contains comma-separated family names for Nerd Fonts
-					message := "Installed " + fontGroup.FontName
+					// Use "Installed" message (font name is already shown in the item name)
+					// Don't pass scope for single-scope operations (cleaner output, title already shows scope)
 					send(components.ItemUpdateMsg{
 						Index:        itemIndex,
 						Status:       result.Status,
-						Message:      message,
+						Message:      "Installed", // Simple message like add command
 						ErrorMessage: errorMsg,
-						Scope:        scopeLabel,
+						Scope:        "", // Empty for single-scope operations (cleaner output)
 					})
 
 					percent = float64(itemIndex+1) / float64(len(fontsToInstall)) * 100
@@ -390,6 +439,10 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			return progressErr
 		}
 
+		// Reset terminal state after Bubble Tea exits to ensure proper color rendering
+		ui.ResetTerminalAfterBubbleTea()
+		warningStyle := ui.NewWarningStyleAfterBubbleTea()
+
 		// Print status report
 		PrintStatusReport(StatusReport{
 			Success:      status.Installed,
@@ -399,6 +452,88 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			SkippedLabel: "Skipped",
 			FailedLabel:  "Failed",
 		})
+
+		// Show source availability warnings at the bottom (after progress bar and status report)
+		if !IsDebug() {
+			// Show disabled sources
+			for sourceName, fontNames := range disabledSourceFonts {
+				fmt.Printf("%s\n", warningStyle(fmt.Sprintf("The following fonts require '%s' which is currently disabled:", sourceName)))
+				for _, fontName := range fontNames {
+					fmt.Printf("  - %s\n", fontName)
+				}
+				fmt.Printf("Enable this source via 'fontget sources manage' to import these fonts.\n")
+				fmt.Println()
+			}
+
+			// Show missing sources
+			for sourceName, fontNames := range missingSourceFonts {
+				fmt.Printf("%s\n", warningStyle(fmt.Sprintf("The following fonts require '%s' which is not available in your sources:", sourceName)))
+				for _, fontName := range fontNames {
+					fmt.Printf("  - %s\n", fontName)
+				}
+				if builtInSources[sourceName] {
+					fmt.Printf("Run 'fontget sources update' to refresh sources, or enable this source via 'fontget sources manage'.\n")
+				} else {
+					fmt.Printf("Add this source via 'fontget sources manage' to import these fonts.\n")
+				}
+				fmt.Println()
+			}
+
+			// Show invalid fonts (no Font ID)
+			if len(invalidFonts) > 0 {
+				fmt.Printf("%s\n", warningStyle("The following fonts in the manifest have no Font ID and will be skipped:"))
+				for _, fontName := range invalidFonts {
+					fmt.Printf("  - %s\n", fontName)
+				}
+				fmt.Println()
+			}
+
+			// Show not found fonts (found in repository but not available - different from source issues)
+			if len(notFoundFonts) > 0 {
+				// Filter out fonts that are already covered by source availability messages
+				var remainingNotFound []string
+				for _, fontName := range notFoundFonts {
+					// Check if this font is already covered by source availability messages
+					covered := false
+					for _, fontNames := range disabledSourceFonts {
+						for _, fn := range fontNames {
+							if fn == fontName {
+								covered = true
+								break
+							}
+						}
+						if covered {
+							break
+						}
+					}
+					if !covered {
+						for _, fontNames := range missingSourceFonts {
+							for _, fn := range fontNames {
+								if fn == fontName {
+									covered = true
+									break
+								}
+							}
+							if covered {
+								break
+							}
+						}
+					}
+					if !covered {
+						remainingNotFound = append(remainingNotFound, fontName)
+					}
+				}
+
+				if len(remainingNotFound) > 0 {
+					fmt.Printf("%s\n", warningStyle("The following fonts were not found in the repository:"))
+					for _, fontName := range remainingNotFound {
+						fmt.Printf("  - %s\n", fontName)
+					}
+					fmt.Printf("Try running 'fontget sources update' to refresh the repository.\n")
+					fmt.Println()
+				}
+			}
+		}
 
 		GetLogger().Info("Import complete - Installed: %d, Skipped: %d, Failed: %d",
 			status.Installed, status.Skipped, status.Failed)
@@ -474,6 +609,6 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 
 func init() {
 	rootCmd.AddCommand(importCmd)
-	importCmd.Flags().StringP("scope", "s", "", "Installation scope (user or machine)")
+	importCmd.Flags().StringP("scope", "s", "", "Installation scope override (user or machine)")
 	importCmd.Flags().BoolP("force", "f", false, "Force installation even if font is already installed")
 }

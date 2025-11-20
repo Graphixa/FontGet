@@ -787,10 +787,19 @@ Removal scope can be specified with the --scope flag:
 			return nil
 		}
 
+		// Determine title based on scope
+		title := "Removing Fonts"
+		if len(scopes) == 1 && scopes[0] == platform.MachineScope {
+			title = "Removing Fonts for All Users"
+		} else if len(scopes) > 1 {
+			// "all" scope - show both scopes in title
+			title = "Removing Fonts for All Scopes (Machine & User)"
+		}
+
 		// Run unified progress for font removal (TUI mode)
 		fontsInOppositeScope := []string{} // Track fonts that still exist in opposite scope after removal
 		progressErr := components.RunProgressBar(
-			"Removing Fonts",
+			title,
 			operationItems,
 			list,    // List mode: show file listings
 			verbose, // Verbose mode: show operational details
@@ -862,6 +871,9 @@ Removal scope can be specified with the --scope flag:
 						} else if scopeStatus == "failed" && result != nil {
 							errorMsg = result.Message
 						}
+						// For multi-scope operations, show scope in status message
+						// For single-scope operations, scope is shown in title, so don't repeat in status
+						scopeForDisplay := item.ScopeLabel + " scope"
 						send(components.ItemUpdateMsg{
 							Index:        item.ItemIndex,
 							Name:         item.ProperName,
@@ -869,7 +881,7 @@ Removal scope can be specified with the --scope flag:
 							Message:      scopeMessage,
 							ErrorMessage: errorMsg,
 							Variants:     scopeVariants,
-							Scope:        item.ScopeLabel + " scope",
+							Scope:        scopeForDisplay, // Always pass scope for multi-scope operations
 						})
 
 						// Update progress percentage
@@ -1029,7 +1041,8 @@ Removal scope can be specified with the --scope flag:
 								}
 							}
 
-							// Send update message for user scope
+							// Send update message for user scope (single-scope operation)
+							// Don't show scope in status - title already indicates it
 							errorMsg := ""
 							if fontStatus == "failed" && len(allErrors) > 0 {
 								errorMsg = allErrors[0]
@@ -1041,12 +1054,11 @@ Removal scope can be specified with the --scope flag:
 								Message:      statusMessage,
 								ErrorMessage: errorMsg,
 								Variants:     allRemovedVariants,
-								Scope:        "user scope",
+								Scope:        "", // Empty for single-scope operations (cleaner output)
 							})
 						} else {
 							// Handle machine scope (single scope)
 							scopeType := scopes[0]
-							scopeLabelName := scopeLabel[0]
 							fontDir := fontManager.GetFontDir(scopeType)
 
 							// Remove the font using the removeFont helper (it will handle Font ID resolution internally)
@@ -1129,6 +1141,8 @@ Removal scope can be specified with the --scope flag:
 							if fontStatus == "failed" && len(allErrors) > 0 {
 								errorMsg = allErrors[0]
 							}
+							// For single-scope operations, don't show scope in status (title already shows it)
+							// Pass empty scope so progress bar doesn't display it
 							send(components.ItemUpdateMsg{
 								Index:        i,
 								Name:         properFontName,
@@ -1136,7 +1150,7 @@ Removal scope can be specified with the --scope flag:
 								Message:      statusMessage,
 								ErrorMessage: errorMsg,
 								Variants:     allRemovedVariants,
-								Scope:        scopeLabelName + " scope",
+								Scope:        "", // Empty for single-scope operations (cleaner output)
 							})
 						}
 

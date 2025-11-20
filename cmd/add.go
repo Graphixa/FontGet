@@ -530,9 +530,15 @@ Installation scope can be specified with the --scope flag:
 			})
 		}
 
+		// Determine title based on scope
+		title := "Installing Fonts"
+		if installScope == platform.MachineScope {
+			title = "Installing Fonts for All Users"
+		}
+
 		// Run unified progress for download and install
 		progressErr := components.RunProgressBar(
-			"Installing Fonts",
+			title,
 			operationItems,
 			list,    // List mode: show file/variant listings
 			verbose, // Verbose mode: show operational details

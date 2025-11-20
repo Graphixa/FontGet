@@ -255,6 +255,7 @@
   - [x] Integrate with verbose/debug output and UI styles
   - [x] Use pin spinner for progress feedback
   - [x] **Nerd Fonts handling**: Groups families by Font ID (one Font ID can install multiple families like ZedMono, ZedMono Mono, ZedMono Propo)
+  - [ ] **TODO**: Rename and improve `--copy-files` flag to package font files into organized zipped directory - suggest naming --backup-fonts
 
 - [x] **Add `import` command**
   - [x] Import fonts from a fontget export file
@@ -263,7 +264,11 @@
   - [x] Show per-font status with consistent reporting
   - [x] Integrate with verbose/debug output and UI styles
   - [x] **Nerd Fonts handling**: Deduplicates by Font ID and displays comma-separated family names (e.g., "Installed ZedMono, ZedMono Mono, ZedMono Propo")
-  - [ ] **TODO**: Improve UI/UX - show line-by-line progress with counter (x of y) instead of full list
+  - [ ] **UI/UX improvements**: Line-by-line progress display (items appear as they complete, counter only in progress bar title)
+  - [x] **Status message improvements**: Cleaner messaging for install/import/remove commands
+    - [x] Single-scope operations: No scope clutter in status messages ("Installed", "Removed", "Skipped... already installed")
+    - [x] Multi-scope operations: Show scope in status messages ("Removed from user scope", "Removed from machine scope")
+    - [x] Title updates: "for All Users" for machine scope, "for All Scopes (Machine & User)" for --all scope
   - [ ] **TODO**: Source availability detection - When importing fonts with Font IDs that reference disabled/unavailable sources, detect and inform the user:
     - [ ] Check if source from export file exists in current manifest
     - [ ] Check if source is enabled (if it exists)
@@ -318,6 +323,12 @@
 - [x] Font matching logic corrections
 - [x] Centralized spinner color configuration in styles.go
 - [x] Improved color mapping with PinColorMap for pin package integration
+
+### **User Experience Improvements**
+- [ ] Line-by-line progress display for install/import/remove commands (items appear as they complete)
+- [x] Cleaner status messages (removed redundant counters from individual items, counter only in progress bar title)
+- [x] Improved scope messaging (no scope clutter for single-scope operations, clear scope indication for multi-scope)
+- [x] Title updates for machine scope operations ("for All Users", "for All Scopes (Machine & User)")
 
 ---
 

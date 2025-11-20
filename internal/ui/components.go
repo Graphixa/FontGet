@@ -3,9 +3,11 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 	pinpkg "github.com/yarlson/pin"
 )
 
@@ -101,6 +103,7 @@ func RenderSuccessScreen(title, message string) string {
 // Always stops with a green check symbol on success
 func RunSpinner(msg, doneMsg string, fn func() error) error {
 	// Configure spinner with colors from styles.go
+	// The pin package auto-detects terminal capabilities and disables colors when output is piped
 	p := pinpkg.New(msg,
 		pinpkg.WithSpinnerColor(hexToPinColor(SpinnerColor)),
 		pinpkg.WithDoneSymbol('✓'),
@@ -145,5 +148,44 @@ func hexToPinColor(hex string) pinpkg.Color {
 		return pinpkg.ColorCyan
 	default:
 		return pinpkg.ColorDefault
+	}
+}
+
+// ResetTerminalAfterBubbleTea resets terminal state and reinitializes lipgloss color profile
+// after a Bubble Tea program exits. This prevents escape sequences from being printed literally
+// and ensures colors render correctly.
+//
+// Bubble Tea may change terminal state, so this function:
+// 1. Resets all terminal attributes
+// 2. Flushes output to ensure proper formatting
+// 3. Reinitializes lipgloss to use ANSI256 color profile for better compatibility
+//
+// Call this function after RunProgressBar or any other Bubble Tea program exits, before
+// printing any styled output with lipgloss.
+func ResetTerminalAfterBubbleTea() {
+	// Reset all terminal attributes and move to new line
+	fmt.Print("\033[0m\n")
+	// Flush output to ensure proper formatting
+	os.Stdout.Sync()
+
+	// Reinitialize lipgloss color profile after Bubble Tea exits
+	// Force ANSI256 color profile for better compatibility (avoids RGB codes that some terminals don't support)
+	lipgloss.SetColorProfile(termenv.ANSI256)
+}
+
+// NewWarningStyleAfterBubbleTea creates a fresh warning style that works correctly
+// after Bubble Tea exits. Uses ANSI256 color index instead of RGB codes for better
+// terminal compatibility.
+//
+// This should be called after ResetTerminalAfterBubbleTea() to ensure the style
+// uses the correct color profile.
+func NewWarningStyleAfterBubbleTea() func(string) string {
+	// Create a fresh warning style using ANSI256 color index (yellow, index 11)
+	// This avoids RGB color codes that some terminals don't support
+	// ANSI256 color 11 is a bright yellow that works well for warnings
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("11")) // ANSI256 bright yellow (index 11)
+	return func(s string) string {
+		return style.Render(s)
 	}
 }
