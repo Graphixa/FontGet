@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"fontget/internal/components"
 	"fontget/internal/config"
@@ -77,6 +78,13 @@ System fonts are always excluded from backups.`,
 		// Validate and normalize output path
 		zipPath, err := validateAndNormalizeOutputPath(outputPath)
 		if err != nil {
+			// Check if this is a cancellation (user chose not to overwrite)
+			if strings.Contains(err.Error(), "backup cancelled") {
+				// User cancelled - show friendly message and return nil (no error)
+				fmt.Printf("%s\n", ui.FeedbackWarning.Render("Backup cancelled - file already exists."))
+				fmt.Println()
+				return nil
+			}
 			return err
 		}
 
@@ -107,11 +115,18 @@ System fonts are always excluded from backups.`,
 	},
 }
 
+// generateDefaultBackupFilename generates a date-based backup filename
+func generateDefaultBackupFilename() string {
+	now := time.Now()
+	dateStr := now.Format("2006-01-02")
+	return fmt.Sprintf("font-backup-%s.zip", dateStr)
+}
+
 // validateAndNormalizeOutputPath validates and normalizes the output path with guard rails
 func validateAndNormalizeOutputPath(outputPath string) (string, error) {
-	// If no path provided, use default name in current directory
+	// If no path provided, use date-based default name in current directory
 	if outputPath == "" {
-		outputPath = "fonts-backup.zip"
+		outputPath = generateDefaultBackupFilename()
 	}
 
 	// Normalize path separators
@@ -120,14 +135,14 @@ func validateAndNormalizeOutputPath(outputPath string) (string, error) {
 	// Check if it's a directory (ends with separator or exists as directory)
 	info, err := os.Stat(outputPath)
 	if err == nil && info.IsDir() {
-		// It's a directory, use default filename
-		outputPath = filepath.Join(outputPath, "fonts-backup.zip")
+		// It's a directory, use date-based default filename
+		outputPath = filepath.Join(outputPath, generateDefaultBackupFilename())
 	} else if err == nil && !info.IsDir() {
 		// Path exists and is a file - check if it has .zip extension
 		if !strings.HasSuffix(strings.ToLower(outputPath), ".zip") {
 			return "", fmt.Errorf("output path exists and is not a zip file: %s", outputPath)
 		}
-		// File exists - will overwrite (user should be aware)
+		// File exists - will check and prompt later after getting absolute path
 	} else if os.IsNotExist(err) {
 		// Path doesn't exist - check if parent directory exists
 		parentDir := filepath.Dir(outputPath)
@@ -167,6 +182,22 @@ func validateAndNormalizeOutputPath(outputPath string) (string, error) {
 	for _, sysDir := range systemDirs {
 		if sysDir != "" && strings.HasPrefix(strings.ToLower(absPath), strings.ToLower(sysDir)) {
 			return "", fmt.Errorf("cannot write backup to system font directory: %s", absPath)
+		}
+	}
+
+	// Check if the final file path already exists and prompt for confirmation
+	if _, err := os.Stat(absPath); err == nil {
+		// File exists - prompt for confirmation before overwriting
+		confirmed, err := components.RunConfirm(
+			"File Already Exists",
+			fmt.Sprintf("File already exists. Overwrite '%s'?", filepath.Base(absPath)),
+		)
+		if err != nil {
+			return "", fmt.Errorf("unable to show confirmation dialog: %v", err)
+		}
+
+		if !confirmed {
+			return "", fmt.Errorf("backup cancelled - file already exists: %s", absPath)
 		}
 	}
 
