@@ -53,7 +53,6 @@ var (
 var (
 	// FeedbackInfo - Informational messages (like "Multiple fonts found")
 	FeedbackInfo = lipgloss.NewStyle().
-			Bold(true).
 			Foreground(lipgloss.Color("#cba6f7")) // Mauve
 
 	// FeedbackText - Supporting informational text

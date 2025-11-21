@@ -255,7 +255,7 @@
   - [x] Integrate with verbose/debug output and UI styles
   - [x] Use pin spinner for progress feedback
   - [x] **Nerd Fonts handling**: Groups families by Font ID (one Font ID can install multiple families like ZedMono, ZedMono Mono, ZedMono Propo)
-  - [ ] **TODO**: Rename and improve `--copy-files` flag to package font files into organized zipped directory - suggest naming --backup-fonts
+  - [x] **Backup fonts feature**: Renamed `--copy-files` to `--backup-fonts` and improved to package font files into organized zipped directory (fonts organized by Font ID or family name)
 
 - [x] **Add `import` command**
   - [x] Import fonts from a fontget export file
@@ -269,14 +269,14 @@
     - [x] Single-scope operations: No scope clutter in status messages ("Installed", "Removed", "Skipped... already installed")
     - [x] Multi-scope operations: Show scope in status messages ("Removed from user scope", "Removed from machine scope")
     - [x] Title updates: "for All Users" for machine scope, "for All Scopes (Machine & User)" for --all scope
-  - [ ] **TODO**: Source availability detection - When importing fonts with Font IDs that reference disabled/unavailable sources, detect and inform the user:
-    - [ ] Check if source from export file exists in current manifest
-    - [ ] Check if source is enabled (if it exists)
-    - [ ] Group fonts by missing/disabled source
-    - [ ] **If source exists but is disabled**: Display message like "The following fonts require '{Source Name}' which is currently disabled. Enable this source via 'fontget sources manage' to import these fonts: [list of font families]"
-    - [ ] **If source doesn't exist** (custom source): Display message like "The following fonts require '{Source Name}' which is not available in your sources. Add this source via 'fontget sources manage' to import these fonts: [list of font families]"
-    - [ ] For built-in sources that don't exist: Suggest running `fontget sources update` to refresh sources
-    - [ ] Handle both built-in sources (can be refreshed) and custom sources (must be manually added with URL/prefix)
+  - [x] **Source availability detection**: When importing fonts with Font IDs that reference disabled/unavailable sources, detect and inform the user:
+    - [x] Check if source from export file exists in current manifest
+    - [x] Check if source is enabled (if it exists)
+    - [x] Group fonts by missing/disabled source
+    - [x] **If source exists but is disabled**: Display message like "The following fonts require '{Source Name}' which is currently disabled. Enable this source via 'fontget sources manage' to import these fonts: [list of font families]"
+    - [x] **If source doesn't exist** (custom source): Display message like "The following fonts require '{Source Name}' which is not available in your sources. Add this source via 'fontget sources manage' to import these fonts: [list of font families]"
+    - [x] For built-in sources that don't exist: Suggest running `fontget sources update` to refresh sources
+    - [x] Handle both built-in sources (can be refreshed) and custom sources (must be manually added with URL/prefix)
 
 #### **Sources Management CLI Flags**
 - [ ] **Add non-TUI flags to `sources manage`**

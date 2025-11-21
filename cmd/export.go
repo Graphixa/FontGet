@@ -37,7 +37,6 @@ type ExportedFont struct {
 	Categories  []string `json:"categories"`
 	Variants    []string `json:"variants"`
 	Scope       string   `json:"scope"`
-	FilePaths   []string `json:"file_paths,omitempty"` // Only included if --copy-files is used
 }
 
 // ExportMetadata contains metadata about the export
@@ -98,8 +97,6 @@ or a full file path.`,
 		sourceFilter, _ := cmd.Flags().GetString("source")
 		exportAll, _ := cmd.Flags().GetBool("all")
 		onlyMatched, _ := cmd.Flags().GetBool("matched")
-		// TODO: Rename and improve --copy-files to package font files into organized zipped directory
-		copyFiles, _ := cmd.Flags().GetString("copy-files")
 
 		// Determine output file
 		if outputFile == "" {
@@ -161,9 +158,6 @@ or a full file path.`,
 				output.GetVerbose().Info("Filter: Only fonts with Font IDs")
 			}
 			output.GetVerbose().Info("System fonts are always excluded")
-			if copyFiles != "" {
-				output.GetVerbose().Info("Copying font files to: %s", copyFiles)
-			}
 			output.GetVerbose().Info("Output file: %s", outputFile)
 			fmt.Println()
 		}
@@ -173,7 +167,7 @@ or a full file path.`,
 
 		// For debug mode, do everything without spinner
 		if IsDebug() {
-			return performFullExport(fm, scopes, outputFile, copyFiles, matchFilter, sourceFilter, exportAll, onlyMatched)
+			return performFullExport(fm, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 		}
 
 		// Use pin spinner for normal/verbose mode - wrap all the work
@@ -181,7 +175,7 @@ or a full file path.`,
 
 		err = ui.RunSpinner("Exporting fonts...", "Exported fonts", func() error {
 			var err error
-			exportedFonts, _, err = performFullExportWithResult(fm, scopes, outputFile, copyFiles, matchFilter, sourceFilter, exportAll, onlyMatched)
+			exportedFonts, _, err = performFullExportWithResult(fm, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 			return err
 		})
 
@@ -206,8 +200,8 @@ or a full file path.`,
 }
 
 // performFullExport performs the complete export process (for debug mode)
-func performFullExport(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, copyFiles, matchFilter, sourceFilter string, exportAll, onlyMatched bool) error {
-	exportedFonts, _, err := performFullExportWithResult(fm, scopes, outputFile, copyFiles, matchFilter, sourceFilter, exportAll, onlyMatched)
+func performFullExport(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) error {
+	exportedFonts, _, err := performFullExportWithResult(fm, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 	if err != nil {
 		return err
 	}
@@ -226,7 +220,7 @@ func performFullExport(fm platform.FontManager, scopes []platform.InstallationSc
 }
 
 // performFullExportWithResult performs the complete export process and returns the results
-func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, copyFiles, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
+func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
 	// Collect fonts from all scopes
 	output.GetVerbose().Info("Collecting installed fonts...")
 	fonts, err := collectFonts(scopes, fm)
@@ -286,7 +280,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 		categories  []string
 		variants    map[string]bool
 		scope       string
-		filePaths   map[string]bool
 		hasFontID   bool // Track if this group has a Font ID or is keyed by family name
 	}
 
@@ -340,7 +333,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 					categories:  rep.Categories, // Will be empty for unmatched fonts
 					variants:    make(map[string]bool),
 					scope:       rep.Scope,
-					filePaths:   make(map[string]bool),
 					hasFontID:   false, // This group is keyed by family name, not Font ID
 				}
 				fontIDGroups[familyName] = group
@@ -351,16 +343,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 			// Collect variants from this family
 			for _, font := range fontGroup {
 				group.variants[font.Style] = true
-
-				// Collect file paths if copying files
-				if copyFiles != "" {
-					fontDir := fm.GetFontDir(platform.InstallationScope(font.Scope))
-					filePath := filepath.Join(fontDir, font.Name)
-					// Only add if file exists
-					if _, err := os.Stat(filePath); err == nil {
-						group.filePaths[filePath] = true
-					}
-				}
 			}
 			continue
 		}
@@ -375,7 +357,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 				categories:  rep.Categories,
 				variants:    make(map[string]bool),
 				scope:       rep.Scope,
-				filePaths:   make(map[string]bool),
 				hasFontID:   true, // This group has a Font ID
 			}
 			fontIDGroups[rep.FontID] = group
@@ -387,16 +368,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 		// Collect variants from this family
 		for _, font := range fontGroup {
 			group.variants[font.Style] = true
-
-			// Collect file paths if copying files
-			if copyFiles != "" {
-				fontDir := fm.GetFontDir(platform.InstallationScope(font.Scope))
-				filePath := filepath.Join(fontDir, font.Name)
-				// Only add if file exists
-				if _, err := os.Stat(filePath); err == nil {
-					group.filePaths[filePath] = true
-				}
-			}
 		}
 	}
 
@@ -415,16 +386,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 		}
 		sort.Strings(variants)
 		totalVariants += len(variants)
-
-		// Convert file paths map to sorted slice
-		var filePaths []string
-		if copyFiles != "" {
-			filePaths = make([]string, 0, len(group.filePaths))
-			for filePath := range group.filePaths {
-				filePaths = append(filePaths, filePath)
-			}
-			sort.Strings(filePaths)
-		}
 
 		// Determine Font ID - use key if group has Font ID, otherwise empty (font without Font ID)
 		fontID := key
@@ -446,10 +407,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 			Categories:  group.categories,
 			Variants:    variants,
 			Scope:       group.scope,
-		}
-
-		if copyFiles != "" {
-			exportedFont.FilePaths = filePaths
 		}
 
 		exportedFonts = append(exportedFonts, exportedFont)
@@ -495,33 +452,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 		},
 	}
 
-	// Copy files if requested
-	// TODO: Improve this to package font files into organized zipped directory
-	if copyFiles != "" {
-		output.GetVerbose().Info("Copying font files to %s...", copyFiles)
-		if err := os.MkdirAll(copyFiles, 0755); err != nil {
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("os.MkdirAll() failed: %v", err)
-			return nil, 0, fmt.Errorf("unable to create directory: %v", err)
-		}
-
-		copiedCount := 0
-		for _, exportedFont := range exportedFonts {
-			for _, filePath := range exportedFont.FilePaths {
-				if _, err := os.Stat(filePath); err == nil {
-					destPath := filepath.Join(copyFiles, filepath.Base(filePath))
-					if err := copyFile(filePath, destPath); err != nil {
-						output.GetVerbose().Warning("Failed to copy %s: %v", filePath, err)
-						output.GetDebug().Error("copyFile() failed for %s: %v", filePath, err)
-						continue
-					}
-					copiedCount++
-				}
-			}
-		}
-		output.GetVerbose().Info("Copied %d font files to %s", copiedCount, copyFiles)
-	}
-
 	// Write manifest
 	output.GetVerbose().Info("Writing export file...")
 	jsonData, err := json.MarshalIndent(manifest, "", "  ")
@@ -550,15 +480,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	return exportedFonts, totalVariants, nil
 }
 
-// copyFile copies a file from src to dst
-func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, data, 0644)
-}
-
 func init() {
 	rootCmd.AddCommand(exportCmd)
 	exportCmd.Flags().StringP("output", "o", "", "Output file path (default: fonts-export.json)")
@@ -566,6 +487,4 @@ func init() {
 	exportCmd.Flags().StringP("source", "s", "", "Filter by font source (e.g., 'Google Fonts')")
 	exportCmd.Flags().BoolP("all", "a", false, "Export all installed fonts (including those without Font IDs)")
 	exportCmd.Flags().Bool("matched", false, "Export only fonts that match repository entries (default, cannot be used with --all)")
-	// TODO: Rename and improve --copy-files to package font files into organized zipped directory
-	exportCmd.Flags().String("copy-files", "", "Copy font files to the specified directory (experimental)")
 }

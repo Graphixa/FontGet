@@ -828,3 +828,24 @@ func checkFontsAlreadyInstalled(fontID string, fontName string, scope platform.I
 
 	return false, nil
 }
+
+// sanitizeForZipPath sanitizes a string for use as a path component in a zip archive
+func sanitizeForZipPath(name string) string {
+	// Replace invalid characters with underscores
+	invalidChars := []string{"<", ">", ":", "\"", "/", "\\", "|", "?", "*"}
+	result := name
+	for _, char := range invalidChars {
+		result = strings.ReplaceAll(result, char, "_")
+	}
+	// Remove leading/trailing spaces and dots (Windows restrictions)
+	result = strings.Trim(result, " .")
+	// Replace multiple consecutive underscores with a single one
+	for strings.Contains(result, "__") {
+		result = strings.ReplaceAll(result, "__", "_")
+	}
+	// If empty after sanitization, use a default name
+	if result == "" {
+		result = "unknown"
+	}
+	return result
+}

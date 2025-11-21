@@ -61,6 +61,8 @@ type operationCompleteMsg struct {
 	err error
 }
 
+type quitMsg struct{}
+
 // StatusReportData represents status report data for the progress display
 type StatusReportData struct {
 	Success      int
@@ -169,6 +171,10 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ProgressUpdateMsg:
+		// Don't process progress updates after operation completes
+		if m.quitting {
+			return m, nil
+		}
 		// Update progress bar
 		cmd := m.ProgressBar.SetPercent(msg.Percent / 100.0)
 		return m, cmd
@@ -180,28 +186,46 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case operationCompleteMsg:
 		m.quitting = true
 		m.err = msg.err
-		// Show final state with variants, then quit after a delay
-		return m, tea.Tick(2*time.Second, func(time.Time) tea.Msg {
-			return tea.Quit
-		})
+		// Ensure progress is at 100% when operation completes
+		cmd := m.ProgressBar.SetPercent(1.0)
+		// For progress bars without items, quit immediately (no delay needed)
+		// For progress bars with items, show final state briefly before quitting
+		if m.TotalItems == 0 {
+			// No items to show - set progress and quit after processing one frame
+			// The frame message will update the progress bar, then we'll quit
+			return m, cmd
+		}
+		// Show final state with items, then quit after a delay
+		return m, tea.Batch(
+			cmd,
+			tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+				return quitMsg{}
+			}),
+		)
+
+	case quitMsg:
+		// Handle explicit quit message
+		return m, tea.Quit
 
 	case operationTickMsg:
 		if m.quitting {
-			return m, tea.Quit
+			// Stop tick timer when quitting
+			return m, nil
 		}
 		// Keep the progress bar animating by continuously updating it
 		// This is what makes the progress bar animate smoothly
 		cmd := m.ProgressBar.SetPercent(m.ProgressBar.Percent())
-		// Only send a new tick if not quitting
-		if !m.quitting {
-			return m, tea.Batch(operationTickCmd(), cmd)
-		}
-		return m, cmd
+		// Schedule next tick and process progress bar update
+		return m, tea.Batch(operationTickCmd(), cmd)
 
 	case progress.FrameMsg:
 		// Handle progress bar animation
 		progressModel, cmd := m.ProgressBar.Update(msg)
 		m.ProgressBar = progressModel.(progress.Model)
+		// If we're quitting and have no items, quit after processing this frame
+		if m.quitting && m.TotalItems == 0 {
+			return m, tea.Quit
+		}
 		return m, cmd
 
 	case spinner.TickMsg:
@@ -232,14 +256,23 @@ func (m ProgressBarModel) View() string {
 	// Build inline title with progress bar (skip in verbose/debug mode)
 	if !m.VerboseMode && !m.DebugMode {
 		// Format: "Title (X of Y) [████████░░] 50%" - plain text except for progress bar gradient
+		// Hide count text when TotalItems is 0 (used for simple progress bars without item tracking)
 		titleText := m.Title
-		countText := fmt.Sprintf("(%d of %d)", completed, m.TotalItems)
 		progressBar := m.renderInlineProgressBar()
+
+		var titleLine string
+		if m.TotalItems == 0 {
+			// No count text - just title and progress bar
+			titleLine = fmt.Sprintf("%s %s\n\n", titleText, progressBar)
+		} else {
+			// Show count text
+			countText := fmt.Sprintf("(%d of %d)", completed, m.TotalItems)
+			titleLine = fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
+		}
 
 		// Combine into single line - no styling on text, only progress bar has gradient
 		// Title ends with \n\n to create blank line before items, and last item ends with \n
 		// No leading \n - commands already start with a blank line per spacing framework
-		titleLine := fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
 		b.WriteString(titleLine)
 	} else {
 		// For verbose/debug, don't show title line at all (redundant with verbose output)
