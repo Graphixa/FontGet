@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/platform"
@@ -103,7 +104,7 @@ or a full file path.`,
 			if len(args) > 0 {
 				outputFile = args[0]
 			} else {
-				outputFile = "fonts-export.json"
+				outputFile = generateDefaultExportFilename()
 			}
 		} else {
 			// If -o flag is provided, handle directory vs file path (similar to winget)
@@ -111,25 +112,38 @@ or a full file path.`,
 			if err == nil {
 				// Path exists
 				if info.IsDir() {
-					// It's an existing directory, use default filename in that directory
-					outputFile = filepath.Join(outputFile, "fonts-export.json")
+					// It's an existing directory, use date-based default filename in that directory
+					outputFile = filepath.Join(outputFile, generateDefaultExportFilename())
 				}
-				// If it's an existing file, use it as-is (will overwrite)
+				// If it's an existing file, use it as-is (will check and prompt later)
 			} else if os.IsNotExist(err) {
 				// Path doesn't exist - determine if it should be a directory or file
 				if strings.HasSuffix(outputFile, string(filepath.Separator)) {
 					// Ends with path separator, definitely a directory
 					if err := os.MkdirAll(outputFile, 0755); err == nil {
-						outputFile = filepath.Join(outputFile, "fonts-export.json")
+						outputFile = filepath.Join(outputFile, generateDefaultExportFilename())
 					}
 				} else if !strings.HasSuffix(strings.ToLower(outputFile), ".json") {
 					// No .json extension, treat as directory
 					if err := os.MkdirAll(outputFile, 0755); err == nil {
-						outputFile = filepath.Join(outputFile, "fonts-export.json")
+						outputFile = filepath.Join(outputFile, generateDefaultExportFilename())
 					}
 				}
 				// If it has .json extension, treat as file path (will create parent dirs if needed later)
 			}
+		}
+
+		// Validate and normalize output path (with overwrite confirmation)
+		outputFile, err = validateAndNormalizeExportPath(outputFile)
+		if err != nil {
+			// Check if this is a cancellation (user chose not to overwrite)
+			if strings.Contains(err.Error(), "export cancelled") {
+				// User cancelled - show friendly message and return nil (no error)
+				fmt.Printf("%s\n", ui.FeedbackWarning.Render("Export cancelled - file already exists."))
+				fmt.Println()
+				return nil
+			}
+			return err
 		}
 
 		// Validate flags
@@ -197,6 +211,48 @@ or a full file path.`,
 
 		return nil
 	},
+}
+
+// generateDefaultExportFilename generates a date-based export filename
+func generateDefaultExportFilename() string {
+	now := time.Now()
+	dateStr := now.Format("2006-01-02")
+	return fmt.Sprintf("fontget-export-%s.json", dateStr)
+}
+
+// validateAndNormalizeExportPath validates and normalizes the export output path with overwrite confirmation
+func validateAndNormalizeExportPath(outputPath string) (string, error) {
+	// Normalize path separators
+	outputPath = filepath.Clean(outputPath)
+
+	// Ensure it has .json extension
+	if !strings.HasSuffix(strings.ToLower(outputPath), ".json") {
+		outputPath = outputPath + ".json"
+	}
+
+	// Final validation: ensure it's an absolute or relative path
+	absPath, err := filepath.Abs(outputPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid output path: %v", err)
+	}
+
+	// Check if the final file path already exists and prompt for confirmation
+	if _, err := os.Stat(absPath); err == nil {
+		// File exists - prompt for confirmation before overwriting
+		confirmed, err := components.RunConfirm(
+			"File Already Exists",
+			fmt.Sprintf("File already exists. Overwrite '%s'?", filepath.Base(absPath)),
+		)
+		if err != nil {
+			return "", fmt.Errorf("unable to show confirmation dialog: %v", err)
+		}
+
+		if !confirmed {
+			return "", fmt.Errorf("export cancelled - file already exists: %s", absPath)
+		}
+	}
+
+	return absPath, nil
 }
 
 // performFullExport performs the complete export process (for debug mode)
