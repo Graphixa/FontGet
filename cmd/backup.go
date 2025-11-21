@@ -348,9 +348,18 @@ func performBackupWithProgress(fm platform.FontManager, scopes []platform.Instal
 	}
 	sort.Strings(sourceNames)
 
+	// Count total files first for accurate progress tracking
+	totalFiles := 0
+	for _, sourceName := range sourceNames {
+		familyMap := sourceFamilyMap[sourceName]
+		for _, fontFiles := range familyMap {
+			totalFiles += len(fontFiles)
+		}
+	}
+
 	familyCount := 0
 	fileCount := 0
-	processedCount := 0
+	processedFiles := 0
 
 	// Process each family and update progress
 	for _, sourceName := range sourceNames {
@@ -391,12 +400,14 @@ func performBackupWithProgress(fm platform.FontManager, scopes []platform.Instal
 				}
 
 				fileCount++
-			}
+				processedFiles++
 
-			// Update progress after completing this family
-			processedCount++
-			percent := float64(processedCount) / float64(totalFamilies) * 100
-			send(components.ProgressUpdateMsg{Percent: percent})
+				// Update progress after each file for smooth progress bar
+				if totalFiles > 0 {
+					percent := float64(processedFiles) / float64(totalFiles) * 100
+					send(components.ProgressUpdateMsg{Percent: percent})
+				}
+			}
 		}
 	}
 
