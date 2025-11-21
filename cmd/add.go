@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
@@ -248,7 +251,7 @@ func getSourceName(fontID string) string {
 	manifest, err := config.LoadManifest()
 	if err != nil {
 		// Fallback to capitalized prefix if we can't load manifest
-		return strings.Title(sourcePrefix)
+		return cases.Title(language.English).String(sourcePrefix)
 	}
 
 	// Find the source with matching prefix (case-insensitive)
@@ -259,7 +262,7 @@ func getSourceName(fontID string) string {
 	}
 
 	// Fallback to capitalized prefix if not found
-	return strings.Title(sourcePrefix)
+	return cases.Title(language.English).String(sourcePrefix)
 }
 
 var addCmd = &cobra.Command{
