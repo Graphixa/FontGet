@@ -244,6 +244,18 @@
   - [x] Library clears temp files after update
   - [ ] **Future**: Code signing verification (library doesn't support, can add later)
 
+#### **Backup System**
+- [x] **Add `backup` command**
+  - [x] Backup installed font files to zip archive
+  - [x] Organize fonts by source and family name
+  - [x] Auto-detect accessible scopes based on elevation
+  - [x] Deduplicate fonts across scopes
+  - [x] Exclude system fonts (always excluded)
+  - [x] Progress bar with per-file progress updates
+  - [x] **Date-based filenames**: Default format `font-backup-YYYY-MM-DD.zip`
+  - [x] **Overwrite confirmation**: Prompt user before overwriting existing files
+  - [x] Integrate with verbose/debug output and UI styles
+
 #### **Export/Import System**
 - [x] **Add `export` command**
   - [x] Export installed fonts/collections
@@ -254,6 +266,8 @@
   - [x] Support directory or file path via -o flag (winget-style)
   - [x] Integrate with verbose/debug output and UI styles
   - [x] Use pin spinner for progress feedback
+  - [x] **Date-based filenames**: Default format `fontget-export-YYYY-MM-DD.json`
+  - [x] **Overwrite confirmation**: Prompt user before overwriting existing files
   - [x] **Nerd Fonts handling**: Groups families by Font ID (one Font ID can install multiple families like ZedMono, ZedMono Mono, ZedMono Propo)
   - [x] **Backup fonts feature**: Renamed `--copy-files` to `--backup-fonts` and improved to package font files into organized zipped directory (fonts organized by Font ID or family name)
 
@@ -312,6 +326,8 @@
 - [x] Nerd Fonts variant handling
 - [x] List command enhancements (Font ID, License, Categories, Source columns)
 - [x] Pre-installation font checking (detects already-installed fonts before downloading)
+- [x] Backup command with date-based filenames and overwrite confirmation
+- [x] Export command enhancements (date-based filenames and overwrite confirmation)
 
 ### **Performance Optimizations**
 - [x] Font suggestion performance optimization (90ms → 10ms)

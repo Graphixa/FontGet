@@ -181,6 +181,45 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Status**: ✅ Active - Core functionality
 
+### `backup.go`
+**Purpose**: Font backup command
+**Functionality**:
+- Backs up installed font files to a zip archive
+- Organizes fonts by source (e.g., Google Fonts, Nerd Fonts) and then by family name
+- Auto-detects accessible scopes based on elevation (user vs admin/sudo)
+- Fonts are deduplicated across scopes - if the same font exists in both scopes, only one copy is included
+- System fonts are always excluded from backups
+- Uses progress bar for backup operation with smooth per-file progress updates
+- **Date-based Filenames**: Default filename format is `font-backup-YYYY-MM-DD.zip` (e.g., `font-backup-2024-01-15.zip`)
+- **Overwrite Confirmation**: Prompts user before overwriting existing backup files
+
+**Key Functions**:
+- `backupCmd.RunE`: Main backup execution
+- `runBackupWithProgressBar`: Backup operation with progress bar display
+- `performBackupWithProgress`: Backup operation with progress updates (per-file progress tracking)
+- `performBackup`: Backup operation for debug mode
+- `validateAndNormalizeOutputPath`: Path validation with overwrite confirmation
+- `generateDefaultBackupFilename`: Generates date-based default filename
+- `detectAccessibleScopes`: Auto-detects accessible font scopes based on elevation
+
+**Key Features**:
+- **Progress Tracking**: Updates progress bar per file for smooth progress indication
+- **Scope Detection**: Automatically detects which scopes are accessible (user vs machine)
+- **File Organization**: Organizes fonts by source → family name in zip archive
+- **Deduplication**: Prevents duplicate font files across scopes
+- **Date-based Naming**: Default filenames include date for easy organization
+- **Safe Overwrite**: Confirmation dialog prevents accidental overwrites
+
+**Interfaces**:
+- Uses `internal/platform` for OS-specific font detection and scope management
+- Uses `internal/output` for verbose/debug output
+- Uses `internal/repo` for font matching and repository access
+- Uses `internal/components` for progress bar and confirmation dialogs
+- Uses `internal/ui` for user interface styling
+- Uses `cmd/shared` for protected font checking
+
+**Status**: ✅ Active - Core functionality
+
 ### `export.go`
 **Purpose**: Font export command
 **Functionality**:
@@ -188,20 +227,26 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Matches installed fonts to repository entries to include Font IDs, License, Categories, and Source
 - Supports filtering by match string, source, or export all fonts
 - System fonts are always excluded from exports
-- Supports output to directory (creates fonts-export.json) or specific file path via -o flag
+- Supports output to directory (creates date-based filename) or specific file path via -o flag
 - Uses pin spinner for progress feedback during export
 - Provides verbose/debug output following logging guidelines
+- **Date-based Filenames**: Default filename format is `fontget-export-YYYY-MM-DD.json` (e.g., `fontget-export-2024-01-15.json`)
+- **Overwrite Confirmation**: Prompts user before overwriting existing export files
 - **Nerd Fonts Support**: Groups families by Font ID to handle cases where one Font ID installs multiple families (e.g., ZedMono installs ZedMono, ZedMono Mono, and ZedMono Propo)
 
 **Key Functions**:
 - `exportCmd.RunE`: Main export execution
 - `performFullExportWithResult`: Complete export process with result tracking (groups by Font ID)
 - `performFullExport`: Export process for debug mode
+- `validateAndNormalizeExportPath`: Path validation with overwrite confirmation
+- `generateDefaultExportFilename`: Generates date-based default filename
 - `collectFonts`: Collects fonts from specified scopes (reused from list.go)
 - `groupByFamily`: Groups fonts by family name (reused from list.go)
 
 **Key Features**:
-- **Directory Support**: `-o` flag accepts directories (creates default filename) or file paths (winget-style)
+- **Directory Support**: `-o` flag accepts directories (creates date-based default filename) or file paths (winget-style)
+- **Date-based Naming**: Default filenames include date for easy organization
+- **Safe Overwrite**: Confirmation dialog prevents accidental overwrites
 - **Font Matching**: Uses optimized index-based matching to repository entries
 - **Filtering**: Supports `--match`, `--source`, `--all`, and `--matched` flags
 - **Export Manifest**: JSON structure with metadata, font details, and variants
@@ -211,6 +256,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/platform` for OS-specific font detection
 - Uses `internal/output` for verbose/debug output
 - Uses `internal/repo` for font matching and repository access
+- Uses `internal/components` for confirmation dialogs
 - Uses `internal/ui` for spinner components
 - Uses `cmd/shared` for protected font checking
 
