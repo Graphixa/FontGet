@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"fontget/internal/components"
@@ -142,6 +143,12 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			fmt.Println()
 		}
 
+		// Load config manifest early to check source availability
+		configManifest, err := config.LoadManifest()
+		if err != nil {
+			output.GetDebug().Error("Failed to load config manifest: %v", err)
+		}
+
 		// Collect fonts to install - deduplicate by Font ID (handles Nerd Fonts with multiple families per Font ID)
 		type fontInstallInfo struct {
 			fonts       []repo.FontFile
@@ -159,6 +166,15 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			familyNames []string
 		}
 		fontsBySource := make(map[string][]sourceFontInfo) // source name -> list of fonts
+
+		// Track fonts that require disabled or missing sources
+		var missingSourceFonts = make(map[string][]string)  // source name -> font names
+		var disabledSourceFonts = make(map[string][]string) // source name -> font names
+		var builtInSources = map[string]bool{
+			"Google Fonts":  true,
+			"Nerd Fonts":    true,
+			"Font Squirrel": true,
+		}
 
 		for _, exportedFont := range exportManifest.Fonts {
 			// Skip fonts without Font IDs
@@ -192,6 +208,34 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 				familyNames = []string{exportedFont.FamilyName}
 			}
 
+			// Check source availability BEFORE trying to get font from repository
+			if sourceName != "" && configManifest != nil {
+				sourceConfig, exists := configManifest.Sources[sourceName]
+				if !exists {
+					// Source doesn't exist - add to missing sources and skip
+					if len(familyNames) > 0 {
+						missingSourceFonts[sourceName] = append(missingSourceFonts[sourceName], strings.Join(familyNames, ", "))
+					}
+					// Track for later reporting, but don't try to get font
+					fontsBySource[sourceName] = append(fontsBySource[sourceName], sourceFontInfo{
+						fontID:      exportedFont.FontID,
+						familyNames: familyNames,
+					})
+					continue
+				} else if !sourceConfig.Enabled {
+					// Source exists but is disabled - add to disabled sources and skip
+					if len(familyNames) > 0 {
+						disabledSourceFonts[sourceName] = append(disabledSourceFonts[sourceName], strings.Join(familyNames, ", "))
+					}
+					// Track for later reporting, but don't try to get font
+					fontsBySource[sourceName] = append(fontsBySource[sourceName], sourceFontInfo{
+						fontID:      exportedFont.FontID,
+						familyNames: familyNames,
+					})
+					continue
+				}
+			}
+
 			// Track this font by source for availability detection
 			if sourceName != "" {
 				fontsBySource[sourceName] = append(fontsBySource[sourceName], sourceFontInfo{
@@ -200,7 +244,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 				})
 			}
 
-			// Get font files from repository
+			// Get font files from repository (only if source is enabled)
 			fonts, err := repo.GetFontByID(exportedFont.FontID)
 			if err != nil {
 				output.GetDebug().State("Font ID %s not found in repository: %v", exportedFont.FontID, err)
@@ -253,24 +297,26 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			})
 		}
 
-		// Check source availability for fonts that weren't found
-		// Load config manifest to check source availability
-		configManifest, err := config.LoadManifest()
-		if err != nil {
-			output.GetDebug().Error("Failed to load config manifest: %v", err)
-		}
+		// Sort fonts alphabetically by Font ID to match export order
+		// This matches the sorting logic in export.go for consistent ordering
+		sort.Slice(fontsToInstall, func(i, j int) bool {
+			// Both should have Font IDs (fonts without IDs are filtered out earlier)
+			// Sort by Font ID alphabetically
+			return fontsToInstall[i].FontID < fontsToInstall[j].FontID
+		})
 
-		// Group not found fonts by source availability
-		var missingSourceFonts = make(map[string][]string)  // source name -> font names
-		var disabledSourceFonts = make(map[string][]string) // source name -> font names
-		var builtInSources = map[string]bool{
-			"Google Fonts":  true,
-			"Nerd Fonts":    true,
-			"Font Squirrel": true,
-		}
-
+		// Also check for fonts that weren't found but weren't already caught by source availability check
+		// (This handles edge cases where source is enabled but font still isn't found)
 		if configManifest != nil {
 			for sourceName, fontList := range fontsBySource {
+				// Skip sources we've already handled (disabled/missing)
+				if _, alreadyHandled := missingSourceFonts[sourceName]; alreadyHandled {
+					continue
+				}
+				if _, alreadyHandled := disabledSourceFonts[sourceName]; alreadyHandled {
+					continue
+				}
+
 				// Check if any fonts from this source were not found
 				var missingFromSource []string
 				for _, fontInfo := range fontList {
@@ -282,15 +328,9 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 					}
 				}
 
+				// Add to notFoundFonts if there are any missing fonts from enabled sources
 				if len(missingFromSource) > 0 {
-					sourceConfig, exists := configManifest.Sources[sourceName]
-					if !exists {
-						// Source doesn't exist
-						missingSourceFonts[sourceName] = missingFromSource
-					} else if !sourceConfig.Enabled {
-						// Source exists but is disabled
-						disabledSourceFonts[sourceName] = missingFromSource
-					}
+					notFoundFonts = append(notFoundFonts, missingFromSource...)
 				}
 			}
 		}
