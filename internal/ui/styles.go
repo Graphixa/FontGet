@@ -152,8 +152,7 @@ var (
 
 	// CardLabel - Labels within cards (License:, URL:, etc.)
 	CardLabel = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#f5c2e7")). // Pink - matches FormLabel
-			Bold(true)
+			Foreground(lipgloss.Color("#f5c2e7")) // Pink - matches FormLabel
 
 	// CardContent - Regular content within cards
 	CardContent = lipgloss.NewStyle().
