@@ -605,10 +605,26 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Status**: ✅ Active - Utility functions
 
 ### `internal/logging/`
-**Purpose**: Logging system
+**Purpose**: File logging system
 **Files**:
-- `logger.go`: Logger implementation
+- `logger.go`: Logger implementation with file rotation and level management
 - `config.go`: Logging configuration
+
+**Key Features**:
+- **File-based logging**: All logs written to `fontget.log` in platform-specific log directory
+- **Log rotation**: Automatic rotation based on size, age, and backup count
+- **Level management**: Log levels (ErrorLevel, InfoLevel, DebugLevel) controlled by verbose/debug flags
+- **Always active**: GetLogger() calls should always log to file regardless of verbose/debug flags
+  - Logger level is controlled by config (ErrorLevel by default, InfoLevel with --verbose, DebugLevel with --debug)
+  - GetLogger() calls should NOT be conditional on `IsVerbose()` or `IsDebug()`
+  - Logger writes to file, not console (console output is handled by verbose/debug output system)
+
+**Usage Pattern**:
+- All commands should log: operation start, parameters, errors, and completion
+- Use `GetLogger().Info()` for operations and parameters
+- Use `GetLogger().Error()` for all error cases
+- Use `GetLogger().Warn()` for warnings
+- Use `GetLogger().Debug()` for detailed debugging information
 
 **Status**: ✅ Active - Logging system
 
@@ -842,6 +858,33 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - More flexible filtering with Font ID support
   - Improved performance, especially when using type filters
   - Better user experience with clearer flag naming
+
+#### **File Logging System Review and Fixes (2025-01-XX)**
+- **Comprehensive Logger Review**: Reviewed and fixed GetLogger() usage across all commands
+  - **Principle Established**: GetLogger() should ALWAYS log to file, regardless of verbose/debug flags
+    - Logger level is controlled by config (ErrorLevel/InfoLevel/DebugLevel based on flags)
+    - GetLogger() calls should NOT be conditional on `IsVerbose()` or `IsDebug()`
+    - Logger writes to file (`fontget.log`), not console (console output handled by verbose/debug system)
+  - **Critical Fixes**:
+    - **import.go**: Removed `if IsDebug()` wrapper from GetLogger() calls (was preventing logging in normal/verbose mode)
+    - **add.go**: Uncommented and activated GetLogger() calls that were previously commented out
+  - **Added Comprehensive Logging**:
+    - **list.go**: Added operation start, parameters, errors, and completion logging
+    - **export.go**: Added operation start, parameters, errors, and completion logging
+    - **backup.go**: Added operation start, parameters, errors, and completion logging
+  - **Enhanced Logging**:
+    - **search.go**: Added parameter logging and error logging
+    - **info.go**: Added parameter logging and error logging
+  - **Standard Pattern**: All commands now follow consistent logging pattern:
+    - Operation start: `GetLogger().Info("Starting [operation] operation")`
+    - Parameters: `GetLogger().Info("Parameters - ...")`
+    - Errors: `GetLogger().Error("Failed to ...: %v", err)`
+    - Completion: `GetLogger().Info("Operation complete - ...")`
+- **Benefits**:
+  - Complete audit trail in log files for all operations
+  - Consistent logging across all commands
+  - Proper separation between file logging (GetLogger) and console output (verbose/debug)
+  - All operations logged regardless of user's flag choices
 
 ---
 

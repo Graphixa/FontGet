@@ -66,11 +66,16 @@
 ### **Phase 3: Code Cleanup & Refactoring**
 
 #### **Debug & Logging Cleanup**
-- [ ] **Review debug output consistency**
-  - [ ] Ensure all debug messages follow the same format
-  - [ ] Verify debug output provides useful information
-  - [ ] Standardize debug message formatting across all commands
-  - [ ] Optimize debug performance (ensure no impact when disabled)
+- [x] **Review debug output consistency** ✅ **COMPLETED**
+  - [x] Ensure all debug messages follow the same format
+  - [x] Verify debug output provides useful information
+  - [x] Standardize debug message formatting across all commands
+  - [x] Optimize debug performance (ensure no impact when disabled)
+  - [x] **File logging review**: Reviewed and fixed GetLogger() usage across all commands
+    - [x] Removed conditional GetLogger() calls (no IsDebug() wrappers)
+    - [x] Added comprehensive logging to commands missing it (list, export, backup)
+    - [x] Ensured all commands log: operation start, parameters, errors, completion
+    - [x] Verified GetLogger() always logs to file regardless of flags
 
 #### **Code Quality Assessment**
 - [ ] **Identify and fix code smells**
