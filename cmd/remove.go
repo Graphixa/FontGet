@@ -707,7 +707,6 @@ Removal scope can be specified with the --scope flag:
 		}
 
 		// Check if flags are set
-		list, _ := cmd.Flags().GetBool("list")
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		debug, _ := cmd.Flags().GetBool("debug")
 
@@ -801,8 +800,7 @@ Removal scope can be specified with the --scope flag:
 		progressErr := components.RunProgressBar(
 			title,
 			operationItems,
-			list,    // List mode: show file listings
-			verbose, // Verbose mode: show operational details
+			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg)) error {
 				// Process items based on scope mode
@@ -829,9 +827,9 @@ Removal scope can be specified with the --scope flag:
 							isCriticalSystemFont,
 						)
 
-						// Collect variants for display (only in verbose/list mode)
+						// Collect variants for display (only in verbose mode)
 						scopeVariants := []string{}
-						if verbose || list {
+						if verbose {
 							scopeVariants = result.Details
 						}
 
@@ -855,10 +853,11 @@ Removal scope can be specified with the --scope flag:
 							status.Skipped += result.Skipped
 							status.Failed += result.Failed
 
-							if result.Status == "failed" {
+							switch result.Status {
+							case "failed":
 								scopeStatus = "failed"
 								scopeMessage = result.Message
-							} else if result.Status == "skipped" {
+							case "skipped":
 								scopeStatus = "skipped"
 								scopeMessage = result.Message
 							}
@@ -1008,8 +1007,8 @@ Removal scope can be specified with the --scope flag:
 								// Collect errors
 								allErrors = append(allErrors, result.Errors...)
 
-								// Collect variants for display (only in verbose/list mode)
-								if verbose || list {
+								// Collect variants for display (only in verbose mode)
+								if verbose {
 									allRemovedVariants = append(allRemovedVariants, result.Details...)
 								}
 
@@ -1094,8 +1093,8 @@ Removal scope can be specified with the --scope flag:
 								// Collect errors
 								allErrors = append(allErrors, result.Errors...)
 
-								// Collect variants for display (only in verbose/list mode)
-								if verbose || list {
+								// Collect variants for display (only in verbose mode)
+								if verbose {
 									allRemovedVariants = append(allRemovedVariants, result.Details...)
 								}
 

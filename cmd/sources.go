@@ -332,7 +332,8 @@ func runSourcesUpdateVerbose() error {
 
 	// Use UI components instead of direct color functions
 
-	fmt.Printf("%s\n\n", ui.PageTitle.Render("Updating Sources..."))
+	// Start with a blank line for consistent spacing
+	fmt.Println()
 
 	successful := 0
 	failed := 0
@@ -423,20 +424,11 @@ func runSourcesUpdateVerbose() error {
 		successful++
 	}
 
-	// Summary with colors like other commands
-	fmt.Printf("%s\n", ui.ReportTitle.Render("Status Report"))
-	fmt.Printf("---------------------------------------------\n")
-
-	fmt.Printf("%s: %s  |  %s: %s  |  %s: %s\n",
-		ui.FeedbackSuccess.Render("Updated"), ui.ContentText.Render(fmt.Sprintf("%d", successful)),
-		ui.FeedbackWarning.Render("Skipped"), ui.ContentText.Render("0"),
-		ui.FeedbackError.Render("Failed"), ui.ContentText.Render(fmt.Sprintf("%d", failed)))
-
 	// Try to load manifest with force refresh
-	fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Refreshing font data cache..."))
+	fmt.Printf("%s\n", ui.PageSubtitle.Render("Refreshing font data cache..."))
 	progress := func(current, total int, message string) {
 		if current == total {
-			fmt.Printf("%s\n", ui.RenderSuccess("Font data cache refreshed successfully"))
+			fmt.Printf("%s\n", ui.RenderSuccess("\nFont data cache refreshed successfully\n"))
 		} else {
 			fmt.Printf("   %s\n", message)
 		}
@@ -453,6 +445,14 @@ func runSourcesUpdateVerbose() error {
 		}
 		fmt.Printf("%s %d\n", ui.ContentHighlight.Render("Total fonts available:"), totalFonts)
 	}
+
+	// Status Report at the bottom (only shown in verbose mode - this function is only called in verbose mode)
+	fmt.Printf("\n%s\n", ui.ReportTitle.Render("Status Report"))
+	fmt.Printf("---------------------------------------------\n")
+	fmt.Printf("%s: %s  |  %s: %s  |  %s: %s\n\n",
+		ui.FeedbackSuccess.Render("Updated"), ui.ContentText.Render(fmt.Sprintf("%d", successful)),
+		ui.FeedbackWarning.Render("Skipped"), ui.ContentText.Render("0"),
+		ui.FeedbackError.Render("Failed"), ui.ContentText.Render(fmt.Sprintf("%d", failed)))
 
 	return nil
 }
@@ -517,7 +517,7 @@ Downloads the latest font data from all enabled sources.`,
 			return runSourcesUpdateVerbose()
 		}
 
-		// Run TUI update display with spinners
+		// Run TUI update display with spinners (title shown in TUI)
 		return RunSourcesUpdateTUI(verbose)
 	},
 }
@@ -620,9 +620,8 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 			return nil
 		}
 
-		// Display page header
-		fmt.Println() // Space between command and first output
-		fmt.Printf("%s\n\n", ui.PageTitle.Render("Sources Validation"))
+		// Start with a blank line for consistent spacing
+		fmt.Println()
 		fmt.Printf("%s %s\n\n", ui.ContentLabel.Render("Sources Path:"), sourcesDir)
 
 		// Validate individual source files

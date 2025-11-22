@@ -547,8 +547,7 @@ Installation scope can be specified with the --scope flag:
 		progressErr := components.RunProgressBar(
 			title,
 			operationItems,
-			list,    // List mode: show file/variant listings
-			verbose, // Verbose mode: show operational details
+			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg)) error {
 				// Process each font group (one per font family)
@@ -632,15 +631,15 @@ Installation scope can be specified with the --scope flag:
 					// Determine status based on results
 					finalStatus := result.Status
 
-					// Build variants list - only for list mode (not verbose mode)
+					// Build variants list - show in verbose mode
 					var variantsWithStatus []string
-					if list {
-						// List mode: Just show variant names without status - collect ALL variants
+					if verbose {
+						// Verbose mode: Show variant names - collect ALL variants
 						variantsWithStatus = append(variantsWithStatus, fontDetails.InstalledFiles...)
 						variantsWithStatus = append(variantsWithStatus, fontDetails.SkippedFiles...)
 						variantsWithStatus = append(variantsWithStatus, fontDetails.FailedFiles...)
 					}
-					// Verbose mode and default mode: don't show variants in TUI (variants shown in debug mode only)
+					// Default mode: don't show variants in TUI (variants shown in debug mode only)
 
 					// Get first error message if status is failed
 					var errorMsg string

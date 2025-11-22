@@ -287,9 +287,8 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	progressErr := components.RunProgressBar(
 		"Backing up font files",
 		operationItems,
-		false,   // List mode: false
-		verbose, // Verbose mode
-		debug,   // Debug mode
+		verbose, // Verbose mode: show operational details and file/variant listings
+		debug,   // Debug mode: show technical details
 		func(send func(msg tea.Msg)) error {
 			// Perform the actual backup operation
 			var err error
@@ -312,7 +311,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 }
 
 // performBackupWithProgress performs the backup operation with progress updates
-func performBackupWithProgress(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string, fonts []ParsedFont, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch, totalFamilies int, send func(msg tea.Msg)) (*backupResult, error) {
+func performBackupWithProgress(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, _ []ParsedFont, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch, _ int, send func(msg tea.Msg)) (*backupResult, error) {
 	// Organize fonts by source -> family name
 	type fontFileInfo struct {
 		filePath string
@@ -449,7 +448,7 @@ func performBackupWithProgress(fm platform.FontManager, scopes []platform.Instal
 }
 
 // performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
-func performBackupWithCollectedFonts(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
+func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
 	output.GetVerbose().Info("Found %d font files", len(fonts))
 	output.GetDebug().State("Processing %d font files", len(fonts))
 

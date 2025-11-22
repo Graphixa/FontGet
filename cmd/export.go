@@ -199,7 +199,8 @@ or a full file path.`,
 
 		// Check if we have fonts to export
 		if len(exportedFonts) == 0 {
-			fmt.Printf("%s\n", ui.PageTitle.Render("Export Fonts"))
+			// Start with a blank line for consistent spacing
+			fmt.Println()
 			fmt.Printf("%s\n", ui.FeedbackWarning.Render("No fonts found matching the specified criteria."))
 			fmt.Println()
 			return nil
@@ -263,7 +264,8 @@ func performFullExport(fm platform.FontManager, scopes []platform.InstallationSc
 	}
 
 	if len(exportedFonts) == 0 {
-		fmt.Printf("%s\n", ui.PageTitle.Render("Export Fonts"))
+		// Start with a blank line for consistent spacing
+		fmt.Println()
 		fmt.Printf("%s\n", ui.FeedbackWarning.Render("No fonts found matching the specified criteria."))
 		fmt.Println()
 		return nil

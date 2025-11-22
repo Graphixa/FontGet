@@ -29,8 +29,7 @@ type ProgressBarModel struct {
 	Title         string
 	TotalItems    int
 	Items         []OperationItem
-	ListMode      bool // Show file/variant listings (add/remove commands)
-	VerboseMode   bool // Show operational details (static display, no spinner)
+	VerboseMode   bool // Show operational details and file/variant listings (static display, no spinner)
 	DebugMode     bool // Show technical details (static display, no spinner)
 	ProgressBar   progress.Model
 	Spinner       spinner.Model
@@ -81,7 +80,7 @@ type StatusReportMsg struct {
 type operationTickMsg time.Time
 
 // NewProgressBar creates a new progress bar model
-func NewProgressBar(title string, items []OperationItem, listMode bool, verboseMode bool, debugMode bool) *ProgressBarModel {
+func NewProgressBar(title string, items []OperationItem, verboseMode bool, debugMode bool) *ProgressBarModel {
 	// Create progress bar with gradient colors
 	startColor, endColor := ui.GetProgressBarGradient()
 	prog := progress.New(
@@ -97,7 +96,6 @@ func NewProgressBar(title string, items []OperationItem, listMode bool, verboseM
 		Title:       title,
 		TotalItems:  len(items),
 		Items:       items,
-		ListMode:    listMode,
 		VerboseMode: verboseMode,
 		DebugMode:   debugMode,
 		ProgressBar: prog,
@@ -396,8 +394,8 @@ func (m ProgressBarModel) View() string {
 		// Counter is shown in the progress bar title, not on individual items
 		b.WriteString(fmt.Sprintf("  %s %s%s - %s\n", styledIcon, fontName, sourcePart, statusText))
 
-		// Show variants if list mode is enabled
-		if m.ListMode && len(item.Variants) > 0 {
+		// Show variants if verbose mode is enabled
+		if m.VerboseMode && len(item.Variants) > 0 {
 			for _, variant := range item.Variants {
 				b.WriteString(fmt.Sprintf("      ↳ %s\n", variant))
 			}
@@ -531,9 +529,9 @@ func operationTickCmd() tea.Cmd {
 }
 
 // RunProgressBar runs the progress display with the given operation
-func RunProgressBar(title string, items []OperationItem, listMode bool, verboseMode bool, debugMode bool, operation func(send func(msg tea.Msg)) error) error {
+func RunProgressBar(title string, items []OperationItem, verboseMode bool, debugMode bool, operation func(send func(msg tea.Msg)) error) error {
 	// Initialize the model
-	model := NewProgressBar(title, items, listMode, verboseMode, debugMode)
+	model := NewProgressBar(title, items, verboseMode, debugMode)
 
 	// Create the Bubble Tea program
 	p := tea.NewProgram(model)

@@ -191,7 +191,8 @@ Flags:
 		}
 		output.GetDebug().State("After filtering: %d font files remaining", len(filtered))
 		if len(filtered) == 0 {
-			fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
+			// Start with a blank line for consistent spacing
+			fmt.Println()
 
 			// Show filter info in same format as successful results, just with 0 count
 			if familyFilter != "" || typeFilter != "" {
@@ -247,8 +248,8 @@ Flags:
 			}
 		}
 
-		// Header
-		fmt.Printf("\n%s\n", ui.PageTitle.Render("Installed Fonts"))
+		// Start with a blank line for consistent spacing
+		fmt.Println()
 
 		// Show filter info if filtering is applied (count shows families, not individual files)
 		if familyFilter != "" || typeFilter != "" {

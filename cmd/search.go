@@ -121,9 +121,6 @@ Examples:
 		}
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', refresh=%v", query, category, refresh)
 
-		// Print styled title first
-		fmt.Printf("\n%s\n", ui.PageTitle.Render("Search Results"))
-
 		// Get repository (handles source updates internally with spinner if needed)
 		var r *repo.Repository
 		var err error
@@ -404,9 +401,9 @@ func showAllCategories() error {
 		return nil
 	}
 
-	// Display categories
-	fmt.Printf("\n%s\n", ui.PageTitle.Render("Available Categories"))
-	fmt.Printf("\nFound %d categories across all sources:\n\n", len(categories))
+	// Start with a blank line for consistent spacing
+	fmt.Println()
+	fmt.Printf("Found %d categories across all sources:\n\n", len(categories))
 
 	// Display categories in a proper 3-column table format using consistent table styling
 	// Calculate column width: (120 total - 2 spaces between columns) / 3 columns = 39 chars per column

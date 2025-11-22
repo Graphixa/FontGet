@@ -406,9 +406,8 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		progressErr := components.RunProgressBar(
 			title,
 			operationItems,
-			list,    // List mode
-			verbose, // Verbose mode
-			debug,   // Debug mode
+			verbose, // Verbose mode: show operational details and file/variant listings
+			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg)) error {
 				// Process each font group
 				for itemIndex, fontGroup := range fontsToInstall {
@@ -482,17 +481,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			return progressErr
 		}
 
-		// Print status report
-		PrintStatusReport(StatusReport{
-			Success:      status.Installed,
-			Skipped:      status.Skipped,
-			Failed:       status.Failed,
-			SuccessLabel: "Installed",
-			SkippedLabel: "Skipped",
-			FailedLabel:  "Failed",
-		})
-
-		// Show source availability warnings at the bottom (after progress bar and status report)
+		// Show source availability warnings at the bottom (after progress bar, before status report)
 		if !IsDebug() {
 			// Show disabled sources
 			for sourceName, fontNames := range disabledSourceFonts {
@@ -576,6 +565,16 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 				}
 			}
 		}
+
+		// Print status report last (only shown in verbose mode)
+		PrintStatusReport(StatusReport{
+			Success:      status.Installed,
+			Skipped:      status.Skipped,
+			Failed:       status.Failed,
+			SuccessLabel: "Installed",
+			SkippedLabel: "Skipped",
+			FailedLabel:  "Failed",
+		})
 
 		GetLogger().Info("Import complete - Installed: %d, Skipped: %d, Failed: %d",
 			status.Installed, status.Skipped, status.Failed)

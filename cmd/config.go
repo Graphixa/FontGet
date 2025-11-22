@@ -218,8 +218,8 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 		output.GetVerbose().Info("Configuration file path: %s", configPath)
 		output.GetDebug().State("Configuration file path: %s", configPath)
 
-		// Display validation header
-		fmt.Printf("\n%s\n\n", ui.PageTitle.Render("Configuration Validation"))
+		// Start with a blank line for consistent spacing
+		fmt.Println()
 		fmt.Printf("Configuration Path: %s\n\n", configPath)
 
 		// Load and validate configuration

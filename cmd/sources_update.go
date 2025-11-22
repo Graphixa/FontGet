@@ -388,10 +388,10 @@ func (m updateModel) finishUpdate() tea.Cmd {
 func (m updateModel) View() string {
 	var content strings.Builder
 
-	// Always show the updating message at the top
-	content.WriteString("\n") // Add space above the message
+	// Start with a blank line for consistent spacing
+	content.WriteString("\n")
 	content.WriteString(ui.PageTitle.Render("Updating Sources"))
-	content.WriteString("\n\n") // Add space between message and source list
+	content.WriteString("\n\n")
 
 	if m.quitting {
 		// Show completed results
@@ -475,22 +475,27 @@ func (m updateModel) renderSummary() string {
 		}
 	}
 
-	// Status Report at the bottom like install command
-	content.WriteString("\n")
-	content.WriteString(ui.ReportTitle.Render("Status Report"))
-	content.WriteString("\n")
-	content.WriteString("---------------------------------------------")
-	content.WriteString("\n")
-
-	// Status line with colors like install command
-	content.WriteString(fmt.Sprintf("%s: %d  |  %s: %d  |  %s: %d\n",
-		ui.FeedbackSuccess.Render("Updated"), successful,
-		ui.FeedbackWarning.Render("Skipped"), 0, // No skipped in update
-		ui.FeedbackError.Render("Failed"), failed))
-
 	// Add font count in darker gray - calculate actual count
 	fontCount := m.calculateFontCount()
-	content.WriteString(fmt.Sprintf("\n%s\n\n", ui.FeedbackText.Render(fmt.Sprintf("Total fonts available: %d", fontCount))))
+	content.WriteString(fmt.Sprintf("\n%s\n", ui.FeedbackText.Render(fmt.Sprintf("Total fonts available: %d", fontCount))))
+
+	// Status Report at the bottom (only shown in verbose mode)
+	if m.verbose {
+		content.WriteString("\n")
+		content.WriteString(ui.ReportTitle.Render("Status Report"))
+		content.WriteString("\n")
+		content.WriteString("---------------------------------------------")
+		content.WriteString("\n")
+
+		// Status line with colors like install command
+		content.WriteString(fmt.Sprintf("%s: %d  |  %s: %d  |  %s: %d\n\n",
+			ui.FeedbackSuccess.Render("Updated"), successful,
+			ui.FeedbackWarning.Render("Skipped"), 0, // No skipped in update
+			ui.FeedbackError.Render("Failed"), failed))
+	} else {
+		// Add blank line at end if not verbose
+		content.WriteString("\n")
+	}
 
 	return content.String()
 }
