@@ -98,7 +98,9 @@ var listCmd = &cobra.Command{
 	Long: `List fonts installed on your system.
 
 By default, shows fonts from both user and system-wide installations.
-Results can be filtered by font family name, type, or scope.
+Results can be filtered by font family name, Font ID, type, or scope.
+
+The query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto").
 
 Flags:
   --scope, -s    Filter by installation scope (user, machine)
@@ -109,6 +111,7 @@ Flags:
 	Example: `  fontget list
   fontget list "jet"
   fontget list roboto -t ttf
+  fontget list "google.roboto"
   fontget list "fira" -f
   fontget list -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -178,47 +181,19 @@ Flags:
 		}
 		output.GetDebug().State("Collected %d font files before filtering", len(fonts))
 
-		// Apply filters
-		filtered := make([]ParsedFont, 0, len(fonts))
-		for _, f := range fonts {
-			if familyFilter != "" && !strings.Contains(strings.ToLower(f.Family), strings.ToLower(familyFilter)) {
-				continue
-			}
-			if typeFilter != "" && !strings.EqualFold(f.Type, typeFilter) {
-				continue
-			}
-			filtered = append(filtered, f)
-		}
-		output.GetDebug().State("After filtering: %d font files remaining", len(filtered))
-		if len(filtered) == 0 {
-			// Start with a blank line for consistent spacing
-			fmt.Println()
-
-			// Show filter info in same format as successful results, just with 0 count
-			if familyFilter != "" || typeFilter != "" {
-				filterInfo := fmt.Sprintf("Found 0 font families installed matching '%s'", ui.TableSourceName.Render(familyFilter))
-				if typeFilter != "" {
-					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
-				}
-				fmt.Printf("\n%s\n\n", filterInfo)
-			} else {
-				fmt.Printf("\n%s\n\n", ui.FeedbackText.Render("Found 0 font families installed"))
-			}
-			return nil
-		}
-
-		families := groupByFamily(filtered)
-		var names []string
+		// Group fonts by family first (before matching to repository)
+		families := groupByFamily(fonts)
+		var allFamilyNames []string
 		for k := range families {
-			names = append(names, k)
+			allFamilyNames = append(allFamilyNames, k)
 		}
-		sort.Strings(names)
-		output.GetDebug().State("Grouped %d font files into %d unique families", len(filtered), len(names))
+		sort.Strings(allFamilyNames)
+		output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
 
-		// Match installed fonts to repository
+		// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
 		output.GetVerbose().Info("Matching installed fonts to repository...")
-		output.GetDebug().State("Matching %d font families against repository", len(names))
-		matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
+		output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
+		matches, err := repo.MatchAllInstalledFonts(allFamilyNames, IsCriticalSystemFont)
 		if err != nil {
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
@@ -231,7 +206,7 @@ Flags:
 					matchCount++
 				}
 			}
-			output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(names))
+			output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
 		}
 
 		// Populate match data into ParsedFont structs
@@ -248,8 +223,72 @@ Flags:
 			}
 		}
 
-		// Start with a blank line for consistent spacing
-		fmt.Println()
+		// Apply filters (now that Font IDs are populated)
+		// Filter by family name, Font ID, and type
+		filteredFamilies := make(map[string][]ParsedFont)
+		for familyName, fontGroup := range families {
+			// Get Font ID for this family (from first font in group, all have same Font ID)
+			fontID := ""
+			if len(fontGroup) > 0 {
+				fontID = fontGroup[0].FontID
+			}
+
+			// Check if family name or Font ID matches the filter
+			matchesFilter := true
+			if familyFilter != "" {
+				familyLower := strings.ToLower(familyName)
+				fontIDLower := strings.ToLower(fontID)
+				filterLower := strings.ToLower(familyFilter)
+
+				// Check if filter matches family name OR Font ID
+				matchesFilter = strings.Contains(familyLower, filterLower) ||
+					(fontID != "" && strings.Contains(fontIDLower, filterLower))
+			}
+
+			if !matchesFilter {
+				continue
+			}
+
+			// Apply type filter if specified
+			if typeFilter != "" {
+				filteredGroup := make([]ParsedFont, 0)
+				for _, f := range fontGroup {
+					if strings.EqualFold(f.Type, typeFilter) {
+						filteredGroup = append(filteredGroup, f)
+					}
+				}
+				// Only include family if at least one font matches type filter
+				if len(filteredGroup) > 0 {
+					filteredFamilies[familyName] = filteredGroup
+				}
+			} else {
+				// No type filter, include all fonts in family
+				filteredFamilies[familyName] = fontGroup
+			}
+		}
+
+		// Get sorted list of filtered family names
+		var names []string
+		for k := range filteredFamilies {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		output.GetDebug().State("After filtering: %d font families remaining", len(names))
+
+		if len(names) == 0 {
+
+			// Show filter info in same format as successful results, just with 0 count
+			if familyFilter != "" || typeFilter != "" {
+				filterInfo := fmt.Sprintf("Found 0 font families installed matching '%s'", ui.TableSourceName.Render(familyFilter))
+				if typeFilter != "" {
+					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
+				}
+				fmt.Printf("\n%s\n\n", filterInfo)
+			} else {
+				fmt.Printf("\n%s\n\n", ui.FeedbackText.Render("Found 0 font families installed"))
+			}
+			return nil
+		}
 
 		// Show filter info if filtering is applied (count shows families, not individual files)
 		if familyFilter != "" || typeFilter != "" {
@@ -267,7 +306,7 @@ Flags:
 		fmt.Println(GetTableSeparator())
 
 		for i, fam := range names {
-			group := families[fam]
+			group := filteredFamilies[fam]
 			output.GetDebug().State("Family '%s': %d files", fam, len(group))
 			sort.Slice(group, func(i, j int) bool { return group[i].Style < group[j].Style })
 			rep := group[0]
