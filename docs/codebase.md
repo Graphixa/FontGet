@@ -120,11 +120,24 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Shows font details and metadata
 - Default scope is "all" (shows fonts from both user and machine scopes)
 - Displays columns: Name, Font ID, License, Categories, Type, Scope, Source
+- **Font ID Filtering**: Query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto")
+- **Performance Optimizations**: Early type filtering (filters by extension before metadata extraction) and cached lowercased strings for faster filtering
 
 **Key Functions**:
 - `listCmd.RunE`: Main listing execution
-- `collectFonts`: Collects fonts from specified scopes
+- `collectFonts`: Collects fonts from specified scopes with optional type filtering
+- `groupByFamily`: Groups fonts by family name
 - `IsCriticalSystemFont`: Checks if a font is a protected system font
+
+**Key Features**:
+- **Font ID Support**: Filter by Font ID in addition to family name
+- **Early Type Filtering**: Filters by file extension before expensive metadata extraction when type filter is specified
+- **Optimized Filtering**: Caches lowercased strings to avoid repeated ToLower() calls
+
+**Flags**:
+- `--scope, -s`: Filter by installation scope (user or machine)
+- `--type, -t`: Filter by font type (TTF, OTF, etc.)
+- `--expand, -x`: Show all font variants in hierarchical view
 
 **Interfaces**:
 - Uses `internal/platform` for OS-specific font detection
@@ -781,6 +794,7 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Default scope changed to "all" (shows fonts from both user and machine scopes)
   - New columns: Font ID, License, Categories, Source (replaced "Installed" date)
   - Removed "all" option from --scope flag (now default behavior)
+  - Font ID filtering support: Query parameter can match by Font ID (e.g., "google.roboto") in addition to family name
 - **Remove Command Enhancements**:
   - Auto-detects scope based on elevation (admin defaults to "all", user defaults to "user")
   - Shows separate progress entries for each scope when removing from "all" scopes
@@ -807,6 +821,27 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Bandwidth savings for already-installed fonts
   - Consistent matching logic across commands
   - Accurate detection using Font ID and family name matching
+
+#### **List Command Optimizations and Font ID Filtering (2025-01-XX)**
+- **Font ID Filtering Support**: List command now supports filtering by Font ID in addition to family name
+  - Query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto")
+  - Repository matching happens before filtering to make Font IDs available for filtering
+  - Filter checks both family name and Font ID with case-insensitive substring matching
+- **Performance Optimizations**:
+  - **Early Type Filtering**: Modified `collectFonts()` to filter by file extension before expensive metadata extraction
+    - When `--type` filter is specified, files are filtered by extension before calling `platform.ExtractFontMetadata()`
+    - Significantly reduces processing time when filtering by type
+    - Skips metadata extraction for non-matching fonts
+  - **Cached Lowercased Strings**: Pre-computes and caches lowercased strings in filtering loop
+    - Avoids repeated `ToLower()` calls for family names and Font IDs
+    - Reduces string allocations and improves filtering performance
+- **Flag Improvements**:
+  - Renamed `--full` flag to `--expand` with `-x` alias for better clarity
+  - Updated help text and examples to reflect new flag name
+- **Benefits**:
+  - More flexible filtering with Font ID support
+  - Improved performance, especially when using type filters
+  - Better user experience with clearer flag naming
 
 ---
 

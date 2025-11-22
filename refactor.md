@@ -84,8 +84,9 @@
 - [ ] **list.go improvements**
   - [ ] Extract `buildParsedFont(path, scope) ParsedFont` function
   - [ ] Reduce debug noise (keep only essential debug output)
-  - [ ] Optimize metadata extraction (one read per file)
-  - [ ] Consider style ordering for `--full` output (non-blocking)
+  - [x] Optimize metadata extraction (early type filtering - filters by extension before metadata extraction)
+  - [x] Cache lowercased strings in filtering loop to avoid repeated ToLower() calls
+  - [ ] Consider style ordering for `--expand` output (non-blocking)
 
 - [ ] **internal/platform/platform.go improvements**
   - [ ] Split `parseNameTable` into smaller helper functions
@@ -115,9 +116,9 @@
 ### **Phase 4: Command Improvements**
 
 #### **List Command Enhancements**
-- [ ] **Flag naming improvement**
-  - [ ] Rename `--full` flag to better match hierarchy view (e.g., `--tree`)
-  - [ ] Update help text and documentation
+- [x] **Flag naming improvement**
+  - [x] Rename `--full` flag to `--expand` with `-x` alias
+  - [x] Update help text and documentation
 
 #### **Color Scheme Consistency**
 - [ ] **Standardize color usage**
