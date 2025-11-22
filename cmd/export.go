@@ -281,7 +281,7 @@ func performFullExport(fm platform.FontManager, scopes []platform.InstallationSc
 func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
 	// Collect fonts from all scopes
 	output.GetVerbose().Info("Collecting installed fonts...")
-	fonts, err := collectFonts(scopes, fm)
+	fonts, err := collectFonts(scopes, fm, "")
 	if err != nil {
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("collectFonts() failed: %v", err)

@@ -224,7 +224,7 @@ func detectAccessibleScopes(fm platform.FontManager) ([]platform.InstallationSco
 
 // performBackup performs the backup operation (for debug mode)
 func performBackup(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
-	fonts, err := collectFonts(scopes, fm)
+	fonts, err := collectFonts(scopes, fm, "")
 	if err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func performBackup(fm platform.FontManager, scopes []platform.InstallationScope,
 func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
 	// First, collect fonts to determine how many families we'll be backing up
 	output.GetVerbose().Info("Scanning fonts to determine backup scope...")
-	fonts, err := collectFonts(scopes, fm)
+	fonts, err := collectFonts(scopes, fm, "")
 	if err != nil {
 		return fmt.Errorf("unable to collect fonts: %v", err)
 	}

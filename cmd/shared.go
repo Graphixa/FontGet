@@ -758,7 +758,7 @@ func checkFontsAlreadyInstalled(fontID string, fontName string, scope platform.I
 
 	// Collect installed fonts from the target scope
 	scopes := []platform.InstallationScope{scope}
-	fonts, err := collectFonts(scopes, fontManager)
+	fonts, err := collectFonts(scopes, fontManager, "")
 	if err != nil {
 		return false, fmt.Errorf("failed to collect installed fonts: %w", err)
 	}

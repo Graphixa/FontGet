@@ -31,8 +31,14 @@ type ParsedFont struct {
 	Source     string
 }
 
-func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager) ([]ParsedFont, error) {
+func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string) ([]ParsedFont, error) {
 	var parsed []ParsedFont
+	// Normalize type filter for comparison (uppercase)
+	typeFilterUpper := ""
+	if typeFilter != "" {
+		typeFilterUpper = strings.ToUpper(typeFilter)
+	}
+
 	for _, scope := range scopes {
 		fontDir := fm.GetFontDir(scope)
 		output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
@@ -47,6 +53,14 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager) 
 			if err != nil {
 				continue
 			}
+
+			// Optimization 1: Early type filtering - check extension before expensive metadata extraction
+			fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), "."))
+			if typeFilterUpper != "" && fileExt != typeFilterUpper {
+				// Skip this file if it doesn't match the type filter
+				continue
+			}
+
 			md, err := platform.ExtractFontMetadata(p)
 			family := ""
 			style := ""
@@ -74,7 +88,7 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager) 
 				Name:        name,
 				Family:      family,
 				Style:       style,
-				Type:        strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), ".")),
+				Type:        fileExt,
 				InstallDate: info.ModTime(),
 				Scope:       string(scope),
 			})
@@ -105,14 +119,14 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 Flags:
   --scope, -s    Filter by installation scope (user, machine)
   --type, -t     Filter by font type (TTF, OTF, etc.)
-  --full, -f     Show all font variants in hierarchical view
+  --expand, -x   Show all font variants in hierarchical view
 
 `,
 	Example: `  fontget list
   fontget list "jet"
   fontget list roboto -t ttf
   fontget list "google.roboto"
-  fontget list "fira" -f
+  fontget list "fira" -x
   fontget list -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Query is optional - no validation needed
@@ -137,7 +151,7 @@ Flags:
 
 		scope, _ := cmd.Flags().GetString("scope")
 		typeFilter, _ := cmd.Flags().GetString("type")
-		showVariants, _ := cmd.Flags().GetBool("full")
+		showVariants, _ := cmd.Flags().GetBool("expand")
 
 		// Get query from positional argument
 		var familyFilter string
@@ -173,7 +187,7 @@ Flags:
 		}
 		// Debug: initial parameter dump removed to reduce noise
 
-		fonts, err := collectFonts(scopes, fm)
+		fonts, err := collectFonts(scopes, fm, typeFilter)
 		if err != nil {
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("collectFonts() failed: %v", err)
@@ -224,8 +238,14 @@ Flags:
 		}
 
 		// Apply filters (now that Font IDs are populated)
-		// Filter by family name, Font ID, and type
+		// Filter by family name and Font ID (type filter already applied during collection)
+		// Optimization 2: Cache lowercased strings to avoid repeated ToLower() calls
 		filteredFamilies := make(map[string][]ParsedFont)
+		familyFilterLower := ""
+		if familyFilter != "" {
+			familyFilterLower = strings.ToLower(familyFilter)
+		}
+
 		for familyName, fontGroup := range families {
 			// Get Font ID for this family (from first font in group, all have same Font ID)
 			fontID := ""
@@ -235,36 +255,25 @@ Flags:
 
 			// Check if family name or Font ID matches the filter
 			matchesFilter := true
-			if familyFilter != "" {
+			if familyFilterLower != "" {
+				// Cache lowercased strings (optimization 2)
 				familyLower := strings.ToLower(familyName)
-				fontIDLower := strings.ToLower(fontID)
-				filterLower := strings.ToLower(familyFilter)
+				fontIDLower := ""
+				if fontID != "" {
+					fontIDLower = strings.ToLower(fontID)
+				}
 
 				// Check if filter matches family name OR Font ID
-				matchesFilter = strings.Contains(familyLower, filterLower) ||
-					(fontID != "" && strings.Contains(fontIDLower, filterLower))
+				matchesFilter = strings.Contains(familyLower, familyFilterLower) ||
+					(fontIDLower != "" && strings.Contains(fontIDLower, familyFilterLower))
 			}
 
 			if !matchesFilter {
 				continue
 			}
 
-			// Apply type filter if specified
-			if typeFilter != "" {
-				filteredGroup := make([]ParsedFont, 0)
-				for _, f := range fontGroup {
-					if strings.EqualFold(f.Type, typeFilter) {
-						filteredGroup = append(filteredGroup, f)
-					}
-				}
-				// Only include family if at least one font matches type filter
-				if len(filteredGroup) > 0 {
-					filteredFamilies[familyName] = filteredGroup
-				}
-			} else {
-				// No type filter, include all fonts in family
-				filteredFamilies[familyName] = fontGroup
-			}
+			// Type filter already applied during collection, so include all fonts in family
+			filteredFamilies[familyName] = fontGroup
 		}
 
 		// Get sorted list of filtered family names
@@ -374,5 +383,5 @@ func init() {
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().StringP("scope", "s", "", "Filter by installation scope (user or machine). Default: show all scopes")
 	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
-	listCmd.Flags().BoolP("full", "f", false, "Show font styles in hierarchical view")
+	listCmd.Flags().BoolP("expand", "x", false, "Show font styles in hierarchical view")
 }
