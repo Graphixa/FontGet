@@ -51,9 +51,7 @@ var sourcesInfoCmd = &cobra.Command{
 
 		configManifest, err := config.LoadManifest()
 		if err != nil {
-			if logger != nil {
-				logger.Error("Failed to load manifest: %v", err)
-			}
+			GetLogger().Error("Failed to load manifest: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.LoadManifest() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -250,9 +248,7 @@ func updateSourceConfigurations() error {
 	// Load current manifest
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		if logger != nil {
-			logger.Error("Failed to load manifest: %v", err)
-		}
+		GetLogger().Error("Failed to load manifest: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("config.LoadManifest() failed: %v", err)
 		return fmt.Errorf("unable to load font repository: %v", err)
@@ -261,9 +257,7 @@ func updateSourceConfigurations() error {
 	// Get default manifest for comparison
 	defaultManifest, err := config.GetDefaultManifest()
 	if err != nil {
-		if logger != nil {
-			logger.Error("Failed to get default manifest: %v", err)
-		}
+		GetLogger().Error("Failed to get default manifest: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("config.GetDefaultManifest() failed: %v", err)
 		return fmt.Errorf("unable to load default manifest: %v", err)
@@ -293,9 +287,7 @@ func updateSourceConfigurations() error {
 	if updated {
 		// Save updated configuration
 		if err := config.SaveManifest(manifest); err != nil {
-			if logger != nil {
-				logger.Error("Failed to save updated sources config: %v", err)
-			}
+			GetLogger().Error("Failed to save updated sources config: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.SaveManifest() failed: %v", err)
 			return fmt.Errorf("unable to save sources configuration: %v", err)
@@ -316,9 +308,7 @@ func runSourcesUpdateVerbose() error {
 	// Load manifest
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		if logger != nil {
-			logger.Error("Failed to load manifest: %v", err)
-		}
+		GetLogger().Error("Failed to load manifest: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("config.LoadManifest() failed: %v", err)
 		return fmt.Errorf("unable to load font repository: %v", err)
@@ -475,7 +465,9 @@ Downloads the latest font data from all enabled sources.`,
 		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Clear existing cached sources first
-		output.GetVerbose().Info("Clearing existing cached sources")
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Clearing existing cached sources")
+		}
 		output.GetDebug().State("Clearing sources directory before update")
 
 		home, err := os.UserHomeDir()
@@ -502,11 +494,15 @@ Downloads the latest font data from all enabled sources.`,
 			return fmt.Errorf("unable to create sources directory: %v", err)
 		}
 
-		output.GetVerbose().Success("Cleared existing cached sources")
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Success("Cleared existing cached sources")
+		}
 		output.GetDebug().State("Sources directory cleared and recreated")
 
 		// Update the source configurations
-		output.GetVerbose().Info("Updating source configurations")
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Updating source configurations")
+		}
 		output.GetDebug().State("Calling updateSourceConfigurations()")
 		if err := updateSourceConfigurations(); err != nil {
 			return err
@@ -599,7 +595,9 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Get sources directory
-		output.GetVerbose().Info("Getting sources directory")
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Getting sources directory")
+		}
 		output.GetDebug().State("Calling getSourcesDir()")
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -610,12 +608,16 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 		}
 
 		sourcesDir := filepath.Join(home, ".fontget", "sources")
-		output.GetVerbose().Info("Validating sources directory: %s", sourcesDir)
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Validating sources directory: %s", sourcesDir)
+		}
 
 		// Check if sources directory exists
 		if _, err := os.Stat(sourcesDir); err != nil {
 			fmt.Println(ui.RenderError("Sources directory not found"))
-			output.GetVerbose().Warning("Sources directory does not exist")
+			if IsVerbose() && !IsDebug() {
+				output.GetVerbose().Warning("Sources directory does not exist")
+			}
 			output.GetDebug().State("Sources directory not found: %s", sourcesDir)
 			return nil
 		}
@@ -637,7 +639,9 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 		invalidCount := 0
 		jsonFileCount := 0
 
-		output.GetVerbose().Info("Validating %d source files", len(entries))
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Validating %d source files", len(entries))
+		}
 		output.GetDebug().State("Starting validation of %d files", len(entries))
 
 		for _, entry := range entries {
@@ -670,7 +674,9 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 						entry.Name(),
 						ui.FeedbackError.Render("Invalid"))
 					invalidCount++
-					output.GetVerbose().Warning("File %s is invalid", entry.Name())
+					if IsVerbose() && !IsDebug() {
+						output.GetVerbose().Warning("File %s is invalid", entry.Name())
+					}
 					output.GetDebug().State("File %s failed validation", entry.Name())
 				}
 			}
@@ -680,24 +686,34 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 		if jsonFileCount == 0 {
 			fmt.Println(ui.RenderWarning("No source files found to validate."))
 			fmt.Println(ui.RenderWarning("Try running: fontget sources update"))
-			output.GetVerbose().Info("No JSON source files found in directory")
+			if IsVerbose() && !IsDebug() {
+				output.GetVerbose().Info("No JSON source files found in directory")
+			}
 			output.GetDebug().State("No .json files found in sources directory")
 			return nil
 		}
 
-		output.GetVerbose().Info("Validation completed - Valid: %d, Invalid: %d", validCount, invalidCount)
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Validation completed - Valid: %d, Invalid: %d", validCount, invalidCount)
+		}
 		output.GetDebug().State("Validation results: %d valid, %d invalid", validCount, invalidCount)
 
 		if invalidCount > 0 {
 			fmt.Printf("\n%s\n", ui.FeedbackWarning.Render("One or more sources failed to validate."))
 			fmt.Printf("Run 'fontget sources validate --help' for troubleshooting steps.\n\n")
-			output.GetVerbose().Warning("Sources validation found %d invalid files", invalidCount)
+			if IsVerbose() && !IsDebug() {
+				output.GetVerbose().Warning("Sources validation found %d invalid files", invalidCount)
+			}
 		} else {
 			fmt.Printf("\n%s\n", ui.FeedbackSuccess.Render("All source files are valid\n"))
-			output.GetVerbose().Success("All source files are valid")
+			if IsVerbose() && !IsDebug() {
+				output.GetVerbose().Success("All source files are valid")
+			}
 		}
 
-		output.GetVerbose().Success("Sources validation operation completed")
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Success("Sources validation operation completed")
+		}
 		output.GetDebug().State("Sources validation operation completed successfully")
 		GetLogger().Info("Sources validation operation completed")
 		return nil

@@ -79,6 +79,7 @@ Examples:
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
+			GetLogger().Error("Failed to ensure manifest exists: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -91,6 +92,9 @@ Examples:
 		if len(args) > 0 {
 			query = args[0]
 		}
+
+		// Log search parameters (always log to file)
+		GetLogger().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 
 		// Handle category-only mode (show all categories) - early return
 		// Check if category flag was provided but no value was given (NoOptDefVal = "list")
@@ -112,8 +116,6 @@ Examples:
 				query = ""
 			}
 		}
-
-		GetLogger().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 
 		// Verbose-level information for users - show operational details
 		if IsVerbose() && !IsDebug() {
@@ -139,6 +141,7 @@ Examples:
 			r, err = repo.GetRepository()
 		}
 		if err != nil {
+			GetLogger().Error("Failed to get repository: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -151,6 +154,7 @@ Examples:
 		output.GetDebug().State("Calling r.SearchFonts(query='%s', category='%s')", query, category)
 		results, err := r.SearchFonts(query, category)
 		if err != nil {
+			GetLogger().Error("Failed to search fonts: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("r.SearchFonts() failed: %v", err)
 			return fmt.Errorf("unable to search fonts: %v", err)

@@ -60,6 +60,15 @@ Use the --license flag to show only license information.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font info operation")
 
+		// Get font ID from arguments
+		if len(args) == 0 {
+			return fmt.Errorf("font ID or name is required")
+		}
+		fontID := args[0]
+
+		// Log font ID parameter (always log to file)
+		GetLogger().Info("Font info parameters - Font ID: %s", fontID)
+
 		// Debug-level information for developers
 		// Note: Suppressed to avoid TUI interference
 		// output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
@@ -76,8 +85,6 @@ Use the --license flag to show only license information.`,
 			return nil // Args validator will have already shown the help
 		}
 
-		fontID := args[0]
-		GetLogger().Info("Retrieving info for font: %s", fontID)
 		if IsVerbose() && !IsDebug() {
 			output.GetVerbose().Info("Retrieving information for font: %s", fontID)
 		}

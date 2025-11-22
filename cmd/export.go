@@ -75,11 +75,14 @@ or a full file path.`,
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting font export operation")
+
 		// Always start with a blank line for consistent spacing
 		fmt.Println()
 
 		// Ensure manifest system is initialized
 		if err := config.EnsureManifestExists(); err != nil {
+			GetLogger().Error("Failed to ensure manifest exists: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -87,6 +90,7 @@ or a full file path.`,
 
 		fm, err := platform.NewFontManager()
 		if err != nil {
+			GetLogger().Error("Failed to create font manager: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
 			return fmt.Errorf("unable to access system fonts: %v", err)
@@ -206,6 +210,9 @@ or a full file path.`,
 			return nil
 		}
 
+		// Log completion
+		GetLogger().Info("Export operation complete - Exported %d font families to %s", len(exportedFonts), outputFile)
+
 		// Show success message
 		fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
 		fmt.Println()
@@ -283,13 +290,13 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	output.GetVerbose().Info("Collecting installed fonts...")
 	fonts, err := collectFonts(scopes, fm, "")
 	if err != nil {
+		GetLogger().Error("Failed to collect fonts: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("collectFonts() failed: %v", err)
 		return nil, 0, fmt.Errorf("unable to read installed fonts: %v", err)
 	}
 
 	output.GetVerbose().Info("Found %d font files", len(fonts))
-	output.GetDebug().State("Collected %d font files", len(fonts))
 
 	// Group by family
 	families := groupByFamily(fonts)
@@ -306,6 +313,7 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	output.GetDebug().State("Total installed font families to match: %d", len(names))
 	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
 	if err != nil {
+		GetLogger().Error("Failed to match fonts to repository: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
 		// Continue without matches if exportAll is true
@@ -315,7 +323,6 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 		matches = make(map[string]*repo.InstalledFontMatch)
 	}
 	output.GetVerbose().Info("Matched %d font families to repository entries", len(matches))
-	output.GetDebug().State("Matched %d font families to repository entries", len(matches))
 
 	// Populate match data
 	for familyName, fontGroup := range families {
@@ -514,6 +521,7 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	output.GetVerbose().Info("Writing export file...")
 	jsonData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
+		GetLogger().Error("Failed to marshal export manifest: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("json.MarshalIndent() failed: %v", err)
 		return nil, 0, fmt.Errorf("unable to marshal manifest: %v", err)
@@ -522,6 +530,7 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	// Ensure parent directory exists (skip if outputFile is just a filename)
 	if dir := filepath.Dir(outputFile); dir != "." && dir != outputFile {
 		if err := os.MkdirAll(dir, 0755); err != nil {
+			GetLogger().Error("Failed to create export directory: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("os.MkdirAll() failed for parent directory: %v", err)
 			return nil, 0, fmt.Errorf("unable to create directory for export file: %v", err)
@@ -529,10 +538,12 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	}
 
 	if err := os.WriteFile(outputFile, jsonData, 0644); err != nil {
+		GetLogger().Error("Failed to write export file: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("os.WriteFile() failed: %v", err)
 		return nil, 0, fmt.Errorf("unable to write export file: %v", err)
 	}
+	GetLogger().Info("Export file written successfully: %s", outputFile)
 	output.GetVerbose().Info("Export file written successfully")
 
 	return exportedFonts, totalVariants, nil

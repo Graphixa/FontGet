@@ -297,13 +297,14 @@ Installation scope can be specified with the --scope flag:
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// GetLogger().Info("Starting font installation operation")
+		GetLogger().Info("Starting font installation operation")
 
 		// Always start with a blank line for consistent spacing from command prompt
 		fmt.Println()
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := config.EnsureManifestExists(); err != nil {
+			GetLogger().Error("Failed to ensure manifest exists: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -317,6 +318,7 @@ Installation scope can be specified with the --scope flag:
 		// Create font manager
 		fontManager, err := platform.NewFontManager()
 		if err != nil {
+			GetLogger().Error("Failed to create font manager: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
 			return fmt.Errorf("unable to access system fonts: %v", err)
@@ -326,7 +328,8 @@ Installation scope can be specified with the --scope flag:
 		scope, _ := cmd.Flags().GetString("scope")
 		force, _ := cmd.Flags().GetBool("force")
 
-		// GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scope, force)
+		// Log installation parameters (always log to file)
+		GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scope, force)
 
 		// Debug-level information for developers
 		// Note: Suppressed to avoid TUI interference
@@ -341,11 +344,10 @@ Installation scope can be specified with the --scope flag:
 				scope = "user"
 			} else if isElevated {
 				scope = "machine"
-				// GetLogger().Info("Auto-detected elevated privileges, defaulting to 'machine' scope")
-				// Note: Suppressed to avoid TUI interference
+				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'machine' scope")
 			} else {
 				scope = "user"
-				// GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
+				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
 			}
 		}
 
@@ -374,7 +376,7 @@ Installation scope can be specified with the --scope flag:
 		// Process font names from arguments
 		fontNames := ParseFontNames(args)
 
-		// GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
+		GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
 
 		// Get font directory for the specified scope
 		fontDir := fontManager.GetFontDir(installScope)
@@ -416,7 +418,7 @@ Installation scope can be specified with the --scope flag:
 
 		// Process each font name to collect all fonts
 		for _, fontName := range fontNames {
-			// GetLogger().Info("Processing font: %s", fontName)
+			GetLogger().Info("Processing font: %s", fontName)
 
 			// Check if this is already a specific font ID (contains a dot like "google.roboto")
 			var fonts []repo.FontFile

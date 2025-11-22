@@ -45,11 +45,14 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting font import operation")
+
 		// Always start with a blank line for consistent spacing
 		fmt.Println()
 
 		// Ensure manifest system is initialized
 		if err := config.EnsureManifestExists(); err != nil {
+			GetLogger().Error("Failed to ensure manifest exists: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -146,7 +149,8 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		// Load config manifest early to check source availability
 		configManifest, err := config.LoadManifest()
 		if err != nil {
-			output.GetDebug().Error("Failed to load config manifest: %v", err)
+			output.GetVerbose().Warning("Failed to load config manifest: %v", err)
+			output.GetDebug().Error("config.LoadManifest() failed: %v", err)
 		}
 
 		// Collect fonts to install - deduplicate by Font ID (handles Nerd Fonts with multiple families per Font ID)
@@ -336,27 +340,26 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		}
 
 		// Debug output
-		if IsDebug() {
-			GetLogger().Info("Import parameters - Scope: %s, Force: %v", scope, force)
-			GetLogger().Info("Manifest contains %d fonts", len(exportManifest.Fonts))
-			if len(invalidFonts) > 0 {
-				GetLogger().Info("Skipping %d fonts without Font IDs", len(invalidFonts))
-			}
-			if len(notFoundFonts) > 0 {
-				GetLogger().Info("Skipping %d fonts not found in repository", len(notFoundFonts))
-			}
-			if len(disabledSourceFonts) > 0 {
-				for sourceName, fontNames := range disabledSourceFonts {
-					GetLogger().Info("Source '%s' is disabled - %d fonts affected: %v", sourceName, len(fontNames), fontNames)
-				}
-			}
-			if len(missingSourceFonts) > 0 {
-				for sourceName, fontNames := range missingSourceFonts {
-					GetLogger().Info("Source '%s' is missing - %d fonts affected: %v", sourceName, len(fontNames), fontNames)
-				}
-			}
-			GetLogger().Info("Installing %d fonts", len(fontsToInstall))
+		// Log import parameters and status (always log to file, not conditional on flags)
+		GetLogger().Info("Import parameters - Scope: %s, Force: %v", scope, force)
+		GetLogger().Info("Manifest contains %d fonts", len(exportManifest.Fonts))
+		if len(invalidFonts) > 0 {
+			GetLogger().Info("Skipping %d fonts without Font IDs", len(invalidFonts))
 		}
+		if len(notFoundFonts) > 0 {
+			GetLogger().Info("Skipping %d fonts not found in repository", len(notFoundFonts))
+		}
+		if len(disabledSourceFonts) > 0 {
+			for sourceName, fontNames := range disabledSourceFonts {
+				GetLogger().Info("Source '%s' is disabled - %d fonts affected: %v", sourceName, len(fontNames), fontNames)
+			}
+		}
+		if len(missingSourceFonts) > 0 {
+			for sourceName, fontNames := range missingSourceFonts {
+				GetLogger().Info("Source '%s' is missing - %d fonts affected: %v", sourceName, len(fontNames), fontNames)
+			}
+		}
+		GetLogger().Info("Installing %d fonts", len(fontsToInstall))
 
 		// If no fonts to install, exit
 		if len(fontsToInstall) == 0 {

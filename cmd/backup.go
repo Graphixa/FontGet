@@ -52,11 +52,14 @@ System fonts are always excluded from backups.`,
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
+		GetLogger().Info("Starting font backup operation")
+
 		// Always start with a blank line for consistent spacing
 		fmt.Println()
 
 		// Ensure manifest system is initialized
 		if err := config.EnsureManifestExists(); err != nil {
+			GetLogger().Error("Failed to ensure manifest exists: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -64,6 +67,7 @@ System fonts are always excluded from backups.`,
 
 		fm, err := platform.NewFontManager()
 		if err != nil {
+			GetLogger().Error("Failed to create font manager: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
 			return fmt.Errorf("unable to access system fonts: %v", err)
@@ -91,10 +95,14 @@ System fonts are always excluded from backups.`,
 		// Auto-detect accessible scopes
 		scopes, err := detectAccessibleScopes(fm)
 		if err != nil {
+			GetLogger().Error("Failed to detect accessible scopes: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("detectAccessibleScopes() failed: %v", err)
 			return fmt.Errorf("unable to detect accessible font scopes: %v", err)
 		}
+
+		// Log backup parameters (always log to file)
+		GetLogger().Info("Backup parameters - Output: %s, Scopes: %v", zipPath, scopes)
 
 		// Verbose output
 		if IsVerbose() && !IsDebug() {
@@ -209,7 +217,9 @@ func detectAccessibleScopes(fm platform.FontManager) ([]platform.InstallationSco
 	isElevated, err := fm.IsElevated()
 	if err != nil {
 		// If we can't detect elevation, default to user scope only (safer)
-		output.GetVerbose().Warning("Unable to detect elevation status: %v. Backing up user scope only.", err)
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Warning("Unable to detect elevation status: %v. Backing up user scope only.", err)
+		}
 		return []platform.InstallationScope{platform.UserScope}, nil
 	}
 
@@ -233,6 +243,7 @@ func performBackup(fm platform.FontManager, scopes []platform.InstallationScope,
 		return err
 	}
 
+	GetLogger().Info("Backup operation complete - Backed up %d font families, %d files to %s", result.familyCount, result.fileCount, zipPath)
 	output.GetDebug().State("Backup completed: %d font families, %d files archived to %s", result.familyCount, result.fileCount, zipPath)
 	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully backed up %d font families to %s", result.familyCount, zipPath)))
 	fmt.Println()
@@ -242,7 +253,9 @@ func performBackup(fm platform.FontManager, scopes []platform.InstallationScope,
 // runBackupWithProgressBar runs the backup operation with a progress bar
 func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
 	// First, collect fonts to determine how many families we'll be backing up
-	output.GetVerbose().Info("Scanning fonts to determine backup scope...")
+	if IsVerbose() && !IsDebug() {
+		output.GetVerbose().Info("Scanning fonts to determine backup scope...")
+	}
 	fonts, err := collectFonts(scopes, fm, "")
 	if err != nil {
 		return fmt.Errorf("unable to collect fonts: %v", err)
@@ -449,7 +462,9 @@ func performBackupWithProgress(fm platform.FontManager, _ []platform.Installatio
 
 // performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
 func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
-	output.GetVerbose().Info("Found %d font files", len(fonts))
+	if IsVerbose() && !IsDebug() {
+		output.GetVerbose().Info("Found %d font files", len(fonts))
+	}
 	output.GetDebug().State("Processing %d font files", len(fonts))
 
 	// Match fonts to repository to get source information
@@ -465,10 +480,14 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 	}
 	sort.Strings(names)
 
-	output.GetVerbose().Info("Matching fonts to repository...")
+	if IsVerbose() && !IsDebug() {
+		output.GetVerbose().Info("Matching fonts to repository...")
+	}
 	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
 	if err != nil {
-		output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
+		}
 		output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
 		// Continue with partial matches
 		if matches == nil {
@@ -530,12 +549,15 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 		}
 	}
 
-	output.GetVerbose().Info("Creating zip archive...")
+	if IsVerbose() && !IsDebug() {
+		output.GetVerbose().Info("Creating zip archive...")
+	}
 	output.GetDebug().State("Organized fonts into %d sources", len(sourceFamilyMap))
 
 	// Ensure parent directory exists
 	if dir := filepath.Dir(zipPath); dir != "." && dir != zipPath {
 		if err := os.MkdirAll(dir, 0755); err != nil {
+			GetLogger().Error("Failed to create backup directory: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("os.MkdirAll() failed for zip parent directory: %v", err)
 			return nil, fmt.Errorf("unable to create directory for backup archive: %v", err)
@@ -545,6 +567,7 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 	// Create zip file
 	zipFile, err := os.Create(zipPath)
 	if err != nil {
+		GetLogger().Error("Failed to create backup zip file: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("os.Create() failed for zip file: %v", err)
 		return nil, fmt.Errorf("unable to create backup archive: %v", err)
@@ -624,12 +647,15 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 
 	// Close zip writer to finalize the archive
 	if err := zipWriter.Close(); err != nil {
+		GetLogger().Error("Failed to close zip writer: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("zipWriter.Close() failed: %v", err)
 		return nil, fmt.Errorf("unable to finalize backup archive: %v", err)
 	}
 
-	output.GetVerbose().Info("Backup archive created: %d font families, %d files", familyCount, fileCount)
+	if IsVerbose() && !IsDebug() {
+		output.GetVerbose().Info("Backup archive created: %d font families, %d files", familyCount, fileCount)
+	}
 	output.GetDebug().State("Backup completed: %d font families, %d files archived to %s", familyCount, fileCount, zipPath)
 
 	return &backupResult{

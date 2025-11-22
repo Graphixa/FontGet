@@ -61,41 +61,51 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 				continue
 			}
 
-			md, err := platform.ExtractFontMetadata(p)
-			family := ""
-			style := ""
-			if err == nil {
-				// Prefer typographic names for display when present
-				if md.TypographicFamily != "" {
-					family = md.TypographicFamily
-				} else {
-					family = md.FamilyName
-				}
-				if md.TypographicStyle != "" {
-					style = md.TypographicStyle
-				} else {
-					style = md.StyleName
-				}
-				// Debug: per-file parsed details removed for cleaner output
-			} else {
-				// Fallback to filename parsing (minimal)
-				base := strings.TrimSuffix(name, filepath.Ext(name))
-				family = base
-				style = "Regular"
-				// Debug: per-file fallback details removed for cleaner output
-			}
-			parsed = append(parsed, ParsedFont{
-				Name:        name,
-				Family:      family,
-				Style:       style,
-				Type:        fileExt,
-				InstallDate: info.ModTime(),
-				Scope:       string(scope),
-			})
+			// Build ParsedFont struct using extracted function
+			parsed = append(parsed, buildParsedFont(p, name, scope, info))
 		}
 	}
 	output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
 	return parsed, nil
+}
+
+// buildParsedFont extracts font metadata from a file path and builds a ParsedFont struct
+func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope, fileInfo os.FileInfo) ParsedFont {
+	// Extract file extension for type
+	fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
+
+	// Try to extract metadata from the font file
+	md, err := platform.ExtractFontMetadata(fontPath)
+	family := ""
+	style := ""
+
+	if err == nil {
+		// Prefer typographic names for display when present
+		if md.TypographicFamily != "" {
+			family = md.TypographicFamily
+		} else {
+			family = md.FamilyName
+		}
+		if md.TypographicStyle != "" {
+			style = md.TypographicStyle
+		} else {
+			style = md.StyleName
+		}
+	} else {
+		// Fallback to filename parsing (minimal)
+		base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+		family = base
+		style = "Regular"
+	}
+
+	return ParsedFont{
+		Name:        fileName,
+		Family:      family,
+		Style:       style,
+		Type:        fileExt,
+		InstallDate: fileInfo.ModTime(),
+		Scope:       string(scope),
+	}
 }
 
 func groupByFamily(fonts []ParsedFont) map[string][]ParsedFont {
@@ -133,10 +143,10 @@ Flags:
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Debug-level information for developers
-		// Note: Suppressed to avoid TUI interference
-		// output.GetDebug().Message("List command start")
+		GetLogger().Info("Starting font list operation")
+
 		if err := config.EnsureManifestExists(); err != nil {
+			GetLogger().Error("Failed to ensure manifest exists: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
@@ -144,6 +154,7 @@ Flags:
 
 		fm, err := platform.NewFontManager()
 		if err != nil {
+			GetLogger().Error("Failed to create font manager: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
 			return fmt.Errorf("unable to access system fonts: %v", err)
@@ -159,6 +170,25 @@ Flags:
 			familyFilter = args[0]
 		}
 
+		// Log parameters (always log to file)
+		scopeDisplay := "all"
+		if scope != "" {
+			scopeDisplay = scope
+		}
+		GetLogger().Info("List parameters - Scope: %s, Type filter: %s, Family filter: %s, Show variants: %v", scopeDisplay, typeFilter, familyFilter, showVariants)
+
+		// Verbose output for parameters
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Scope: %s", scopeDisplay)
+			if typeFilter != "" {
+				output.GetVerbose().Info("Type filter: %s", typeFilter)
+			}
+			if familyFilter != "" {
+				output.GetVerbose().Info("Family filter: %s", familyFilter)
+			}
+			fmt.Println()
+		}
+
 		var scopes []platform.InstallationScope
 		// Default to "all" (both scopes) if no scope specified
 		if scope == "" {
@@ -168,6 +198,7 @@ Flags:
 			installScope := platform.InstallationScope(scope)
 			if installScope != platform.UserScope && installScope != platform.MachineScope {
 				err := fmt.Errorf("invalid scope '%s'. Valid options are: user, machine", scope)
+				GetLogger().Error("Invalid scope provided: %s", scope)
 				output.GetVerbose().Error("%v", err)
 				output.GetDebug().Error("Invalid scope provided: '%s'", scope)
 				return err
@@ -178,6 +209,7 @@ Flags:
 					if errors.Is(err, ErrElevationRequired) {
 						return nil
 					}
+					GetLogger().Error("Failed to check elevation: %v", err)
 					output.GetVerbose().Error("%v", err)
 					output.GetDebug().Error("checkElevation() failed: %v", err)
 					return fmt.Errorf("unable to verify system permissions: %v", err)
@@ -189,6 +221,7 @@ Flags:
 
 		fonts, err := collectFonts(scopes, fm, typeFilter)
 		if err != nil {
+			GetLogger().Error("Failed to collect fonts: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("collectFonts() failed: %v", err)
 			return fmt.Errorf("unable to read installed fonts: %v", err)
@@ -205,7 +238,9 @@ Flags:
 		output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
 
 		// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
-		output.GetVerbose().Info("Matching installed fonts to repository...")
+		if IsVerbose() && !IsDebug() {
+			output.GetVerbose().Info("Matching installed fonts to repository...")
+		}
 		output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
 		matches, err := repo.MatchAllInstalledFonts(allFamilyNames, IsCriticalSystemFont)
 		if err != nil {
@@ -220,7 +255,9 @@ Flags:
 					matchCount++
 				}
 			}
-			output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
+			if IsVerbose() && !IsDebug() {
+				output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
+			}
 		}
 
 		// Populate match data into ParsedFont structs
@@ -299,6 +336,9 @@ Flags:
 			return nil
 		}
 
+		// Log completion
+		GetLogger().Info("List operation complete - Found %d font families", len(names))
+
 		// Show filter info if filtering is applied (count shows families, not individual files)
 		if familyFilter != "" || typeFilter != "" {
 			filterInfo := fmt.Sprintf("Found %d font families installed matching '%s'", len(names), ui.TableSourceName.Render(familyFilter))
@@ -316,7 +356,6 @@ Flags:
 
 		for i, fam := range names {
 			group := filteredFamilies[fam]
-			output.GetDebug().State("Family '%s': %d files", fam, len(group))
 			sort.Slice(group, func(i, j int) bool { return group[i].Style < group[j].Style })
 			rep := group[0]
 
@@ -355,7 +394,6 @@ Flags:
 					}
 				}
 				sort.Strings(styles)
-				output.GetDebug().State("Family '%s': %d unique variants", fam, len(styles))
 				for _, s := range styles {
 					row := fmt.Sprintf("  ↳ %s", s)
 					fmt.Printf("%s %-*s %-*s %-*s %-*s %-*s %-*s\n",
