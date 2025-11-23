@@ -28,8 +28,9 @@ type backupResult struct {
 }
 
 var backupCmd = &cobra.Command{
-	Use:   "backup [output-path]",
-	Short: "Backup installed font files to a zip archive",
+	Use:          "backup [output-path]",
+	Short:        "Backup installed font files to a zip archive",
+	SilenceUsage: true,
 	Long: `Backup installed font files to a zip archive organized by source and family name.
 
 This command creates a backup zip archive containing all font files installed on your system.
@@ -109,7 +110,10 @@ System fonts are always excluded from backups.`,
 		output.GetVerbose().Info("Output: %s", zipPath)
 		output.GetVerbose().Info("Scopes: %v", scopes)
 		output.GetVerbose().Info("System fonts are excluded")
-		fmt.Println()
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
 
 		// For debug mode, do everything without spinner
 		if IsDebug() {
@@ -230,7 +234,7 @@ func detectAccessibleScopes(fm platform.FontManager) ([]platform.InstallationSco
 
 // performBackup performs the backup operation (for debug mode)
 func performBackup(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
-	fonts, err := collectFonts(scopes, fm, "")
+	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose for debug mode
 	if err != nil {
 		return err
 	}
@@ -250,7 +254,7 @@ func performBackup(fm platform.FontManager, scopes []platform.InstallationScope,
 func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
 	// First, collect fonts to determine how many families we'll be backing up
 	output.GetVerbose().Info("Scanning fonts to determine backup scope...")
-	fonts, err := collectFonts(scopes, fm, "")
+	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose - we have our own high-level message
 	if err != nil {
 		return fmt.Errorf("unable to collect fonts: %v", err)
 	}

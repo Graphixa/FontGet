@@ -36,3 +36,19 @@ Examples:
 - Normal user sees: "unable to access system fonts: permission denied"
 - Verbose user sees: "permission denied" (raw error, styled in red)
 - Debug user sees: "platform.NewFontManager() failed: permission denied" (with function name and technical context)
+
+## Spacing for Verbose Output
+
+When using verbose output, follow the spacing framework:
+- After a group of verbose messages, add a blank line only if verbose mode is enabled
+- This ensures proper spacing when verbose is active, without adding unnecessary blank lines when verbose is disabled
+
+Example:
+```go
+output.GetVerbose().Info("Scope: %s", scope)
+output.GetVerbose().Info("Removing %d font(s)", count)
+// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+if IsVerbose() {
+    fmt.Println()
+}
+```

@@ -40,7 +40,16 @@ A section is a logical unit of output:
 
 ### 5. Verbose Output
 - Each verbose info line ends with `\n` (handled by `output.GetVerbose().Info()`)
-- After the last verbose info line, add `fmt.Println()` to create the trailing blank line
+- After the last verbose info line in a section, add a blank line only if verbose output was enabled:
+  ```go
+  output.GetVerbose().Info("Scope: %s", scope)
+  output.GetVerbose().Info("Removing %d font(s)", count)
+  // Verbose section ends with blank line per spacing framework (only if verbose was shown)
+  if IsVerbose() {
+      fmt.Println()
+  }
+  ```
+- This ensures proper spacing when verbose mode is active, without adding unnecessary blank lines when verbose is disabled
 
 ## Examples
 

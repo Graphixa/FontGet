@@ -29,8 +29,9 @@ Use the --license flag to show only license information.`,
   fontget info "Roboto" -l`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			fmt.Printf("\n%s\n\n", ui.RenderError("A font ID is required"))
-			return cmd.Help()
+			fmt.Printf("\n%s\n", ui.RenderError("A font ID is required"))
+			fmt.Printf("Use 'fontget info --help' for more information.\n\n")
+			return nil
 		}
 		return nil
 	},

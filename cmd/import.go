@@ -39,8 +39,9 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
   fontget import fonts.json --force`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			fmt.Printf("\n%s\n\n", ui.RenderError("A manifest file is required"))
-			return cmd.Help()
+			fmt.Printf("\n%s\n", ui.RenderError("A manifest file is required"))
+			fmt.Printf("Use 'fontget import --help' for more information.\n\n")
+			return nil
 		}
 		return nil
 	},
@@ -142,7 +143,10 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		output.GetVerbose().Info("Scope: %s", scope)
 		output.GetVerbose().Info("Force mode: %v", force)
 		output.GetVerbose().Info("Installing to: %s", fontDir)
-		fmt.Println()
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
 
 		// Load config manifest early to check source availability
 		configManifest, err := config.LoadManifest()

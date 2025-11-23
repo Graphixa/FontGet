@@ -99,6 +99,15 @@ func (v *VerboseLogger) Print(format string, args ...interface{}) {
 	}
 }
 
+// EndSection adds a blank line after a verbose section, but only if verbose output was enabled
+// This follows the spacing framework: "Every section ends with exactly one blank line"
+// Use this after a group of verbose Info/Warning/Error calls to ensure proper spacing
+func (v *VerboseLogger) EndSection() {
+	if isVerboseEnabled() {
+		fmt.Println()
+	}
+}
+
 // DisplayFontOperationDetails displays verbose details for a font installation operation
 // This formats and displays variant files, summary, and location information
 // downloadSizeFormatted should be the result of cmd.FormatFileSize() - passed as string to avoid circular imports

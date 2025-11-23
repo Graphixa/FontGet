@@ -166,15 +166,25 @@ func removeFont(
 
 	// Resolve Font ID to font name if needed (supports both Font IDs and font names)
 	searchName := resolveFontNameOrID(fontName, repository)
+	if searchName != fontName {
+		output.GetDebug().State("Resolved font name: %s -> %s", fontName, searchName)
+	}
 
 	// Find font files in the specified scope
+	output.GetDebug().State("Calling findFontFamilyFiles(%s, %s)", searchName, scope)
 	matchingFonts := findFontFamilyFiles(searchName, fontManager, scope)
+	output.GetDebug().State("Found %d matching font file(s)", len(matchingFonts))
 
 	// If no direct matches, try repository search
 	if len(matchingFonts) == 0 && repository != nil {
+		output.GetDebug().State("No direct matches found, trying repository search for: %s", searchName)
 		results, err := repository.SearchFonts(searchName, "false")
 		if err == nil && len(results) > 0 {
+			output.GetDebug().State("Repository search found: %s, searching for matching files", results[0].Name)
 			matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
+			output.GetDebug().State("Found %d matching font file(s) after repository search", len(matchingFonts))
+		} else if err != nil {
+			output.GetDebug().State("Repository search failed: %v", err)
 		}
 	}
 
@@ -201,6 +211,7 @@ func removeFont(
 		fontDisplayName := extractFontDisplayNameFromPath(fontPath)
 
 		// Remove font
+		output.GetDebug().State("Calling fontManager.RemoveFont(%s, %s)", matchingFont, scope)
 		err := fontManager.RemoveFont(matchingFont, scope)
 
 		if err != nil {
@@ -292,8 +303,9 @@ Removal scope can be specified with the --scope flag:
   fontget remove "Roboto" -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			fmt.Printf("\n%s\n\n", ui.RenderError("A font ID is required"))
-			return cmd.Help()
+			fmt.Printf("\n%s\n", ui.RenderError("A font ID is required"))
+			fmt.Printf("Use 'fontget remove --help' for more information.\n\n")
+			return nil
 		}
 		return nil
 	},
@@ -347,7 +359,7 @@ Removal scope can be specified with the --scope flag:
 		// Format font list as a bulleted list
 		GetLogger().Info("Removing %d Font(s):", len(args))
 		for _, fontName := range args {
-			GetLogger().Info("  - %s", fontName)
+			GetLogger().Info(" - %s", fontName)
 		}
 
 		// Verbose-level information for users - show operational details before progress bar
@@ -359,8 +371,10 @@ Removal scope can be specified with the --scope flag:
 		}
 		output.GetVerbose().Info("Scope: %s", scopeDisplay)
 		output.GetVerbose().Info("Removing %d font(s)", len(args))
-		// Section ends with blank line per spacing framework
-		fmt.Println()
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
 
 		// Determine which scopes to check
 		var scopes []platform.InstallationScope
@@ -489,133 +503,231 @@ Removal scope can be specified with the --scope flag:
 			} else if !fontFound {
 				// Font not found - add to not found list
 				notFoundFonts = append(notFoundFonts, fontName)
-			}
-		}
-
-		// Show not found fonts in debug mode (before processing)
-		if IsDebug() && len(notFoundFonts) > 0 {
-			scopeDisplay := scopeFlag
-			if scopeDisplay == "" {
-				scopeDisplay = "user"
-			}
-			GetLogger().Info("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)
-			for _, fontName := range notFoundFonts {
-				GetLogger().Info("  - %s", fontName)
-				// Check if font exists in machine scope (only for user scope operations)
-				if len(scopes) == 1 && scopes[0] == platform.UserScope {
-					// Resolve Font ID to font name if needed
-					searchName := resolveFontNameOrID(fontName, r)
-					machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
-					if len(machineFonts) == 0 {
-						// Try repository search
-						results, err := r.SearchFonts(searchName, "false")
-						if err == nil && len(results) > 0 {
-							repoSearchName := results[0].Name
-							machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope)
-						}
-					}
-					if len(machineFonts) > 0 {
-						// Extract proper name for display
-						fontDir := fontManager.GetFontDir(platform.MachineScope)
-						firstFontPath := filepath.Join(fontDir, machineFonts[0])
-						properName := extractFontFamilyNameFromPath(firstFontPath)
-						GetLogger().Info("    '%s' is available for removal in the 'machine' scope, use \"--scope machine\" to remove", properName)
-					}
-				}
+				// Log to file and show in debug console
+				GetLogger().Error("Font not found: %s", fontName)
+				output.GetDebug().Error("Font not found in installed fonts: %s", fontName)
 			}
 		}
 
 		// If no fonts to remove, show not found message and exit (don't show progress bar)
 		if len(foundFonts) == 0 {
-			// Show not found fonts message (skip in debug mode - already shown in debug logs)
-			if len(notFoundFonts) > 0 && !IsDebug() {
-				// Format scope for display
-				scopeDisplay := scopeFlag
-				if scopeDisplay == "" {
-					scopeDisplay = "user"
-				}
-				// Check if fonts are available in the opposite scope (only for single scope operations)
-				fontsInOppositeScope := make(map[string]string) // Maps search name to proper name in opposite scope
-				oppositeScopeName := ""
-				if len(scopes) == 1 {
-					var oppositeScope platform.InstallationScope
-					switch scopes[0] {
-					case platform.UserScope:
-						oppositeScope = platform.MachineScope
-						oppositeScopeName = "machine"
-					case platform.MachineScope:
-						oppositeScope = platform.UserScope
-						oppositeScopeName = "user"
+			if len(notFoundFonts) > 0 {
+				if IsDebug() {
+					// In debug mode, show technical details to console
+					scopeDisplay := scopeFlag
+					if scopeDisplay == "" {
+						scopeDisplay = "user"
 					}
+					output.GetDebug().Error("No fonts found to remove. The following font(s) were not found installed in the '%s' scope:", scopeDisplay)
+					// Deduplicate for display
+					seenNotFound := make(map[string]bool)
+					for _, fontName := range notFoundFonts {
+						normalized := normalizeFontName(fontName)
+						if !seenNotFound[normalized] {
+							seenNotFound[normalized] = true
+							output.GetDebug().Error(" - %s", fontName)
+						}
+					}
+				} else {
+					// In normal/verbose mode, show user-friendly message with suggestions
+					// Deduplicate notFoundFonts
+					seenNotFound := make(map[string]bool)
+					uniqueNotFound := []string{}
+					for _, fontName := range notFoundFonts {
+						normalized := normalizeFontName(fontName)
+						if !seenNotFound[normalized] {
+							seenNotFound[normalized] = true
+							uniqueNotFound = append(uniqueNotFound, fontName)
+						}
+					}
+					notFoundFonts = uniqueNotFound
 
-					// Check each not found font in the opposite scope
-					if oppositeScope != "" {
-						for _, fontName := range notFoundFonts {
-							// Resolve Font ID to font name if needed
-							searchName := resolveFontNameOrID(fontName, r)
-							// Try direct match first
-							matchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
-							if len(matchingFonts) == 0 {
-								// Try repository search
-								results, err := r.SearchFonts(searchName, "false")
-								if err == nil && len(results) > 0 {
-									repoSearchName := results[0].Name
-									matchingFonts = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
+					// Format scope for display
+					scopeDisplay := scopeFlag
+					if scopeDisplay == "" {
+						scopeDisplay = "user"
+					}
+					// Check if fonts are available in the opposite scope (only for single scope operations)
+					fontsInOppositeScope := make(map[string]string) // Maps search name to proper name in opposite scope
+					oppositeScopeName := ""
+					if len(scopes) == 1 {
+						var oppositeScope platform.InstallationScope
+						switch scopes[0] {
+						case platform.UserScope:
+							oppositeScope = platform.MachineScope
+							oppositeScopeName = "machine"
+						case platform.MachineScope:
+							oppositeScope = platform.UserScope
+							oppositeScopeName = "user"
+						}
+
+						// Check each not found font in the opposite scope
+						if oppositeScope != "" {
+							for _, fontName := range notFoundFonts {
+								// Resolve Font ID to font name if needed
+								searchName := resolveFontNameOrID(fontName, r)
+								// Try direct match first
+								matchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+								if len(matchingFonts) == 0 {
+									// Try repository search
+									results, err := r.SearchFonts(searchName, "false")
+									if err == nil && len(results) > 0 {
+										repoSearchName := results[0].Name
+										matchingFonts = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
+									}
+								}
+								if len(matchingFonts) > 0 {
+									// Extract proper name for display
+									fontDir := fontManager.GetFontDir(oppositeScope)
+									firstFontPath := filepath.Join(fontDir, matchingFonts[0])
+									properName := extractFontFamilyNameFromPath(firstFontPath)
+									fontsInOppositeScope[fontName] = properName
 								}
 							}
-							if len(matchingFonts) > 0 {
-								// Extract proper name for display
-								fontDir := fontManager.GetFontDir(oppositeScope)
-								firstFontPath := filepath.Join(fontDir, matchingFonts[0])
-								properName := extractFontFamilyNameFromPath(firstFontPath)
-								fontsInOppositeScope[fontName] = properName
+						}
+					}
+
+					// Separate fonts into two groups: truly not found vs found in opposite scope
+					trulyNotFound := []string{}
+					for _, fontName := range notFoundFonts {
+						if _, foundInOpposite := fontsInOppositeScope[fontName]; !foundInOpposite {
+							trulyNotFound = append(trulyNotFound, fontName)
+						}
+					}
+
+					// Display truly not found fonts with suggestions (only if there are any)
+					if len(trulyNotFound) > 0 {
+						// Get installed font family names for suggestions
+						var installedFontNames []string
+						for _, scopeType := range scopes {
+							fontDir := fontManager.GetFontDir(scopeType)
+							fontFiles, err := platform.ListInstalledFonts(fontDir)
+							if err == nil {
+								// Extract unique family names from installed fonts
+								seenFamilies := make(map[string]bool)
+								for _, fontFile := range fontFiles {
+									fontPath := filepath.Join(fontDir, fontFile)
+									familyName := extractFontFamilyNameFromPath(fontPath)
+									normalized := normalizeFontName(familyName)
+									if !seenFamilies[normalized] && familyName != "" {
+										seenFamilies[normalized] = true
+										installedFontNames = append(installedFontNames, familyName)
+									}
+								}
 							}
 						}
-					}
-				}
 
-				// Separate fonts into two groups: truly not found vs found in opposite scope
-				trulyNotFound := []string{}
-				for _, fontName := range notFoundFonts {
-					if _, foundInOpposite := fontsInOppositeScope[fontName]; !foundInOpposite {
-						trulyNotFound = append(trulyNotFound, fontName)
-					}
-				}
+						// Build normalized map of all not-found fonts (including those in opposite scope)
+						notFoundNormalized := make(map[string]bool)
+						for _, fontName := range notFoundFonts {
+							notFoundNormalized[normalizeFontName(fontName)] = true
+						}
 
-				// Display truly not found fonts (only if there are any)
-				if len(trulyNotFound) > 0 {
-					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
-					for _, fontName := range trulyNotFound {
-						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
-					}
-					// Section ends with blank line per spacing framework (if followed by another section, it provides spacing)
-					// If no opposite scope section, the else block below will handle the hint and final blank line
-					if len(fontsInOppositeScope) > 0 {
-						fmt.Println()
-					}
-				}
+						// Filter out not found fonts from suggestions (don't suggest fonts that are being removed)
+						filteredInstalledFontNames := []string{}
+						for _, fontName := range installedFontNames {
+							if !notFoundNormalized[normalizeFontName(fontName)] {
+								filteredInstalledFontNames = append(filteredInstalledFontNames, fontName)
+							}
+						}
+						installedFontNames = filteredInstalledFontNames
 
-				// Display fonts found in opposite scope as a separate section
-				if len(fontsInOppositeScope) > 0 {
-					// Use FeedbackWarning (yellow, no bold) for the header message
-					fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
-					for _, fontName := range notFoundFonts {
-						if properName, foundInOpposite := fontsInOppositeScope[fontName]; foundInOpposite {
-							fmt.Printf("  - %s\n", properName)
+						// Show header first
+						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
+
+						// Show all not-found fonts grouped together
+						if len(trulyNotFound) == 1 {
+							// Single font - show with suggestions
+							fontName := trulyNotFound[0]
+							var similar []string
+							if len(installedFontNames) > 0 {
+								similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+							}
+
+							// Filter out any suggestions that are also in the not found list
+							filteredSimilar := []string{}
+							for _, suggestion := range similar {
+								if !notFoundNormalized[normalizeFontName(suggestion)] {
+									filteredSimilar = append(filteredSimilar, suggestion)
+								}
+							}
+							similar = filteredSimilar
+
+							if len(similar) > 0 {
+								fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+								fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+								for _, similarFont := range similar {
+									fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+								}
+							} else {
+								fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf(" - %s", fontName)))
+							}
+						} else {
+							// Multiple fonts - show grouped format
+							for _, fontName := range trulyNotFound {
+								fmt.Printf(" - %s\n", fontName)
+							}
+
+							// Collect all suggestions for all fonts (limit to 12 total)
+							const maxSuggestions = 12
+							allSimilar := []string{}
+							seenSimilar := make(map[string]bool)
+
+							for _, fontName := range trulyNotFound {
+								if len(allSimilar) >= maxSuggestions {
+									break
+								}
+								var similar []string
+								if len(installedFontNames) > 0 {
+									similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+								}
+								// Deduplicate suggestions and filter out not-found fonts
+								for _, suggestion := range similar {
+									if len(allSimilar) >= maxSuggestions {
+										break
+									}
+									normalizedSuggestion := normalizeFontName(suggestion)
+									if !seenSimilar[suggestion] && !notFoundNormalized[normalizedSuggestion] {
+										seenSimilar[suggestion] = true
+										allSimilar = append(allSimilar, suggestion)
+									}
+								}
+							}
+
+							// Show consolidated suggestions if any
+							if len(allSimilar) > 0 {
+								fmt.Println()
+								fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+								for _, similarFont := range allSimilar {
+									fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+								}
+							}
+						}
+
+						// Add blank line before hint or next section
+						if len(fontsInOppositeScope) > 0 {
+							fmt.Println()
+						} else if len(trulyNotFound) > 0 {
+							fmt.Println()
+							fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
 						}
 					}
-					// Section ends with blank line per spacing framework
-					fmt.Println()
-				} else {
-					// No fonts in opposite scope, but we might have truly not found fonts
-					// Add blank line before hint message (within section)
-					if len(trulyNotFound) > 0 {
+
+					// Display fonts found in opposite scope as a separate section
+					if len(fontsInOppositeScope) > 0 {
+						// Use FeedbackWarning (yellow, no bold) for the header message
+						fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
+						for _, fontName := range notFoundFonts {
+							if properName, foundInOpposite := fontsInOppositeScope[fontName]; foundInOpposite {
+								fmt.Printf(" - %s\n", properName)
+							}
+						}
+						// Section ends with blank line per spacing framework
 						fmt.Println()
-						// Some fonts are truly not found
-						fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
+					} else if len(trulyNotFound) > 0 {
+						// Section ends with blank line per spacing framework
+						fmt.Println()
 					}
-					// Section ends with blank line per spacing framework
-					fmt.Println()
 				}
 			}
 			return nil
@@ -721,8 +833,9 @@ Removal scope can be specified with the --scope flag:
 				for j, scopeType := range scopes {
 					scopeLabelName := scopeLabel[j]
 					fontDir := fontManager.GetFontDir(scopeType)
-					output.GetDebug().State("Removing font %s in %s scope (directory: %s)", fontInfo.SearchName, scopeLabelName, fontDir)
+					output.GetDebug().State("Removing font %s in %s (directory: %s)", fontInfo.SearchName, scopeLabelName, fontDir)
 
+					output.GetDebug().State("Calling removeFont(%s, %s, %s)", fontInfo.SearchName, scopeLabelName, fontDir)
 					result, err := removeFont(
 						fontInfo.SearchName,
 						fontManager,
@@ -733,7 +846,7 @@ Removal scope can be specified with the --scope flag:
 					)
 
 					if err != nil {
-						output.GetDebug().State("Error removing font %s in %s scope: %v", fontInfo.SearchName, scopeLabelName, err)
+						output.GetDebug().State("Error removing font %s in %s: %v", fontInfo.SearchName, scopeLabelName, err)
 						if result != nil {
 							status.Failed += result.Failed
 							status.Skipped += result.Skipped
@@ -741,7 +854,7 @@ Removal scope can be specified with the --scope flag:
 								// Format failed variants as a list with hyphens
 								output.GetDebug().State("Failed variants:")
 								for _, detail := range result.Details {
-									output.GetDebug().State("  - %s", detail)
+									output.GetDebug().State(" - %s", detail)
 								}
 							}
 						}
@@ -754,14 +867,40 @@ Removal scope can be specified with the --scope flag:
 
 					// Show detailed result information in debug mode
 					if len(result.Details) > 0 {
-						output.GetDebug().State("Removed variants:")
+						// Separate variants by status (like add command does)
+						var removedFiles, skippedFiles, failedFiles []string
 						for _, detail := range result.Details {
-							// Remove status suffixes like " (Skipped)" or " (Failed)" for cleaner output
-							variantName := strings.TrimSuffix(strings.TrimSuffix(detail, " (Skipped)"), " (Failed)")
-							output.GetDebug().State("  - %s", variantName)
+							if strings.Contains(detail, " (Skipped") {
+								variantName := strings.TrimSuffix(strings.TrimSuffix(detail, " (Skipped - Protected system font)"), " (Skipped)")
+								skippedFiles = append(skippedFiles, variantName)
+							} else if strings.Contains(detail, " (Failed)") {
+								variantName := strings.TrimSuffix(detail, " (Failed)")
+								failedFiles = append(failedFiles, variantName)
+							} else {
+								removedFiles = append(removedFiles, detail)
+							}
+						}
+
+						if len(removedFiles) > 0 {
+							output.GetDebug().State("Removed variants:")
+							for _, file := range removedFiles {
+								output.GetDebug().State(" - %s", file)
+							}
+						}
+						if len(skippedFiles) > 0 {
+							output.GetDebug().State("Skipped variants:")
+							for _, file := range skippedFiles {
+								output.GetDebug().State(" - %s", file)
+							}
+						}
+						if len(failedFiles) > 0 {
+							output.GetDebug().State("Failed variants:")
+							for _, file := range failedFiles {
+								output.GetDebug().State(" - %s", file)
+							}
 						}
 					}
-					output.GetDebug().State("Font %s in %s scope completed: %s - %s (Removed: %d, Skipped: %d, Failed: %d)",
+					output.GetDebug().State("Font %s in %s completed: %s - %s (Removed: %d, Skipped: %d, Failed: %d)",
 						fontInfo.SearchName, scopeLabelName, result.Status, result.Message, result.Success, result.Skipped, result.Failed)
 				}
 			}
@@ -1170,24 +1309,155 @@ Removal scope can be specified with the --scope flag:
 			status.Removed, status.Skipped, status.Failed)
 
 		// Show not found fonts right after progress bar output (before status report)
-		// Skip in debug mode - already shown in debug logs
-		if len(notFoundFonts) > 0 && !IsDebug() {
-			// Progress bar already ends with \n\n, so we start directly
-			// Format scope for display
-			scopeDisplay := scopeFlag
-			if scopeDisplay == "" {
-				scopeDisplay = "user"
+		if len(notFoundFonts) > 0 {
+			if IsDebug() {
+				// In debug mode, show technical details to console
+				scopeDisplay := scopeFlag
+				if scopeDisplay == "" {
+					scopeDisplay = "user"
+				}
+				output.GetDebug().Error("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)
+				// Deduplicate for display
+				seenNotFound := make(map[string]bool)
+				for _, fontName := range notFoundFonts {
+					normalized := normalizeFontName(fontName)
+					if !seenNotFound[normalized] {
+						seenNotFound[normalized] = true
+						output.GetDebug().Error(" - %s", fontName)
+					}
+				}
+			} else {
+				// In normal/verbose mode, show user-friendly message with suggestions
+				// Progress bar already ends with \n\n, so we start directly
+				// Deduplicate notFoundFonts
+				seenNotFound := make(map[string]bool)
+				uniqueNotFound := []string{}
+				for _, fontName := range notFoundFonts {
+					normalized := normalizeFontName(fontName)
+					if !seenNotFound[normalized] {
+						seenNotFound[normalized] = true
+						uniqueNotFound = append(uniqueNotFound, fontName)
+					}
+				}
+				notFoundFonts = uniqueNotFound
+
+				// Format scope for display
+				scopeDisplay := scopeFlag
+				if scopeDisplay == "" {
+					scopeDisplay = "user"
+				}
+
+				// Get installed font family names for suggestions
+				var installedFontNames []string
+				for _, scopeType := range scopes {
+					fontDir := fontManager.GetFontDir(scopeType)
+					fontFiles, err := platform.ListInstalledFonts(fontDir)
+					if err == nil {
+						// Extract unique family names from installed fonts
+						seenFamilies := make(map[string]bool)
+						for _, fontFile := range fontFiles {
+							fontPath := filepath.Join(fontDir, fontFile)
+							familyName := extractFontFamilyNameFromPath(fontPath)
+							normalized := normalizeFontName(familyName)
+							if !seenFamilies[normalized] && familyName != "" {
+								seenFamilies[normalized] = true
+								installedFontNames = append(installedFontNames, familyName)
+							}
+						}
+					}
+				}
+
+				// Filter out not found fonts from suggestions (don't suggest fonts that are being removed)
+				notFoundNormalized := make(map[string]bool)
+				for _, fontName := range notFoundFonts {
+					notFoundNormalized[normalizeFontName(fontName)] = true
+				}
+				filteredInstalledFontNames := []string{}
+				for _, fontName := range installedFontNames {
+					if !notFoundNormalized[normalizeFontName(fontName)] {
+						filteredInstalledFontNames = append(filteredInstalledFontNames, fontName)
+					}
+				}
+				installedFontNames = filteredInstalledFontNames
+
+				// Show header first
+				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
+
+				// Show all not-found fonts grouped together
+				if len(notFoundFonts) == 1 {
+					// Single font - show with suggestions
+					fontName := notFoundFonts[0]
+					var similar []string
+					if len(installedFontNames) > 0 {
+						similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+					}
+
+					// Filter out any suggestions that are also in the not found list
+					filteredSimilar := []string{}
+					for _, suggestion := range similar {
+						if !notFoundNormalized[normalizeFontName(suggestion)] {
+							filteredSimilar = append(filteredSimilar, suggestion)
+						}
+					}
+					similar = filteredSimilar
+
+					if len(similar) > 0 {
+						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+						fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+						for _, similarFont := range similar {
+							fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+						}
+					} else {
+						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf(" - %s", fontName)))
+					}
+				} else {
+					// Multiple fonts - show grouped format
+					for _, fontName := range notFoundFonts {
+						fmt.Printf(" - %s\n", fontName)
+					}
+
+					// Collect all suggestions for all fonts (limit to 12 total)
+					const maxSuggestions = 12
+					allSimilar := []string{}
+					seenSimilar := make(map[string]bool)
+
+					for _, fontName := range notFoundFonts {
+						if len(allSimilar) >= maxSuggestions {
+							break
+						}
+						var similar []string
+						if len(installedFontNames) > 0 {
+							similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+						}
+						// Deduplicate suggestions and filter out not-found fonts
+						for _, suggestion := range similar {
+							if len(allSimilar) >= maxSuggestions {
+								break
+							}
+							normalizedSuggestion := normalizeFontName(suggestion)
+							if !seenSimilar[suggestion] && !notFoundNormalized[normalizedSuggestion] {
+								seenSimilar[suggestion] = true
+								allSimilar = append(allSimilar, suggestion)
+							}
+						}
+					}
+
+					// Show consolidated suggestions if any
+					if len(allSimilar) > 0 {
+						fmt.Println()
+						fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+						for _, similarFont := range allSimilar {
+							fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+						}
+					}
+				}
+
+				// Add blank line before "Try using..." message (within section)
+				fmt.Println()
+				fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
+				// Section ends with blank line per spacing framework
+				fmt.Println()
 			}
-			// Format message to match add command style
-			fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
-			for _, fontName := range notFoundFonts {
-				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
-			}
-			// Add blank line before "Try using..." message (within section)
-			fmt.Println()
-			fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
-			// Section ends with blank line per spacing framework
-			fmt.Println()
 		}
 
 		// Show fonts that still exist in opposite scope after removal (before status report)
@@ -1218,7 +1488,7 @@ Removal scope can be specified with the --scope flag:
 				// Use FeedbackWarning (yellow, no bold) for the header message
 				fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
 				for _, fontName := range uniqueFonts {
-					fmt.Printf("  - %s\n", fontName)
+					fmt.Printf(" - %s\n", fontName)
 				}
 				// Section ends with blank line per spacing framework
 				fmt.Println()

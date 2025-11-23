@@ -14,17 +14,15 @@ import (
 )
 
 var searchCmd = &cobra.Command{
-	Use:   "search <query>",
-	Short: "Search for available fonts",
+	Use:          "search <query>",
+	Short:        "Search for available fonts",
+	SilenceUsage: true,
 	Long: `Search for fonts from all configured sources.
 
 The search query matches font names. Use the --category flag to filter by
 font category (e.g., "Sans Serif", "Serif", "Monospace").
 
-Examples:
-  fontget search fira              # Search for fonts matching "fira"
-  fontget search -c "Sans Serif"   # List all fonts in "Sans Serif" category
-  fontget search -c                # List all available categories`,
+`,
 	Example: `  fontget search fira
   fontget search "Fira Sans"
   fontget search -c "Sans Serif"
@@ -40,10 +38,13 @@ Examples:
 			query = args[0]
 		}
 
-		// Validate query
+		// Validate query - require either a query or category
 		if query == "" && category == "" {
-			fmt.Printf("\n%s\n\n", ui.RenderError("Either a search query or category is required"))
-			return cmd.Help()
+			fmt.Printf("\n%s\n", ui.RenderError("A search query or category is required"))
+			fmt.Printf("Use 'fontget search --help' for more information.\n\n")
+			// Return nil since we've already printed the error message
+			// This prevents Cobra from printing a duplicate error
+			return nil
 		}
 		return nil
 	},
@@ -93,6 +94,12 @@ Examples:
 			query = args[0]
 		}
 
+		// Safety check: if both query and category are empty, return early
+		// This prevents execution when Args validation fails (defense in depth)
+		if query == "" && category == "" {
+			return nil // Args already showed error and help
+		}
+
 		// Log search parameters (always log to file)
 		GetLogger().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 
@@ -119,6 +126,10 @@ Examples:
 
 		// Verbose-level information for users - show operational details
 		output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', refresh=%v", query, category, refresh)
 
 		// Get repository (handles source updates internally with spinner if needed)
@@ -153,11 +164,25 @@ Examples:
 		}
 
 		output.GetVerbose().Info("Search completed - found %d results", len(results))
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
 		output.GetDebug().State("Search returned %d font results", len(results))
+
 		// Build the search result message
-		searchMsg := fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.TableSourceName.Render(query))
-		if category != "" {
-			searchMsg += fmt.Sprintf(" | Filtered by category: '%s'", ui.TableSourceName.Render(category))
+		var searchMsg string
+		if query != "" {
+			searchMsg = fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.TableSourceName.Render(query))
+			if category != "" {
+				searchMsg += fmt.Sprintf(" | Filtered by category: '%s'", ui.TableSourceName.Render(category))
+			}
+		} else if category != "" {
+			// Category-only search
+			searchMsg = fmt.Sprintf("Found %d fonts in category: '%s'", len(results), ui.TableSourceName.Render(category))
+		} else {
+			// This shouldn't happen due to validation, but handle it gracefully
+			searchMsg = fmt.Sprintf("Found %d fonts", len(results))
 		}
 		fmt.Printf("\n%s\n\n", searchMsg)
 

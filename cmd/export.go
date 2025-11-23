@@ -50,8 +50,9 @@ type ExportMetadata struct {
 }
 
 var exportCmd = &cobra.Command{
-	Use:   "export [output-file]",
-	Short: "Export installed fonts to a manifest file",
+	Use:          "export [output-file]",
+	Short:        "Export installed fonts to a manifest file",
+	SilenceUsage: true,
 	Long: `Export installed fonts to a JSON manifest file that can be used to restore fonts on another system.
 
 By default, exports all fonts that match repository entries (Font IDs available).
@@ -176,7 +177,10 @@ or a full file path.`,
 		}
 		output.GetVerbose().Info("System fonts are always excluded")
 		output.GetVerbose().Info("Output file: %s", outputFile)
-		fmt.Println()
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
 
 		// Collect fonts from all scopes
 		scopes := []platform.InstallationScope{platform.UserScope, platform.MachineScope}
@@ -286,7 +290,7 @@ func performFullExport(fm platform.FontManager, scopes []platform.InstallationSc
 func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
 	// Collect fonts from all scopes
 	output.GetVerbose().Info("Collecting installed fonts...")
-	fonts, err := collectFonts(scopes, fm, "")
+	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose - we have our own high-level message
 	if err != nil {
 		GetLogger().Error("Failed to collect fonts: %v", err)
 		output.GetVerbose().Error("%v", err)

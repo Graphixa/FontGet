@@ -31,7 +31,7 @@ type ParsedFont struct {
 	Source     string
 }
 
-func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string) ([]ParsedFont, error) {
+func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string, suppressVerbose ...bool) ([]ParsedFont, error) {
 	var parsed []ParsedFont
 	// Normalize type filter for comparison (uppercase)
 	typeFilterUpper := ""
@@ -39,14 +39,24 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 		typeFilterUpper = strings.ToUpper(typeFilter)
 	}
 
+	// Check if verbose output should be suppressed (default: false, show verbose)
+	shouldSuppressVerbose := false
+	if len(suppressVerbose) > 0 {
+		shouldSuppressVerbose = suppressVerbose[0]
+	}
+
 	for _, scope := range scopes {
 		fontDir := fm.GetFontDir(scope)
-		output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
+		if !shouldSuppressVerbose {
+			output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
+		}
 		names, err := platform.ListInstalledFonts(fontDir)
 		if err != nil {
 			return nil, err
 		}
-		output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
+		if !shouldSuppressVerbose {
+			output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
+		}
 		for _, name := range names {
 			p := filepath.Join(fontDir, name)
 			info, err := os.Stat(p)
@@ -65,7 +75,13 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 			parsed = append(parsed, buildParsedFont(p, name, scope, info))
 		}
 	}
-	output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+	if !shouldSuppressVerbose {
+		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
+	}
 	return parsed, nil
 }
 
@@ -117,8 +133,9 @@ func groupByFamily(fonts []ParsedFont) map[string][]ParsedFont {
 }
 
 var listCmd = &cobra.Command{
-	Use:   "list [query]",
-	Short: "List installed fonts",
+	Use:          "list [query]",
+	Short:        "List installed fonts",
+	SilenceUsage: true,
 	Long: `List fonts installed on your system.
 
 By default, shows fonts from both user and system-wide installations.
@@ -184,6 +201,10 @@ Flags:
 		}
 		if familyFilter != "" {
 			output.GetVerbose().Info("Family filter: %s", familyFilter)
+		}
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
 		}
 
 		var scopes []platform.InstallationScope
@@ -251,6 +272,10 @@ Flags:
 				}
 			}
 			output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
+			// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+			if IsVerbose() {
+				fmt.Println()
+			}
 		}
 
 		// Populate match data into ParsedFont structs

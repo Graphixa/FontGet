@@ -237,10 +237,11 @@ GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d
 ### Good Verbose Implementation
 ```go
 // Show user-relevant information (console output)
-if IsVerbose() && !IsDebug() {
-    output.GetVerbose().Info("Processing font: %s", fontName)
-    output.GetVerbose().Detail("Info", "Installing to: %s", installPath)
-    output.GetVerbose().Success("Successfully installed %d font variants", len(variants))
+output.GetVerbose().Info("Scope: %s", scope)
+output.GetVerbose().Info("Installing %d font(s)", count)
+// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+if IsVerbose() {
+    fmt.Println()
 }
 ```
 
@@ -299,6 +300,35 @@ output.GetVerbose().Detail("Debug", "Function call: %s", functionName)
 // Don't put user messages in debug
 output.GetDebug().Success("Operation completed successfully")
 ```
+
+### Suppressing Verbose for Internal/Helper Functions
+
+When shared functions are used for both primary operations and internal checks, suppress verbose output for internal usage:
+
+```go
+// Good: Function accepts suppressVerbose parameter
+func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string, suppressVerbose ...bool) ([]ParsedFont, error) {
+    shouldSuppressVerbose := false
+    if len(suppressVerbose) > 0 {
+        shouldSuppressVerbose = suppressVerbose[0]
+    }
+    
+    for _, scope := range scopes {
+        if !shouldSuppressVerbose {
+            output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
+        }
+        // ... rest of function
+    }
+}
+
+// Primary operation (list command) - show verbose
+fonts, err := collectFonts(scopes, fm, typeFilter)
+
+// Internal check (add command) - suppress verbose
+fonts, err := collectFonts(scopes, fontManager, "", true)
+```
+
+**Why**: Internal checks (like checking if a font is already installed) are implementation details that users don't need to see. Only show verbose output when the operation is the primary purpose of the command (e.g., `list` command scanning fonts).
 
 ## Testing Guidelines
 
@@ -367,10 +397,11 @@ GetLogger().Error("Failed to install font %s: %v", fontName, err)
 GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d", installed, skipped, failed)
 
 // Verbose (user-relevant, console output)
-if IsVerbose() && !IsDebug() {
-    output.GetVerbose().Info("Downloading and Installing Fonts")
-    output.GetVerbose().Detail("Info", "Installing to: %s", fontDir)
-    output.GetVerbose().Success("Successfully installed %s to %s scope", fontName, scope)
+output.GetVerbose().Info("Scope: %s", scope)
+output.GetVerbose().Info("Installing %d font(s)", len(fontNames))
+// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+if IsVerbose() {
+    fmt.Println()
 }
 
 // Debug (technical, console output)
@@ -388,10 +419,11 @@ GetLogger().Error("Failed to remove font %s: %v", fontName, err)
 GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d", removed, skipped, failed)
 
 // Verbose (user-relevant, console output)
-if IsVerbose() && !IsDebug() {
-    output.GetVerbose().Info("Finding and Removing Fonts")
-    output.GetVerbose().Detail("Info", "Removing from: %s", fontDir)
-    output.GetVerbose().Success("Successfully removed %s from %s scope", fontName, scope)
+output.GetVerbose().Info("Scope: %s", scope)
+output.GetVerbose().Info("Removing %d font(s)", len(fontNames))
+// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+if IsVerbose() {
+    fmt.Println()
 }
 
 // Debug (technical, console output)
@@ -409,10 +441,12 @@ GetLogger().Error("Failed to list fonts: %v", err)
 GetLogger().Info("List operation complete - Found %d fonts", len(fonts))
 
 // Verbose (user-relevant, console output)
-if IsVerbose() && !IsDebug() {
-    output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
-    output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
-    output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
+output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
+output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+if IsVerbose() {
+    fmt.Println()
 }
 
 // Debug (technical, console output)

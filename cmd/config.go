@@ -15,8 +15,9 @@ import (
 )
 
 var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Manage FontGet settings and configuration",
+	Use:          "config",
+	Short:        "Manage FontGet settings and configuration",
+	SilenceUsage: true,
 	Long: `Manage FontGet application configuration settings.
 
 The config command allows you to view and edit the FontGet application configuration file (config.yaml).
@@ -31,8 +32,9 @@ This includes settings for the default editor, logging preferences, and other ap
 }
 
 var configInfoCmd = &cobra.Command{
-	Use:   "info",
-	Short: "Show configuration information",
+	Use:          "info",
+	Short:        "Show configuration information",
+	SilenceUsage: true,
 	Long:  `Display detailed information about the current FontGet configuration.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
@@ -100,8 +102,9 @@ var configInfoCmd = &cobra.Command{
 }
 
 var configEditCmd = &cobra.Command{
-	Use:   "edit",
-	Short: "Open configuration file in default editor",
+	Use:          "edit",
+	Short:        "Open configuration file in default editor",
+	SilenceUsage: true,
 	Long:  `Open the FontGet configuration file (config.yaml) in your default editor.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
@@ -189,8 +192,9 @@ var configEditCmd = &cobra.Command{
 }
 
 var configValidateCmd = &cobra.Command{
-	Use:   "validate",
-	Short: "Validate configuration file integrity",
+	Use:          "validate",
+	Short:        "Validate configuration file integrity",
+	SilenceUsage: true,
 	Long: `Validate the configuration file and report any issues.
 
 If validation fails, use 'fontget config edit' to open and fix the configuration file.
@@ -279,8 +283,9 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 }
 
 var configResetCmd = &cobra.Command{
-	Use:   "reset",
-	Short: "Reset configuration to defaults",
+	Use:          "reset",
+	Short:        "Reset configuration to defaults",
+	SilenceUsage: true,
 	Long: `Reset the configuration file to default values.
 
 Replaces the existing configuration file with defaults while preserving log files.

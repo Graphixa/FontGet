@@ -604,33 +604,59 @@ func (r *Repository) SearchFonts(query string, category string) ([]SearchResult,
 func (r *Repository) SearchFontsWithOptions(query string, category string, usePopularity bool) ([]SearchResult, error) {
 	// Update global popularity setting from config
 	SetPopularityScoring()
-	query = strings.ToLower(query)
+
+	// Early return: if query is empty and no category, return no results
+	// This prevents empty queries from matching all fonts
+	if query == "" && category == "" {
+		return []SearchResult{}, nil
+	}
+
 	var results []SearchResult
 
-	// Search through each source in the repository's manifest using advanced scoring
-	for sourceID, source := range r.manifest.Sources {
-		for id, font := range source.Fonts {
-			// Check both the font name and ID
-			fontName := strings.ToLower(font.Name)
-			fontID := strings.ToLower(id)
-
-			// Use the advanced scoring algorithm (popularity controlled by global variable)
-			score, matchType := r.calculateMatchScoreWithOptions(query, fontName, fontID, font)
-			if score > 0 {
+	// If query is empty but category is provided, return all fonts (will be filtered by category later)
+	if query == "" {
+		// Return all fonts from all sources
+		for sourceID, source := range r.manifest.Sources {
+			for id, font := range source.Fonts {
 				result := r.createSearchResult(id, font, sourceID, source.Name)
-				result.Score = score
-				result.MatchType = matchType
+				result.Score = 50 // Base score for category-only searches
+				result.MatchType = "category-only"
 				results = append(results, result)
 			}
 		}
-	}
+	} else {
+		// Normal search with query
+		query = strings.ToLower(query)
+		// Search through each source in the repository's manifest using advanced scoring
+		for sourceID, source := range r.manifest.Sources {
+			for id, font := range source.Fonts {
+				// Check both the font name and ID
+				fontName := strings.ToLower(font.Name)
+				fontID := strings.ToLower(id)
 
-	// Sort by score (highest first)
-	r.sortResultsByScore(results)
+				// Use the advanced scoring algorithm (popularity controlled by global variable)
+				score, matchType := r.calculateMatchScoreWithOptions(query, fontName, fontID, font)
+				if score > 0 {
+					result := r.createSearchResult(id, font, sourceID, source.Name)
+					result.Score = score
+					result.MatchType = matchType
+					results = append(results, result)
+				}
+			}
+		}
+		// Sort by score (highest first) only when we have a query
+		r.sortResultsByScore(results)
+	}
 
 	// Filter by category if specified
 	if category != "" {
 		results = r.filterByCategory(results, category)
+		// Sort by name for category-only searches (after filtering)
+		if query == "" {
+			sort.Slice(results, func(i, j int) bool {
+				return results[i].Name < results[j].Name
+			})
+		}
 	}
 
 	return results, nil

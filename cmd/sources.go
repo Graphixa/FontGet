@@ -22,8 +22,9 @@ import (
 )
 
 var sourcesCmd = &cobra.Command{
-	Use:   "sources",
-	Short: "Manage FontGet font sources",
+	Use:          "sources",
+	Short:        "Manage FontGet font sources",
+	SilenceUsage: true,
 	Long: `Manage font sources.
 
 Font sources provide the data needed to discover and install fonts. Only add
@@ -577,8 +578,9 @@ func formatDuration(d time.Duration) string {
 }
 
 var sourcesValidateCmd = &cobra.Command{
-	Use:   "validate",
-	Short: "Validate cached sources integrity",
+	Use:          "validate",
+	Short:        "Validate cached sources integrity",
+	SilenceUsage: true,
 	Long: `Validate source files and report any issues.
 
 If validation fails, run 'fontget sources update' to refresh the source files.`,
