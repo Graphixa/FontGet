@@ -105,13 +105,11 @@ System fonts are always excluded from backups.`,
 		GetLogger().Info("Backup parameters - Output: %s, Scopes: %v", zipPath, scopes)
 
 		// Verbose output
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Backing up font files")
-			output.GetVerbose().Info("Output: %s", zipPath)
-			output.GetVerbose().Info("Scopes: %v", scopes)
-			output.GetVerbose().Info("System fonts are excluded")
-			fmt.Println()
-		}
+		output.GetVerbose().Info("Backing up font files")
+		output.GetVerbose().Info("Output: %s", zipPath)
+		output.GetVerbose().Info("Scopes: %v", scopes)
+		output.GetVerbose().Info("System fonts are excluded")
+		fmt.Println()
 
 		// For debug mode, do everything without spinner
 		if IsDebug() {
@@ -217,9 +215,7 @@ func detectAccessibleScopes(fm platform.FontManager) ([]platform.InstallationSco
 	isElevated, err := fm.IsElevated()
 	if err != nil {
 		// If we can't detect elevation, default to user scope only (safer)
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Warning("Unable to detect elevation status: %v. Backing up user scope only.", err)
-		}
+		output.GetVerbose().Warning("Unable to detect elevation status: %v. Backing up user scope only.", err)
 		return []platform.InstallationScope{platform.UserScope}, nil
 	}
 
@@ -253,9 +249,7 @@ func performBackup(fm platform.FontManager, scopes []platform.InstallationScope,
 // runBackupWithProgressBar runs the backup operation with a progress bar
 func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
 	// First, collect fonts to determine how many families we'll be backing up
-	if IsVerbose() && !IsDebug() {
-		output.GetVerbose().Info("Scanning fonts to determine backup scope...")
-	}
+	output.GetVerbose().Info("Scanning fonts to determine backup scope...")
 	fonts, err := collectFonts(scopes, fm, "")
 	if err != nil {
 		return fmt.Errorf("unable to collect fonts: %v", err)
@@ -462,9 +456,7 @@ func performBackupWithProgress(fm platform.FontManager, _ []platform.Installatio
 
 // performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
 func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
-	if IsVerbose() && !IsDebug() {
-		output.GetVerbose().Info("Found %d font files", len(fonts))
-	}
+	output.GetVerbose().Info("Found %d font files", len(fonts))
 	output.GetDebug().State("Processing %d font files", len(fonts))
 
 	// Match fonts to repository to get source information
@@ -480,14 +472,10 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 	}
 	sort.Strings(names)
 
-	if IsVerbose() && !IsDebug() {
-		output.GetVerbose().Info("Matching fonts to repository...")
-	}
+	output.GetVerbose().Info("Matching fonts to repository...")
 	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
 	if err != nil {
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
-		}
+		output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
 		output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
 		// Continue with partial matches
 		if matches == nil {
@@ -549,9 +537,7 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 		}
 	}
 
-	if IsVerbose() && !IsDebug() {
-		output.GetVerbose().Info("Creating zip archive...")
-	}
+	output.GetVerbose().Info("Creating zip archive...")
 	output.GetDebug().State("Organized fonts into %d sources", len(sourceFamilyMap))
 
 	// Ensure parent directory exists
@@ -653,9 +639,7 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 		return nil, fmt.Errorf("unable to finalize backup archive: %v", err)
 	}
 
-	if IsVerbose() && !IsDebug() {
-		output.GetVerbose().Info("Backup archive created: %d font families, %d files", familyCount, fileCount)
-	}
+	output.GetVerbose().Info("Backup archive created: %d font families, %d files", familyCount, fileCount)
 	output.GetDebug().State("Backup completed: %d font families, %d files archived to %s", familyCount, fileCount, zipPath)
 
 	return &backupResult{

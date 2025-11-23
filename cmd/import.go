@@ -135,16 +135,14 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		fontDir := fontManager.GetFontDir(installScope)
 
 		// Verbose output
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Importing fonts from: %s", manifestFile)
-			output.GetVerbose().Info("Manifest version: %s", exportManifest.Version)
-			output.GetVerbose().Info("Exported at: %s", exportManifest.ExportedAt)
-			output.GetVerbose().Info("Total fonts in manifest: %d", len(exportManifest.Fonts))
-			output.GetVerbose().Info("Scope: %s", scope)
-			output.GetVerbose().Info("Force mode: %v", force)
-			output.GetVerbose().Info("Installing to: %s", fontDir)
-			fmt.Println()
-		}
+		output.GetVerbose().Info("Importing fonts from: %s", manifestFile)
+		output.GetVerbose().Info("Manifest version: %s", exportManifest.Version)
+		output.GetVerbose().Info("Exported at: %s", exportManifest.ExportedAt)
+		output.GetVerbose().Info("Total fonts in manifest: %d", len(exportManifest.Fonts))
+		output.GetVerbose().Info("Scope: %s", scope)
+		output.GetVerbose().Info("Force mode: %v", force)
+		output.GetVerbose().Info("Installing to: %s", fontDir)
+		fmt.Println()
 
 		// Load config manifest early to check source availability
 		configManifest, err := config.LoadManifest()

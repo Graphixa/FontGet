@@ -164,21 +164,19 @@ or a full file path.`,
 		}
 
 		// Verbose output
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Exporting installed fonts")
-			if matchFilter != "" {
-				output.GetVerbose().Info("Filter: Match = %s", matchFilter)
-			}
-			if sourceFilter != "" {
-				output.GetVerbose().Info("Filter: Source = %s", sourceFilter)
-			}
-			if onlyMatched {
-				output.GetVerbose().Info("Filter: Only fonts with Font IDs")
-			}
-			output.GetVerbose().Info("System fonts are always excluded")
-			output.GetVerbose().Info("Output file: %s", outputFile)
-			fmt.Println()
+		output.GetVerbose().Info("Exporting installed fonts")
+		if matchFilter != "" {
+			output.GetVerbose().Info("Filter: Match = %s", matchFilter)
 		}
+		if sourceFilter != "" {
+			output.GetVerbose().Info("Filter: Source = %s", sourceFilter)
+		}
+		if onlyMatched {
+			output.GetVerbose().Info("Filter: Only fonts with Font IDs")
+		}
+		output.GetVerbose().Info("System fonts are always excluded")
+		output.GetVerbose().Info("Output file: %s", outputFile)
+		fmt.Println()
 
 		// Collect fonts from all scopes
 		scopes := []platform.InstallationScope{platform.UserScope, platform.MachineScope}

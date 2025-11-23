@@ -383,18 +383,16 @@ Installation scope can be specified with the --scope flag:
 		GetLogger().Debug("Using font directory: %s", fontDir)
 
 		// Verbose-level information for users - show operational details before progress bar
-		if IsVerbose() && !IsDebug() {
-			// Format scope label for display
-			scopeDisplay := scope
-			if scope == "" {
-				scopeDisplay = "user"
-			}
-			output.GetVerbose().Info("Scope: %s", scopeDisplay)
-			output.GetVerbose().Info("Force mode: %v", force)
-			output.GetVerbose().Info("Installing %d font(s)", len(fontNames))
-			// Section ends with blank line per spacing framework
-			fmt.Println()
+		// Format scope label for display
+		scopeDisplay := scope
+		if scope == "" {
+			scopeDisplay = "user"
 		}
+		output.GetVerbose().Info("Scope: %s", scopeDisplay)
+		output.GetVerbose().Info("Force mode: %v", force)
+		output.GetVerbose().Info("Installing %d font(s)", len(fontNames))
+		// Section ends with blank line per spacing framework
+		fmt.Println()
 
 		// Initialize status tracking
 		status := &InstallationStatus{

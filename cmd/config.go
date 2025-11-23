@@ -41,16 +41,12 @@ var configInfoCmd = &cobra.Command{
 			logger.Info("Starting config info operation")
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Starting configuration information display")
-		}
+		output.GetVerbose().Info("Starting configuration information display")
 		output.GetDebug().State("Config info command initiated")
 
 		// Show configuration information
 		configPath := config.GetAppConfigPath()
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Configuration file location: %s", configPath)
-		}
+		output.GetVerbose().Info("Configuration file location: %s", configPath)
 		output.GetDebug().State("Config path resolved: %s", configPath)
 
 		appConfig, err := config.LoadUserPreferences()
@@ -61,22 +57,18 @@ var configInfoCmd = &cobra.Command{
 			return fmt.Errorf("unable to load configuration: %v", err)
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Configuration loaded successfully")
-		}
+		output.GetVerbose().Info("Configuration loaded successfully")
 		output.GetDebug().State("Configuration loaded: %+v", appConfig)
 
 		// Show editor information
 		actualEditor := config.GetEditorWithFallback(appConfig)
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Resolved editor: %s", actualEditor)
-			if appConfig.Configuration.DefaultEditor == "" {
-				output.GetVerbose().Info("Using system default editor")
-			} else {
-				output.GetVerbose().Info("Using custom editor from configuration")
-			}
-			output.GetVerbose().Info("Logging configuration - Path: %s, MaxSize: %s", appConfig.Logging.LogPath, appConfig.Logging.MaxSize)
+		output.GetVerbose().Info("Resolved editor: %s", actualEditor)
+		if appConfig.Configuration.DefaultEditor == "" {
+			output.GetVerbose().Info("Using system default editor")
+		} else {
+			output.GetVerbose().Info("Using custom editor from configuration")
 		}
+		output.GetVerbose().Info("Logging configuration - Path: %s, MaxSize: %s", appConfig.Logging.LogPath, appConfig.Logging.MaxSize)
 		output.GetDebug().State("Editor resolution - DefaultEditor: '%s', Actual: '%s'", appConfig.Configuration.DefaultEditor, actualEditor)
 		output.GetDebug().State("Logging config: %+v", appConfig.Logging)
 
@@ -118,22 +110,16 @@ var configEditCmd = &cobra.Command{
 			logger.Info("Starting config edit operation")
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Starting configuration file edit operation")
-		}
+		output.GetVerbose().Info("Starting configuration file edit operation")
 		output.GetDebug().State("Config edit command initiated")
 
 		// Open configuration file in editor
 		configPath := config.GetAppConfigPath()
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Configuration file path: %s", configPath)
-		}
+		output.GetVerbose().Info("Configuration file path: %s", configPath)
 		output.GetDebug().State("Config path resolved: %s", configPath)
 
 		// Load current config to ensure it exists
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Loading current configuration")
-		}
+		output.GetVerbose().Info("Loading current configuration")
 		output.GetDebug().State("Loading user preferences from disk")
 
 		appConfig, err := config.LoadUserPreferences()
@@ -144,15 +130,11 @@ var configEditCmd = &cobra.Command{
 			return fmt.Errorf("unable to load configuration: %v", err)
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Configuration loaded successfully")
-		}
+		output.GetVerbose().Info("Configuration loaded successfully")
 		output.GetDebug().State("Configuration loaded: %+v", appConfig)
 
 		// Save config to ensure it exists on disk
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Ensuring configuration file exists on disk")
-		}
+		output.GetVerbose().Info("Ensuring configuration file exists on disk")
 		output.GetDebug().State("Saving configuration to disk")
 
 		if err := config.SaveUserPreferences(appConfig); err != nil {
@@ -162,24 +144,18 @@ var configEditCmd = &cobra.Command{
 			return fmt.Errorf("unable to save configuration: %v", err)
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Configuration file saved successfully")
-		}
+		output.GetVerbose().Info("Configuration file saved successfully")
 		output.GetDebug().State("Configuration file exists on disk")
 
 		// Get the editor to use
 		editor := config.GetEditorWithFallback(appConfig)
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Using editor: %s", editor)
-		}
+		output.GetVerbose().Info("Using editor: %s", editor)
 		output.GetDebug().State("Editor resolved: %s", editor)
 
 		// Open the configuration file in the editor
 		fmt.Printf("Opening config.yaml in %s...\n", editor)
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Preparing to open editor with configuration file")
-		}
+		output.GetVerbose().Info("Preparing to open editor with configuration file")
 		output.GetDebug().State("Operating system: %s", runtime.GOOS)
 
 		var execCmd *exec.Cmd
@@ -195,9 +171,7 @@ var configEditCmd = &cobra.Command{
 			output.GetDebug().State("Linux/Unix command: %s %s", editor, configPath)
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Executing editor command")
-		}
+		output.GetVerbose().Info("Executing editor command")
 		output.GetDebug().State("Command: %+v", execCmd)
 
 		if err := execCmd.Start(); err != nil {
@@ -207,9 +181,7 @@ var configEditCmd = &cobra.Command{
 			return fmt.Errorf("unable to open editor '%s': %v", editor, err)
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Success("Editor opened successfully")
-		}
+		output.GetVerbose().Success("Editor opened successfully")
 		output.GetDebug().State("Editor process started successfully")
 		fmt.Printf("config.yaml opened in %s\n", editor)
 		return nil
@@ -241,9 +213,7 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 		fmt.Printf("Configuration Path: %s\n\n", configPath)
 
 		// Load and validate configuration
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Loading configuration from: %s", configPath)
-		}
+		output.GetVerbose().Info("Loading configuration from: %s", configPath)
 		output.GetDebug().State("Calling config.LoadUserPreferences()")
 		appConfig, err := config.LoadUserPreferences()
 		if err != nil {
@@ -281,15 +251,11 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 			return nil
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Configuration file loaded successfully")
-		}
+		output.GetVerbose().Info("Configuration file loaded successfully")
 		output.GetDebug().State("Configuration loaded: %+v", appConfig)
 
 		// Validate configuration structure and values
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Validating configuration structure and values")
-		}
+		output.GetVerbose().Info("Validating configuration structure and values")
 		output.GetDebug().State("Calling config.ValidateUserPreferences()")
 		if err := config.ValidateUserPreferences(appConfig); err != nil {
 			GetLogger().Error("Configuration validation failed: %v", err)
@@ -302,9 +268,7 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 		}
 
 		// Success - show validation results
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Success("Configuration validation completed successfully")
-		}
+		output.GetVerbose().Success("Configuration validation completed successfully")
 		output.GetDebug().State("Configuration validation process completed")
 		fmt.Printf("  ✓ %s | %s\n", "config.yaml", ui.FeedbackSuccess.Render("Valid"))
 		fmt.Printf("\n%s\n", ui.FeedbackSuccess.Render("Configuration file is valid"))
@@ -328,20 +292,14 @@ Useful when the configuration file is corrupted or you want to start fresh.`,
 		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Get configuration file path
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Getting configuration file path")
-		}
+		output.GetVerbose().Info("Getting configuration file path")
 		output.GetDebug().State("Calling config.GetAppConfigPath()")
 		configPath := config.GetAppConfigPath()
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Configuration file path: %s", configPath)
-		}
+		output.GetVerbose().Info("Configuration file path: %s", configPath)
 		output.GetDebug().State("Configuration file path: %s", configPath)
 
 		// Show confirmation dialog
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Showing confirmation dialog")
-		}
+		output.GetVerbose().Info("Showing confirmation dialog")
 		output.GetDebug().State("Creating confirmation dialog for config reset")
 
 		confirmed, err := components.RunConfirm(
@@ -357,24 +315,18 @@ Useful when the configuration file is corrupted or you want to start fresh.`,
 		}
 
 		if !confirmed {
-			if IsVerbose() && !IsDebug() {
-				output.GetVerbose().Info("User cancelled configuration reset")
-			}
+			output.GetVerbose().Info("User cancelled configuration reset")
 			output.GetDebug().State("User chose not to reset configuration")
 			fmt.Printf("%s\n", ui.FeedbackWarning.Render("Configuration reset cancelled, no changes have been made.\n"))
 			return nil
 		}
 
 		// User confirmed - proceed with reset
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("User confirmed configuration reset")
-		}
+		output.GetVerbose().Info("User confirmed configuration reset")
 		output.GetDebug().State("Proceeding with configuration reset")
 
 		// Generate default configuration
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Generating default configuration")
-		}
+		output.GetVerbose().Info("Generating default configuration")
 		output.GetDebug().State("Calling config.GenerateInitialUserPreferences()")
 		if err := config.GenerateInitialUserPreferences(); err != nil {
 			GetLogger().Error("Failed to generate default config: %v", err)
@@ -386,9 +338,7 @@ Useful when the configuration file is corrupted or you want to start fresh.`,
 		}
 
 		// Success - show reset results
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Success("Configuration reset completed successfully")
-		}
+		output.GetVerbose().Success("Configuration reset completed successfully")
 		output.GetDebug().State("Configuration reset process completed")
 		fmt.Printf("%s\n", ui.FeedbackSuccess.Render("Configuration has been reset to defaults\n"))
 

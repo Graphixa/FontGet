@@ -118,9 +118,7 @@ Examples:
 		}
 
 		// Verbose-level information for users - show operational details
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
-		}
+		output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Refresh: %v", query, category, refresh)
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', refresh=%v", query, category, refresh)
 
 		// Get repository (handles source updates internally with spinner if needed)
@@ -128,15 +126,11 @@ Examples:
 		var err error
 		if refresh {
 			// Force refresh of font manifest before search
-			if IsVerbose() && !IsDebug() {
-				output.GetVerbose().Info("Forcing refresh of font manifest before search")
-			}
+			output.GetVerbose().Info("Forcing refresh of font manifest before search")
 			output.GetDebug().State("Using GetRepositoryWithRefresh() to force source updates")
 			r, err = repo.GetRepositoryWithRefresh()
 		} else {
-			if IsVerbose() && !IsDebug() {
-				output.GetVerbose().Info("Using cached font manifest for search")
-			}
+			output.GetVerbose().Info("Using cached font manifest for search")
 			output.GetDebug().State("Using GetRepository() with cached sources")
 			r, err = repo.GetRepository()
 		}
@@ -148,9 +142,7 @@ Examples:
 		}
 
 		// Search fonts
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Searching fonts with query: '%s' and category: '%s'", query, category)
-		}
+		output.GetVerbose().Info("Searching fonts with query: '%s' and category: '%s'", query, category)
 		output.GetDebug().State("Calling r.SearchFonts(query='%s', category='%s')", query, category)
 		results, err := r.SearchFonts(query, category)
 		if err != nil {
@@ -160,9 +152,7 @@ Examples:
 			return fmt.Errorf("unable to search fonts: %v", err)
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Search completed - found %d results", len(results))
-		}
+		output.GetVerbose().Info("Search completed - found %d results", len(results))
 		output.GetDebug().State("Search returned %d font results", len(results))
 		// Build the search result message
 		searchMsg := fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.TableSourceName.Render(query))

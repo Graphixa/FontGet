@@ -178,15 +178,12 @@ Flags:
 		GetLogger().Info("List parameters - Scope: %s, Type filter: %s, Family filter: %s, Show variants: %v", scopeDisplay, typeFilter, familyFilter, showVariants)
 
 		// Verbose output for parameters
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Scope: %s", scopeDisplay)
-			if typeFilter != "" {
-				output.GetVerbose().Info("Type filter: %s", typeFilter)
-			}
-			if familyFilter != "" {
-				output.GetVerbose().Info("Family filter: %s", familyFilter)
-			}
-			fmt.Println()
+		output.GetVerbose().Info("Scope: %s", scopeDisplay)
+		if typeFilter != "" {
+			output.GetVerbose().Info("Type filter: %s", typeFilter)
+		}
+		if familyFilter != "" {
+			output.GetVerbose().Info("Family filter: %s", familyFilter)
 		}
 
 		var scopes []platform.InstallationScope
@@ -238,9 +235,7 @@ Flags:
 		output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
 
 		// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Matching installed fonts to repository...")
-		}
+		output.GetVerbose().Info("Matching installed fonts to repository...")
 		output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
 		matches, err := repo.MatchAllInstalledFonts(allFamilyNames, IsCriticalSystemFont)
 		if err != nil {
@@ -255,9 +250,7 @@ Flags:
 					matchCount++
 				}
 			}
-			if IsVerbose() && !IsDebug() {
-				output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
-			}
+			output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
 		}
 
 		// Populate match data into ParsedFont structs
@@ -311,6 +304,15 @@ Flags:
 
 			// Type filter already applied during collection, so include all fonts in family
 			filteredFamilies[familyName] = fontGroup
+
+			// Show which fonts matched the filter (useful for debugging)
+			if familyFilterLower != "" {
+				matchReason := "family name"
+				if fontID != "" && strings.Contains(strings.ToLower(fontID), familyFilterLower) {
+					matchReason = "Font ID"
+				}
+				output.GetDebug().State("Filter match: '%s' (matched by %s)", familyName, matchReason)
+			}
 		}
 
 		// Get sorted list of filtered family names

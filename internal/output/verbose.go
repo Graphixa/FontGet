@@ -11,6 +11,7 @@ type VerboseLogger struct{}
 var (
 	verboseInstance *VerboseLogger
 	verboseChecker  func() bool
+	// debugChecker is defined in debug.go (same package) and accessed here
 )
 
 // GetVerbose returns a singleton verbose logger instance
@@ -27,12 +28,22 @@ func SetVerboseChecker(checker func() bool) {
 	verboseChecker = checker
 }
 
-// isVerboseEnabled checks if the --verbose flag is set
+// isVerboseEnabled checks if verbose output should be displayed
+// Verbose output should only show when --verbose is set AND --debug is NOT set
+// This prevents verbose messages from appearing in debug mode (per logging guidelines)
 func isVerboseEnabled() bool {
-	if verboseChecker != nil {
+	if verboseChecker == nil {
+		return false // Default to false if checker not set
+	}
+	// Access debugChecker from debug.go (same package)
+	// We need to check if debug is enabled via the debugChecker function
+	// Since debugChecker is in the same package, we can access it directly
+	// But we need to check if it's been set first
+	if debugChecker == nil {
+		// If debug checker isn't set yet, just check verbose
 		return verboseChecker()
 	}
-	return false // Default to false if checker not set
+	return verboseChecker() && !debugChecker() // Verbose only when verbose=true AND debug=false
 }
 
 // Info displays verbose information to users when --verbose flag is enabled

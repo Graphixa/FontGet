@@ -352,17 +352,15 @@ Removal scope can be specified with the --scope flag:
 
 		// Verbose-level information for users - show operational details before progress bar
 		// (After scope auto-detection so we can display the actual scope being used)
-		if IsVerbose() && !IsDebug() {
-			// Format scope label for display
-			scopeDisplay := scopeFlag
-			if scopeFlag == "all" {
-				scopeDisplay = "all (user and machine)"
-			}
-			output.GetVerbose().Info("Scope: %s", scopeDisplay)
-			output.GetVerbose().Info("Removing %d font(s)", len(args))
-			// Section ends with blank line per spacing framework
-			fmt.Println()
+		// Format scope label for display
+		scopeDisplay := scopeFlag
+		if scopeFlag == "all" {
+			scopeDisplay = "all (user and machine)"
 		}
+		output.GetVerbose().Info("Scope: %s", scopeDisplay)
+		output.GetVerbose().Info("Removing %d font(s)", len(args))
+		// Section ends with blank line per spacing framework
+		fmt.Println()
 
 		// Determine which scopes to check
 		var scopes []platform.InstallationScope

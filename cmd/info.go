@@ -85,9 +85,7 @@ Use the --license flag to show only license information.`,
 			return nil // Args validator will have already shown the help
 		}
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Retrieving information for font: %s", fontID)
-		}
+		output.GetVerbose().Info("Retrieving information for font: %s", fontID)
 		output.GetDebug().State("Starting font info lookup for: %s", fontID)
 
 		// Get flags
@@ -97,15 +95,11 @@ Use the --license flag to show only license information.`,
 		// If -l flag is set, show only license
 		showAll := !showLicense
 
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Display options - License: %v, Show All: %v", showLicense, showAll)
-		}
+		output.GetVerbose().Info("Display options - License: %v, Show All: %v", showLicense, showAll)
 		output.GetDebug().State("Info display flags: license=%v, showAll=%v", showLicense, showAll)
 
 		// Get repository
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Initializing repository for font lookup")
-		}
+		output.GetVerbose().Info("Initializing repository for font lookup")
 		output.GetDebug().State("Calling repo.GetRepository()")
 		r, err := repo.GetRepository()
 		if err != nil {
@@ -115,9 +109,7 @@ Use the --license flag to show only license information.`,
 		}
 
 		// Get manifest
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Retrieving font manifest")
-		}
+		output.GetVerbose().Info("Retrieving font manifest")
 		output.GetDebug().State("Calling r.GetManifest()")
 		manifest, err := r.GetManifest()
 		if err != nil {
@@ -127,9 +119,7 @@ Use the --license flag to show only license information.`,
 		}
 
 		// First check if it's an exact font ID match
-		if IsVerbose() && !IsDebug() {
-			output.GetVerbose().Info("Checking for exact font ID match: '%s'", fontID)
-		}
+		output.GetVerbose().Info("Checking for exact font ID match: '%s'", fontID)
 		output.GetDebug().State("Searching %d sources for exact font ID '%s'", len(manifest.Sources), fontID)
 		var font repo.FontInfo
 		found := false
@@ -138,9 +128,7 @@ Use the --license flag to show only license information.`,
 			if f, ok := source.Fonts[fontID]; ok {
 				font = f
 				found = true
-				if IsVerbose() && !IsDebug() {
-					output.GetVerbose().Info("Found exact font ID '%s' in source '%s'", fontID, sourceKey)
-				}
+				output.GetVerbose().Info("Found exact font ID '%s' in source '%s'", fontID, sourceKey)
 				output.GetDebug().State("Font found in source: %s", sourceKey)
 				break
 			}
@@ -148,9 +136,7 @@ Use the --license flag to show only license information.`,
 
 		if !found {
 			// Try to find multiple matches using the same logic as add command
-			if IsVerbose() && !IsDebug() {
-				output.GetVerbose().Info("No exact match found, searching for multiple matches")
-			}
+			output.GetVerbose().Info("No exact match found, searching for multiple matches")
 			output.GetDebug().State("Calling repo.FindFontMatches for: %s", fontID)
 
 			matches, matchErr := repo.FindFontMatches(fontID)
@@ -163,15 +149,11 @@ Use the --license flag to show only license information.`,
 			if len(matches) == 0 {
 				// No matches found, show similar fonts
 				GetLogger().Error("Font '%s' not found", fontID)
-				if IsVerbose() && !IsDebug() {
-					output.GetVerbose().Error("Font '%s' not found in any source", fontID)
-				}
+				output.GetVerbose().Error("Font '%s' not found in any source", fontID)
 				output.GetDebug().Error("Font lookup failed: '%s' not found in %d sources", fontID, len(manifest.Sources))
 
 				// Try to find similar fonts using the same logic as add command
-				if IsVerbose() && !IsDebug() {
-					output.GetVerbose().Info("Searching for similar fonts to '%s'", fontID)
-				}
+				output.GetVerbose().Info("Searching for similar fonts to '%s'", fontID)
 				output.GetDebug().State("Calling findSimilarFonts for font: %s", fontID)
 
 				// Get all available fonts for suggestions (use same method as add command)
@@ -190,9 +172,7 @@ Use the --license flag to show only license information.`,
 				return nil
 			} else if len(matches) == 1 {
 				// Single match found, use it
-				if IsVerbose() && !IsDebug() {
-					output.GetVerbose().Info("Found single match for '%s': %s", fontID, matches[0].ID)
-				}
+				output.GetVerbose().Info("Found single match for '%s': %s", fontID, matches[0].ID)
 				output.GetDebug().State("Using single match: %s from source %s", matches[0].ID, matches[0].Source)
 
 				// Get the font info for the single match from the manifest
@@ -201,9 +181,7 @@ Use the --license flag to show only license information.`,
 					if f, ok := source.Fonts[matches[0].ID]; ok {
 						font = f
 						found = true
-						if IsVerbose() && !IsDebug() {
-							output.GetVerbose().Info("Found font info for '%s' in source '%s'", matches[0].ID, sourceKey)
-						}
+						output.GetVerbose().Info("Found font info for '%s' in source '%s'", matches[0].ID, sourceKey)
 						output.GetDebug().State("Font info found in source: %s", sourceKey)
 						break
 					}
@@ -215,9 +193,7 @@ Use the --license flag to show only license information.`,
 				}
 			} else {
 				// Multiple matches found, show them and ask for specific ID
-				if IsVerbose() && !IsDebug() {
-					output.GetVerbose().Info("Found %d matches for '%s'", len(matches), fontID)
-				}
+				output.GetVerbose().Info("Found %d matches for '%s'", len(matches), fontID)
 				output.GetDebug().State("Multiple matches found, showing options")
 
 				showMultipleMatchesAndExit(fontID, matches)

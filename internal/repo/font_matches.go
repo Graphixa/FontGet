@@ -190,7 +190,7 @@ func MatchInstalledFontToRepository(familyName string, index *fontIndex, isProte
 
 	// Skip protected system fonts - they should not be matched
 	if isProtectedFont != nil && isProtectedFont(familyName) {
-		output.GetDebug().State("Skipping protected system font: %s", familyName)
+
 		return nil, nil
 	}
 
@@ -273,7 +273,6 @@ func MatchInstalledFontToRepository(familyName string, index *fontIndex, isProte
 			if expectedSourceName != "" {
 				for _, candidate := range candidates {
 					if candidate.Source == expectedSourceName {
-						output.GetDebug().State("Base name match found: %s -> %s", familyName, candidate.FontID)
 						return &InstalledFontMatch{
 							FontID:     candidate.FontID,
 							License:    candidate.License,
@@ -285,7 +284,6 @@ func MatchInstalledFontToRepository(familyName string, index *fontIndex, isProte
 			} else {
 				// No expected source, use best priority match
 				if best := findBestMatch(candidates); best != nil {
-					output.GetDebug().State("Base name match found: %s -> %s", familyName, best.FontID)
 					return &InstalledFontMatch{
 						FontID:     best.FontID,
 						License:    best.License,
@@ -362,11 +360,16 @@ func MatchAllInstalledFonts(familyNames []string, isProtectedFont func(string) b
 
 		if match != nil {
 			matches[familyName] = match
-			output.GetDebug().State("Match: '%s' -> FontID: %s, Source: %s", familyName, match.FontID, match.Source)
-		} else {
-			output.GetDebug().State("No match found for family: '%s'", familyName)
+			// Note: We don't log individual matches to reduce debug noise - only show summary at end
+			// Base name matches are still logged above as they're useful for debugging matching logic
 		}
+		// Note: We don't log "no match" cases to reduce debug noise - it's expected that many
+		// installed fonts (system fonts, custom fonts, etc.) won't be in the repository
 	}
+
+	// Show summary of matching results
+	matchCount := len(matches)
+	output.GetDebug().State("Matching complete: %d matches found out of %d families", matchCount, len(familyNames))
 
 	return matches, nil
 }
