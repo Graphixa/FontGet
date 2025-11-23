@@ -193,10 +193,11 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// The frame message will update the progress bar, then we'll quit
 			return m, cmd
 		}
-		// Show final state with items, then quit after a delay
+		// Show final state with items, then quit after a brief delay
+		// Reduced from 2s to 300ms for better responsiveness
 		return m, tea.Batch(
 			cmd,
-			tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+			tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
 				return quitMsg{}
 			}),
 		)
