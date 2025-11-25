@@ -35,7 +35,7 @@ var configInfoCmd = &cobra.Command{
 	Use:          "info",
 	Short:        "Show configuration information",
 	SilenceUsage: true,
-	Long:  `Display detailed information about the current FontGet configuration.`,
+	Long:         `Display detailed information about the current FontGet configuration.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
 		logger := GetLogger()
@@ -51,6 +51,7 @@ var configInfoCmd = &cobra.Command{
 		output.GetVerbose().Info("Configuration file location: %s", configPath)
 		output.GetDebug().State("Config path resolved: %s", configPath)
 
+		output.GetDebug().State("Calling config.LoadUserPreferences()")
 		appConfig, err := config.LoadUserPreferences()
 		if err != nil {
 			GetLogger().Error("Failed to load config: %v", err)
@@ -105,7 +106,7 @@ var configEditCmd = &cobra.Command{
 	Use:          "edit",
 	Short:        "Open configuration file in default editor",
 	SilenceUsage: true,
-	Long:  `Open the FontGet configuration file (config.yaml) in your default editor.`,
+	Long:         `Open the FontGet configuration file (config.yaml) in your default editor.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
 		logger := GetLogger()
@@ -113,8 +114,8 @@ var configEditCmd = &cobra.Command{
 			logger.Info("Starting config edit operation")
 		}
 
+		output.GetDebug().State("Starting config edit operation")
 		output.GetVerbose().Info("Starting configuration file edit operation")
-		output.GetDebug().State("Config edit command initiated")
 
 		// Open configuration file in editor
 		configPath := config.GetAppConfigPath()
@@ -187,6 +188,7 @@ var configEditCmd = &cobra.Command{
 		output.GetVerbose().Success("Editor opened successfully")
 		output.GetDebug().State("Editor process started successfully")
 		fmt.Printf("config.yaml opened in %s\n", editor)
+		output.GetDebug().State("Config operation complete")
 		return nil
 	},
 }
@@ -202,8 +204,7 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration validation operation")
 
-		// Debug-level information for developers
-		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+		output.GetDebug().State("Starting config validate operation")
 
 		// Get configuration file path
 		output.GetVerbose().Info("Getting configuration file path")
@@ -278,6 +279,7 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 		fmt.Printf("\n%s\n", ui.FeedbackSuccess.Render("Configuration file is valid"))
 
 		GetLogger().Info("Configuration validation operation completed successfully")
+		output.GetDebug().State("Config operation complete")
 		return nil
 	},
 }
@@ -293,8 +295,7 @@ Useful when the configuration file is corrupted or you want to start fresh.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration reset operation")
 
-		// Debug-level information for developers
-		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+		output.GetDebug().State("Starting config reset operation")
 
 		// Get configuration file path
 		output.GetVerbose().Info("Getting configuration file path")
@@ -348,6 +349,7 @@ Useful when the configuration file is corrupted or you want to start fresh.`,
 		fmt.Printf("%s\n", ui.FeedbackSuccess.Render("Configuration has been reset to defaults\n"))
 
 		GetLogger().Info("Configuration reset operation completed successfully")
+		output.GetDebug().State("Config operation complete")
 		return nil
 	},
 }

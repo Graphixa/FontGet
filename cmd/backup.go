@@ -58,6 +58,9 @@ System fonts are always excluded from backups.`,
 		// Always start with a blank line for consistent spacing
 		fmt.Println()
 
+		// Debug output for operation start
+		output.GetDebug().State("Starting font backup operation")
+
 		// Ensure manifest system is initialized
 		if err := config.EnsureManifestExists(); err != nil {
 			GetLogger().Error("Failed to ensure manifest exists: %v", err)
@@ -234,17 +237,22 @@ func detectAccessibleScopes(fm platform.FontManager) ([]platform.InstallationSco
 
 // performBackup performs the backup operation (for debug mode)
 func performBackup(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
+	output.GetDebug().State("Calling performBackup(scopes=%v, zipPath=%s)", scopes, zipPath)
+
 	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose for debug mode
 	if err != nil {
+		output.GetDebug().State("Error collecting fonts for backup: %v", err)
 		return err
 	}
+	output.GetDebug().State("Total fonts to backup: %d", len(fonts))
+	output.GetDebug().State("Calling performBackupWithCollectedFonts(scopes=%v, zipPath=%s, fontCount=%d)", scopes, zipPath, len(fonts))
 	result, err := performBackupWithCollectedFonts(fm, scopes, zipPath, fonts)
 	if err != nil {
 		return err
 	}
 
 	GetLogger().Info("Backup operation complete - Backed up %d font families, %d files to %s", result.familyCount, result.fileCount, zipPath)
-	output.GetDebug().State("Backup completed: %d font families, %d files archived to %s", result.familyCount, result.fileCount, zipPath)
+	output.GetDebug().State("Backup operation complete - Families: %d, Files: %d", result.familyCount, result.fileCount)
 	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully backed up %d font families to %s", result.familyCount, zipPath)))
 	fmt.Println()
 	return nil
@@ -258,6 +266,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	if err != nil {
 		return fmt.Errorf("unable to collect fonts: %v", err)
 	}
+	output.GetDebug().State("Total fonts to backup: %d", len(fonts))
 
 	// Match fonts to repository to get source information and organize by family
 	var names []string
@@ -460,6 +469,8 @@ func performBackupWithProgress(fm platform.FontManager, _ []platform.Installatio
 
 // performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
 func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
+	output.GetDebug().State("Calling performBackupWithCollectedFonts(zipPath=%s, fontCount=%d)", zipPath, len(fonts))
+
 	output.GetVerbose().Info("Found %d font files", len(fonts))
 	output.GetDebug().State("Processing %d font files", len(fonts))
 
@@ -477,6 +488,7 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 	sort.Strings(names)
 
 	output.GetVerbose().Info("Matching fonts to repository...")
+	output.GetDebug().State("Calling repo.MatchAllInstalledFonts(familyCount=%d)", len(names))
 	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
 	if err != nil {
 		output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
@@ -644,7 +656,7 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 	}
 
 	output.GetVerbose().Info("Backup archive created: %d font families, %d files", familyCount, fileCount)
-	output.GetDebug().State("Backup completed: %d font families, %d files archived to %s", familyCount, fileCount, zipPath)
+	output.GetDebug().State("Backup operation complete - Families: %d, Files: %d", familyCount, fileCount)
 
 	return &backupResult{
 		familyCount: familyCount,

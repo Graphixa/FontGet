@@ -601,7 +601,9 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 	// Process each font
 	for i, fontGroup := range fontsToInstall {
 		output.GetDebug().State("Importing font %d/%d: %s", i+1, len(fontsToInstall), fontGroup.FontName)
-		output.GetDebug().State("Installing font %s in %s scope (directory: %s)", fontGroup.FontName, scopeLabel, fontDir)
+		output.GetDebug().State("Installing font %s in %s (directory: %s)", fontGroup.FontName, scopeLabel, fontDir)
+
+		output.GetDebug().State("Calling installFont(%s, %s, %s, %v, %s)", fontGroup.FontID, scopeLabel, fontDir, force, "...")
 
 		result, err := installFont(
 			fontGroup.Fonts,
@@ -613,7 +615,7 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 		)
 
 		if err != nil {
-			output.GetDebug().State("Error installing font %s in %s scope: %v", fontGroup.FontName, scopeLabel, err)
+			output.GetDebug().State("Error installing font %s in %s: %v", fontGroup.FontName, scopeLabel, err)
 			if result != nil {
 				status.Failed += result.Failed
 				status.Skipped += result.Skipped
@@ -628,11 +630,50 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 		status.Failed += result.Failed
 		status.Errors = append(status.Errors, result.Errors...)
 
+		// Show detailed result information in debug mode
+		if len(result.Details) > 0 {
+			installedCount := result.Success
+			skippedCount := result.Skipped
+			failedCount := result.Failed
+			var installedFiles, skippedFiles, failedFiles []string
+			idx := 0
+			if installedCount > 0 && idx < len(result.Details) {
+				installedFiles = result.Details[idx : idx+installedCount]
+				idx += installedCount
+			}
+			if skippedCount > 0 && idx < len(result.Details) {
+				skippedFiles = result.Details[idx : idx+skippedCount]
+				idx += skippedCount
+			}
+			if failedCount > 0 && idx < len(result.Details) {
+				failedFiles = result.Details[idx : idx+failedCount]
+			}
+
+			if len(installedFiles) > 0 {
+				output.GetDebug().State("Installed variants:")
+				for _, file := range installedFiles {
+					output.GetDebug().State(" - %s", file)
+				}
+			}
+			if len(skippedFiles) > 0 {
+				output.GetDebug().State("Skipped variants:")
+				for _, file := range skippedFiles {
+					output.GetDebug().State(" - %s", file)
+				}
+			}
+			if len(failedFiles) > 0 {
+				output.GetDebug().State("Failed variants:")
+				for _, file := range failedFiles {
+					output.GetDebug().State(" - %s", file)
+				}
+			}
+		}
+
 		// Show success message with comma-separated family names
 		if result.Status == "completed" && result.Success > 0 {
 			fmt.Printf("Installed %s\n", fontGroup.FontName)
 		}
-		output.GetDebug().State("Font %s in %s scope completed: %s - %s (Installed: %d, Skipped: %d, Failed: %d)",
+		output.GetDebug().State("Font %s in %s completed: %s - %s (Installed: %d, Skipped: %d, Failed: %d)",
 			fontGroup.FontName, scopeLabel, result.Status, result.Message, result.Success, result.Skipped, result.Failed)
 	}
 

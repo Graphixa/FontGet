@@ -81,6 +81,9 @@ or a full file path.`,
 		// Always start with a blank line for consistent spacing
 		fmt.Println()
 
+		// Debug output for operation start
+		output.GetDebug().State("Starting font export operation")
+
 		// Ensure manifest system is initialized
 		if err := config.EnsureManifestExists(); err != nil {
 			GetLogger().Error("Failed to ensure manifest exists: %v", err)
@@ -280,7 +283,7 @@ func performFullExport(fm platform.FontManager, scopes []platform.InstallationSc
 		return nil
 	}
 
-	output.GetDebug().State("Export completed successfully: %d font families exported to %s", len(exportedFonts), outputFile)
+	output.GetDebug().State("Export operation complete - Exported: %d font families", len(exportedFonts))
 	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
 	fmt.Println()
 	return nil
@@ -288,6 +291,8 @@ func performFullExport(fm platform.FontManager, scopes []platform.InstallationSc
 
 // performFullExportWithResult performs the complete export process and returns the results
 func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
+	output.GetDebug().State("Calling performFullExportWithResult(scopes=%v, outputFile=%s, matchFilter=%s, sourceFilter=%s, exportAll=%v, onlyMatched=%v)", scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
+
 	// Collect fonts from all scopes
 	output.GetVerbose().Info("Collecting installed fonts...")
 	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose - we have our own high-level message
@@ -299,6 +304,7 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	}
 
 	output.GetVerbose().Info("Found %d font files", len(fonts))
+	output.GetDebug().State("Total fonts to export: %d", len(fonts))
 
 	// Group by family
 	families := groupByFamily(fonts)
@@ -313,6 +319,7 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 
 	output.GetVerbose().Info("Matching installed fonts to repository...")
 	output.GetDebug().State("Total installed font families to match: %d", len(names))
+	output.GetDebug().State("Calling repo.MatchAllInstalledFonts(familyCount=%d)", len(names))
 	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
 	if err != nil {
 		GetLogger().Error("Failed to match fonts to repository: %v", err)

@@ -47,14 +47,18 @@ var sourcesInfoCmd = &cobra.Command{
 			logger.Info("Starting sources info operation")
 		}
 
+		output.GetDebug().State("Starting sources info operation")
+
 		// Show sources information
 		manifestPath := filepath.Join(config.GetAppConfigDir(), "manifest.json")
 
+		output.GetDebug().State("Calling config.LoadManifest()")
 		configManifest, err := config.LoadManifest()
 		if err != nil {
 			GetLogger().Error("Failed to load manifest: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.LoadManifest() failed: %v", err)
+			output.GetDebug().State("Error loading sources manifest: %v", err)
 			return fmt.Errorf("unable to load font repository: %v", err)
 		}
 
@@ -234,6 +238,7 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 
 		fmt.Println()
+		output.GetDebug().State("Sources operation complete")
 		return nil
 	},
 }
