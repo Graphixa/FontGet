@@ -1,4 +1,4 @@
-# Spacing Framework
+# Spacing Guidelines
 
 ## Core Principle
 **Commands always start with a blank line, and every output section ends with exactly one blank line (`\n\n` or `fmt.Println()`).**
