@@ -47,8 +47,21 @@ func PrintElevationHelp(cmd *cobra.Command, platform string) {
 	fmt.Println()
 }
 
-// CheckElevation checks if the current process has elevated privileges
-// and prints help if elevation is required but not present
+// CheckElevation checks if the current process has elevated privileges and prints help if elevation is required but not present.
+//
+// It checks if the specified scope requires elevation, verifies if the process is already elevated,
+// and prints platform-specific elevation instructions if elevation is needed.
+//
+// Returns ErrElevationRequired if elevation is needed but not present (caller should return nil
+// to avoid duplicate error messages, as help has already been printed).
+//
+// Parameters:
+//   - cmd: Cobra command for printing help messages
+//   - fontManager: Platform-specific font manager for elevation checking
+//   - scope: Installation scope to check (user or machine)
+//
+// Returns:
+//   - error: ErrElevationRequired if elevation needed, or error if elevation check fails
 func CheckElevation(cmd *cobra.Command, fontManager platform.FontManager, scope platform.InstallationScope) error {
 	if fontManager.RequiresElevation(scope) {
 		// Check if already elevated

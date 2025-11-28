@@ -848,7 +848,13 @@ func updateInstallStatus(status *InstallationStatus, result *InstallResult) {
 	status.Errors = append(status.Errors, result.Errors...)
 }
 
-// installFontsInDebugMode processes fonts with plain text output (no TUI) for easier parsing/logging
+// installFontsInDebugMode processes fonts with plain text output (no TUI) for easier parsing/logging.
+//
+// This function is used when --debug flag is enabled. It bypasses the TUI progress bar and uses
+// plain text output instead, making it easier to parse logs and debug issues.
+//
+// It processes each font in fontsToInstall, calls installFont for each, and updates the status
+// tracking structure. All output is sent to debug logger for detailed diagnostic information.
 func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []FontToInstall, installScope platform.InstallationScope, force bool, fontDir string, status *InstallationStatus, _ string) error {
 	output.GetDebug().State("Starting font installation operation")
 	output.GetDebug().State("Total fonts: %d", len(fontsToInstall))
@@ -1002,7 +1008,23 @@ func buildInstallResult(status string, message string, installed, skipped, faile
 	}
 }
 
-// installFont handles the core installation logic for a single font
+// installFont handles the core installation logic for a single font.
+//
+// It checks if the font is already installed (unless force is true), downloads all font variants,
+// installs them to the system, and returns an InstallResult with the operation outcome.
+// The function handles cleanup of temporary files automatically via defer.
+//
+// Parameters:
+//   - fontFiles: List of font file variants to install
+//   - fontID: Font identifier for checking if already installed
+//   - fontManager: Platform-specific font manager for installation
+//   - installScope: Installation scope (user or machine)
+//   - force: If true, skip already-installed check and force reinstallation
+//   - fontDir: Target directory for font installation
+//
+// Returns:
+//   - InstallResult: Contains success/skipped/failed counts and details
+//   - error: Installation error if the operation fails
 func installFont(
 	fontFiles []repo.FontFile,
 	fontID string,
@@ -1102,7 +1124,23 @@ func makeUserFriendlyError(fontName string, err error) string {
 // to match by Font ID (most accurate) and family name (fallback).
 // Returns true if the font is already installed, false otherwise.
 // Note: This function scans the font directory each time it's called. For multiple fonts,
-// consider pre-collecting fonts and using a cached approach for better performance.
+// checkFontsAlreadyInstalled checks if a font is already installed in the specified scope.
+//
+// It collects installed fonts from the target scope, matches them against the repository to get
+// Font IDs, and checks if the provided fontID matches any installed font.
+//
+// This function is used to avoid unnecessary downloads when a font is already installed.
+// Note: For performance with many fonts, consider pre-collecting fonts and using a cached approach.
+//
+// Parameters:
+//   - fontID: Font identifier to check
+//   - fontName: Font name (used for fallback matching if Font ID matching fails)
+//   - scope: Installation scope to check (user or machine)
+//   - fontManager: Platform-specific font manager
+//
+// Returns:
+//   - bool: true if font is already installed, false otherwise
+//   - error: Error if font collection or matching fails
 func checkFontsAlreadyInstalled(fontID string, fontName string, scope platform.InstallationScope, fontManager platform.FontManager) (bool, error) {
 	// Early return if fontID is empty (can't check without ID)
 	if fontID == "" {

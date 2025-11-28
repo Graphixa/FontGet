@@ -315,7 +315,22 @@ func buildRemoveResult(removed, skipped, failed int, details []string, errors []
 	return result
 }
 
-// removeFont handles the core removal logic for a single font
+// removeFont handles the core removal logic for a single font.
+//
+// It finds all font files matching the font name (supports both Font IDs and font names),
+// removes them from the system, and returns a RemoveResult with the operation outcome.
+// Protected system fonts are automatically skipped.
+//
+// Parameters:
+//   - fontName: Font name or Font ID to remove
+//   - fontManager: Platform-specific font manager for removal
+//   - scope: Installation scope (user or machine)
+//   - fontDir: Font directory path
+//   - repository: Font repository for resolving Font IDs to names
+//
+// Returns:
+//   - RemoveResult: Contains removed/skipped/failed counts and details
+//   - error: Removal error if the operation fails
 func removeFont(
 	fontName string,
 	fontManager platform.FontManager,

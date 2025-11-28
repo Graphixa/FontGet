@@ -106,8 +106,6 @@ func (m sourcesModel) Init() tea.Cmd {
 
 // Update handles messages and updates the model
 func (m sourcesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-
 	// Handle window resize
 	if msg, ok := msg.(tea.WindowSizeMsg); ok {
 		m.width = msg.Width
@@ -116,6 +114,12 @@ func (m sourcesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Route to appropriate state handler
+	return m.routeStateUpdate(msg)
+}
+
+// routeStateUpdate routes messages to the appropriate state handler based on current state
+func (m sourcesModel) routeStateUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.state {
 	case "list":
 		return m.updateList(msg)
@@ -127,9 +131,9 @@ func (m sourcesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSaveConfirm(msg)
 	case "builtin_warning":
 		return m.updateBuiltinWarning(msg)
+	default:
+		return m, nil
 	}
-
-	return m, cmd
 }
 
 // updateList handles updates in list state

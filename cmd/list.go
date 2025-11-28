@@ -3,21 +3,23 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"fontget/internal/cmdutils"
-	"fontget/internal/output"
-	"fontget/internal/platform"
-	"fontget/internal/repo"
-	"fontget/internal/shared"
-	"fontget/internal/ui"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"fontget/internal/cmdutils"
+	"fontget/internal/output"
+	"fontget/internal/platform"
+	"fontget/internal/repo"
+	"fontget/internal/shared"
+	"fontget/internal/ui"
+
 	"github.com/spf13/cobra"
 )
 
+// ParsedFont represents a parsed font file with metadata
 type ParsedFont struct {
 	Name        string
 	Family      string
@@ -30,107 +32,6 @@ type ParsedFont struct {
 	License    string
 	Categories []string
 	Source     string
-}
-
-func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string, suppressVerbose ...bool) ([]ParsedFont, error) {
-	var parsed []ParsedFont
-	// Normalize type filter for comparison (uppercase)
-	typeFilterUpper := ""
-	if typeFilter != "" {
-		typeFilterUpper = strings.ToUpper(typeFilter)
-	}
-
-	// Check if verbose output should be suppressed (default: false, show verbose)
-	shouldSuppressVerbose := false
-	if len(suppressVerbose) > 0 {
-		shouldSuppressVerbose = suppressVerbose[0]
-	}
-
-	for _, scope := range scopes {
-		fontDir := fm.GetFontDir(scope)
-		if !shouldSuppressVerbose {
-			output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
-		}
-		names, err := platform.ListInstalledFonts(fontDir)
-		if err != nil {
-			return nil, err
-		}
-		if !shouldSuppressVerbose {
-			output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
-		}
-		for _, name := range names {
-			p := filepath.Join(fontDir, name)
-			info, err := os.Stat(p)
-			if err != nil {
-				continue
-			}
-
-			// Optimization 1: Early type filtering - check extension before expensive metadata extraction
-			fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), "."))
-			if typeFilterUpper != "" && fileExt != typeFilterUpper {
-				// Skip this file if it doesn't match the type filter
-				continue
-			}
-
-			// Build ParsedFont struct using extracted function
-			parsed = append(parsed, buildParsedFont(p, name, scope, info))
-		}
-	}
-	if !shouldSuppressVerbose {
-		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
-		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
-			fmt.Println()
-		}
-	}
-	return parsed, nil
-}
-
-// buildParsedFont extracts font metadata from a file path and builds a ParsedFont struct
-func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope, fileInfo os.FileInfo) ParsedFont {
-	// Extract file extension for type
-	fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
-
-	// Try to extract metadata from the font file
-	md, err := platform.ExtractFontMetadata(fontPath)
-	family := ""
-	style := ""
-
-	if err == nil {
-		// Prefer typographic names for display when present
-		if md.TypographicFamily != "" {
-			family = md.TypographicFamily
-		} else {
-			family = md.FamilyName
-		}
-		if md.TypographicStyle != "" {
-			style = md.TypographicStyle
-		} else {
-			style = md.StyleName
-		}
-	} else {
-		// Fallback to filename parsing (minimal)
-		base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
-		family = base
-		style = "Regular"
-	}
-
-	return ParsedFont{
-		Name:        fileName,
-		Family:      family,
-		Style:       style,
-		Type:        fileExt,
-		InstallDate: fileInfo.ModTime(),
-		Scope:       string(scope),
-	}
-}
-
-func groupByFamily(fonts []ParsedFont) map[string][]ParsedFont {
-	res := make(map[string][]ParsedFont)
-	for _, f := range fonts {
-		res[f.Family] = append(res[f.Family], f)
-	}
-	return res
 }
 
 var listCmd = &cobra.Command{
@@ -394,6 +295,109 @@ Flags:
 		fmt.Println()
 		return nil
 	},
+}
+
+// collectFonts collects font files from the specified scopes
+func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string, suppressVerbose ...bool) ([]ParsedFont, error) {
+	var parsed []ParsedFont
+	// Normalize type filter for comparison (uppercase)
+	typeFilterUpper := ""
+	if typeFilter != "" {
+		typeFilterUpper = strings.ToUpper(typeFilter)
+	}
+
+	// Check if verbose output should be suppressed (default: false, show verbose)
+	shouldSuppressVerbose := false
+	if len(suppressVerbose) > 0 {
+		shouldSuppressVerbose = suppressVerbose[0]
+	}
+
+	for _, scope := range scopes {
+		fontDir := fm.GetFontDir(scope)
+		if !shouldSuppressVerbose {
+			output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
+		}
+		names, err := platform.ListInstalledFonts(fontDir)
+		if err != nil {
+			return nil, err
+		}
+		if !shouldSuppressVerbose {
+			output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
+		}
+		for _, name := range names {
+			p := filepath.Join(fontDir, name)
+			info, err := os.Stat(p)
+			if err != nil {
+				continue
+			}
+
+			// Optimization 1: Early type filtering - check extension before expensive metadata extraction
+			fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), "."))
+			if typeFilterUpper != "" && fileExt != typeFilterUpper {
+				// Skip this file if it doesn't match the type filter
+				continue
+			}
+
+			// Build ParsedFont struct using extracted function
+			parsed = append(parsed, buildParsedFont(p, name, scope, info))
+		}
+	}
+	if !shouldSuppressVerbose {
+		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		if IsVerbose() {
+			fmt.Println()
+		}
+	}
+	return parsed, nil
+}
+
+// buildParsedFont extracts font metadata from a file path and builds a ParsedFont struct
+func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope, fileInfo os.FileInfo) ParsedFont {
+	// Extract file extension for type
+	fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
+
+	// Try to extract metadata from the font file
+	md, err := platform.ExtractFontMetadata(fontPath)
+	family := ""
+	style := ""
+
+	if err == nil {
+		// Prefer typographic names for display when present
+		if md.TypographicFamily != "" {
+			family = md.TypographicFamily
+		} else {
+			family = md.FamilyName
+		}
+		if md.TypographicStyle != "" {
+			style = md.TypographicStyle
+		} else {
+			style = md.StyleName
+		}
+	} else {
+		// Fallback to filename parsing (minimal)
+		base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+		family = base
+		style = "Regular"
+	}
+
+	return ParsedFont{
+		Name:        fileName,
+		Family:      family,
+		Style:       style,
+		Type:        fileExt,
+		InstallDate: fileInfo.ModTime(),
+		Scope:       string(scope),
+	}
+}
+
+// groupByFamily groups fonts by family name
+func groupByFamily(fonts []ParsedFont) map[string][]ParsedFont {
+	res := make(map[string][]ParsedFont)
+	for _, f := range fonts {
+		res[f.Family] = append(res[f.Family], f)
+	}
+	return res
 }
 
 // filterFontsByFamilyAndID filters font families by family name or Font ID

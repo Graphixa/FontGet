@@ -8,7 +8,18 @@ import (
 )
 
 // FindSimilarFonts finds similar fonts using fuzzy matching.
+//
 // This is a unified version that works for both repository fonts and installed fonts.
+// For installed fonts, it uses simpler matching for speed. For repository fonts, it uses
+// a sophisticated scoring algorithm that considers popularity and similarity.
+//
+// Parameters:
+//   - fontName: Font name to search for
+//   - allFonts: List of all available fonts (names or IDs)
+//   - isInstalledFonts: If true, uses simpler matching; if false, uses scoring algorithm
+//
+// Returns:
+//   - []string: List of similar font names (up to 5 matches)
 func FindSimilarFonts(fontName string, allFonts []string, isInstalledFonts bool) []string {
 	if isInstalledFonts {
 		// For installed fonts, use simpler matching for speed

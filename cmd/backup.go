@@ -334,6 +334,11 @@ type fontFileInfo struct {
 
 // organizeFontsBySourceAndFamily organizes fonts by source and family name for zip structure.
 // Returns a map: sourceName -> familyName -> []fontFileInfo
+// organizeFontsBySourceAndFamily organizes fonts by source and family name for backup.
+//
+// It creates a nested map structure: source -> family name -> font files, which is used
+// to organize fonts in the backup zip archive. Fonts are matched to repository entries
+// to determine their source.
 func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) map[string]map[string][]fontFileInfo {
 	sourceFamilyMap := make(map[string]map[string][]fontFileInfo)
 	dedupeMap := make(map[string]bool)
@@ -383,6 +388,20 @@ func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string]
 
 // createBackupZipArchive creates a zip archive from organized font structure.
 // If send is not nil, it will be called with progress updates.
+// createBackupZipArchive creates a zip archive from organized font files.
+//
+// It creates a zip archive with fonts organized by source and family name.
+// The archive structure is: source/family-name/font-file.ttf
+// Progress updates are sent via the send function for TUI display.
+//
+// Parameters:
+//   - sourceFamilyMap: Nested map of source -> family -> font files
+//   - zipPath: Path to the output zip file
+//   - send: Function to send progress updates (for TUI)
+//
+// Returns:
+//   - *backupResult: Contains family and file counts
+//   - error: Error if archive creation fails
 func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo, zipPath string, send func(msg tea.Msg)) (*backupResult, error) {
 	// Ensure parent directory exists
 	if dir := filepath.Dir(zipPath); dir != "." && dir != zipPath {

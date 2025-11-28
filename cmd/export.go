@@ -90,7 +90,7 @@ or a full file path.`,
 			return err
 		}
 
-		fm, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
+		fontManager, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
 		if err != nil {
 			return err
 		}
@@ -185,7 +185,7 @@ or a full file path.`,
 
 		// For debug mode, do everything without spinner
 		if IsDebug() {
-			return performFullExport(fm, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
+			return performFullExport(fontManager, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 		}
 
 		// Use pin spinner for normal/verbose mode - wrap all the work
@@ -193,7 +193,7 @@ or a full file path.`,
 
 		err = ui.RunSpinner("Exporting fonts...", "Exported fonts", func() error {
 			var err error
-			exportedFonts, _, err = performFullExportWithResult(fm, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
+			exportedFonts, _, err = performFullExportWithResult(fontManager, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 			return err
 		})
 
@@ -264,8 +264,8 @@ func validateAndNormalizeExportPath(outputPath string) (string, error) {
 }
 
 // performFullExport performs the complete export process (for debug mode)
-func performFullExport(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) error {
-	exportedFonts, _, err := performFullExportWithResult(fm, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
+func performFullExport(fontManager platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) error {
+	exportedFonts, _, err := performFullExportWithResult(fontManager, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 	if err != nil {
 		return err
 	}
@@ -321,7 +321,20 @@ type FilterFontsForExportParams struct {
 	OnlyMatched  bool
 }
 
-// filterFontsForExport applies match/source/exportAll filters to font families and groups them by Font ID
+// filterFontsForExport applies match/source/exportAll filters to font families and groups them by Font ID.
+//
+// It filters font families based on match string, source name, and export flags, then groups
+// them by Font ID (or family name for fonts without Font IDs when exportAll is true).
+// System fonts are always excluded from exports.
+//
+// Parameters:
+//   - params: FilterFontsForExportParams containing families, filters, and export flags
+//
+// Returns:
+//   - fontIDGroups: Map of Font ID (or family name) to font group
+//   - skippedSystem: Count of skipped system fonts
+//   - skippedUnmatched: Count of skipped fonts without Font IDs (when onlyMatched is true)
+//   - skippedByFilter: Count of fonts skipped due to match/source filters
 func filterFontsForExport(params FilterFontsForExportParams) (fontIDGroups map[string]*fontIDGroup, skippedSystem, skippedUnmatched, skippedByFilter int) {
 	fontIDGroups = make(map[string]*fontIDGroup)
 
@@ -411,7 +424,23 @@ func filterFontsForExport(params FilterFontsForExportParams) (fontIDGroups map[s
 	return fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter
 }
 
-// buildExportManifest builds export manifest from filtered fonts
+// buildExportManifest builds export manifest from filtered fonts.
+//
+// It converts font ID groups into ExportedFont entries, sorts them for consistent output,
+// and creates a complete ExportManifest with metadata about the export operation.
+//
+// Parameters:
+//   - fontIDGroups: Map of Font ID to font group (from filterFontsForExport)
+//   - matchFilter: Match filter string used (for metadata)
+//   - sourceFilter: Source filter string used (for metadata)
+//   - onlyMatched: Whether only matched fonts were exported (for metadata)
+//   - skippedSystem: Count of skipped system fonts (for metadata)
+//   - skippedUnmatched: Count of skipped unmatched fonts (for metadata)
+//   - skippedByFilter: Count of fonts skipped by filters (for metadata)
+//
+// Returns:
+//   - *ExportManifest: Complete export manifest ready for JSON serialization
+//   - int: Total number of font variants exported
 func buildExportManifest(fontIDGroups map[string]*fontIDGroup, matchFilter, sourceFilter string, onlyMatched bool, skippedSystem, skippedUnmatched, skippedByFilter int) (*ExportManifest, int) {
 	// Convert groups to exported fonts
 	var exportedFonts []ExportedFont
@@ -496,12 +525,12 @@ func buildExportManifest(fontIDGroups map[string]*fontIDGroup, matchFilter, sour
 	return manifest, totalVariants
 }
 
-func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
+func performFullExportWithResult(fontManager platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
 	output.GetDebug().State("Calling performFullExportWithResult(scopes=%v, outputFile=%s, matchFilter=%s, sourceFilter=%s, exportAll=%v, onlyMatched=%v)", scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 
 	// Collect fonts from all scopes
 	output.GetVerbose().Info("Collecting installed fonts...")
-	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose - we have our own high-level message
+	fonts, err := collectFonts(scopes, fontManager, "", true) // Suppress verbose - we have our own high-level message
 	if err != nil {
 		GetLogger().Error("Failed to collect fonts: %v", err)
 		output.GetVerbose().Error("%v", err)

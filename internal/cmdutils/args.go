@@ -4,7 +4,16 @@ import (
 	"strings"
 )
 
-// ParseFontNames parses comma-separated font names from command line arguments
+// ParseFontNames parses comma-separated font names from command line arguments.
+//
+// It splits arguments by comma, trims whitespace, and filters out empty strings.
+// This allows users to specify multiple fonts in a single argument: "font1,font2,font3"
+//
+// Example:
+//
+//	args := []string{"Roboto", "Open Sans,Noto Sans"}
+//	result := ParseFontNames(args)
+//	// result: []string{"Roboto", "Open Sans", "Noto Sans"}
 func ParseFontNames(args []string) []string {
 	var fontNames []string
 	for _, arg := range args {
