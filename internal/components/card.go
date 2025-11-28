@@ -225,68 +225,6 @@ func LicenseInfoCard(license, url string) Card {
 	return NewCardWithSections("License Information", sections)
 }
 
-// AvailableFilesCard creates a card for available files
-func AvailableFilesCard(files []string) Card {
-	if len(files) == 0 {
-		return NewCard("Available Files", "No files available")
-	}
-
-	var content strings.Builder
-	for i, file := range files {
-		// Use a simple bullet point without extra spaces
-		content.WriteString("• " + file)
-		if i < len(files)-1 {
-			content.WriteString("\n")
-		}
-	}
-
-	// Create a custom card that handles URLs better
-	card := Card{
-		Title:             "Available Files",
-		Content:           content.String(),
-		Width:             80,
-		VerticalPadding:   1,
-		HorizontalPadding: 0, // No horizontal padding for URLs
-	}
-
-	return card
-}
-
-// MetadataCard creates a card for metadata
-func MetadataCard(lastModified, sourceURL, popularity string) Card {
-	sections := []CardSection{
-		{Label: "Last Modified", Value: lastModified},
-		{Label: "Source URL", Value: sourceURL},
-	}
-
-	if popularity != "" {
-		sections = append(sections, CardSection{
-			Label: "Popularity",
-			Value: popularity,
-		})
-	}
-
-	return NewCardWithSections("Metadata", sections)
-}
-
-// SourceInfoCard creates a card for source information
-func SourceInfoCard(sourceName, sourceURL, description string) Card {
-	sections := []CardSection{
-		{Label: "Source", Value: sourceName},
-		{Label: "URL", Value: sourceURL},
-	}
-
-	// Only add description if it's provided
-	if description != "" {
-		sections = append(sections, CardSection{
-			Label: "Description",
-			Value: description,
-		})
-	}
-
-	return NewCardWithSections("Source Information", sections)
-}
-
 // CustomCard creates a custom card with the given title and content
 func CustomCard(title, content string) Card {
 	return NewCard(title, content)
@@ -317,16 +255,4 @@ func LoggingConfigCard(logPath, maxSize, maxFiles string) Card {
 	}
 
 	return NewCardWithSections("Log Settings", sections)
-}
-
-// ValidationResultCard creates a card for validation results
-func ValidationResultCard(isValid bool, message string) Card {
-	title := "Configuration Validation"
-	if isValid {
-		title = "✓ Configuration Validation"
-	} else {
-		title = "✗ Configuration Validation"
-	}
-
-	return NewCard(title, message)
 }

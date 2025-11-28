@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
+	"fontget/internal/cmdutils"
 	"fontget/internal/components"
-	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -62,19 +63,13 @@ System fonts are always excluded from backups.`,
 		output.GetDebug().State("Starting font backup operation")
 
 		// Ensure manifest system is initialized
-		if err := config.EnsureManifestExists(); err != nil {
-			GetLogger().Error("Failed to ensure manifest exists: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+			return err
 		}
 
-		fm, err := platform.NewFontManager()
+		fm, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
 		if err != nil {
-			GetLogger().Error("Failed to create font manager: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
-			return fmt.Errorf("unable to access system fonts: %v", err)
+			return err
 		}
 
 		// Get output path from args or use default
@@ -272,7 +267,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	var names []string
 	fontMap := make(map[string][]ParsedFont)
 	for _, font := range fonts {
-		if IsCriticalSystemFont(font.Family) {
+		if shared.IsCriticalSystemFont(font.Family) {
 			continue
 		}
 		names = append(names, font.Family)
@@ -280,7 +275,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	}
 	sort.Strings(names)
 
-	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
+	matches, err := repo.MatchAllInstalledFonts(names, shared.IsCriticalSystemFont)
 	if err != nil {
 		output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
 		if matches == nil {
@@ -331,12 +326,15 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 }
 
 // performBackupWithProgress performs the backup operation with progress updates
-func performBackupWithProgress(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, _ []ParsedFont, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch, _ int, send func(msg tea.Msg)) (*backupResult, error) {
-	// Organize fonts by source -> family name
-	type fontFileInfo struct {
-		filePath string
-		scope    string
-	}
+// fontFileInfo represents a font file with its path and scope
+type fontFileInfo struct {
+	filePath string
+	scope    string
+}
+
+// organizeFontsBySourceAndFamily organizes fonts by source and family name for zip structure.
+// Returns a map: sourceName -> familyName -> []fontFileInfo
+func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) map[string]map[string][]fontFileInfo {
 	sourceFamilyMap := make(map[string]map[string][]fontFileInfo)
 	dedupeMap := make(map[string]bool)
 
@@ -355,177 +353,6 @@ func performBackupWithProgress(fm platform.FontManager, _ []platform.Installatio
 		}
 
 		for _, font := range fontGroup {
-			if dedupeMap[font.Name] {
-				continue
-			}
-
-			fontDir := fm.GetFontDir(platform.InstallationScope(font.Scope))
-			filePath := filepath.Join(fontDir, font.Name)
-
-			if _, err := os.Stat(filePath); err != nil {
-				continue
-			}
-
-			sourceFamilyMap[sourceName][familyName] = append(sourceFamilyMap[sourceName][familyName], fontFileInfo{
-				filePath: filePath,
-				scope:    font.Scope,
-			})
-
-			dedupeMap[font.Name] = true
-		}
-	}
-
-	// Create zip file
-	if dir := filepath.Dir(zipPath); dir != "." && dir != zipPath {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, fmt.Errorf("unable to create directory for backup archive: %v", err)
-		}
-	}
-
-	zipFile, err := os.Create(zipPath)
-	if err != nil {
-		return nil, fmt.Errorf("unable to create backup archive: %v", err)
-	}
-	defer zipFile.Close()
-
-	zipWriter := zip.NewWriter(zipFile)
-	defer zipWriter.Close()
-
-	// Sort sources and families for consistent processing
-	sourceNames := make([]string, 0, len(sourceFamilyMap))
-	for sourceName := range sourceFamilyMap {
-		sourceNames = append(sourceNames, sourceName)
-	}
-	sort.Strings(sourceNames)
-
-	// Count total files first for accurate progress tracking
-	totalFiles := 0
-	for _, sourceName := range sourceNames {
-		familyMap := sourceFamilyMap[sourceName]
-		for _, fontFiles := range familyMap {
-			totalFiles += len(fontFiles)
-		}
-	}
-
-	familyCount := 0
-	fileCount := 0
-	processedFiles := 0
-
-	// Process each family and update progress
-	for _, sourceName := range sourceNames {
-		familyMap := sourceFamilyMap[sourceName]
-		familyNames := make([]string, 0, len(familyMap))
-		for familyName := range familyMap {
-			familyNames = append(familyNames, familyName)
-		}
-		sort.Strings(familyNames)
-
-		for _, familyName := range familyNames {
-			fontFiles := familyMap[familyName]
-			familyCount++
-
-			// Add fonts to zip
-			sanitizedSource := sanitizeForZipPath(sourceName)
-			sanitizedFamily := sanitizeForZipPath(familyName)
-
-			for _, fontInfo := range fontFiles {
-				zipEntryPath := filepath.Join(sanitizedSource, sanitizedFamily, filepath.Base(fontInfo.filePath))
-				zipEntryPath = strings.ReplaceAll(zipEntryPath, "\\", "/")
-
-				srcFile, err := os.Open(fontInfo.filePath)
-				if err != nil {
-					continue
-				}
-
-				zipEntry, err := zipWriter.Create(zipEntryPath)
-				if err != nil {
-					srcFile.Close()
-					continue
-				}
-
-				_, err = io.Copy(zipEntry, srcFile)
-				srcFile.Close()
-				if err != nil {
-					continue
-				}
-
-				fileCount++
-				processedFiles++
-
-				// Update progress after each file for smooth progress bar
-				if totalFiles > 0 {
-					percent := float64(processedFiles) / float64(totalFiles) * 100
-					send(components.ProgressUpdateMsg{Percent: percent})
-				}
-			}
-		}
-	}
-
-	return &backupResult{
-		familyCount: familyCount,
-		fileCount:   fileCount,
-	}, nil
-}
-
-// performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
-func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
-	output.GetDebug().State("Calling performBackupWithCollectedFonts(zipPath=%s, fontCount=%d)", zipPath, len(fonts))
-
-	output.GetVerbose().Info("Found %d font files", len(fonts))
-	output.GetDebug().State("Processing %d font files", len(fonts))
-
-	// Match fonts to repository to get source information
-	var names []string
-	fontMap := make(map[string][]ParsedFont)
-	for _, font := range fonts {
-		// Skip system fonts
-		if IsCriticalSystemFont(font.Family) {
-			continue
-		}
-		names = append(names, font.Family)
-		fontMap[font.Family] = append(fontMap[font.Family], font)
-	}
-	sort.Strings(names)
-
-	output.GetVerbose().Info("Matching fonts to repository...")
-	output.GetDebug().State("Calling repo.MatchAllInstalledFonts(familyCount=%d)", len(names))
-	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
-	if err != nil {
-		output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
-		output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
-		// Continue with partial matches
-		if matches == nil {
-			matches = make(map[string]*repo.InstalledFontMatch)
-		}
-	}
-
-	// Organize fonts by source -> family name
-	// Structure: sourceName -> familyName -> []font files (deduplicated)
-	type fontFileInfo struct {
-		filePath string
-		scope    string
-	}
-	sourceFamilyMap := make(map[string]map[string][]fontFileInfo) // source -> family -> files
-	dedupeMap := make(map[string]bool)                            // track files we've already added (by filename)
-
-	// Process fonts and organize by source
-	for familyName, fontGroup := range fontMap {
-		// Get source from match, or use "Other" if not matched
-		sourceName := "Other"
-		if match, exists := matches[familyName]; exists && match != nil {
-			sourceName = match.Source
-			if sourceName == "" {
-				sourceName = "Other"
-			}
-		}
-
-		// Initialize source map if needed
-		if sourceFamilyMap[sourceName] == nil {
-			sourceFamilyMap[sourceName] = make(map[string][]fontFileInfo)
-		}
-
-		// Add fonts to source/family structure, deduplicating by filename
-		for _, font := range fontGroup {
 			// Check if we've already added this filename (deduplication)
 			if dedupeMap[font.Name] {
 				output.GetDebug().State("Skipping duplicate font file: %s (already added)", font.Name)
@@ -542,20 +369,21 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 				continue
 			}
 
-			// Add to structure
 			sourceFamilyMap[sourceName][familyName] = append(sourceFamilyMap[sourceName][familyName], fontFileInfo{
 				filePath: filePath,
 				scope:    font.Scope,
 			})
 
-			// Mark as added
 			dedupeMap[font.Name] = true
 		}
 	}
 
-	output.GetVerbose().Info("Creating zip archive...")
-	output.GetDebug().State("Organized fonts into %d sources", len(sourceFamilyMap))
+	return sourceFamilyMap
+}
 
+// createBackupZipArchive creates a zip archive from organized font structure.
+// If send is not nil, it will be called with progress updates.
+func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo, zipPath string, send func(msg tea.Msg)) (*backupResult, error) {
 	// Ensure parent directory exists
 	if dir := filepath.Dir(zipPath); dir != "." && dir != zipPath {
 		if err := os.MkdirAll(dir, 0755); err != nil {
@@ -579,22 +407,31 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 	zipWriter := zip.NewWriter(zipFile)
 	defer zipWriter.Close()
 
-	// Count families and files
-	familyCount := 0
-	fileCount := 0
-
-	// Sort sources for consistent output
+	// Sort sources and families for consistent processing
 	sourceNames := make([]string, 0, len(sourceFamilyMap))
 	for sourceName := range sourceFamilyMap {
 		sourceNames = append(sourceNames, sourceName)
 	}
 	sort.Strings(sourceNames)
 
-	// Add fonts to zip organized by source -> family name
+	// Count total files first for accurate progress tracking (if progress callback provided)
+	totalFiles := 0
+	if send != nil {
+		for _, sourceName := range sourceNames {
+			familyMap := sourceFamilyMap[sourceName]
+			for _, fontFiles := range familyMap {
+				totalFiles += len(fontFiles)
+			}
+		}
+	}
+
+	familyCount := 0
+	fileCount := 0
+	processedFiles := 0
+
+	// Process each family and add to zip
 	for _, sourceName := range sourceNames {
 		familyMap := sourceFamilyMap[sourceName]
-
-		// Sort families for consistent output
 		familyNames := make([]string, 0, len(familyMap))
 		for familyName := range familyMap {
 			familyNames = append(familyNames, familyName)
@@ -606,8 +443,8 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 			familyCount++
 
 			// Sanitize source and family names for zip paths
-			sanitizedSource := sanitizeForZipPath(sourceName)
-			sanitizedFamily := sanitizeForZipPath(familyName)
+			sanitizedSource := shared.SanitizeForZipPath(sourceName)
+			sanitizedFamily := shared.SanitizeForZipPath(familyName)
 
 			// Add each font file to the zip
 			for _, fontInfo := range fontFiles {
@@ -643,6 +480,13 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 				}
 
 				fileCount++
+				processedFiles++
+
+				// Update progress after each file for smooth progress bar (if callback provided)
+				if send != nil && totalFiles > 0 {
+					percent := float64(processedFiles) / float64(totalFiles) * 100
+					send(components.ProgressUpdateMsg{Percent: percent})
+				}
 			}
 		}
 	}
@@ -662,6 +506,56 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 		familyCount: familyCount,
 		fileCount:   fileCount,
 	}, nil
+}
+
+func performBackupWithProgress(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, _ []ParsedFont, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch, _ int, send func(msg tea.Msg)) (*backupResult, error) {
+	// Organize fonts by source -> family name
+	sourceFamilyMap := organizeFontsBySourceAndFamily(fm, fontMap, matches)
+
+	// Create zip archive with progress tracking
+	return createBackupZipArchive(sourceFamilyMap, zipPath, send)
+}
+
+// performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
+func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
+	output.GetDebug().State("Calling performBackupWithCollectedFonts(zipPath=%s, fontCount=%d)", zipPath, len(fonts))
+
+	output.GetVerbose().Info("Found %d font files", len(fonts))
+	output.GetDebug().State("Processing %d font files", len(fonts))
+
+	// Match fonts to repository to get source information
+	var names []string
+	fontMap := make(map[string][]ParsedFont)
+	for _, font := range fonts {
+		// Skip system fonts
+		if shared.IsCriticalSystemFont(font.Family) {
+			continue
+		}
+		names = append(names, font.Family)
+		fontMap[font.Family] = append(fontMap[font.Family], font)
+	}
+	sort.Strings(names)
+
+	output.GetVerbose().Info("Matching fonts to repository...")
+	output.GetDebug().State("Calling repo.MatchAllInstalledFonts(familyCount=%d)", len(names))
+	matches, err := repo.MatchAllInstalledFonts(names, shared.IsCriticalSystemFont)
+	if err != nil {
+		output.GetVerbose().Warning("Some fonts could not be matched to repository: %v", err)
+		output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
+		// Continue with partial matches
+		if matches == nil {
+			matches = make(map[string]*repo.InstalledFontMatch)
+		}
+	}
+
+	// Organize fonts by source -> family name
+	sourceFamilyMap := organizeFontsBySourceAndFamily(fm, fontMap, matches)
+
+	output.GetVerbose().Info("Creating zip archive...")
+	output.GetDebug().State("Organized fonts into %d sources", len(sourceFamilyMap))
+
+	// Create zip archive without progress tracking (debug mode)
+	return createBackupZipArchive(sourceFamilyMap, zipPath, nil)
 }
 
 func init() {

@@ -467,40 +467,6 @@ func loadAllSourcesWithCache(manifest *config.Manifest, progress ProgressCallbac
 // ProgressCallback is a function type for reporting progress
 type ProgressCallback func(current, total int, message string)
 
-// GetFontInfo retrieves information about a font from the repository
-func GetFontInfo(fontID string) (*FontInfo, error) {
-	manifest, err := GetManifest(nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get manifest: %w", err)
-	}
-
-	// Look for font in all sources
-	for _, source := range manifest.Sources {
-		if font, ok := source.Fonts[fontID]; ok {
-			return &font, nil
-		}
-	}
-
-	return nil, fmt.Errorf("font not found: %s", fontID)
-}
-
-// GetFontFiles retrieves the font files for a given font family
-func GetFontFiles(fontFamily string) (map[string]string, error) {
-	manifest, err := GetManifest(nil, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get manifest: %w", err)
-	}
-
-	// Look for font in all sources
-	for _, source := range manifest.Sources {
-		if font, ok := source.Fonts[fontFamily]; ok {
-			return font.Files, nil
-		}
-	}
-
-	return nil, fmt.Errorf("font not found: %s", fontFamily)
-}
-
 // Repository represents a font repository
 type Repository struct {
 	manifest *FontManifest

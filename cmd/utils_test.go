@@ -1,7 +1,13 @@
 package cmd
 
 import (
+	"fmt"
 	"testing"
+
+	"fontget/internal/cmdutils"
+	"fontget/internal/output"
+	"fontget/internal/platform"
+	"fontget/internal/shared"
 )
 
 func TestParseFontNames(t *testing.T) {
@@ -44,7 +50,7 @@ func TestParseFontNames(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ParseFontNames(tt.args)
+			result := cmdutils.ParseFontNames(tt.args)
 			if len(result) != len(tt.expected) {
 				t.Errorf("ParseFontNames() returned %d items, expected %d", len(result), len(tt.expected))
 				return
@@ -61,12 +67,12 @@ func TestParseFontNames(t *testing.T) {
 func TestStatusReport(t *testing.T) {
 	tests := []struct {
 		name     string
-		report   StatusReport
+		report   output.StatusReport
 		expected string
 	}{
 		{
 			name: "all zero values",
-			report: StatusReport{
+			report: output.StatusReport{
 				Success:      0,
 				Skipped:      0,
 				Failed:       0,
@@ -78,7 +84,7 @@ func TestStatusReport(t *testing.T) {
 		},
 		{
 			name: "with successful operations",
-			report: StatusReport{
+			report: output.StatusReport{
 				Success:      5,
 				Skipped:      2,
 				Failed:       1,
@@ -95,7 +101,7 @@ func TestStatusReport(t *testing.T) {
 			// This is a bit tricky to test since it prints to stdout
 			// In a real test, you'd capture stdout or use a different approach
 			// For now, we'll just ensure it doesn't panic
-			PrintStatusReport(tt.report)
+			output.PrintStatusReport(tt.report, IsVerbose())
 		})
 	}
 }
@@ -123,7 +129,7 @@ func TestFontNotFoundError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := &FontNotFoundError{
+			err := &shared.FontNotFoundError{
 				FontName:    tt.fontName,
 				Suggestions: tt.suggestions,
 			}
@@ -135,7 +141,7 @@ func TestFontNotFoundError(t *testing.T) {
 }
 
 func TestFontInstallationError(t *testing.T) {
-	err := &FontInstallationError{
+	err := &shared.FontInstallationError{
 		FailedCount: 2,
 		TotalCount:  10,
 		Details:     []string{"Font A failed", "Font B failed"},
@@ -147,7 +153,7 @@ func TestFontInstallationError(t *testing.T) {
 }
 
 func TestFontRemovalError(t *testing.T) {
-	err := &FontRemovalError{
+	err := &shared.FontRemovalError{
 		FailedCount: 1,
 		TotalCount:  5,
 		Details:     []string{"Font A failed"},
@@ -184,7 +190,7 @@ func TestConfigurationError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := &ConfigurationError{
+			err := &shared.ConfigurationError{
 				Field: tt.field,
 				Value: tt.value,
 				Hint:  tt.hint,
@@ -197,12 +203,210 @@ func TestConfigurationError(t *testing.T) {
 }
 
 func TestElevationError(t *testing.T) {
-	err := &ElevationError{
+	err := &shared.ElevationError{
 		Operation: "install",
 		Platform:  "windows",
 	}
 	expected := "elevation required for operation 'install' on platform 'windows'"
 	if err.Error() != expected {
 		t.Errorf("ElevationError.Error() = %q, expected %q", err.Error(), expected)
+	}
+}
+
+func TestGetFontFamilyNameFromFilename(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		expected string
+	}{
+		{
+			name:     "simple font name",
+			filename: "Roboto-Regular.ttf",
+			expected: "Roboto",
+		},
+		{
+			name:     "font with variant",
+			filename: "ABeeZee-Italic.ttf",
+			expected: "ABeeZee",
+		},
+		{
+			name:     "font with multiple hyphens",
+			filename: "RobotoMono-Bold-Italic.ttf",
+			expected: "RobotoMono",
+		},
+		{
+			name:     "font without variant",
+			filename: "Arial.ttf",
+			expected: "Arial",
+		},
+		{
+			name:     "font with path",
+			filename: "/path/to/fonts/OpenSans-Regular.ttf",
+			expected: "OpenSans",
+		},
+		{
+			name:     "font with underscore",
+			filename: "Font_Name-Regular.ttf",
+			expected: "Font_Name",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := shared.GetFontFamilyNameFromFilename(tt.filename)
+			if result != tt.expected {
+				t.Errorf("GetFontFamilyNameFromFilename(%q) = %q, expected %q", tt.filename, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestGetDisplayNameFromFilename(t *testing.T) {
+	tests := []struct {
+		name     string
+		filename string
+		expected string
+	}{
+		{
+			name:     "simple font name",
+			filename: "Roboto-Regular.ttf",
+			expected: "Roboto Regular",
+		},
+		{
+			name:     "font with variant",
+			filename: "ABeeZee-Italic.ttf",
+			expected: "ABeeZee Italic",
+		},
+		{
+			name:     "font with multiple hyphens",
+			filename: "RobotoMono-Bold-Italic.ttf",
+			expected: "Roboto Mono Bold Italic",
+		},
+		{
+			name:     "font without variant",
+			filename: "Arial.ttf",
+			expected: "Arial",
+		},
+		{
+			name:     "font with path (camelCase converted)",
+			filename: "/path/to/fonts/OpenSans-Regular.ttf",
+			expected: "Open Sans Regular", // camelCase is converted to spaced format
+		},
+		{
+			name:     "font with underscore",
+			filename: "Font_Name-Regular.ttf",
+			expected: "Font_Name Regular",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := shared.GetDisplayNameFromFilename(tt.filename)
+			if result != tt.expected {
+				t.Errorf("GetDisplayNameFromFilename(%q) = %q, expected %q", tt.filename, result, tt.expected)
+			}
+		})
+	}
+}
+
+// mockFontManager is a mock implementation of platform.FontManager for testing
+type mockFontManager struct {
+	isElevatedValue bool
+	isElevatedError error
+}
+
+func (m *mockFontManager) InstallFont(fontPath string, scope platform.InstallationScope, force bool) error {
+	return nil
+}
+
+func (m *mockFontManager) RemoveFont(fontName string, scope platform.InstallationScope) error {
+	return nil
+}
+
+func (m *mockFontManager) GetFontDir(scope platform.InstallationScope) string {
+	return "/test/fonts"
+}
+
+func (m *mockFontManager) RequiresElevation(scope platform.InstallationScope) bool {
+	return scope == platform.MachineScope
+}
+
+func (m *mockFontManager) IsElevated() (bool, error) {
+	return m.isElevatedValue, m.isElevatedError
+}
+
+func (m *mockFontManager) GetElevationCommand() (string, []string, error) {
+	return "", nil, nil
+}
+
+func TestAutoDetectScope(t *testing.T) {
+	// Logger is now optional in autoDetectScope, so no initialization needed
+
+	tests := []struct {
+		name          string
+		isElevated    bool
+		isElevatedErr error
+		defaultScope  string
+		elevatedScope string
+		expected      string
+		expectError   bool
+	}{
+		{
+			name:          "elevated returns elevated scope",
+			isElevated:    true,
+			isElevatedErr: nil,
+			defaultScope:  "user",
+			elevatedScope: "machine",
+			expected:      "machine",
+			expectError:   false,
+		},
+		{
+			name:          "not elevated returns user",
+			isElevated:    false,
+			isElevatedErr: nil,
+			defaultScope:  "user",
+			elevatedScope: "machine",
+			expected:      "user",
+			expectError:   false,
+		},
+		{
+			name:          "elevation check error returns default scope",
+			isElevated:    false,
+			isElevatedErr: fmt.Errorf("elevation check failed"),
+			defaultScope:  "user",
+			elevatedScope: "machine",
+			expected:      "user",
+			expectError:   false,
+		},
+		{
+			name:          "custom default scope on error",
+			isElevated:    false,
+			isElevatedErr: fmt.Errorf("elevation check failed"),
+			defaultScope:  "custom",
+			elevatedScope: "machine",
+			expected:      "custom",
+			expectError:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockFM := &mockFontManager{
+				isElevatedValue: tt.isElevated,
+				isElevatedError: tt.isElevatedErr,
+			}
+
+			result, err := platform.AutoDetectScope(mockFM, tt.defaultScope, tt.elevatedScope, nil)
+
+			if tt.expectError && err == nil {
+				t.Errorf("autoDetectScope() expected error but got nil")
+			}
+			if !tt.expectError && err != nil {
+				t.Errorf("autoDetectScope() unexpected error: %v", err)
+			}
+			if result != tt.expected {
+				t.Errorf("autoDetectScope() = %q, expected %q", result, tt.expected)
+			}
+		})
 	}
 }

@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"fontget/internal/cmdutils"
 	"fontget/internal/components"
-	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -75,10 +76,8 @@ Use the --license flag to show only license information.`,
 		// output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
-		if err := config.EnsureManifestExists(); err != nil {
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+			return err
 		}
 
 		// Double check args to prevent panic
@@ -99,14 +98,11 @@ Use the --license flag to show only license information.`,
 		output.GetVerbose().Info("Display options - License: %v, Show All: %v", showLicense, showAll)
 		output.GetDebug().State("Info display flags: license=%v, showAll=%v", showLicense, showAll)
 
-		// Get repository
+		// Get repository (using cached manifest)
 		output.GetVerbose().Info("Initializing repository for font lookup")
-		output.GetDebug().State("Calling repo.GetRepository()")
-		r, err := repo.GetRepository()
+		r, err := cmdutils.GetRepository(false, GetLogger())
 		if err != nil {
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+			return err
 		}
 
 		// Get manifest
@@ -155,7 +151,7 @@ Use the --license flag to show only license information.`,
 
 				// Try to find similar fonts using the same logic as add command
 				output.GetVerbose().Info("Searching for similar fonts to '%s'", fontID)
-				output.GetDebug().State("Calling findSimilarFonts for font: %s", fontID)
+				output.GetDebug().State("Calling shared.FindSimilarFonts for font: %s", fontID)
 
 				// Get all available fonts for suggestions (use same method as add command)
 				allFonts := repo.GetAllFontsCached()
@@ -165,7 +161,7 @@ Use the --license flag to show only license information.`,
 				}
 
 				// Find similar fonts using the same method as add command
-				similar := findSimilarFonts(fontID, allFonts, false) // false = repository fonts
+				similar := shared.FindSimilarFonts(fontID, allFonts, false) // false = repository fonts
 				GetLogger().Info("Found %d similar fonts for %s", len(similar), fontID)
 
 				// Show suggestions

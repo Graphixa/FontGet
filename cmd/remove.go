@@ -7,10 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"fontget/internal/cmdutils"
 	"fontget/internal/components"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,17 +38,6 @@ type RemoveResult struct {
 	Message string
 	Details []string // Font display names
 	Errors  []string
-}
-
-// isCriticalSystemFont checks if a font is a critical system font (for filenames)
-// This is a wrapper that handles file extensions for the remove command
-func isCriticalSystemFont(fontName string) bool {
-	name := strings.ToLower(fontName)
-	name = strings.ReplaceAll(name, " ", "")
-	name = strings.ReplaceAll(name, "-", "")
-	name = strings.ReplaceAll(name, "_", "")
-	name = strings.TrimSuffix(name, filepath.Ext(name))
-	return criticalSystemFonts[name]
 }
 
 // findFontFamilyFiles returns a list of font files that belong to the given font family
@@ -123,13 +114,13 @@ func extractFontDisplayNameFromPath(fontPath string) string {
 	if metadata, err := platform.ExtractFontMetadata(fontPath); err == nil {
 		if metadata.FamilyName != "" {
 			// Use FormatFontNameWithVariant to properly format the name with style
-			return FormatFontNameWithVariant(metadata.FamilyName, metadata.StyleName)
+			return shared.FormatFontNameWithVariant(metadata.FamilyName, metadata.StyleName)
 		}
 	}
 
 	// Fallback to filename parsing if metadata extraction fails
 	filename := filepath.Base(fontPath)
-	return GetDisplayNameFromFilename(filename)
+	return shared.GetDisplayNameFromFilename(filename)
 }
 
 // extractFontFamilyNameFromPath extracts just the font family name (without variant) from a font file path
@@ -147,23 +138,75 @@ func extractFontFamilyNameFromPath(fontPath string) string {
 	// Extract just the family name (without variant)
 	family, _ := parseFontName(filename)
 	// Convert to proper display format (e.g., "RobotoMono" -> "Roboto Mono")
-	return convertCamelCaseToSpaced(family)
+	// Note: convertCamelCaseToSpaced is unexported in shared package
+	// We'll use GetDisplayNameFromFilename which handles camelCase conversion
+	return shared.GetDisplayNameFromFilename(family + ".ttf")
 }
 
-// removeFont handles the core removal logic for a single font
-func removeFont(
-	fontName string,
-	fontManager platform.FontManager,
-	scope platform.InstallationScope,
-	fontDir string,
-	repository *repo.Repository,
-	isCriticalSystemFont func(string) bool,
-) (*RemoveResult, error) {
-	result := &RemoveResult{
-		Details: make([]string, 0),
-		Errors:  make([]string, 0),
+// processRemoveResult processes and categorizes removal result details (removed/skipped/failed variants)
+func processRemoveResult(result *RemoveResult) (removedFiles, skippedFiles, failedFiles []string) {
+	if result == nil || len(result.Details) == 0 {
+		return nil, nil, nil
 	}
 
+	for _, detail := range result.Details {
+		if strings.Contains(detail, " (Skipped") {
+			variantName := strings.TrimSuffix(strings.TrimSuffix(detail, " (Skipped - Protected system font)"), " (Skipped)")
+			skippedFiles = append(skippedFiles, variantName)
+		} else if strings.Contains(detail, " (Failed)") {
+			variantName := strings.TrimSuffix(detail, " (Failed)")
+			failedFiles = append(failedFiles, variantName)
+		} else {
+			removedFiles = append(removedFiles, detail)
+		}
+	}
+
+	return removedFiles, skippedFiles, failedFiles
+}
+
+// logRemoveResultDetails logs detailed variant information in debug mode
+func logRemoveResultDetails(result *RemoveResult, fontName, scopeLabel string) {
+	if result == nil {
+		return
+	}
+
+	removedFiles, skippedFiles, failedFiles := processRemoveResult(result)
+
+	if len(removedFiles) > 0 {
+		output.GetDebug().State("Removed variants:")
+		for _, file := range removedFiles {
+			output.GetDebug().State(" - %s", file)
+		}
+	}
+	if len(skippedFiles) > 0 {
+		output.GetDebug().State("Skipped variants:")
+		for _, file := range skippedFiles {
+			output.GetDebug().State(" - %s", file)
+		}
+	}
+	if len(failedFiles) > 0 {
+		output.GetDebug().State("Failed variants:")
+		for _, file := range failedFiles {
+			output.GetDebug().State(" - %s", file)
+		}
+	}
+
+	output.GetDebug().State("Font %s in %s completed: %s - %s (Removed: %d, Skipped: %d, Failed: %d)",
+		fontName, scopeLabel, result.Status, result.Message, result.Success, result.Skipped, result.Failed)
+}
+
+// updateRemovalStatus updates removal status from result
+func updateRemovalStatus(status *RemovalStatus, result *RemoveResult) {
+	if result == nil || status == nil {
+		return
+	}
+	status.Removed += result.Success
+	status.Skipped += result.Skipped
+	status.Failed += result.Failed
+}
+
+// findFontFilesForRemoval finds all font files matching the font name
+func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, scope platform.InstallationScope, repository *repo.Repository) ([]string, error) {
 	// Resolve Font ID to font name if needed (supports both Font IDs and font names)
 	searchName := resolveFontNameOrID(fontName, repository)
 	if searchName != fontName {
@@ -189,33 +232,44 @@ func removeFont(
 	}
 
 	if len(matchingFonts) == 0 {
-		result.Status = "failed"
-		result.Message = "Font not found"
-		return result, fmt.Errorf("font not found: %s", fontName)
+		return nil, fmt.Errorf("font not found: %s", fontName)
 	}
 
-	// Remove each matching font file
-	for _, matchingFont := range matchingFonts {
+	return matchingFonts, nil
+}
+
+// RemoveFontFilesParams contains parameters for removeFontFiles function
+type RemoveFontFilesParams struct {
+	MatchingFonts        []string
+	FontManager          platform.FontManager
+	Scope                platform.InstallationScope
+	FontDir              string
+	IsCriticalSystemFont func(string) bool
+}
+
+// removeFontFiles removes font files from system
+func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string) {
+	for _, matchingFont := range params.MatchingFonts {
 		// Construct full font path for metadata extraction
-		fontPath := filepath.Join(fontDir, matchingFont)
+		fontPath := filepath.Join(params.FontDir, matchingFont)
 
 		// Check for protected system fonts - ALWAYS enforced
 		// Critical system fonts should never be removable for system stability
-		if isCriticalSystemFont != nil && isCriticalSystemFont(matchingFont) {
-			result.Skipped++
+		if params.IsCriticalSystemFont != nil && params.IsCriticalSystemFont(matchingFont) {
+			skipped++
 			fontDisplayName := extractFontDisplayNameFromPath(fontPath)
-			result.Details = append(result.Details, fontDisplayName+" (Skipped - Protected system font)")
+			details = append(details, fontDisplayName+" (Skipped - Protected system font)")
 			continue
 		}
 
 		fontDisplayName := extractFontDisplayNameFromPath(fontPath)
 
 		// Remove font
-		output.GetDebug().State("Calling fontManager.RemoveFont(%s, %s)", matchingFont, scope)
-		err := fontManager.RemoveFont(matchingFont, scope)
+		output.GetDebug().State("Calling fontManager.RemoveFont(%s, %s)", matchingFont, params.Scope)
+		err := params.FontManager.RemoveFont(matchingFont, params.Scope)
 
 		if err != nil {
-			result.Failed++
+			failed++
 			var errorMsg string
 			errStr := err.Error()
 			if containsAny(errStr, []string{"in use", "access denied", "permission"}) {
@@ -223,14 +277,27 @@ func removeFont(
 			} else {
 				errorMsg = "Failed to remove existing font"
 			}
-			result.Errors = append(result.Errors, errorMsg)
-			result.Details = append(result.Details, fontDisplayName+" (Failed)")
+			errors = append(errors, errorMsg)
+			details = append(details, fontDisplayName+" (Failed)")
 			output.GetDebug().State("fontManager.RemoveFont() failed for %s: %v", matchingFont, err)
 			continue
 		}
 
-		result.Success++
-		result.Details = append(result.Details, fontDisplayName)
+		removed++
+		details = append(details, fontDisplayName)
+	}
+
+	return removed, skipped, failed, details, errors
+}
+
+// buildRemoveResult builds RemoveResult from removal outcomes
+func buildRemoveResult(removed, skipped, failed int, details []string, errors []string) *RemoveResult {
+	result := &RemoveResult{
+		Success: removed,
+		Skipped: skipped,
+		Failed:  failed,
+		Details: details,
+		Errors:  errors,
 	}
 
 	// Determine final status
@@ -245,7 +312,38 @@ func removeFont(
 		result.Message = "Protected system font"
 	}
 
-	return result, nil
+	return result
+}
+
+// removeFont handles the core removal logic for a single font
+func removeFont(
+	fontName string,
+	fontManager platform.FontManager,
+	scope platform.InstallationScope,
+	fontDir string,
+	repository *repo.Repository,
+) (*RemoveResult, error) {
+	// Find font files for removal
+	matchingFonts, err := findFontFilesForRemoval(fontName, fontManager, scope, repository)
+	if err != nil {
+		// Font not found - return result with failed status
+		result := buildRemoveResult(0, 0, 0, nil, nil)
+		result.Status = "failed"
+		result.Message = "Font not found"
+		return result, err
+	}
+
+	// Remove font files
+	removed, skipped, failed, details, errors := removeFontFiles(RemoveFontFilesParams{
+		MatchingFonts:        matchingFonts,
+		FontManager:          fontManager,
+		Scope:                scope,
+		FontDir:              fontDir,
+		IsCriticalSystemFont: shared.IsCriticalSystemFont,
+	})
+
+	// Build and return result
+	return buildRemoveResult(removed, skipped, failed, details, errors), nil
 }
 
 // containsAny checks if a string contains any of the given substrings (case-insensitive)
@@ -328,7 +426,7 @@ Removal scope can be specified with the --scope flag:
 
 		scopeFlag, _ := cmd.Flags().GetString("scope")
 
-		status := RemovalStatus{Details: make([]string, 0)}
+		status := &RemovalStatus{Details: make([]string, 0)}
 
 		r, err := repo.GetRepository()
 		if err != nil {
@@ -339,18 +437,11 @@ Removal scope can be specified with the --scope flag:
 
 		// Auto-detect scope if not explicitly provided
 		if scopeFlag == "" {
-			isElevated, err := fontManager.IsElevated()
+			var err error
+			scopeFlag, err = platform.AutoDetectScope(fontManager, "user", "all", GetLogger())
 			if err != nil {
-				GetLogger().Warn("Failed to detect elevation status: %v", err)
-				output.GetVerbose().Warning("Failed to detect elevation status: %v", err)
-				// Default to user scope if we can't detect elevation
+				// Should not happen, but handle gracefully
 				scopeFlag = "user"
-			} else if isElevated {
-				scopeFlag = "all"
-				GetLogger().Info("Auto-detected elevated privileges, defaulting to 'all' scope")
-			} else {
-				scopeFlag = "user"
-				GetLogger().Info("Auto-detected user privileges, defaulting to 'user' scope")
 			}
 		}
 
@@ -396,8 +487,8 @@ Removal scope can be specified with the --scope flag:
 
 		// Check elevation for machine scope operations (single scope or all)
 		if len(scopes) == 1 && scopes[0] == platform.MachineScope {
-			if err := checkElevation(cmd, fontManager, platform.MachineScope); err != nil {
-				if errors.Is(err, ErrElevationRequired) {
+			if err := cmdutils.CheckElevation(cmd, fontManager, platform.MachineScope); err != nil {
+				if errors.Is(err, cmdutils.ErrElevationRequired) {
 					return nil // Already printed user-friendly message
 				}
 				output.GetVerbose().Error("%v", err)
@@ -407,7 +498,7 @@ Removal scope can be specified with the --scope flag:
 		}
 
 		// Process font names from arguments
-		fontNames := ParseFontNames(args)
+		fontNames := cmdutils.ParseFontNames(args)
 
 		// Note: Header will be shown only for successful operations, not for not found cases
 		// This matches the add command behavior
@@ -641,7 +732,7 @@ Removal scope can be specified with the --scope flag:
 							fontName := trulyNotFound[0]
 							var similar []string
 							if len(installedFontNames) > 0 {
-								similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+								similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
 							}
 
 							// Filter out any suggestions that are also in the not found list
@@ -679,7 +770,7 @@ Removal scope can be specified with the --scope flag:
 								}
 								var similar []string
 								if len(installedFontNames) > 0 {
-									similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+									similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
 								}
 								// Deduplicate suggestions and filter out not-found fonts
 								for _, suggestion := range similar {
@@ -736,8 +827,8 @@ Removal scope can be specified with the --scope flag:
 		// For --all scope, require elevation upfront
 		if len(scopes) == 2 {
 			// Check elevation first
-			if err := checkElevation(cmd, fontManager, platform.MachineScope); err != nil {
-				if errors.Is(err, ErrElevationRequired) {
+			if err := cmdutils.CheckElevation(cmd, fontManager, platform.MachineScope); err != nil {
+				if errors.Is(err, cmdutils.ErrElevationRequired) {
 					return nil // Already printed user-friendly message
 				}
 				output.GetVerbose().Error("%v", err)
@@ -842,66 +933,29 @@ Removal scope can be specified with the --scope flag:
 						scopeType,
 						fontDir,
 						r,
-						isCriticalSystemFont,
 					)
 
 					if err != nil {
 						output.GetDebug().State("Error removing font %s in %s: %v", fontInfo.SearchName, scopeLabelName, err)
 						if result != nil {
-							status.Failed += result.Failed
-							status.Skipped += result.Skipped
-							if len(result.Details) > 0 {
-								// Format failed variants as a list with hyphens
+							updateRemovalStatus(status, result)
+							// Show failed variants if available
+							_, _, failedFiles := processRemoveResult(result)
+							if len(failedFiles) > 0 {
 								output.GetDebug().State("Failed variants:")
-								for _, detail := range result.Details {
-									output.GetDebug().State(" - %s", detail)
+								for _, file := range failedFiles {
+									output.GetDebug().State(" - %s", file)
 								}
 							}
 						}
 						continue
 					}
 
-					status.Removed += result.Success
-					status.Skipped += result.Skipped
-					status.Failed += result.Failed
+					// Update status
+					updateRemovalStatus(status, result)
 
 					// Show detailed result information in debug mode
-					if len(result.Details) > 0 {
-						// Separate variants by status (like add command does)
-						var removedFiles, skippedFiles, failedFiles []string
-						for _, detail := range result.Details {
-							if strings.Contains(detail, " (Skipped") {
-								variantName := strings.TrimSuffix(strings.TrimSuffix(detail, " (Skipped - Protected system font)"), " (Skipped)")
-								skippedFiles = append(skippedFiles, variantName)
-							} else if strings.Contains(detail, " (Failed)") {
-								variantName := strings.TrimSuffix(detail, " (Failed)")
-								failedFiles = append(failedFiles, variantName)
-							} else {
-								removedFiles = append(removedFiles, detail)
-							}
-						}
-
-						if len(removedFiles) > 0 {
-							output.GetDebug().State("Removed variants:")
-							for _, file := range removedFiles {
-								output.GetDebug().State(" - %s", file)
-							}
-						}
-						if len(skippedFiles) > 0 {
-							output.GetDebug().State("Skipped variants:")
-							for _, file := range skippedFiles {
-								output.GetDebug().State(" - %s", file)
-							}
-						}
-						if len(failedFiles) > 0 {
-							output.GetDebug().State("Failed variants:")
-							for _, file := range failedFiles {
-								output.GetDebug().State(" - %s", file)
-							}
-						}
-					}
-					output.GetDebug().State("Font %s in %s completed: %s - %s (Removed: %d, Skipped: %d, Failed: %d)",
-						fontInfo.SearchName, scopeLabelName, result.Status, result.Message, result.Success, result.Skipped, result.Failed)
+					logRemoveResultDetails(result, fontInfo.SearchName, scopeLabelName)
 				}
 			}
 
@@ -909,14 +963,14 @@ Removal scope can be specified with the --scope flag:
 				status.Removed, status.Skipped, status.Failed)
 
 			// Print status report
-			PrintStatusReport(StatusReport{
+			output.PrintStatusReport(output.StatusReport{
 				Success:      status.Removed,
 				Skipped:      status.Skipped,
 				Failed:       status.Failed,
 				SuccessLabel: "Removed",
 				SkippedLabel: "Skipped",
 				FailedLabel:  "Failed",
-			})
+			}, IsVerbose())
 
 			GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
 				status.Removed, status.Skipped, status.Failed)
@@ -961,7 +1015,6 @@ Removal scope can be specified with the --scope flag:
 							item.ScopeType,
 							fontDir,
 							r,
-							isCriticalSystemFont,
 						)
 
 						// Collect variants for display (only in verbose mode)
@@ -1115,7 +1168,6 @@ Removal scope can be specified with the --scope flag:
 								platform.UserScope,
 								fontDir,
 								r,
-								isCriticalSystemFont,
 							)
 
 							if err != nil {
@@ -1204,7 +1256,6 @@ Removal scope can be specified with the --scope flag:
 								scopeType,
 								fontDir,
 								r,
-								isCriticalSystemFont,
 							)
 
 							if err != nil {
@@ -1389,7 +1440,7 @@ Removal scope can be specified with the --scope flag:
 					fontName := notFoundFonts[0]
 					var similar []string
 					if len(installedFontNames) > 0 {
-						similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+						similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
 					}
 
 					// Filter out any suggestions that are also in the not found list
@@ -1427,7 +1478,7 @@ Removal scope can be specified with the --scope flag:
 						}
 						var similar []string
 						if len(installedFontNames) > 0 {
-							similar = findSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+							similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
 						}
 						// Deduplicate suggestions and filter out not-found fonts
 						for _, suggestion := range similar {
@@ -1496,14 +1547,14 @@ Removal scope can be specified with the --scope flag:
 		}
 
 		// Print status report last (after error messages and machine scope info and only if there were actual operations)
-		PrintStatusReport(StatusReport{
+		output.PrintStatusReport(output.StatusReport{
 			Success:      status.Removed,
 			Skipped:      status.Skipped,
 			Failed:       status.Failed,
 			SuccessLabel: "Removed",
 			SkippedLabel: "Skipped",
 			FailedLabel:  "Failed",
-		})
+		}, IsVerbose())
 
 		// Don't return error for removal failures since we already show detailed status report
 		// This prevents duplicate error messages while maintaining proper exit codes

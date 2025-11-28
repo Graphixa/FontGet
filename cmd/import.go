@@ -8,11 +8,13 @@ import (
 	"sort"
 	"strings"
 
+	"fontget/internal/cmdutils"
 	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -52,11 +54,8 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		fmt.Println()
 
 		// Ensure manifest system is initialized
-		if err := config.EnsureManifestExists(); err != nil {
-			GetLogger().Error("Failed to ensure manifest exists: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+			return err
 		}
 
 		manifestFile := args[0]
@@ -90,22 +89,17 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		force, _ := cmd.Flags().GetBool("force")
 
 		// Create font manager
-		fontManager, err := platform.NewFontManager()
+		fontManager, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
 		if err != nil {
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
-			return fmt.Errorf("unable to access system fonts: %v", err)
+			return err
 		}
 
 		// Auto-detect scope if not provided
 		if scope == "" {
-			isElevated, err := fontManager.IsElevated()
+			var err error
+			scope, err = platform.AutoDetectScope(fontManager, "user", "machine", GetLogger())
 			if err != nil {
-				GetLogger().Warn("Failed to detect elevation status: %v", err)
-				scope = "user"
-			} else if isElevated {
-				scope = "machine"
-			} else {
+				// Should not happen, but handle gracefully
 				scope = "user"
 			}
 		}
@@ -123,8 +117,8 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		}
 
 		// Check elevation
-		if err := checkElevation(cmd, fontManager, installScope); err != nil {
-			if errors.Is(err, ErrElevationRequired) {
+		if err := cmdutils.CheckElevation(cmd, fontManager, installScope); err != nil {
+			if errors.Is(err, cmdutils.ErrElevationRequired) {
 				return nil
 			}
 			output.GetVerbose().Error("%v", err)
@@ -203,7 +197,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			// Get source name from export file
 			sourceName := exportedFont.Source
 			if sourceName == "" {
-				sourceName = getSourceName(exportedFont.FontID)
+				sourceName = shared.GetSourceNameFromID(exportedFont.FontID)
 			}
 
 			// Get family names for tracking
@@ -572,14 +566,14 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		}
 
 		// Print status report last (only shown in verbose mode)
-		PrintStatusReport(StatusReport{
+		output.PrintStatusReport(output.StatusReport{
 			Success:      status.Installed,
 			Skipped:      status.Skipped,
 			Failed:       status.Failed,
 			SuccessLabel: "Installed",
 			SkippedLabel: "Skipped",
 			FailedLabel:  "Failed",
-		})
+		}, IsVerbose())
 
 		GetLogger().Info("Import complete - Installed: %d, Skipped: %d, Failed: %d",
 			status.Installed, status.Skipped, status.Failed)
@@ -681,14 +675,14 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 		status.Installed, status.Skipped, status.Failed)
 
 	// Print status report
-	PrintStatusReport(StatusReport{
+	output.PrintStatusReport(output.StatusReport{
 		Success:      status.Installed,
 		Skipped:      status.Skipped,
 		Failed:       status.Failed,
 		SuccessLabel: "Installed",
 		SkippedLabel: "Skipped",
 		FailedLabel:  "Failed",
-	})
+	}, IsVerbose())
 
 	GetLogger().Info("Import complete - Installed: %d, Skipped: %d, Failed: %d",
 		status.Installed, status.Skipped, status.Failed)

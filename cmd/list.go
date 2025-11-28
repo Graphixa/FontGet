@@ -3,10 +3,11 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"fontget/internal/config"
+	"fontget/internal/cmdutils"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 	"os"
 	"path/filepath"
@@ -162,19 +163,13 @@ Flags:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font list operation")
 
-		if err := config.EnsureManifestExists(); err != nil {
-			GetLogger().Error("Failed to ensure manifest exists: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+			return err
 		}
 
-		fm, err := platform.NewFontManager()
+		fm, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
 		if err != nil {
-			GetLogger().Error("Failed to create font manager: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
-			return fmt.Errorf("unable to access system fonts: %v", err)
+			return err
 		}
 
 		scope, _ := cmd.Flags().GetString("scope")
@@ -223,8 +218,8 @@ Flags:
 			}
 			// machine scope requires elevation
 			if installScope == platform.MachineScope {
-				if err := checkElevation(cmd, fm, installScope); err != nil {
-					if errors.Is(err, ErrElevationRequired) {
+				if err := cmdutils.CheckElevation(cmd, fm, installScope); err != nil {
+					if errors.Is(err, cmdutils.ErrElevationRequired) {
 						return nil
 					}
 					GetLogger().Error("Failed to check elevation: %v", err)
@@ -258,7 +253,7 @@ Flags:
 		// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
 		output.GetVerbose().Info("Matching installed fonts to repository...")
 		output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
-		matches, err := repo.MatchAllInstalledFonts(allFamilyNames, IsCriticalSystemFont)
+		matches, err := repo.MatchAllInstalledFonts(allFamilyNames, shared.IsCriticalSystemFont)
 		if err != nil {
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
@@ -294,51 +289,8 @@ Flags:
 
 		// Apply filters (now that Font IDs are populated)
 		// Filter by family name and Font ID (type filter already applied during collection)
-		// Optimization 2: Cache lowercased strings to avoid repeated ToLower() calls
-		filteredFamilies := make(map[string][]ParsedFont)
-		familyFilterLower := ""
-		if familyFilter != "" {
-			familyFilterLower = strings.ToLower(familyFilter)
-		}
-
-		for familyName, fontGroup := range families {
-			// Get Font ID for this family (from first font in group, all have same Font ID)
-			fontID := ""
-			if len(fontGroup) > 0 {
-				fontID = fontGroup[0].FontID
-			}
-
-			// Check if family name or Font ID matches the filter
-			matchesFilter := true
-			if familyFilterLower != "" {
-				// Cache lowercased strings (optimization 2)
-				familyLower := strings.ToLower(familyName)
-				fontIDLower := ""
-				if fontID != "" {
-					fontIDLower = strings.ToLower(fontID)
-				}
-
-				// Check if filter matches family name OR Font ID
-				matchesFilter = strings.Contains(familyLower, familyFilterLower) ||
-					(fontIDLower != "" && strings.Contains(fontIDLower, familyFilterLower))
-			}
-
-			if !matchesFilter {
-				continue
-			}
-
-			// Type filter already applied during collection, so include all fonts in family
-			filteredFamilies[familyName] = fontGroup
-
-			// Show which fonts matched the filter (useful for debugging)
-			if familyFilterLower != "" {
-				matchReason := "family name"
-				if fontID != "" && strings.Contains(strings.ToLower(fontID), familyFilterLower) {
-					matchReason = "Font ID"
-				}
-				output.GetDebug().State("Filter match: '%s' (matched by %s)", familyName, matchReason)
-			}
-		}
+		// Apply filter using helper function
+		filteredFamilies := filterFontsByFamilyAndID(families, familyFilter)
 
 		// Get sorted list of filtered family names
 		var names []string
@@ -378,8 +330,8 @@ Flags:
 			fmt.Printf("%s\n\n", ui.FeedbackText.Render(info))
 		}
 
-		fmt.Println(ui.TableHeader.Render(GetListTableHeader()))
-		fmt.Println(GetTableSeparator())
+		fmt.Println(ui.GetListTableHeader())
+		fmt.Println(ui.GetTableSeparator())
 
 		for i, fam := range names {
 			group := filteredFamilies[fam]
@@ -402,13 +354,13 @@ Flags:
 			source := rep.Source
 
 			fmt.Printf("%s %-*s %-*s %-*s %-*s %-*s %-*s\n",
-				ui.TableSourceName.Render(fmt.Sprintf("%-*s", TableColListName, truncateString(fam, TableColListName))),
-				TableColListID, truncateString(fontID, TableColListID),
-				TableColListLicense, truncateString(license, TableColListLicense),
-				TableColListCategory, truncateString(categories, TableColListCategory),
-				TableColType, rep.Type,
-				TableColScope, rep.Scope,
-				TableColListSource, truncateString(source, TableColListSource),
+				ui.TableSourceName.Render(fmt.Sprintf("%-*s", ui.TableColListName, shared.TruncateString(fam, ui.TableColListName))),
+				ui.TableColListID, shared.TruncateString(fontID, ui.TableColListID),
+				ui.TableColListLicense, shared.TruncateString(license, ui.TableColListLicense),
+				ui.TableColListCategory, shared.TruncateString(categories, ui.TableColListCategory),
+				ui.TableColType, rep.Type,
+				ui.TableColScope, rep.Scope,
+				ui.TableColListSource, shared.TruncateString(source, ui.TableColListSource),
 			)
 
 			if showVariants {
@@ -424,13 +376,13 @@ Flags:
 				for _, s := range styles {
 					row := fmt.Sprintf("  ↳ %s", s)
 					fmt.Printf("%s %-*s %-*s %-*s %-*s %-*s %-*s\n",
-						fmt.Sprintf("%-*s", TableColListName, row),
-						TableColListID, "",
-						TableColListLicense, "",
-						TableColListCategory, "",
-						TableColType, "",
-						TableColScope, "",
-						TableColListSource, "",
+						fmt.Sprintf("%-*s", ui.TableColListName, row),
+						ui.TableColListID, "",
+						ui.TableColListLicense, "",
+						ui.TableColListCategory, "",
+						ui.TableColType, "",
+						ui.TableColScope, "",
+						ui.TableColListSource, "",
 					)
 				}
 				if i < len(names)-1 {
@@ -442,6 +394,47 @@ Flags:
 		fmt.Println()
 		return nil
 	},
+}
+
+// filterFontsByFamilyAndID filters font families by family name or Font ID
+func filterFontsByFamilyAndID(families map[string][]ParsedFont, familyFilter string) map[string][]ParsedFont {
+	// Optimization: Cache lowercased strings to avoid repeated ToLower() calls
+	filteredFamilies := make(map[string][]ParsedFont)
+	familyFilterLower := ""
+	if familyFilter != "" {
+		familyFilterLower = strings.ToLower(familyFilter)
+	}
+
+	for familyName, fontGroup := range families {
+		// Get Font ID for this family (from first font in group, all have same Font ID)
+		fontID := ""
+		if len(fontGroup) > 0 {
+			fontID = fontGroup[0].FontID
+		}
+
+		// Check if family name or Font ID matches the filter
+		matchesFilter := true
+		if familyFilterLower != "" {
+			// Cache lowercased strings (optimization)
+			familyLower := strings.ToLower(familyName)
+			fontIDLower := ""
+			if fontID != "" {
+				fontIDLower = strings.ToLower(fontID)
+			}
+
+			// Check if filter matches family name OR Font ID
+			matchesFilter = strings.Contains(familyLower, familyFilterLower) ||
+				(fontIDLower != "" && strings.Contains(fontIDLower, familyFilterLower))
+		}
+
+		if !matchesFilter {
+			continue
+		}
+
+		filteredFamilies[familyName] = fontGroup
+	}
+
+	return filteredFamilies
 }
 
 func init() {

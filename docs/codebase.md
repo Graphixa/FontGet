@@ -125,7 +125,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Key Functions**:
 - `listCmd.RunE`: Main listing execution
-- `collectFonts`: Collects fonts from specified scopes with optional type filtering
+- `collectFonts`: Collects fonts from specified scopes with optional type filtering and optional verbose output suppression
 - `groupByFamily`: Groups fonts by family name
 - `IsCriticalSystemFont`: Checks if a font is a protected system font
 
@@ -133,6 +133,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Font ID Support**: Filter by Font ID in addition to family name
 - **Early Type Filtering**: Filters by file extension before expensive metadata extraction when type filter is specified
 - **Optimized Filtering**: Caches lowercased strings to avoid repeated ToLower() calls
+- **Verbose Output Suppression**: `collectFonts` accepts optional `suppressVerbose` parameter to suppress verbose output when called from internal/helper functions (e.g., `checkFontsAlreadyInstalled`, `backup.go`, `export.go`)
 
 **Flags**:
 - `--scope, -s`: Filter by installation scope (user or machine)
@@ -473,39 +474,97 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Status**: ✅ Active - Output handler implementations
 
 
-### `shared.go`
-**Purpose**: Shared command utilities
+### `operations.go`
+**Purpose**: Shared font operation infrastructure
 **Functionality**:
-- Provides common utilities used across commands
-- Handles shared functionality and helpers
-- Font name parsing and formatting utilities
-- File size formatting utilities
-- Table formatting constants and helpers
-- Error types for font operations
-- Protected system font checking
-- Font installation status checking
+- Defines core operation types and interfaces
+- Provides unified operation execution logic
+- Handles font installation and removal operations
+- Tracks operation status and results
+- Manages download size tracking
+
+**Key Types**:
+- `OperationHandler`: Interface for operation output handlers
+- `FontOperationType`: Distinguishes install vs remove operations
+- `OperationStatus`: Tracks success/skipped/failed counts
+- `FontToProcess`: Represents a font to be processed
+- `FontOperation`: Complete operation definition
+- `ItemResult`: Result of processing a single font
 
 **Key Functions**:
-- `ParseFontNames`: Parses comma-separated font names from arguments
-- `FormatFontNameWithVariant`: Formats font names with variants
-- `GetFontDisplayName`: Returns human-friendly display names
-- `GetFontFamilyNameFromFilename`: Extracts font family name from filename
-- `FormatFileSize`: Formats bytes into human-readable format (KB, MB)
-- `findSimilarFonts`: Fuzzy matching for font names
-- `PrintStatusReport`: Prints formatted status reports
-- `IsCriticalSystemFont`: Checks if a font is a protected system font (used by list and remove commands)
-- `checkFontsAlreadyInstalled`: Checks if a font is already installed in the specified scope using the same matching logic as the list command (matches by Font ID and family name)
+- `executeFontOperation`: Orchestrates operation execution
+- `processFontInstall`: Handles download, extraction, and installation
+- `processFontRemove`: Handles font finding and removal
 
 **Interfaces**:
-- Used by multiple command files
-- Uses `internal/ui` for styling
-- Uses `internal/platform` for platform operations
+- Used by `add.go` and `remove.go` commands
+- Uses `internal/platform` for font operations
+- Uses `internal/repo` for font data
 
-**Status**: ✅ Active - Utility functions
+**Status**: ✅ Active - Shared operation infrastructure
 
 ---
 
 ## Internal Packages
+
+### `internal/cmdutils/`
+**Purpose**: CLI-specific utilities and helpers
+**Files**:
+- `init.go`: CLI initialization helpers (`EnsureManifestInitialized`, `CreateFontManager`)
+- `cobra.go`: Cobra integration (`CheckElevation`, `PrintElevationHelp`)
+- `args.go`: CLI argument parsing (`ParseFontNames`)
+- `repository.go`: CLI wrappers for repository operations with logging
+
+**Key Features**:
+- **CLI-Specific**: All functions are designed for CLI command context
+- **Standardized Error Handling**: Provides consistent error messages with verbose/debug output
+- **Logger Interface**: Uses minimal `Logger` interface to avoid circular dependencies
+- **Repository Wrappers**: CLI-specific wrappers around `internal/repo/` with logging
+
+**Guidelines**:
+- ✅ Use for code that needs Cobra context or CLI-specific error handling
+- ✅ Use for CLI wrappers around internal packages
+- ❌ Don't use for general-purpose utilities (use `internal/shared/` instead)
+
+**Status**: ✅ Active - CLI utilities
+
+### `internal/shared/`
+**Purpose**: General-purpose utilities that are domain-agnostic
+**Files**:
+- `font.go`: Font formatting utilities (`FormatFontNameWithVariant`, `GetFontDisplayName`, etc.)
+- `file.go`: File utilities (`FormatFileSize`, `SanitizeForZipPath`, `TruncateString`)
+- `matching.go`: Font matching utilities (`FindSimilarFonts`)
+- `errors.go`: Error types (`FontNotFoundError`, `FontInstallationError`, etc.)
+- `system_fonts.go`: System font utilities (`IsCriticalSystemFont`)
+- `repository.go`: Font query resolution (`ResolveFontQuery`, `GetSourceNameFromID`)
+
+**Key Features**:
+- **General-Purpose**: Pure utilities with no CLI dependencies
+- **Reusable**: Can be used by commands, tests, or other internal packages
+- **Domain-Agnostic**: Not tied to any specific feature area
+
+**Guidelines**:
+- ✅ Use for pure utility functions
+- ✅ Use for code that could be used outside CLI context
+- ❌ Don't use for CLI-specific code (use `internal/cmdutils/` instead)
+
+**Status**: ✅ Active - General utilities
+
+### `internal/functions/`
+**Purpose**: Domain-specific utilities
+**Files**:
+- `sort.go`: Source sorting utilities (`SortSources`)
+- `validation.go`: Domain-specific validation utilities
+
+**Key Features**:
+- **Domain-Specific**: Utilities specific to a particular feature area
+- **Type-Specific**: Operates on domain-specific types (e.g., `SourceItem`)
+
+**Guidelines**:
+- ✅ Use for utilities specific to a feature domain
+- ❌ Don't use for general-purpose utilities (use `internal/shared/` instead)
+
+**Status**: ✅ Active - Domain utilities
 
 ### `internal/config/`
 **Purpose**: Configuration management
@@ -547,13 +606,14 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `elevation.go`: Privilege elevation
 - `temp.go`: Temporary file operations
 - `windows_utils.go`: Windows utilities
-- `testutil/`: Test utilities for platform operations
+- `scope.go`: Scope detection utilities (`AutoDetectScope`)
 
 **Key Features**:
 - **Font Metadata Extraction**: `ExtractFontMetadata()` reads font family name, style name, and full name directly from font file SFNT name table
 - **Cross-platform Font Management**: Unified interface for font installation/removal across Windows, macOS, and Linux
 - **Elevation Detection**: Platform-specific privilege checking
 - **Font Directory Management**: Scope-aware font directory resolution
+- **Scope Detection**: Auto-detection of installation scope based on elevation
 
 **Status**: ✅ Active - Cross-platform support
 
@@ -574,9 +634,14 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Card styles (titles, labels, content, borders)
   - Progress bar styles (headers, text, containers)
   - **Spinner styles**: Color constants and pin package color mapping (`SpinnerColor`, `SpinnerDoneColor`, `PinColorMap`)
+- `tables.go`: Table formatting constants and functions
+  - Table column width constants (`TableColName`, `TableColID`, etc.)
+  - Table header functions (`GetSearchTableHeader`, `GetListTableHeader`, etc.)
+  - Table separator function (`GetTableSeparator`)
 
 **Key Features**:
 - **Centralized Styling**: All colors and styles defined in `styles.go` for consistency
+- **Unified Table API**: All table formatting in one place for consistency
 - **Spinner Integration**: Pin spinner colors mapped from hex to pin package constants
 - **Color Mapping**: `PinColorMap` provides hex-to-pin color conversion for spinner components
 
@@ -587,12 +652,15 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Files**:
 - `verbose.go`: Verbose output handling with operation details display
 - `debug.go`: Debug output handling
+- `status.go`: Status report types and functions (`StatusReport`, `PrintStatusReport`)
 
 **Key Features**:
 - **Consistent Formatting**: Standardized `[INFO]`, `[WARNING]`, `[ERROR]` prefixes
 - **Operation Details Display**: `DisplayFontOperationDetails()` shows formatted installation/removal details
 - **Download Size Tracking**: Integrated file size display in verbose output
+- **Status Reporting**: Unified status report display for operations
 - **Clean API**: Interface-based design prevents circular imports
+- **Verbose Output Spacing**: Verbose sections use conditional `fmt.Println()` pattern (only add blank line if verbose was shown) per spacing framework guidelines
 
 **Status**: ✅ Active - Output system
 
@@ -656,7 +724,6 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `card.go`: Card components with integrated titles and flexible padding
 - `form.go`: Form input components for TUI interfaces
 - `confirm.go`: Confirmation dialog components
-- `hierarchy.go`: Hierarchical list components for structured data display
 
 **Key Features**:
 - **Unified Progress Bar**: Single component for all progress displays with inline title integration
@@ -667,13 +734,11 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Card System**: Modern card components with integrated titles in borders, configurable padding (vertical/horizontal), and consistent styling
 - **Form Components**: Reusable form elements for interactive TUI interfaces
 - **Confirmation Dialogs**: Standardized confirmation prompts with consistent styling
-- **Hierarchical Lists**: Tree-like display components for structured data (e.g., font families with variants)
 
 **Usage Examples**:
 - **Add/Remove Commands**: Uses progress bar for font installation/removal progress
 - **Info Command**: Uses card components for displaying font details, license info, and metadata
 - **Sources Management**: Uses form and confirmation components for interactive source editing
-- **List Command**: Uses hierarchy components for displaying font families with variants
 - **Update Operations**: Uses progress components for showing update progress
 
 **Status**: ✅ Active - UI components
@@ -754,9 +819,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 ## Recent Architectural Changes
 
-### Major Refactoring (2025-09-30)
+### Major Refactoring (2025-11-28)
 
-The codebase underwent a significant refactoring to implement a new manifest-based sources system:
 
 #### **Sources Architecture Overhaul**
 - **Old System**: `sources.json` with `SourcesConfig` struct
@@ -796,7 +860,21 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Better maintainability and styling control
   - Enhanced visual hierarchy and user experience
 
-#### **Font Matching and Font ID Support (2025-01-XX)**
+#### **Codebase Organization Refactoring**
+- **Eliminated `cmd/shared.go`**: Removed anti-pattern of mixing CLI-specific and general-purpose code
+- **Created `internal/cmdutils/`**: CLI-specific utilities (initialization, Cobra integration, CLI wrappers)
+- **Created `internal/shared/`**: General-purpose utilities (font formatting, file operations, error types)
+- **Moved Table Functions**: All table formatting moved to `internal/ui/tables.go` for unified API
+- **Moved Status Report**: Status reporting moved to `internal/output/status.go`
+- **Moved Scope Detection**: `AutoDetectScope` moved to `internal/platform/scope.go`
+- **Cleanup**: Removed unused functions and files (testutil, inferior functions, etc.)
+- **Benefits**:
+  - Clear separation between CLI-specific and general-purpose code
+  - Better testability and reusability
+  - Consistent package organization following Go best practices
+  - Easier to understand where code belongs
+
+#### **Font Matching and Font ID Support**
 - **Font Matching Feature**: Added `internal/repo/font_matches.go` with optimized index-based matching
   - Matches installed fonts to repository entries to display Font IDs, License, Categories, and Source
   - Uses O(1) lookup index instead of O(n) iteration for better performance
@@ -821,7 +899,7 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Improved performance with optimized matching algorithm
   - Cleaner command interface with sensible defaults
 
-#### **Pre-Installation Font Checking (2025-01-XX)**
+#### **Pre-Installation Font Checking**
 - **Already-Installed Detection**: Added `checkFontsAlreadyInstalled()` function in `cmd/shared.go`
   - Checks if fonts are already installed before downloading to save bandwidth and time
   - Uses the same matching logic as the `list` command for consistency
@@ -838,7 +916,7 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Consistent matching logic across commands
   - Accurate detection using Font ID and family name matching
 
-#### **List Command Optimizations and Font ID Filtering (2025-01-XX)**
+#### **List Command Optimizations and Font ID Filtering**
 - **Font ID Filtering Support**: List command now supports filtering by Font ID in addition to family name
   - Query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto")
   - Repository matching happens before filtering to make Font IDs available for filtering
@@ -859,7 +937,7 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Improved performance, especially when using type filters
   - Better user experience with clearer flag naming
 
-#### **File Logging System Review and Fixes (2025-01-XX)**
+#### **File Logging System Review and Fixes**
 - **Comprehensive Logger Review**: Reviewed and fixed GetLogger() usage across all commands
   - **Principle Established**: GetLogger() should ALWAYS log to file, regardless of verbose/debug flags
     - Logger level is controlled by config (ErrorLevel/InfoLevel/DebugLevel based on flags)
@@ -886,28 +964,31 @@ The codebase underwent a significant refactoring to implement a new manifest-bas
   - Proper separation between file logging (GetLogger) and console output (verbose/debug)
   - All operations logged regardless of user's flag choices
 
----
-
-## Summary
-
-The FontGet codebase is well-structured with clear separation of concerns:
-
-- **Commands** (`cmd/`): CLI command implementations
-- **Internal packages**: Core functionality and utilities
-- **Configuration**: Centralized config and manifest management
-- **Platform support**: Cross-platform compatibility
-- **UI/UX**: User interface and output management
-
-The codebase has undergone recent refactoring to implement a new manifest system, replacing the old sources configuration approach. Most files are active and well-maintained, with only a few empty directories that may need cleanup.
-
-### Key Strengths:
-- ✅ Clean architecture with clear separation of concerns
-- ✅ Comprehensive cross-platform support
-- ✅ Modern CLI framework (Cobra) with TUI support (Bubble Tea)
-- ✅ Well-documented and maintained
-- ✅ Recent refactoring improved maintainability
-
-### Areas for Improvement:
-- 🔄 Consider adding more comprehensive tests
-
-**Overall Status**: ✅ Healthy - Well-structured, actively maintained codebase with recent architectural improvements
+#### **Debug Output Standardization and Error Handling Improvements**
+- **Debug Output Alignment**: Standardized debug output patterns across `add`, `remove`, and `import` commands
+  - **Function Call Traces**: Debug output now shows function calls (e.g., "Calling installFont(...)", "Calling removeFont(...)")
+  - **Internal State Values**: Debug output displays internal state values (e.g., "Found X files", "Resolved font name: ...", "Total fonts: X")
+  - **Variant Categorization**: Separate debug messages for different variant categories (Installed/Removed/Skipped/Failed) with consistent formatting
+  - **Consistent Spacing**: Standardized spacing in debug variant lists (1 space before hyphen: " - fontname")
+  - **Font Not Found Messages**: Debug output shows "font not found" messages in console when fonts cannot be located
+- **Args Validation Standardization**: All commands now use Pattern 1 (error + hint) for argument validation
+  - Commands updated: `add`, `remove`, `import`, `info`
+  - Concise error messages with help hints instead of full help display
+  - Improved user experience for simple validation errors
+- **SilenceUsage Configuration**: All commands now have `SilenceUsage: true` set
+  - Prevents full help display on validation errors
+  - Ensures consistent error handling behavior across all commands
+- **Verbose Output Spacing**: Updated verbose output spacing pattern
+  - Replaced `EndSection()` method with conditional `fmt.Println()` pattern
+  - Blank lines added only if verbose output was actually shown: `if IsVerbose() { fmt.Println() }`
+  - Prevents unnecessary blank lines when verbose mode is disabled
+  - Documented in spacing framework and logging guidelines
+- **SuppressVerbose Pattern**: Added `suppressVerbose` parameter to `collectFonts()` function
+  - Allows internal/helper functions to suppress verbose output when calling `collectFonts`
+  - Used by `checkFontsAlreadyInstalled`, `backup.go`, and `export.go` to avoid technical verbose messages in non-list contexts
+  - `list` command continues to show verbose output as scanning is its primary operation
+- **Benefits**:
+  - Consistent debug output across all commands for easier troubleshooting
+  - Better user experience with standardized error messages
+  - Cleaner verbose output without unnecessary blank lines
+  - More appropriate verbose output context (suppressed for internal operations)

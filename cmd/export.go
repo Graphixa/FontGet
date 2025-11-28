@@ -9,11 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"fontget/internal/cmdutils"
 	"fontget/internal/components"
-	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -85,19 +86,13 @@ or a full file path.`,
 		output.GetDebug().State("Starting font export operation")
 
 		// Ensure manifest system is initialized
-		if err := config.EnsureManifestExists(); err != nil {
-			GetLogger().Error("Failed to ensure manifest exists: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+			return err
 		}
 
-		fm, err := platform.NewFontManager()
+		fm, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
 		if err != nil {
-			GetLogger().Error("Failed to create font manager: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("platform.NewFontManager() failed: %v", err)
-			return fmt.Errorf("unable to access system fonts: %v", err)
+			return err
 		}
 
 		// Get flags
@@ -290,50 +285,19 @@ func performFullExport(fm platform.FontManager, scopes []platform.InstallationSc
 }
 
 // performFullExportWithResult performs the complete export process and returns the results
-func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
-	output.GetDebug().State("Calling performFullExportWithResult(scopes=%v, outputFile=%s, matchFilter=%s, sourceFilter=%s, exportAll=%v, onlyMatched=%v)", scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
+// fontIDGroup represents a group of fonts with the same Font ID (or family name for unmatched fonts)
+type fontIDGroup struct {
+	familyNames []string
+	source      string
+	license     string
+	categories  []string
+	variants    map[string]bool
+	scope       string
+	hasFontID   bool // Track if this group has a Font ID or is keyed by family name
+}
 
-	// Collect fonts from all scopes
-	output.GetVerbose().Info("Collecting installed fonts...")
-	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose - we have our own high-level message
-	if err != nil {
-		GetLogger().Error("Failed to collect fonts: %v", err)
-		output.GetVerbose().Error("%v", err)
-		output.GetDebug().Error("collectFonts() failed: %v", err)
-		return nil, 0, fmt.Errorf("unable to read installed fonts: %v", err)
-	}
-
-	output.GetVerbose().Info("Found %d font files", len(fonts))
-	output.GetDebug().State("Total fonts to export: %d", len(fonts))
-
-	// Group by family
-	families := groupByFamily(fonts)
-	output.GetVerbose().Info("Grouped into %d font families", len(families))
-
-	// Match installed fonts to repository
-	var names []string
-	for k := range families {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-
-	output.GetVerbose().Info("Matching installed fonts to repository...")
-	output.GetDebug().State("Total installed font families to match: %d", len(names))
-	output.GetDebug().State("Calling repo.MatchAllInstalledFonts(familyCount=%d)", len(names))
-	matches, err := repo.MatchAllInstalledFonts(names, IsCriticalSystemFont)
-	if err != nil {
-		GetLogger().Error("Failed to match fonts to repository: %v", err)
-		output.GetVerbose().Error("%v", err)
-		output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
-		// Continue without matches if exportAll is true
-		if !exportAll {
-			return nil, 0, fmt.Errorf("unable to match fonts to repository: %v", err)
-		}
-		matches = make(map[string]*repo.InstalledFontMatch)
-	}
-	output.GetVerbose().Info("Matched %d font families to repository entries", len(matches))
-
-	// Populate match data
+// populateFontMatchData populates ParsedFont structs with match data
+func populateFontMatchData(families map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) {
 	for familyName, fontGroup := range families {
 		if match, exists := matches[familyName]; exists && match != nil {
 			for i := range fontGroup {
@@ -345,53 +309,52 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 			families[familyName] = fontGroup
 		}
 	}
+}
 
-	// Build export manifest - group by Font ID to handle Nerd Fonts (one Font ID = multiple families)
-	type fontIDGroup struct {
-		familyNames []string
-		source      string
-		license     string
-		categories  []string
-		variants    map[string]bool
-		scope       string
-		hasFontID   bool // Track if this group has a Font ID or is keyed by family name
-	}
+// FilterFontsForExportParams contains parameters for filterFontsForExport function
+type FilterFontsForExportParams struct {
+	Families     map[string][]ParsedFont
+	Names        []string
+	MatchFilter  string
+	SourceFilter string
+	ExportAll    bool
+	OnlyMatched  bool
+}
 
-	fontIDGroups := make(map[string]*fontIDGroup)
-	skippedSystem := 0
-	skippedUnmatched := 0
-	skippedByFilter := 0
+// filterFontsForExport applies match/source/exportAll filters to font families and groups them by Font ID
+func filterFontsForExport(params FilterFontsForExportParams) (fontIDGroups map[string]*fontIDGroup, skippedSystem, skippedUnmatched, skippedByFilter int) {
+	fontIDGroups = make(map[string]*fontIDGroup)
 
-	for _, familyName := range names {
-		fontGroup := families[familyName]
+	for _, familyName := range params.Names {
+		fontGroup := params.Families[familyName]
 		rep := fontGroup[0]
 
 		// Always exclude system fonts
-		if IsCriticalSystemFont(familyName) {
+		if shared.IsCriticalSystemFont(familyName) {
 			skippedSystem++
 			continue
 		}
 
 		// Apply filters
-		if matchFilter != "" && !strings.Contains(strings.ToLower(familyName), strings.ToLower(matchFilter)) {
+		if params.MatchFilter != "" && !strings.Contains(strings.ToLower(familyName), strings.ToLower(params.MatchFilter)) {
 			skippedByFilter++
 			continue
 		}
 
-		if sourceFilter != "" && rep.Source != sourceFilter {
+		if params.SourceFilter != "" && rep.Source != params.SourceFilter {
 			skippedByFilter++
 			continue
 		}
 
 		// Only matched fonts
-		if onlyMatched && rep.FontID == "" {
+		if params.OnlyMatched && rep.FontID == "" {
 			skippedUnmatched++
 			continue
 		}
 
 		// Handle fonts without Font ID (when exportAll is true)
 		if rep.FontID == "" {
-			if !exportAll {
+			if !params.ExportAll {
 				// Skip fonts without Font ID unless --all is specified
 				skippedUnmatched++
 				continue
@@ -445,6 +408,11 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 		}
 	}
 
+	return fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter
+}
+
+// buildExportManifest builds export manifest from filtered fonts
+func buildExportManifest(fontIDGroups map[string]*fontIDGroup, matchFilter, sourceFilter string, onlyMatched bool, skippedSystem, skippedUnmatched, skippedByFilter int) (*ExportManifest, int) {
 	// Convert groups to exported fonts
 	var exportedFonts []ExportedFont
 	totalVariants := 0
@@ -511,8 +479,7 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	output.GetVerbose().Info("Exporting %d font families (%d variants)", len(exportedFonts), totalVariants)
 	output.GetDebug().State("Export summary: %d exported, %d skipped (system: %d, unmatched: %d, filtered: %d)", len(exportedFonts), skippedSystem+skippedUnmatched+skippedByFilter, skippedSystem, skippedUnmatched, skippedByFilter)
 
-	// Build and write manifest
-	manifest := ExportManifest{
+	manifest := &ExportManifest{
 		Version:    "1.0",
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
 		ExportedBy: "fontget",
@@ -526,9 +493,65 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 		},
 	}
 
+	return manifest, totalVariants
+}
+
+func performFullExportWithResult(fm platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) ([]ExportedFont, int, error) {
+	output.GetDebug().State("Calling performFullExportWithResult(scopes=%v, outputFile=%s, matchFilter=%s, sourceFilter=%s, exportAll=%v, onlyMatched=%v)", scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
+
+	// Collect fonts from all scopes
+	output.GetVerbose().Info("Collecting installed fonts...")
+	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose - we have our own high-level message
+	if err != nil {
+		GetLogger().Error("Failed to collect fonts: %v", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("collectFonts() failed: %v", err)
+		return nil, 0, fmt.Errorf("unable to read installed fonts: %v", err)
+	}
+
+	output.GetVerbose().Info("Found %d font files", len(fonts))
+	output.GetDebug().State("Total fonts to export: %d", len(fonts))
+
+	// Group by family
+	families := groupByFamily(fonts)
+	output.GetVerbose().Info("Grouped into %d font families", len(families))
+
+	// Match installed fonts to repository
+	var names []string
+	for k := range families {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+
+	matches, err := cmdutils.MatchInstalledFontsToRepository(names, GetLogger(), shared.IsCriticalSystemFont)
+	if err != nil {
+		// Continue without matches if exportAll is true
+		if !exportAll {
+			return nil, 0, fmt.Errorf("unable to match fonts to repository: %v", err)
+		}
+		matches = make(map[string]*repo.InstalledFontMatch)
+	}
+
+	// Populate match data
+	populateFontMatchData(families, matches)
+
+	// Filter fonts and group by Font ID
+	fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter := filterFontsForExport(FilterFontsForExportParams{
+		Families:     families,
+		Names:        names,
+		MatchFilter:  matchFilter,
+		SourceFilter: sourceFilter,
+		ExportAll:    exportAll,
+		OnlyMatched:  onlyMatched,
+	})
+
+	// Build export manifest
+	manifest, totalVariants := buildExportManifest(
+		fontIDGroups, matchFilter, sourceFilter, onlyMatched, skippedSystem, skippedUnmatched, skippedByFilter)
+
 	// Write manifest
 	output.GetVerbose().Info("Writing export file...")
-	jsonData, err := json.MarshalIndent(manifest, "", "  ")
+	jsonData, err := json.MarshalIndent(*manifest, "", "  ")
 	if err != nil {
 		GetLogger().Error("Failed to marshal export manifest: %v", err)
 		output.GetVerbose().Error("%v", err)
@@ -555,7 +578,7 @@ func performFullExportWithResult(fm platform.FontManager, scopes []platform.Inst
 	GetLogger().Info("Export file written successfully: %s", outputFile)
 	output.GetVerbose().Info("Export file written successfully")
 
-	return exportedFonts, totalVariants, nil
+	return manifest.Fonts, totalVariants, nil
 }
 
 func init() {

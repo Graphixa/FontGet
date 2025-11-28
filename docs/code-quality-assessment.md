@@ -12,7 +12,7 @@ This document tracks code quality improvements identified during the assessment 
 ### High Priority
 
 #### `cmd/add.go`
-- [ ] **`installFontsInDebugMode`** (lines ~717-833)
+- [x] **`installFontsInDebugMode`** (lines ~717-833) ✅ **COMPLETED**
   - **Issue**: ~116 lines, handles multiple responsibilities
   - **Breakdown**:
     1. **`processInstallResult`** (in `cmd/add.go`)
@@ -30,7 +30,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Target**: Break into 3 helper functions + main function (~40 lines each)
   - **Priority**: HIGH (affects maintainability)
 
-- [ ] **`installFont`** (lines ~835-999)
+- [x] **`installFont`** (lines ~835-999) ✅ **COMPLETED**
   - **Issue**: ~165 lines, complex logic with multiple responsibilities
   - **Breakdown**:
     1. **`checkFontAlreadyInstalled`** (in `cmd/shared.go`)
@@ -53,7 +53,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Priority**: HIGH (core functionality, hard to test)
 
 #### `cmd/remove.go`
-- [ ] **`removeFontsInDebugMode`** (lines ~800-1170)
+- [x] **`removeFontsInDebugMode`** (lines ~800-1170) ✅ **COMPLETED**
   - **Issue**: ~370 lines, very long function handling multiple scopes and operations
   - **Breakdown**:
     1. **`processSingleScopeRemoval`** (in `cmd/remove.go`)
@@ -75,7 +75,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Target**: Break into 4 helper functions + main function (~80 lines each)
   - **Priority**: HIGH (very long, affects readability)
 
-- [ ] **`removeFont`** (lines ~900-1100)
+- [x] **`removeFont`** (lines ~900-1100) ✅ **COMPLETED**
   - **Issue**: ~200 lines, complex removal logic
   - **Breakdown**:
     1. **`findFontFilesForRemoval`** (in `cmd/remove.go`)
@@ -103,7 +103,7 @@ This document tracks code quality improvements identified during the assessment 
 ### Medium Priority
 
 #### `cmd/export.go`
-- [ ] **`performFullExportWithResult`** (lines ~288-554)
+- [x] **`performFullExportWithResult`** (lines ~288-554) ✅ **COMPLETED**
   - **Issue**: ~266 lines, handles collection, matching, filtering, and export
   - **Breakdown**:
     1. **`matchInstalledFontsToRepository`** (in `cmd/shared.go`)
@@ -126,7 +126,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Priority**: MEDIUM (long but clear flow)
 
 #### `cmd/backup.go`
-- [ ] **`performBackupWithProgress`** (lines ~550-650)
+- [x] **`performBackupWithProgress`** (lines ~550-650) ✅ **COMPLETED**
   - **Issue**: ~100 lines, handles organization and zip creation
   - **Breakdown**:
     1. **`organizeFontsBySourceAndFamily`** (in `cmd/backup.go`)
@@ -147,7 +147,7 @@ This document tracks code quality improvements identified during the assessment 
 ### High Priority
 
 #### Error Handling Pattern
-- [ ] **Standardize error handling across all commands**
+- [x] **Standardize error handling across all commands** ✅ **COMPLETED** (via ensureManifestInitialized and createFontManager with inlined logging)
   - **Issue**: Some commands have inconsistent error handling patterns
   - **Current Pattern** (from shared.go):
     ```go
@@ -167,7 +167,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Priority**: HIGH (affects consistency)
 
 #### Manifest Initialization
-- [ ] **Extract `config.EnsureManifestExists()` pattern**
+- [x] **Extract `config.EnsureManifestExists()` pattern** ✅ **COMPLETED**
   - **Issue**: Repeated error handling pattern in every command
   - **Current Pattern**:
     ```go
@@ -187,7 +187,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Priority**: HIGH (reduces duplication across 8 files)
 
 #### Font Manager Creation
-- [ ] **Extract font manager creation pattern**
+- [x] **Extract font manager creation pattern** ✅ **COMPLETED**
   - **Issue**: Repeated error handling in multiple commands
   - **Current Pattern**:
     ```go
@@ -210,7 +210,7 @@ This document tracks code quality improvements identified during the assessment 
 ### Medium Priority
 
 #### Scope Detection/Auto-detection
-- [ ] **Extract scope auto-detection logic**
+- [x] **Extract scope auto-detection logic** ✅ **COMPLETED**
   - **Issue**: Similar logic in add.go and remove.go
   - **Current Pattern**: Auto-detect scope based on elevation
   - **Function to create**:
@@ -222,7 +222,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Priority**: MEDIUM (affects 2 files)
 
 #### Repository Initialization
-- [ ] **Extract repository initialization pattern**
+- [x] **Extract repository initialization pattern** ✅ **COMPLETED**
   - **Issue**: Similar pattern in search.go and info.go
   - **Current Pattern**: Get repository with optional refresh
   - **Function to create**:
@@ -240,7 +240,7 @@ This document tracks code quality improvements identified during the assessment 
 ### High Priority
 
 #### `cmd/list.go`
-- [ ] **Filtering logic** (lines ~277-314)
+- [x] **Filtering logic** (lines ~277-314) ✅ **COMPLETED**
   - **Issue**: Complex nested conditionals for filtering by family, type, and Font ID
   - **Breakdown**:
     1. **`filterFontsByFamilyAndID`** (in `cmd/list.go`)
@@ -252,7 +252,7 @@ This document tracks code quality improvements identified during the assessment 
   - **Priority**: HIGH (improves readability)
 
 #### `cmd/add.go`
-- [ ] **Font resolution logic** (lines ~420-470)
+- [x] **Font resolution logic** (lines ~420-470) ✅ **COMPLETED**
   - **Issue**: Complex logic for resolving Font IDs vs font names
   - **Breakdown**:
     1. **`resolveFontQuery`** (in `cmd/shared.go`)
@@ -468,17 +468,53 @@ Place functions here if they are:
 
 ## Progress Tracking
 
-### Completed
+### Completed ✅
 - [x] Initial code quality assessment
 - [x] Identified long functions
 - [x] Identified duplicate code patterns
 - [x] Identified complex conditional logic
+- [x] Extract manifest initialization helper (`ensureManifestInitialized`)
+- [x] Extract font manager creation helper (`createFontManager`)
+- [x] Break down `installFontsInDebugMode` in `cmd/add.go` (into `processInstallResult`, `logInstallResultDetails`, `updateInstallStatus`)
+- [x] Break down `installFont` in `cmd/add.go` (into `downloadFontVariants`, `installDownloadedFonts`, `buildInstallResult`)
+- [x] Extract filtering logic in `cmd/list.go` (`filterFontsByFamilyAndID`)
+- [x] Break down `removeFontsInDebugMode` in `cmd/remove.go` (into `processRemoveResult`, `logRemoveResultDetails`, `updateRemovalStatus`)
+- [x] Break down `removeFont` in `cmd/remove.go` (into `findFontFilesForRemoval`, `removeFontFiles`, `buildRemoveResult`)
+- [x] Extract font resolution logic in `cmd/add.go` (`resolveFontQuery` in `cmd/shared.go`)
+- [x] Extract scope auto-detection logic in `cmd/shared.go` (`autoDetectScope`)
+- [x] Break down `performFullExportWithResult` in `cmd/export.go` (into `matchInstalledFontsToRepository`, `populateFontMatchData`, `filterFontsForExport`, `buildExportManifest`)
+- [x] Break down `performBackupWithProgress` in `cmd/backup.go` (into `organizeFontsBySourceAndFamily`, `createBackupZipArchive`)
+- [x] Audit and fix unused imports/variables
 
-### In Progress
-- [ ] None
+### Remaining Tasks
 
-### Pending
-- [ ] All items listed above
+#### High Priority
+- [x] **Add unit tests for shared utilities** (Section 7) ✅ **COMPLETED**
+  - Test `ParseFontNames`, `GetFontFamilyNameFromFilename`, `GetDisplayNameFromFilename`, `checkFontsAlreadyInstalled`
+  - Test new shared functions: `resolveFontQuery`, `autoDetectScope`, `matchInstalledFontsToRepository`, `getSourceNameFromID`
+
+#### Medium Priority
+- [ ] **Extract repository initialization pattern** (Section 2, LOW priority but listed)
+  - Create `getRepository(refresh bool)` helper in `cmd/shared.go`
+  - Update `search.go` and `info.go` to use it
+- [ ] **Review shared.go organization** (Section 6)
+  - Consider splitting into: `shared_errors.go`, `shared_fonts.go`, `shared_formatting.go`, `shared_platform.go`
+- [ ] **Add unit tests for complex functions** (Section 7)
+  - Test `installFont`, `removeFont`, filtering logic
+
+#### Low Priority (Polish)
+- [ ] **Review function naming consistency** (Section 4)
+  - Standardize `installFont` vs `installFontsInDebugMode` patterns
+- [ ] **Review variable naming consistency** (Section 4)
+  - Standardize `fm` vs `fontManager`, `r` vs `repo`
+- [ ] **Review command file structure** (Section 6)
+  - Standardize: Imports → Types → Constants → Command → Helpers
+- [ ] **Add function documentation** (Section 8)
+  - Add godoc comments for exported and complex internal functions
+- [ ] **Review inline comments** (Section 8)
+  - Add comments for non-obvious logic
+- [ ] **`Update` method in `cmd/sources_manage.go`** (Section 1)
+  - Minor refactoring (already well-structured, LOW priority)
 
 ---
 

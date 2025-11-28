@@ -5,9 +5,11 @@ import (
 	"math"
 	"strings"
 
+	"fontget/internal/cmdutils"
 	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -79,11 +81,8 @@ font category (e.g., "Sans Serif", "Serif", "Monospace").
 		// output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
-		if err := config.EnsureManifestExists(); err != nil {
-			GetLogger().Error("Failed to ensure manifest exists: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+			return err
 		}
 
 		// Get arguments (already validated by Args function)
@@ -132,24 +131,10 @@ font category (e.g., "Sans Serif", "Serif", "Monospace").
 		}
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', refresh=%v", query, category, refresh)
 
-		// Get repository (handles source updates internally with spinner if needed)
-		var r *repo.Repository
-		var err error
-		if refresh {
-			// Force refresh of font manifest before search
-			output.GetVerbose().Info("Forcing refresh of font manifest before search")
-			output.GetDebug().State("Using GetRepositoryWithRefresh() to force source updates")
-			r, err = repo.GetRepositoryWithRefresh()
-		} else {
-			output.GetVerbose().Info("Using cached font manifest for search")
-			output.GetDebug().State("Using GetRepository() with cached sources")
-			r, err = repo.GetRepository()
-		}
+		// Get repository with optional refresh
+		r, err := cmdutils.GetRepository(refresh, GetLogger())
 		if err != nil {
-			GetLogger().Error("Failed to get repository: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
-			return fmt.Errorf("unable to load font repository: %v", err)
+			return err
 		}
 
 		// Search fonts
@@ -209,11 +194,11 @@ font category (e.g., "Sans Serif", "Serif", "Monospace").
 		}
 
 		// Calculate dynamic column widths
-		maxName := TableColName
-		maxID := TableColID
-		maxLicense := TableColLicense
-		maxCategories := TableColCategories
-		maxSource := TableColSource
+		maxName := ui.TableColName
+		maxID := ui.TableColID
+		maxLicense := ui.TableColLicense
+		maxCategories := ui.TableColCategories
+		maxSource := ui.TableColSource
 
 		for _, name := range names {
 			if len(name) > maxName {
@@ -246,16 +231,16 @@ font category (e.g., "Sans Serif", "Serif", "Monospace").
 
 		// If total width exceeds reasonable maximum (160 chars), use fixed widths
 		if totalWidth > 160 {
-			fmt.Println(ui.TableHeader.Render(GetSearchTableHeader()))
-			fmt.Println(GetTableSeparator())
+			fmt.Println(ui.GetSearchTableHeader())
+			fmt.Println(ui.GetTableSeparator())
 
 			for i := range results {
 				fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-					ui.TableSourceName.Render(fmt.Sprintf("%-*s", TableColName, truncateString(names[i], TableColName))),
-					TableColID, truncateString(ids[i], TableColID),
-					TableColLicense, truncateString(licenses[i], TableColLicense),
-					TableColCategories, truncateString(categories[i], TableColCategories),
-					TableColSource, truncateString(sources[i], TableColSource))
+					ui.TableSourceName.Render(fmt.Sprintf("%-*s", ui.TableColName, shared.TruncateString(names[i], ui.TableColName))),
+					ui.TableColID, shared.TruncateString(ids[i], ui.TableColID),
+					ui.TableColLicense, shared.TruncateString(licenses[i], ui.TableColLicense),
+					ui.TableColCategories, shared.TruncateString(categories[i], ui.TableColCategories),
+					ui.TableColSource, shared.TruncateString(sources[i], ui.TableColSource))
 				// Add detailed score breakdown for debugging (only when --debug flag is enabled)
 				// This shows the base score + match type + popularity breakdown
 				baseScore := 50 // Base score from config
@@ -398,10 +383,8 @@ func init() {
 // showAllCategories displays all available categories from all sources
 func showAllCategories() error {
 	// Ensure manifest system is initialized
-	if err := config.EnsureManifestExists(); err != nil {
-		output.GetVerbose().Error("%v", err)
-		output.GetDebug().Error("config.EnsureManifestExists() failed: %v", err)
-		return fmt.Errorf("unable to load font repository: %v", err)
+	if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+		return err
 	}
 
 	// Get repository

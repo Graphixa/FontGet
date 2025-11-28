@@ -2,97 +2,94 @@
 
 This file contains actionable tasks for cleaning up the FontGet codebase. Each task includes specific file locations and implementation details.
 
+> **⚠️ IMPORTANT**: This file was created before the major refactoring that eliminated `cmd/shared.go`. Many references have been updated, but some tasks may need review to ensure they're still relevant after the refactoring to `internal/shared/` and `internal/cmdutils/`.
+
 ---
 
 ## 🗑️ **PHASE 1: Remove Unused Functions (Inferior Code)**
 
-### **cmd/shared.go - Remove Unused Functions**
-- [ ] Remove `GetColorFunctions()` function from `cmd/shared.go`
-- [ ] Remove `FontNotFoundError.Error()` method from `cmd/shared.go`
-- [ ] Remove `FontInstallationError.Error()` method from `cmd/shared.go`
-- [ ] Remove `FontRemovalError.Error()` method from `cmd/shared.go`
-- [ ] Remove `ConfigurationError.Error()` method from `cmd/shared.go`
-- [ ] Remove `ElevationError.Error()` method from `cmd/shared.go`
-- [ ] Remove `GetDynamicSearchTableHeader()` function from `cmd/shared.go`
-- [ ] Remove `GetDynamicSearchTableSeparator()` function from `cmd/shared.go`
-- [ ] Remove `GetSourcesTableHeader()` function from `cmd/shared.go`
+### **✅ cmd/shared.go - REMOVED (Refactoring Complete)**
+- [x] ~~`cmd/shared.go` has been completely eliminated~~ - All functions moved to `internal/shared/` and `internal/cmdutils/`
+- [x] ~~Error types moved to `internal/shared/errors.go`~~
+- [x] ~~Table functions moved to `internal/cmdutils/tables.go`~~
 
-### **internal/platform/testutil/ - Remove Test Utilities**
-- [ ] Remove `CreateTestFont()` function from `internal/platform/testutil/testutil.go`
-- [ ] Remove `CleanupTestFont()` function from `internal/platform/testutil/testutil.go`
-- [ ] Remove `CreateTestFontDir()` function from `internal/platform/testutil/testutil.go`
-- [ ] Remove `CleanupTestFontDir()` function from `internal/platform/testutil/testutil.go`
+### **✅ Table Functions - MOVED to `internal/ui/tables.go`**
+- [x] **All table functions moved** from `internal/cmdutils/tables.go` to `internal/ui/tables.go`
+- [x] **All table constants moved** to `internal/ui/tables.go`
+- [x] **All cmd files updated** to use `ui.Get*TableHeader()` and `ui.GetTableSeparator()`
+- [x] **Unused functions removed**: `GetDynamicSearchTableHeader()`, `GetDynamicSearchTableSeparator()`, `GetSourcesTableHeader()`
+- [x] **`internal/cmdutils/tables.go` deleted** - no longer needed
+- [x] **Unified API**: All table functions now come from `ui` package for consistency
 
-### **internal/functions/sort.go - Remove Unused Sorting Functions**
-- [ ] Remove `SortSourcesByEnabled()` function from `internal/functions/sort.go`
-- [ ] Remove `SortSourcesByName()` function from `internal/functions/sort.go`
-- [ ] Remove `SortSourcesByType()` function from `internal/functions/sort.go`
-- [ ] Remove `ConvertManifestToSourceItems()` function from `internal/functions/sort.go`
+### **✅ internal/platform/testutil/ - REMOVED**
+- [x] **Entire file deleted** - `internal/platform/testutil/testutil.go` removed (all functions unused)
 
-### **internal/templates/command_template.go - LEAVE ALONE OR MAKE IT MAKE SENSE AS IT'S A TEMPLATE**
-- [ ] Look at `countTotalItems()` function from `internal/templates/command_template.go`
+### **✅ internal/functions/sort.go - REMOVED Unused Sorting Functions**
+- [x] Removed `SortSourcesByEnabled()` function
+- [x] Removed `SortSourcesByName()` function
+- [x] Removed `SortSourcesByType()` function
+- [x] Removed `ConvertManifestToSourceItems()` function
 
-### **internal/platform/ - Remove Inferior Font Analysis Functions**
-- [ ] Remove `AnalyzeFontComprehensively()` function from `internal/platform/`
-- [ ] Remove `extractAllNameTableEntries()` function from `internal/platform/`
-- [ ] Remove `parseNameTableComprehensive()` function from `internal/platform/`
-- [ ] Remove `findNameTable()` function from `internal/platform/`
-- [ ] Remove `extractFontProperties()` function from `internal/platform/`
-- [ ] Remove `extractTechnicalDetails()` function from `internal/platform/`
+### **internal/templates/command_template.go - TEMPLATE FILE (No Action Needed)**
+- [x] **Reviewed** `countTotalItems()` function - it's in a template file for developers to reference
+- [x] **Decision**: Leave as-is - template files are meant to be examples, not production code
 
-### **internal/platform/windows_utils.go - Remove Unnecessary Windows Functions**
-- [ ] Remove `FindWindowEx()` function from `internal/platform/windows_utils.go`
-- [ ] Remove `RunAsElevated()` function from `internal/platform/windows_utils.go`
+### **✅ internal/platform/ - REMOVED Inferior Font Analysis Functions**
+- [x] Removed `AnalyzeFontComprehensively()` function and `ComprehensiveFontAnalysis` type
+- [x] Removed `extractAllNameTableEntries()` function
+- [x] Removed `parseNameTableComprehensive()` function
+- [x] Removed `findNameTable()` function
+- [x] Removed `extractFontProperties()` function
+- [x] Removed `extractTechnicalDetails()` function
 
-### **internal/repo/ - Remove Inferior Repository Functions**
-- [ ] Remove `FetchURLContent()` function from `internal/repo/`
-- [ ] Remove `NewFontRepository()` function from `internal/repo/`
-- [ ] Remove `FontRepository.GetFontInfo()` method from `internal/repo/`
-- [ ] Remove `FontRepository.DownloadFont()` method from `internal/repo/`
-- [ ] Remove `GetFont()` function from `internal/repo/`
-- [ ] Remove `ListInstalledFonts()` function from `internal/repo/`
-- [ ] Remove `GetAllFonts()` function from `internal/repo/`
-- [ ] Remove `GetFontInfo()` function from `internal/repo/`
-- [ ] Remove `GetFontFiles()` function from `internal/repo/`
+### **✅ internal/platform/windows_utils.go - REMOVED Unnecessary Windows Functions**
+- [x] Removed `FindWindowEx()` function from `internal/platform/windows.go` (and variable declaration)
+- [x] Removed `RunAsElevated()` function from `internal/platform/windows_utils.go`
 
-### **internal/components/card.go - Remove Inferior Card Functions**
-- [ ] Remove `AvailableFilesCard()` function from `internal/components/card.go`
-- [ ] Remove `MetadataCard()` function from `internal/components/card.go`
-- [ ] Remove `SourceInfoCard()` function from `internal/components/card.go`
-- [ ] Remove `ValidationResultCard()` function from `internal/components/card.go`
+### **✅ internal/repo/ - REMOVED Inferior Repository Functions**
+- [x] **KEPT** `FetchURLContent()` - Used in `internal/license/license.go`
+- [x] Removed `FontRepository` struct and `NewFontRepository()` function
+- [x] Removed `FontRepository.GetFontInfo()` method
+- [x] Removed `FontRepository.DownloadFont()` method (standalone `DownloadFont()` kept - it's used)
+- [x] Removed `FontFileInfo` type (unused)
+- [x] Removed `GetFont()` function
+- [x] Removed `ListInstalledFonts()` function
+- [x] Removed `GetAllFonts()` function (GetAllFontsCached is used instead)
+- [x] Removed `GetFontInfo()` function from `internal/repo/sources.go`
+- [x] Removed `GetFontFiles()` function from `internal/repo/sources.go`
 
-### **internal/components/hierarchy.go - Remove Unused Hierarchy Functions**
-- [ ] Remove entire `internal/components/hierarchy.go` file (12 unused functions)
-  - **Functions**: `NewHierarchyItem()`, `NewHierarchyModel()`, `AddChild()`, `AddChildren()`, `Render()`, `SetWidth()`, `SetShowDetails()`, `ToggleItem()`, `toggleItemRecursive()`, `getDefaultItemStyle()`, `getChildItemStyle()`, `FontFamilyItem()`, `getFontFamilyStyle()`, `getFontVariantStyle()`, `CreateFontHierarchy()`, `RenderHierarchy()`
-  - **Reason**: No value for sources (no variants), current table display is better
+### **✅ internal/components/card.go - REMOVED Inferior Card Functions**
+- [x] Removed `AvailableFilesCard()` function
+- [x] Removed `MetadataCard()` function
+- [x] Removed `SourceInfoCard()` function
+- [x] Removed `ValidationResultCard()` function
+
+### **✅ internal/components/hierarchy.go - ALREADY REMOVED**
+- [x] File does not exist - already removed in previous cleanup
 
 ---
 
 ## 🔧 **PHASE 2: Fix Inconsistencies**
 
-### **Table Display Consistency Fixes**
-- [ ] Replace `strings.Repeat("-", sepWidth)` with `GetTableSeparator()` in `cmd/sources.go` line 160
-  - **Note**: `GetTableSeparator()` is already defined in `cmd/shared.go` (line 436) and available in same package
-  - **No import needed**: Function is in same `cmd` package
-- [ ] Replace `strings.Repeat("-", totalWidth)` with `GetTableSeparator()` in `cmd/search.go` line 270
-  - **Note**: `GetTableSeparator()` is already defined in `cmd/shared.go` (line 436) and available in same package
-  - **No import needed**: Function is in same `cmd` package
-  - **Status**: `cmd/search.go` already uses `GetTableSeparator()` on line 215, so this task may already be complete
+### **✅ Table Display Consistency Fixes - COMPLETED**
+- [x] **All table functions moved to `internal/ui/tables.go`**
+- [x] **`cmd/sources.go` updated** - Now uses `ui.GetTableSeparator()` instead of `strings.Repeat("-", sepWidth)`
+- [x] **All cmd files updated** - Now use unified `ui.Get*TableHeader()` and `ui.GetTableSeparator()` API
+- [x] **Consistent API**: All table building now comes from single `ui` package
+- [ ] **Note**: `cmd/search.go` line 290 still uses `strings.Repeat("-", totalWidth)` for dynamic tables - this is intentional for dynamic width calculation
 
 ---
 
 ## 🚀 **PHASE 3: Implement Superior Functions**
 
-### **Replace Basic Temp File Handling with Superior Functions**
-- [ ] Replace `filepath.Join(os.TempDir(), "Fontget", "fonts")` with `GetTempFontsDir()` in `cmd/add.go` line 438
-  - **Note**: `GetTempFontsDir()` is defined in `internal/platform/temp.go` (line 34)
-  - **Import status**: `"fontget/internal/platform"` is already imported in `cmd/add.go` (line 13)
-- [ ] Add proper cleanup using `CleanupTempFontsDir()` in `cmd/add.go` after font installation
-  - **Note**: `CleanupTempFontsDir()` is defined in `internal/platform/temp.go` (line 66)
-  - **Import status**: Same `"fontget/internal/platform"` import already exists
-- [ ] Update any other temp file usage to use `GetTempDir()` and `GetTempFontsDir()` functions
-  - **Note**: Both functions are in `internal/platform/temp.go`
-  - **Import needed**: `"fontget/internal/platform"` where these functions are used
+### **✅ Replace Basic Temp File Handling with Superior Functions - COMPLETED**
+- [x] **Replaced** `filepath.Join(os.TempDir(), "Fontget", "fonts")` with `platform.GetTempFontsDir()` in `cmd/add.go`
+  - Uses superior function with proper error handling
+  - Creates temp directory if it doesn't exist
+- [x] **Added** proper cleanup using `platform.CleanupTempFontsDir()` in `cmd/add.go` after font installation
+  - Cleanup happens after all fonts are installed
+  - Errors are logged but don't fail the installation
+- [x] **Verified** no other temp file usage found - only `cmd/add.go` uses temp directories
 
 ---
 

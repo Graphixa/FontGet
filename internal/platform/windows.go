@@ -21,8 +21,7 @@ const (
 
 // Windows API functions
 var (
-	findWindowEx = syscall.NewLazyDLL("user32.dll").NewProc("FindWindowExW")
-	sendMessage  = syscall.NewLazyDLL("user32.dll").NewProc("SendMessageW")
+	sendMessage = syscall.NewLazyDLL("user32.dll").NewProc("SendMessageW")
 )
 
 type windowsFontManager struct {
@@ -417,17 +416,6 @@ func (m *windowsFontManager) deleteRegistryValue(key syscall.Handle, valueName s
 		return fmt.Errorf("failed to delete registry value: %w", err)
 	}
 	return nil
-}
-
-// FindWindowEx wraps the Windows FindWindowEx function
-func FindWindowEx(hwndParent, hwndChildAfter uintptr, lpszClass, lpszWindow *uint16) uintptr {
-	ret, _, _ := findWindowEx.Call(
-		hwndParent,
-		hwndChildAfter,
-		uintptr(unsafe.Pointer(lpszClass)),
-		uintptr(unsafe.Pointer(lpszWindow)),
-	)
-	return ret
 }
 
 // SendMessage wraps the Windows SendMessage function

@@ -6,7 +6,6 @@ package platform
 import (
 	"fmt"
 	"os"
-	"strings"
 	"syscall"
 	"unsafe"
 
@@ -101,80 +100,6 @@ func IsElevated() (bool, error) {
 		return false, fmt.Errorf("failed to check elevation status: %w", err)
 	}
 	return ret != 0, nil
-}
-
-// RunAsElevated attempts to relaunch the process with administrator privileges
-func RunAsElevated() error {
-	// Get the executable path
-	exe, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
-	}
-
-	// Get the current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("failed to get current working directory: %w", err)
-	}
-
-	// Get the current command line arguments
-	args := os.Args[1:]
-
-	// Convert to UTF-16 for Windows API
-	exePtr, err := syscall.UTF16PtrFromString(exe)
-	if err != nil {
-		return fmt.Errorf("failed to convert path to UTF-16: %w", err)
-	}
-
-	// Build the command line arguments string
-	cmdLine := ""
-	for i, arg := range args {
-		if i > 0 {
-			cmdLine += " "
-		}
-		// Quote arguments that contain spaces
-		if strings.Contains(arg, " ") {
-			cmdLine += fmt.Sprintf(`"%s"`, arg)
-		} else {
-			cmdLine += arg
-		}
-	}
-
-	cmdLinePtr, err := syscall.UTF16PtrFromString(cmdLine)
-	if err != nil {
-		return fmt.Errorf("failed to convert command line to UTF-16: %w", err)
-	}
-
-	// Convert working directory to UTF-16
-	cwdPtr, err := syscall.UTF16PtrFromString(cwd)
-	if err != nil {
-		return fmt.Errorf("failed to convert working directory to UTF-16: %w", err)
-	}
-
-	// Convert "runas" to UTF-16
-	runasPtr, err := syscall.UTF16PtrFromString("runas")
-	if err != nil {
-		return fmt.Errorf("failed to convert runas to UTF-16: %w", err)
-	}
-
-	// Use ShellExecute to trigger UAC prompt
-	ret, _, _ := shell32.NewProc("ShellExecuteW").Call(
-		0,                                   // hwnd
-		uintptr(unsafe.Pointer(runasPtr)),   // lpOperation
-		uintptr(unsafe.Pointer(exePtr)),     // lpFile
-		uintptr(unsafe.Pointer(cmdLinePtr)), // lpParameters
-		uintptr(unsafe.Pointer(cwdPtr)),     // lpDirectory
-		syscall.SW_NORMAL,                   // nShowCmd
-	)
-
-	// ShellExecute returns a value greater than 32 on success
-	if ret <= 32 {
-		// Get the last error code
-		errCode := syscall.GetLastError()
-		return fmt.Errorf("failed to launch elevated process (error code: %d)", errCode)
-	}
-
-	return nil
 }
 
 // CreateHiddenDirectory creates a directory and sets it as hidden on Windows

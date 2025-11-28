@@ -16,6 +16,7 @@ import (
 	"fontget/internal/functions"
 	"fontget/internal/output"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -161,9 +162,8 @@ var sourcesInfoCmd = &cobra.Command{
 
 		// Unified Sources table without headings, includes Status
 		fmt.Println()
-		fmt.Println(ui.TableHeader.Render(GetSourcesInfoTableHeader()))
-		sepWidth := TableColSrcName + TableColSrcPrefix + TableColSrcUpdated + TableColSrcType + 3
-		fmt.Println(strings.Repeat("-", sepWidth))
+		fmt.Println(ui.GetSourcesInfoTableHeader())
+		fmt.Println(ui.GetTableSeparator())
 		// Build rows and sort: built-in first, then enabled, then name
 		type row struct {
 			name  string
@@ -198,20 +198,20 @@ var sourcesInfoCmd = &cobra.Command{
 			if !source.Enabled {
 				// Keep the red [Disabled] tag within the name column width
 				tag := " [Disabled]"
-				nameWidth := TableColSrcName - len(tag)
+				nameWidth := ui.TableColSrcName - len(tag)
 				if nameWidth < 0 {
 					nameWidth = 0
 				}
-				nameText := truncateString(sourceName, nameWidth)
+				nameText := shared.TruncateString(sourceName, nameWidth)
 				visible := nameText + tag
 				pad := 0
-				if len(visible) < TableColSrcName {
-					pad = TableColSrcName - len(visible)
+				if len(visible) < ui.TableColSrcName {
+					pad = ui.TableColSrcName - len(visible)
 				}
 				nameStyled = ui.FormReadOnly.Render(nameText) + ui.FeedbackError.Render(tag) + strings.Repeat(" ", pad)
 			} else {
-				nameText := truncateString(sourceName, TableColSrcName)
-				paddedName := fmt.Sprintf("%-*s", TableColSrcName, nameText)
+				nameText := shared.TruncateString(sourceName, ui.TableColSrcName)
+				paddedName := fmt.Sprintf("%-*s", ui.TableColSrcName, nameText)
 				nameStyled = ui.TableSourceName.Render(paddedName)
 			}
 			last := "Unknown"
@@ -231,9 +231,9 @@ var sourcesInfoCmd = &cobra.Command{
 
 			fmt.Printf("%s %-*s %-*s %-*s\n",
 				displayName,
-				TableColSrcPrefix, truncateString(source.Prefix, TableColSrcPrefix),
-				TableColSrcUpdated, truncateString(last, TableColSrcUpdated),
-				TableColSrcType, typ,
+				ui.TableColSrcPrefix, shared.TruncateString(source.Prefix, ui.TableColSrcPrefix),
+				ui.TableColSrcUpdated, shared.TruncateString(last, ui.TableColSrcUpdated),
+				ui.TableColSrcType, typ,
 			)
 		}
 

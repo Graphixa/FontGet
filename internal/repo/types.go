@@ -99,25 +99,11 @@ func (f *Font) FromFontInfo(info FontInfo) {
 	}
 }
 
-// FromFontFileInfo converts FontFileInfo to Font
-func (f *Font) FromFontFileInfo(info FontFileInfo) {
-	f.Name = info.Name
-	f.ID = info.ID
-	f.Source = info.Source
-	f.License = info.License
-	f.Version = info.Version
-	f.Description = info.Description
-	f.Files = info.Files
-	f.Subsets = info.Subsets
-	// Convert variants from []string to []FontVariant
-	f.Variants = make([]FontVariant, len(info.Variants))
-	for i, variant := range info.Variants {
-		f.Variants[i] = FontVariant{Name: variant}
-	}
-	// Set category from single string to slice
-	if info.Category != "" {
-		f.Categories = []string{info.Category}
-	}
+// FromFontFileInfo converts FontFileInfo to Font (deprecated - FontFileInfo type removed)
+// This function is kept for backward compatibility but is no longer used.
+// FontFileInfo type has been removed as it was unused.
+func (f *Font) FromFontFileInfo(info interface{}) {
+	// No-op: FontFileInfo type has been removed
 }
 
 // FontManifest represents the combined manifest of all fonts
