@@ -126,14 +126,16 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Key Functions**:
 - `listCmd.RunE`: Main listing execution
 - `collectFonts`: Collects fonts from specified scopes with optional type filtering and optional verbose output suppression
+- `buildParsedFont`: Extracts font metadata from file path and builds ParsedFont struct
 - `groupByFamily`: Groups fonts by family name
-- `IsCriticalSystemFont`: Checks if a font is a protected system font
+- `filterFontsByFamilyAndID`: Filters font families by family name or Font ID
 
 **Key Features**:
 - **Font ID Support**: Filter by Font ID in addition to family name
 - **Early Type Filtering**: Filters by file extension before expensive metadata extraction when type filter is specified
 - **Optimized Filtering**: Caches lowercased strings to avoid repeated ToLower() calls
 - **Verbose Output Suppression**: `collectFonts` accepts optional `suppressVerbose` parameter to suppress verbose output when called from internal/helper functions (e.g., `checkFontsAlreadyInstalled`, `backup.go`, `export.go`)
+- **Standardized Structure**: File follows Go best practices with imports → types → command → helpers structure
 
 **Flags**:
 - `--scope, -s`: Filter by installation scope (user or machine)
@@ -144,7 +146,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/platform` for OS-specific font detection
 - Uses `internal/output` for verbose/debug output
 - Uses `internal/repo` for font matching and repository access
-- Uses `cmd/shared` for protected font checking
+- Uses `internal/shared` for protected font checking and font utilities
 
 **Status**: ✅ Active - Core functionality
 
@@ -191,7 +193,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/output` for verbose/debug output
 - Uses `internal/repo` for font repository access and Font ID resolution
 - Uses `internal/components` for progress bar display
-- Uses `cmd/shared` for protected font checking and status reporting
+- Uses `internal/shared` for protected font checking
+- Uses `internal/output` for status reporting
 
 **Status**: ✅ Active - Core functionality
 
@@ -230,7 +233,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/repo` for font matching and repository access
 - Uses `internal/components` for progress bar and confirmation dialogs
 - Uses `internal/ui` for user interface styling
-- Uses `cmd/shared` for protected font checking
+- Uses `internal/shared` for protected font checking
 
 **Status**: ✅ Active - Core functionality
 
@@ -272,7 +275,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/repo` for font matching and repository access
 - Uses `internal/components` for confirmation dialogs
 - Uses `internal/ui` for spinner components
-- Uses `cmd/shared` for protected font checking
+- Uses `internal/shared` for protected font checking
 
 **Status**: ✅ Active - Core functionality
 
@@ -348,6 +351,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Key Functions**:
 - `NewSourcesModel`: TUI model initialization
+- `Update`: Main message handler that routes to state-specific handlers
+- `routeStateUpdate`: Routes messages to appropriate state handler based on current state
 - `addSource`: Adding new sources
 - `updateSource`: Editing existing sources
 - `saveChanges`: Persisting changes to manifest
@@ -900,7 +905,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Cleaner command interface with sensible defaults
 
 #### **Pre-Installation Font Checking**
-- **Already-Installed Detection**: Added `checkFontsAlreadyInstalled()` function in `cmd/shared.go`
+- **Already-Installed Detection**: Added `checkFontsAlreadyInstalled()` function in `cmd/add.go`
   - Checks if fonts are already installed before downloading to save bandwidth and time
   - Uses the same matching logic as the `list` command for consistency
   - Matches by Font ID (most accurate) with family name fallback
@@ -992,3 +997,33 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Better user experience with standardized error messages
   - Cleaner verbose output without unnecessary blank lines
   - More appropriate verbose output context (suppressed for internal operations)
+
+#### **Code Quality Polish (2025-01-XX)**
+- **Variable Naming Standardization**: Standardized variable naming for consistency
+  - Changed `fm` to `fontManager` in `cmd/export.go` and all references
+  - Improved code readability and self-documentation
+- **File Structure Standardization**: Reorganized command files to follow Go best practices
+  - Standardized structure: imports → types → constants → command → helpers
+  - Fixed import grouping (stdlib, internal, third-party)
+  - Reorganized `cmd/list.go` to follow standard structure
+- **Function Documentation**: Added comprehensive godoc comments to key functions
+  - **cmd/add.go**: `installFont`, `installFontsInDebugMode`, `checkFontsAlreadyInstalled`
+  - **cmd/remove.go**: `removeFont`
+  - **cmd/export.go**: `filterFontsForExport`, `buildExportManifest`
+  - **cmd/backup.go**: `organizeFontsBySourceAndFamily`, `createBackupZipArchive`
+  - **internal/shared/font.go**: `GetDisplayNameFromFilename`
+  - **internal/shared/matching.go**: `FindSimilarFonts`
+  - **internal/cmdutils/args.go**: `ParseFontNames`
+  - **internal/cmdutils/cobra.go**: `CheckElevation`
+- **Inline Comments**: Added explanatory comments for complex logic
+  - Enhanced comments in `internal/shared/font.go` for camelCase conversion threshold logic
+  - Added comments in `cmd/export.go` for font grouping logic
+  - Added comments in `cmd/add.go` for early installation checks
+- **Code Organization Improvements**: Refactored for better maintainability
+  - **sources_manage.go**: Extracted state routing logic into `routeStateUpdate` helper function
+  - Improved separation of concerns and code clarity
+- **Benefits**:
+  - Better code maintainability and readability
+  - Improved developer experience with comprehensive documentation
+  - Consistent code structure across all command files
+  - Self-documenting code with clear function purposes
