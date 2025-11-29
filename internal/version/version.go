@@ -1,8 +1,10 @@
 package version
 
 import (
+	"os/exec"
 	"runtime/debug"
 	"strings"
+	"sync"
 )
 
 // Version information - can be overridden at build time
@@ -18,6 +20,12 @@ var (
 
 	// ManifestVersion is the current manifest schema version
 	ManifestVersion = "1.0"
+)
+
+var (
+	// Cached git commit hash (detected at runtime)
+	runtimeGitCommit string
+	runtimeGitOnce   sync.Once
 )
 
 // GetVersion returns the current FontGet version in normalized form.
@@ -37,7 +45,45 @@ func GetVersion() string {
 		}
 	}
 
+	// For local builds, try to get commit hash (from build-time or runtime)
+	if Version == "dev" {
+		commit := getGitCommit()
+		if commit != "" && commit != "unknown" {
+			// Use commit hash in build metadata format: dev+abc1234
+			// This is SemVer compliant and informative
+			if len(commit) >= 7 {
+				return "dev+" + commit[:7]
+			}
+			return "dev+" + commit
+		}
+	}
+
 	return "dev"
+}
+
+// getGitCommit returns the git commit hash, preferring build-time value,
+// falling back to runtime detection if not set.
+func getGitCommit() string {
+	// If set at build time, use that
+	if GitCommit != "unknown" && GitCommit != "" {
+		return GitCommit
+	}
+
+	// Otherwise, try to detect at runtime (once, cached)
+	runtimeGitOnce.Do(func() {
+		// Try to get git commit hash from the repository
+		// This works when the binary is run from within the git repo
+		cmd := exec.Command("git", "rev-parse", "--short", "HEAD")
+		// Set working directory to the binary's location or current directory
+		output, err := cmd.Output()
+		if err == nil && len(output) > 0 {
+			runtimeGitCommit = strings.TrimSpace(string(output))
+		} else {
+			runtimeGitCommit = ""
+		}
+	})
+
+	return runtimeGitCommit
 }
 
 // GetFullVersion returns a detailed version string
@@ -47,11 +93,12 @@ func GetFullVersion() string {
 	var parts []string
 	parts = append(parts, "FontGet "+version)
 
-	if GitCommit != "unknown" {
-		if len(GitCommit) > 7 {
-			parts = append(parts, "commit "+GitCommit[:7])
+	commit := getGitCommit()
+	if commit != "" && commit != "unknown" {
+		if len(commit) > 7 {
+			parts = append(parts, "commit "+commit[:7])
 		} else {
-			parts = append(parts, "commit "+GitCommit)
+			parts = append(parts, "commit "+commit)
 		}
 	}
 

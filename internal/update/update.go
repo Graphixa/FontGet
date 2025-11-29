@@ -153,10 +153,10 @@ func UpdateToVersion(targetVersion string) error {
 }
 
 // parseVersion parses a version string to semver.Version
-// Handles "dev" and version strings with or without "v" prefix
+// Handles "dev", "dev+{hash}", and version strings with or without "v" prefix
 func parseVersion(versionStr string) (semver.Version, error) {
-	// Handle "dev" version
-	if versionStr == "dev" {
+	// Handle "dev" version (with or without commit hash in build metadata)
+	if versionStr == "dev" || strings.HasPrefix(versionStr, "dev+") {
 		// Return a very old version so updates are always available
 		return semver.MustParse("0.0.0"), nil
 	}

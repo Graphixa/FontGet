@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"fontget/internal/ui"
 	"fontget/internal/version"
@@ -21,7 +22,10 @@ var versionCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		v := version.GetVersion()
 		display := v
-		if v != "dev" {
+		// Handle dev+hash format (build metadata)
+		if strings.HasPrefix(v, "dev+") {
+			display = v // Keep as "dev+abc123"
+		} else if v != "dev" {
 			display = "v" + v
 		}
 
@@ -44,7 +48,8 @@ var versionCmd = &cobra.Command{
 		}
 
 		if versionReleaseNotes {
-			if v == "dev" {
+			// Check if it's a dev build (with or without commit hash)
+			if v == "dev" || strings.HasPrefix(v, "dev+") {
 				fmt.Println(ui.FeedbackText.Render("Release notes are only available for tagged releases."))
 				return
 			}
