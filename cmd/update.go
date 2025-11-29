@@ -10,6 +10,7 @@ import (
 	"fontget/internal/update"
 	"fontget/internal/version"
 
+	"github.com/blang/semver"
 	"github.com/spf13/cobra"
 )
 
@@ -105,20 +106,9 @@ func handleCheckOnly() error {
 		return nil
 	}
 
-	// Show update available message
-	fmt.Printf("\n%s\n", ui.PageTitle.Render("Update Available"))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("FontGet v%s is available (you have v%s).", result.Latest, result.Current)))
-	fmt.Printf("%s\n", ui.FeedbackText.Render("Run 'fontget update' to upgrade."))
-
-	// Show release notes if available
-	if result.Release != nil && result.Release.ReleaseNotes != "" {
-		notes := formatReleaseNotes(result.Release.ReleaseNotes)
-		if notes != "" {
-			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Release Notes:"))
-			// Avoid trailing blank line after notes
-			fmt.Printf("%s\n", ui.FeedbackText.Render(notes))
-		}
-	}
+	// Show update information (no PageTitle for non-TUI commands)
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Update Version: v%s", result.Latest)))
 
 	return nil
 }
@@ -161,19 +151,9 @@ func handleUpdateFlow(autoYes bool) error {
 		return nil
 	}
 
-	// Show update information
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Current Installed Version: %s", result.Current)))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available:        %s", result.Latest)))
-
-	// Show release notes if available
-	if result.Release != nil && result.Release.ReleaseNotes != "" {
-		notes := formatReleaseNotes(result.Release.ReleaseNotes)
-		if notes != "" {
-			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Release Notes:"))
-			// Avoid trailing blank line after notes
-			fmt.Printf("%s\n", ui.FeedbackText.Render(notes))
-		}
-	}
+	// Show update information (no PageTitle for non-TUI commands)
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available: v%s", result.Latest)))
 
 	// Prompt for confirmation unless auto-yes
 	if !autoYes {
@@ -224,25 +204,50 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	currentVersion := version.GetVersion()
 
-	// Check if target version is different from current
+	// If target equals current, treat as no-op and exit early
 	if targetVersion == currentVersion {
-		fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("FontGet is already at version %s", currentVersion)))
+		fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("FontGet is already at v%s (no changes made).", currentVersion)))
 		return nil
 	}
 
-	// Show update information
-	fmt.Printf("\n%s\n", ui.PageTitle.Render("Update to Specific Version"))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Current Installed Version: %s", currentVersion)))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available:        %s", targetVersion)))
+	// Parse versions to detect downgrades (ignore parse errors gracefully)
+	isDowngrade := false
+	if curr, errCurr := semver.Parse(currentVersion); errCurr == nil {
+		if tgt, errTgt := semver.Parse(targetVersion); errTgt == nil {
+			if tgt.LT(curr) {
+				isDowngrade = true
+			}
+		}
+	}
 
-	// Prompt for confirmation unless auto-yes
-	if !autoYes {
+	// Show update information (no PageTitle for non-TUI commands)
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Installed Version: v%s", currentVersion)))
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available: v%s", targetVersion)))
+
+	// Warn on downgrade
+	if isDowngrade {
+		fmt.Printf("%s\n", ui.RenderWarning("Warning: You are attempting to downgrade FontGet. This may cause configuration or cache issues."))
+	}
+
+	// For downgrades, always require confirmation (ignore --yes)
+	mustConfirm := isDowngrade || !autoYes
+	if mustConfirm {
 		output.GetVerbose().Info("Prompting for update confirmation")
 		output.GetDebug().State("Showing confirmation dialog")
 
+		confirmTitle := "Update FontGet"
+		confirmMessage := fmt.Sprintf("Do you want to update FontGet from v%s to v%s?", currentVersion, targetVersion)
+		if isDowngrade {
+			confirmTitle = "Downgrade FontGet"
+			confirmMessage = fmt.Sprintf(
+				"You are about to downgrade FontGet from v%s to v%s.\n\nThis may cause:\n- Configuration incompatibilities\n- Cache or index issues\n- Behavior changes in scripts using new flags\n\nDo you want to continue?",
+				currentVersion, targetVersion,
+			)
+		}
+
 		confirmed, err := components.RunConfirm(
-			"Update FontGet",
-			fmt.Sprintf("Do you want to update FontGet from %s to %s?", currentVersion, targetVersion),
+			confirmTitle,
+			confirmMessage,
 		)
 		if err != nil {
 			if logger != nil {
@@ -273,8 +278,8 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 	output.GetDebug().State("Calling update.UpdateToVersion(%s)", targetVersion)
 
 	err := ui.RunSpinner(
-		fmt.Sprintf("Updating FontGet from %s to %s...", currentVersion, targetVersion),
-		fmt.Sprintf("Successfully updated to FontGet %s", targetVersion),
+		fmt.Sprintf("Updating FontGet from v%s to v%s...", currentVersion, targetVersion),
+		fmt.Sprintf("Successfully updated to FontGet v%s", targetVersion),
 		func() error {
 			return update.UpdateToVersion(targetVersion)
 		},
@@ -285,7 +290,7 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 		}
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("update.UpdateToVersion() failed: %v", err)
-		fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Update failed: %v", err)))
+		// Spinner already showed the error message; just return it for Cobra to report once.
 		return fmt.Errorf("update failed: %w", err)
 	}
 
@@ -295,7 +300,8 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet %s", targetVersion)))
+	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet v%s", targetVersion)))
+	fmt.Printf("%s\n", ui.FeedbackText.Render("Run 'fontget version --release-notes' to see what's new."))
 
 	return nil
 }
@@ -308,8 +314,8 @@ func performUpdate(currentVersion, latestVersion string) error {
 
 	// Show spinner while performing the update
 	err := ui.RunSpinner(
-		fmt.Sprintf("Updating FontGet from %s to %s...", currentVersion, latestVersion),
-		fmt.Sprintf("Successfully updated to FontGet %s", latestVersion),
+		fmt.Sprintf("Updating FontGet from v%s to v%s...", currentVersion, latestVersion),
+		fmt.Sprintf("Successfully updated to FontGet v%s", latestVersion),
 		func() error {
 			return update.UpdateToLatest()
 		},
@@ -320,7 +326,7 @@ func performUpdate(currentVersion, latestVersion string) error {
 		}
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("update.UpdateToLatest() failed: %v", err)
-		fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Update failed: %v", err)))
+		// Spinner already showed the error message; just return it for Cobra to report once.
 		return fmt.Errorf("update failed: %w", err)
 	}
 
@@ -330,7 +336,8 @@ func performUpdate(currentVersion, latestVersion string) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet %s", latestVersion)))
+	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet v%s", latestVersion)))
+	fmt.Printf("%s\n", ui.FeedbackText.Render("Run 'fontget version --release-notes' to see what's new."))
 
 	return nil
 }
