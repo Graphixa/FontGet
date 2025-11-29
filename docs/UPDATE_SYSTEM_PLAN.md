@@ -16,7 +16,7 @@ This document outlines the implementation plan for FontGet's self-update system,
 3. **User Control**: Full control over update behavior via configuration
 4. **Cross-Platform**: Works seamlessly on Windows, macOS, and Linux
 5. **Security**: Verify checksums, use HTTPS, safe binary replacement
-6. **User Experience**: Clear progress, helpful errors, rollback capability
+6. **User Experience**: Clear progress, helpful errors, rollback capability, TUI progress bar component for visual consistency.
 
 ---
 
