@@ -5,7 +5,7 @@
 This document outlines the CI/CD strategy for FontGet, including developer workflows, release triggers, and automated build processes. The pipeline uses **GoReleaser** (OSS) with **GitHub Actions** to build, test, and release FontGet across multiple platforms and package managers.
 
 **Related Plans:**
-- **Self-Update System**: See `docs/maintenance/UPDATE_SYSTEM_PLAN.md` for update functionality
+- **Self-Update System**: See `docs/UPDATE_SYSTEM_PLAN.md` for update functionality
 
 ---
 
@@ -182,7 +182,8 @@ FontGet/
 **⚠️ Important Configuration Notes:**
 - Binary naming must use **hyphens** (not underscores): `fontget-windows-amd64.exe`
 - Binary name must be **lowercase**: `fontget` (not `Fontget`)
-- Required for self-update system compatibility (see `docs/maintenance/UPDATE_SYSTEM_PLAN.md`)
+- Required for self-update system compatibility (see `docs/UPDATE_SYSTEM_PLAN.md`)
+- GoReleaser automatically creates `fontget-{os}-{arch}{.ext}` when `binary: fontget` is set
 
 ---
 
@@ -287,7 +288,9 @@ Set these in GitHub repository settings (Settings → Secrets and variables → 
 | macOS    | amd64, arm64 | `fontget-darwin-amd64`, `fontget-darwin-arm64` |
 | Linux    | amd64, arm64 | `fontget-linux-amd64`, `fontget-linux-arm64` |
 
-**⚠️ IMPORTANT**: Binary naming must match exactly for self-update system to work. The `rhysd/go-github-selfupdate` library expects this naming pattern: `{cmd}_{goos}_{goarch}{.ext}` (with hyphens, not underscores).
+**⚠️ IMPORTANT**: Binary naming must match exactly for self-update system to work. The `rhysd/go-github-selfupdate` library expects this naming pattern: `{cmd}-{goos}-{goarch}{.ext}` (with hyphens, not underscores).
+
+**Note**: GoReleaser automatically generates the correct binary names when `binary: fontget` is set in the config. The library uses `DetectLatest("Graphixa/FontGet")` with the repository slug format, and automatically finds the correct binary for the current platform.
 
 ### **Build Artifacts**
 
@@ -385,9 +388,11 @@ The CI pipeline runs:
 Before creating a release tag, manually test:
 
 - [ ] Core commands work (`add`, `remove`, `search`, `list`, `info`)
+- [ ] Update command works (`update`, `update --check`)
 - [ ] Version command shows correct version
 - [ ] Help text is accurate
 - [ ] Verbose/debug flags work correctly
+- [ ] Self-update system can detect releases (test with `update --check`)
 - [ ] Cross-platform compatibility (if you have access)
 
 ---
@@ -486,6 +491,17 @@ For production releases, consider:
 3. Check for platform-specific dependencies
 4. Review build logs for compilation errors
 
+### **Self-Update System Issues**
+
+**Problem:** Self-update system can't find binaries or checksums
+
+**Solutions:**
+1. Verify binary naming: Must be `fontget-{os}-{arch}{.ext}` (lowercase, hyphens)
+2. Check checksums file format: Must be `SHA256(binary-name)= hash`
+3. Ensure raw binaries are uploaded to GitHub Releases (not just archives)
+4. Verify repository slug in code matches GitHub repository: `Graphixa/FontGet`
+5. Test with `goreleaser release --snapshot` to verify binary naming
+
 ---
 
 ## 📚 Quick Reference
@@ -572,11 +588,11 @@ archives:
     format_overrides:
       - goos: windows
         format: zip
-    # Archive filename can use underscores, but binary inside must use hyphens
+    # Archive filename can use underscores, but binary inside will be named correctly
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    # ⚠️ IMPORTANT: Binary inside archive will be named based on 'binary' field above
-    # For self-update system, we may need to upload raw binaries with hyphenated names
-    # OR configure GoReleaser to rename binaries inside archives
+    # ⚠️ IMPORTANT: GoReleaser automatically names binaries as fontget-{os}-{arch}{.ext}
+    # when binary: fontget is set. The self-update library will find these automatically.
+    # Raw binaries are also uploaded to GitHub Releases for direct download.
 
 checksum:
   name_template: "checksums.txt"
@@ -674,17 +690,17 @@ winget:
 ### **Configuration Notes**
 
 **⚠️ CRITICAL for Self-Update System:**
-- Set `binary: fontget` (lowercase, not `Fontget`)
+- Set `binary: fontget` (lowercase, not `Fontget`) - GoReleaser will automatically create `fontget-{os}-{arch}{.ext}` format
 - Set `main: .` (root main.go, not `./cmd/Fontget/main.go`)
-- Ensure binary naming uses hyphens (handled by GoReleaser based on binary name)
-- Verify checksums file format matches self-update library expectations
+- The self-update library uses repository slug format (`Graphixa/FontGet`) and automatically detects the correct binary
+- Verify checksums file format matches self-update library expectations (format: `SHA256(binary-name)= hash`)
 
 **Before Using:**
 - Update all `ORG`/`Graphixa` placeholders with actual values
 - Update email addresses and URLs
-- Ensure NFPM `contents.src` path matches actual built binary path
+- Ensure NFPM `contents.src` path matches actual built binary path (may need adjustment based on GoReleaser output structure)
 - Configure package manager sections only if you plan to use them
-- Test configuration with `goreleaser release --snapshot` first
+- Test configuration with `goreleaser release --snapshot` first to verify binary naming and paths
 
 ---
 
@@ -724,7 +740,7 @@ winget:
 - [Semantic Versioning](https://semver.org/)
 - [Go Build Constraints](https://pkg.go.dev/cmd/go#hdr-Build_constraints)
 - [Git Tagging Best Practices](https://git-scm.com/book/en/v2/Git-Basics-Tagging)
-- [Self-Update System Plan](docs/maintenance/UPDATE_SYSTEM_PLAN.md) - Binary naming requirements
+- [Self-Update System Plan](docs/UPDATE_SYSTEM_PLAN.md) - Binary naming requirements
 
 ---
 
@@ -747,6 +763,6 @@ A: Create a new patch release (e.g., `v1.2.4` → `v1.2.5`) with the fix. Avoid 
 
 ---
 
-**Last Updated:** 2024-01-15  
-**Maintained By:** FontGet Development Team
+**Last Updated:** 2025-11-29  
+**Maintained By:** Graphixa
 
