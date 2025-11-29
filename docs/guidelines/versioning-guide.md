@@ -75,23 +75,35 @@ Examples: `1.0.0`, `1.2.3`, `2.0.0`
 FontGet has a version system in `internal/version/version.go`:
 
 ```go
-var Version = "dev"  // Default for development
+var Version = "dev"  // Default for development builds
 ```
 
 ### **Version Sources (Priority Order)**
 
-1. **Git Tag** (highest priority) - Used in releases
+1. **Git Tag** (source of truth for releases) - Used in releases
    - Tag format: `v1.2.3` (with `v` prefix)
-   - Extracted by: `git describe --tags`
-   - Used by: GoReleaser, self-update system
+   - Created by: Developer when creating a release
+   - Read by: GoReleaser in GitHub Actions
+   - Example: `git tag -a v1.2.3 -m "Release v1.2.3"`
 
-2. **Build Info** (fallback) - Used in development
-   - From `go.mod` if available
-   - Defaults to `"dev"` if no tag exists
-
-3. **Build-time Injection** (via `ldflags`)
-   - Set during CI/CD builds
+2. **Build-time Injection** (how version gets into binary) - Used in releases
+   - GoReleaser reads git tag and injects via `ldflags`
    - Format: `-X fontget/internal/version.Version=1.2.3`
+   - Extracted from: Git tag (strips `v` prefix)
+   - Used by: GoReleaser in GitHub Actions
+   - Example: `fontget version` → `FontGet v1.2.3`
+
+3. **Build Info** (fallback) - Used with `go install`
+   - From `go.mod` if available
+   - Extracted from `runtime/debug.BuildInfo`
+   - Example: `go install github.com/Graphixa/FontGet@v1.2.3`
+
+4. **Default: "dev" or "dev+{hash}"** - Used for local builds
+   - When building with `go build` (no ldflags)
+   - When no git tag is available
+   - Automatically detects git commit hash at runtime (if available)
+   - Identifies development/local builds
+   - Example: `fontget version` → `FontGet dev+124d611` (or `FontGet dev` if git unavailable)
 
 ### **Version Flow**
 
@@ -221,16 +233,46 @@ Did you make a breaking change?
 
 ## 🚀 Versioning Workflow
 
-### **Daily Development**
+### **Local Development Builds**
 
-During development, version is `"dev"`:
+When you build FontGet locally with `go build`, the version automatically includes the git commit hash:
 
 ```bash
-$ fontget version
-FontGet dev, commit abc1234, built 2025-01-15T10:30:00Z
+$ go build -o fontget
+$ ./fontget version
+FontGet dev+124d611
 ```
 
-This is fine! Development builds don't need real version numbers.
+**How it works:**
+- ✅ Simple `go build` - no special flags needed!
+- ✅ Automatically detects git commit hash at runtime (when run from git repo)
+- ✅ Shows `dev+{hash}` format (e.g., `dev+124d611`)
+- ✅ Falls back to `dev` if git is not available or not in a git repo
+
+**Why `dev+{hash}`?**
+- ✅ Clearly identifies it's a development build (not from a release)
+- ✅ Includes commit hash for precise tracking (`dev+124d611`)
+- ✅ SemVer-compliant format (build metadata uses `+`)
+- ✅ Self-update system recognizes "dev" builds and will always suggest updates
+- ✅ Standard practice in Go projects
+
+**Optional: Build-time Injection (for distribution)**
+
+If you want to bake the commit hash into the binary (useful for distributing local builds):
+
+```bash
+# Linux/macOS
+COMMIT=$(git rev-parse --short HEAD)
+DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+go build -ldflags "-X fontget/internal/version.GitCommit=$COMMIT -X fontget/internal/version.BuildDate=$DATE" -o fontget
+
+# Windows (PowerShell)
+$commit = git rev-parse --short HEAD
+$date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ" -AsUTC)
+go build -ldflags "-X fontget/internal/version.GitCommit=$commit -X fontget/internal/version.BuildDate=$date" -o fontget.exe
+```
+
+**Note:** The version will remain `"dev"` or `"dev+{hash}"` unless you explicitly set it via `-X fontget/internal/version.Version=<version>`. This is intentional—local builds should use "dev" to distinguish them from releases.
 
 ### **Pre-Release Checklist**
 
@@ -279,7 +321,7 @@ GoReleaser automatically:
 2. **Extracts version**: Strips `v` prefix → `1.2.3`
 3. **Injects version**: Uses `ldflags` to set `version.Version=1.2.3`
 4. **Creates release**: GitHub Release titled "v1.2.3"
-5. **Names binaries**: `fontget-1.2.3-windows-amd64.exe`
+5. **Names binaries**: `fontget-windows-amd64.exe` (for self-update compatibility, version is in the binary, not filename)
 
 ### **Version in Build Process**
 
@@ -317,6 +359,10 @@ currentVersion := "1.2.3"
 latestVersion := "1.2.4"
 
 // Library determines: 1.2.4 > 1.2.3 → Update available
+
+// Special handling for dev builds:
+// "dev" and "dev+{hash}" are treated as 0.0.0 for comparison
+// This ensures dev builds always see updates as available
 ```
 
 ### **GitHub Release Requirements**
@@ -361,6 +407,9 @@ v2.1.0  - Added new source support (new feature)
 
 ## 🎓 Pre-Releases (Alpha, Beta, RC)
 
+> [!NOTE]
+> **FontGet currently uses stable releases only.** Pre-release tags (alpha, beta, rc) are supported by SemVer and the versioning system, but FontGet typically releases directly to stable. This section documents pre-releases for reference, but they may not be used in practice.
+
 ### **Pre-Release Formats**
 
 SemVer supports pre-release versions:
@@ -375,10 +424,10 @@ SemVer supports pre-release versions:
 - **Beta**: Feature complete, testing for bugs
 - **RC**: Release candidate, final testing before stable
 
-### **Pre-Release Workflow**
+### **Pre-Release Workflow** (If Needed)
 
 ```bash
-# 1. Create beta release
+# 1. Create beta release (if needed)
 git tag -a v1.3.0-beta.1 -m "Beta release: Testing backup command"
 git push origin v1.3.0-beta.1
 
@@ -455,7 +504,14 @@ git tag -a v1.3.0 -m "Release"
 ### **Check Current Version**
 ```bash
 fontget version
-# Output: FontGet 1.2.3, commit abc1234, built 2025-01-15T10:30:00Z
+# Output: FontGet v1.2.3
+
+# With detailed build info (--debug flag)
+fontget version --debug
+# Output:
+# FontGet v1.2.3
+# Commit: abc1234
+# Build: 2025-01-15T10:30:00Z
 ```
 
 ### **Check Latest Tag**
