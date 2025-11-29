@@ -40,6 +40,25 @@ checksum:
 snapshot:
   name_template: "{{ .Tag }}-SNAPSHOT"
 
+release:
+  # Upload raw binaries in addition to archives (required for self-update system)
+  # The self-update library expects binaries named: fontget-{os}-{arch}{.ext}
+  # GoReleaser builds binaries to dist/{build_id}_{os}_{arch}_{version}/binary_name
+  # We use glob patterns with name_template to rename them correctly
+  extra_files:
+    - glob: dist/fontget_windows_amd64*/fontget.exe
+      name_template: fontget-windows-amd64.exe
+    - glob: dist/fontget_windows_arm64*/fontget.exe
+      name_template: fontget-windows-arm64.exe
+    - glob: dist/fontget_darwin_amd64*/fontget
+      name_template: fontget-darwin-amd64
+    - glob: dist/fontget_darwin_arm64*/fontget
+      name_template: fontget-darwin-arm64
+    - glob: dist/fontget_linux_amd64*/fontget
+      name_template: fontget-linux-amd64
+    - glob: dist/fontget_linux_arm64*/fontget
+      name_template: fontget-linux-arm64
+
 changelog:
   use: git
   sort: asc
