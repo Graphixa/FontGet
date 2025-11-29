@@ -115,6 +115,7 @@ func handleCheckOnly() error {
 		notes := formatReleaseNotes(result.Release.ReleaseNotes)
 		if notes != "" {
 			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Release Notes:"))
+			// Avoid trailing blank line after notes
 			fmt.Printf("%s\n", ui.FeedbackText.Render(notes))
 		}
 	}
@@ -161,14 +162,15 @@ func handleUpdateFlow(autoYes bool) error {
 	}
 
 	// Show update information
-	fmt.Printf("\n%s\n", ui.PageTitle.Render("Update Available"))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("FontGet v%s is available (you have v%s).", result.Latest, result.Current)))
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Current Installed Version: %s", result.Current)))
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available:        %s", result.Latest)))
 
 	// Show release notes if available
 	if result.Release != nil && result.Release.ReleaseNotes != "" {
 		notes := formatReleaseNotes(result.Release.ReleaseNotes)
 		if notes != "" {
 			fmt.Printf("\n%s\n", ui.PageSubtitle.Render("Release Notes:"))
+			// Avoid trailing blank line after notes
 			fmt.Printf("%s\n", ui.FeedbackText.Render(notes))
 		}
 	}
@@ -180,7 +182,7 @@ func handleUpdateFlow(autoYes bool) error {
 
 		confirmed, err := components.RunConfirm(
 			"Update FontGet",
-			fmt.Sprintf("Do you want to update FontGet from v%s to v%s?", result.Current, result.Latest),
+			fmt.Sprintf("Do you want to update FontGet from %s to %s?", result.Current, result.Latest),
 		)
 		if err != nil {
 			if logger != nil {
@@ -224,13 +226,14 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	// Check if target version is different from current
 	if targetVersion == currentVersion {
-		fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("FontGet is already at version v%s", currentVersion)))
+		fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("FontGet is already at version %s", currentVersion)))
 		return nil
 	}
 
 	// Show update information
 	fmt.Printf("\n%s\n", ui.PageTitle.Render("Update to Specific Version"))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Updating FontGet from v%s to v%s", currentVersion, targetVersion)))
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Current Installed Version: %s", currentVersion)))
+	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available:        %s", targetVersion)))
 
 	// Prompt for confirmation unless auto-yes
 	if !autoYes {
@@ -239,7 +242,7 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 		confirmed, err := components.RunConfirm(
 			"Update FontGet",
-			fmt.Sprintf("Do you want to update FontGet from v%s to v%s?", currentVersion, targetVersion),
+			fmt.Sprintf("Do you want to update FontGet from %s to %s?", currentVersion, targetVersion),
 		)
 		if err != nil {
 			if logger != nil {
@@ -269,7 +272,13 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 	output.GetVerbose().Info("Starting update to version %s", targetVersion)
 	output.GetDebug().State("Calling update.UpdateToVersion(%s)", targetVersion)
 
-	err := update.UpdateToVersion(targetVersion)
+	err := ui.RunSpinner(
+		fmt.Sprintf("Updating FontGet from %s to %s...", currentVersion, targetVersion),
+		fmt.Sprintf("Successfully updated to FontGet %s", targetVersion),
+		func() error {
+			return update.UpdateToVersion(targetVersion)
+		},
+	)
 	if err != nil {
 		if logger != nil {
 			logger.Error("Failed to update to version %s: %v", targetVersion, err)
@@ -286,8 +295,7 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("FontGet updated successfully from v%s to v%s", currentVersion, targetVersion)))
-	fmt.Printf("%s\n", ui.FeedbackText.Render("Restart FontGet to use the new version."))
+	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet %s", targetVersion)))
 
 	return nil
 }
@@ -298,7 +306,14 @@ func performUpdate(currentVersion, latestVersion string) error {
 	output.GetVerbose().Info("Starting update to version %s", latestVersion)
 	output.GetDebug().State("Calling update.UpdateToLatest()")
 
-	err := update.UpdateToLatest()
+	// Show spinner while performing the update
+	err := ui.RunSpinner(
+		fmt.Sprintf("Updating FontGet from %s to %s...", currentVersion, latestVersion),
+		fmt.Sprintf("Successfully updated to FontGet %s", latestVersion),
+		func() error {
+			return update.UpdateToLatest()
+		},
+	)
 	if err != nil {
 		if logger != nil {
 			logger.Error("Failed to update: %v", err)
@@ -315,8 +330,7 @@ func performUpdate(currentVersion, latestVersion string) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("FontGet updated successfully from v%s to v%s", currentVersion, latestVersion)))
-	fmt.Printf("%s\n", ui.FeedbackText.Render("Restart FontGet to use the new version."))
+	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet %s", latestVersion)))
 
 	return nil
 }
@@ -328,6 +342,12 @@ func formatReleaseNotes(notes string) string {
 	}
 
 	lines := strings.Split(notes, "\n")
+
+	// Trim trailing empty lines to avoid extra blank space at the end
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+
 	maxLines := 10
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]
