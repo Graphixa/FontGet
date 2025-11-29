@@ -5,7 +5,7 @@
 *.dylib
 *.test
 *.json
-
+*exe.old
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
