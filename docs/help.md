@@ -231,26 +231,62 @@ fontget config reset
 
 ---
 
-## Planned Commands
-
 ### `update`
 
 #### Purpose
-Update FontGet to the latest version
+Update FontGet to the latest version from GitHub Releases
 
 #### Why It Matters
-Users need to get new features and bug fixes
+Users need to get new features, bug fixes, and security updates
 
 #### Subcommands
 None (updates the entire application)
 
+#### Flags
+- `--check, -c` - Only check for updates, don't install
+- `-y` - Skip confirmation prompt and auto-confirm update
+- `--version <version>` - Update to specific version (e.g., 1.2.3)
+
 #### Usage Example
 ```bash
-# Update to latest version
+# Check for updates and prompt to install
 fontget update
+
+# Only check for updates (don't install)
+fontget update --check
+
+# Auto-confirm update (skip confirmation)
+fontget update -y
+
+# Update to specific version
+fontget update --version 1.2.3
+
+# Check with verbose output
+fontget update --check --verbose
 ```
 
+#### Configuration
+Update behavior can be configured in `config.yaml`:
+
+```yaml
+Update:
+  AutoCheck: true        # Check for updates on startup
+  AutoUpdate: false      # Automatically install updates (manual by default)
+  CheckInterval: 24      # Hours between update checks
+  LastChecked: ""         # ISO timestamp (automatically updated)
+  UpdateChannel: "stable" # Update channel: stable, beta, or nightly
+```
+
+#### Notes
+- Updates are downloaded from GitHub Releases
+- Checksums are automatically verified for security
+- Binary replacement is atomic and safe across all platforms
+- Failed updates automatically roll back to the previous version
+- Startup update checks are non-blocking and respect the `CheckInterval` setting
+
 ---
+
+## Planned Commands
 
 ### `export`
 

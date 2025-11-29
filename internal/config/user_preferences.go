@@ -15,6 +15,7 @@ import (
 type AppConfig struct {
 	Configuration ConfigurationSection `yaml:"Configuration"`
 	Logging       LoggingSection       `yaml:"Logging"`
+	Update        UpdateSection        `yaml:"Update"`
 }
 
 // ConfigurationSection represents the main configuration settings
@@ -28,6 +29,15 @@ type LoggingSection struct {
 	LogPath  string `yaml:"LogPath"`
 	MaxSize  string `yaml:"MaxSize"`
 	MaxFiles int    `yaml:"MaxFiles"`
+}
+
+// UpdateSection represents update configuration
+type UpdateSection struct {
+	AutoCheck     bool   `yaml:"AutoCheck"`     // Check on startup
+	AutoUpdate    bool   `yaml:"AutoUpdate"`    // Auto-install (default: false)
+	CheckInterval int    `yaml:"CheckInterval"` // Hours between checks
+	LastChecked   string `yaml:"LastChecked"`   // ISO timestamp
+	UpdateChannel string `yaml:"UpdateChannel"` // stable/beta/nightly
 }
 
 // GetAppConfigDir returns the app-specific config directory (~/.fontget)
@@ -71,6 +81,13 @@ func DefaultUserPreferences() *AppConfig {
 			MaxSize:  "10MB",
 			MaxFiles: 5,
 		},
+		Update: UpdateSection{
+			AutoCheck:     true,  // Check by default
+			AutoUpdate:    false, // Manual install by default
+			CheckInterval: 24,    // Check daily
+			LastChecked:   "",    // Never checked
+			UpdateChannel: "stable",
+		},
 	}
 }
 
@@ -94,6 +111,29 @@ func GetUserPreferences() *AppConfig {
 			// "not set" and "explicitly set to false". For now, we'll assume if the
 			// file exists and is valid, use the loaded values.
 			config.Configuration.UsePopularitySort = loadedConfig.Configuration.UsePopularitySort
+
+			// Merge Update section if it exists (optional for backward compatibility)
+			if loadedConfig.Update.CheckInterval > 0 || loadedConfig.Update.LastChecked != "" {
+				config.Update = loadedConfig.Update
+			} else {
+				// If Update section doesn't exist, merge individual fields if present
+				// This handles partial Update sections in existing configs
+				if loadedConfig.Update.AutoCheck || !loadedConfig.Update.AutoCheck {
+					config.Update.AutoCheck = loadedConfig.Update.AutoCheck
+				}
+				if loadedConfig.Update.AutoUpdate || !loadedConfig.Update.AutoUpdate {
+					config.Update.AutoUpdate = loadedConfig.Update.AutoUpdate
+				}
+				if loadedConfig.Update.CheckInterval > 0 {
+					config.Update.CheckInterval = loadedConfig.Update.CheckInterval
+				}
+				if loadedConfig.Update.LastChecked != "" {
+					config.Update.LastChecked = loadedConfig.Update.LastChecked
+				}
+				if loadedConfig.Update.UpdateChannel != "" {
+					config.Update.UpdateChannel = loadedConfig.Update.UpdateChannel
+				}
+			}
 		}
 	}
 
@@ -196,6 +236,12 @@ Logging:
   LogPath: "$home/.fontget/logs/fontget.log"
   MaxSize: "10MB"
   MaxFiles: 5
+Update:
+  AutoCheck: true # Check for updates on startup
+  AutoUpdate: false # Automatically install updates (manual by default for security)
+  CheckInterval: 24 # Hours between update checks
+  LastChecked: "" # ISO timestamp of last check (automatically updated)
+  UpdateChannel: "stable" # Update channel: stable, beta, or nightly
 `
 
 	// Write config file
@@ -218,6 +264,13 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"LogPath":  config.Logging.LogPath,
 			"MaxSize":  config.Logging.MaxSize,
 			"MaxFiles": config.Logging.MaxFiles,
+		},
+		"Update": map[string]interface{}{
+			"AutoCheck":     config.Update.AutoCheck,
+			"AutoUpdate":    config.Update.AutoUpdate,
+			"CheckInterval": config.Update.CheckInterval,
+			"LastChecked":   config.Update.LastChecked,
+			"UpdateChannel": config.Update.UpdateChannel,
 		},
 	}
 

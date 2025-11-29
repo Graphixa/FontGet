@@ -70,6 +70,19 @@ func ValidateStrictAppConfig(data map[string]interface{}) error {
 		})
 	}
 
+	// Validate Update section (optional for backward compatibility)
+	if updateSection, exists := data["Update"]; exists {
+		if updateMap, ok := updateSection.(map[string]interface{}); ok {
+			errors = append(errors, validateUpdateSection(updateMap)...)
+		} else {
+			errors = append(errors, ValidationError{
+				Field:   "Update",
+				Message: "must be an object",
+			})
+		}
+	}
+	// Update section is optional, so we don't require it
+
 	if len(errors) > 0 {
 		return errors
 	}
@@ -218,6 +231,139 @@ func validateLoggingSection(logging map[string]interface{}) ValidationErrors {
 			Field:   "Logging.MaxFiles",
 			Message: "field is required",
 		})
+	}
+
+	return errors
+}
+
+// validateUpdateSection validates the Update section
+func validateUpdateSection(update map[string]interface{}) ValidationErrors {
+	var errors ValidationErrors
+
+	// Validate AutoCheck (optional boolean, defaults to true)
+	if autoCheck, exists := update["AutoCheck"]; exists {
+		switch v := autoCheck.(type) {
+		case bool:
+			// Valid boolean value
+		case string:
+			// Try to convert string to bool
+			switch strings.ToLower(v) {
+			case "true", "1", "yes":
+				// Valid boolean string
+			case "false", "0", "no":
+				// Valid boolean string
+			default:
+				errors = append(errors, ValidationError{
+					Field:   "Update.AutoCheck",
+					Message: fmt.Sprintf("must be a boolean, got string '%s'", v),
+				})
+			}
+		default:
+			errors = append(errors, ValidationError{
+				Field:   "Update.AutoCheck",
+				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(autoCheck)),
+			})
+		}
+	}
+
+	// Validate AutoUpdate (optional boolean, defaults to false)
+	if autoUpdate, exists := update["AutoUpdate"]; exists {
+		switch v := autoUpdate.(type) {
+		case bool:
+			// Valid boolean value
+		case string:
+			// Try to convert string to bool
+			switch strings.ToLower(v) {
+			case "true", "1", "yes":
+				// Valid boolean string
+			case "false", "0", "no":
+				// Valid boolean string
+			default:
+				errors = append(errors, ValidationError{
+					Field:   "Update.AutoUpdate",
+					Message: fmt.Sprintf("must be a boolean, got string '%s'", v),
+				})
+			}
+		default:
+			errors = append(errors, ValidationError{
+				Field:   "Update.AutoUpdate",
+				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(autoUpdate)),
+			})
+		}
+	}
+
+	// Validate CheckInterval (optional integer, must be > 0 if present)
+	if checkInterval, exists := update["CheckInterval"]; exists {
+		switch v := checkInterval.(type) {
+		case int:
+			if v <= 0 {
+				errors = append(errors, ValidationError{
+					Field:   "Update.CheckInterval",
+					Message: "must be greater than 0",
+				})
+			}
+		case float64:
+			// YAML numbers are often parsed as float64
+			if v <= 0 {
+				errors = append(errors, ValidationError{
+					Field:   "Update.CheckInterval",
+					Message: "must be greater than 0",
+				})
+			}
+		case string:
+			// Try to convert string to int
+			if intVal, err := strconv.Atoi(v); err != nil {
+				errors = append(errors, ValidationError{
+					Field:   "Update.CheckInterval",
+					Message: fmt.Sprintf("must be an integer, got string '%s'", v),
+				})
+			} else if intVal <= 0 {
+				errors = append(errors, ValidationError{
+					Field:   "Update.CheckInterval",
+					Message: "must be greater than 0",
+				})
+			}
+		default:
+			errors = append(errors, ValidationError{
+				Field:   "Update.CheckInterval",
+				Message: fmt.Sprintf("must be an integer, got %s", getTypeName(checkInterval)),
+			})
+		}
+	}
+
+	// Validate LastChecked (optional string, should be ISO timestamp if present)
+	if lastChecked, exists := update["LastChecked"]; exists {
+		if _, ok := lastChecked.(string); !ok {
+			errors = append(errors, ValidationError{
+				Field:   "Update.LastChecked",
+				Message: fmt.Sprintf("must be a string, got %s", getTypeName(lastChecked)),
+			})
+		}
+	}
+
+	// Validate UpdateChannel (optional string, should be one of: stable, beta, nightly)
+	if updateChannel, exists := update["UpdateChannel"]; exists {
+		if channelStr, ok := updateChannel.(string); ok {
+			validChannels := []string{"stable", "beta", "nightly"}
+			valid := false
+			for _, validChannel := range validChannels {
+				if channelStr == validChannel {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				errors = append(errors, ValidationError{
+					Field:   "Update.UpdateChannel",
+					Message: fmt.Sprintf("must be one of: %s, got '%s'", strings.Join(validChannels, ", "), channelStr),
+				})
+			}
+		} else {
+			errors = append(errors, ValidationError{
+				Field:   "Update.UpdateChannel",
+				Message: fmt.Sprintf("must be a string, got %s", getTypeName(updateChannel)),
+			})
+		}
 	}
 
 	return errors

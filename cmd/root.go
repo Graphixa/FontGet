@@ -2,11 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"fontget/internal/config"
 	"fontget/internal/license"
 	"fontget/internal/logging"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/shared"
+	"fontget/internal/ui"
+	"fontget/internal/update"
 	"os"
 	"os/signal"
 	"syscall"
@@ -87,6 +90,18 @@ var rootCmd = &cobra.Command{
 			if err := license.CheckFirstRunAndPrompt(); err != nil {
 				return err
 			}
+		}
+
+		// Perform startup update check (non-blocking)
+		// Skip for certain commands to avoid unnecessary checks
+		skipUpdateCheckCommands := map[string]bool{
+			"help":       true,
+			"completion": true,
+			"update":     true, // Don't check for updates when running update command
+		}
+
+		if !skipUpdateCheckCommands[cmd.Name()] {
+			go performStartupUpdateCheck()
 		}
 
 		return nil
@@ -208,4 +223,35 @@ func IsVerbose() bool {
 // IsDebug returns true if debug mode is enabled
 func IsDebug() bool {
 	return debug
+}
+
+// performStartupUpdateCheck performs a non-blocking update check on startup
+func performStartupUpdateCheck() {
+	// Load configuration
+	appConfig := config.GetUserPreferences()
+	if appConfig == nil {
+		return
+	}
+
+	// Perform check in background
+	update.PerformStartupCheck(
+		appConfig.Update.AutoCheck,
+		appConfig.Update.CheckInterval,
+		appConfig.Update.LastChecked,
+		func(result *update.CheckResult) {
+			// Update LastChecked timestamp in config
+			appConfig.Update.LastChecked = update.GetLastCheckedTimestamp()
+			if err := config.SaveUserPreferences(appConfig); err != nil {
+				// Silently fail - don't interrupt user experience
+				if logger != nil {
+					logger.Error("Failed to save LastChecked timestamp: %v", err)
+				}
+			}
+
+			// Show notification if update is available
+			if result.UpdateAvailable {
+				fmt.Printf("\n%s\n", ui.FeedbackInfo.Render(update.FormatUpdateNotification(result.CurrentVersion, result.LatestVersion)))
+			}
+		},
+	)
 }
