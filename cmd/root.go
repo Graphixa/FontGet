@@ -82,6 +82,7 @@ var rootCmd = &cobra.Command{
 		// Skip license check for certain commands
 		skipLicenseCommands := map[string]bool{
 			"help":       true,
+			"version":    true, // Version command doesn't need license acceptance
 			"completion": true,
 		}
 
@@ -96,6 +97,7 @@ var rootCmd = &cobra.Command{
 		// Skip for certain commands to avoid unnecessary checks
 		skipUpdateCheckCommands := map[string]bool{
 			"help":       true,
+			"version":    true, // Don't check for updates when just checking version
 			"completion": true,
 			"update":     true, // Don't check for updates when running update command
 		}
