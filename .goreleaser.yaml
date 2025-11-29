@@ -51,6 +51,8 @@ changelog:
 # Linux packages via NFPM (deb/rpm)
 nfpms:
   - id: linux-packages
+    builds:
+      - fontget
     package_name: fontget
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
     formats:
@@ -63,9 +65,6 @@ nfpms:
     homepage: "https://github.com/Graphixa/FontGet"
     section: utils
     bindir: /usr/bin
-    contents:
-      - src: ./dist/fontget_{{ .Os }}_{{ .Arch }}/fontget-{{ .Os }}-{{ .Arch }}
-        dst: /usr/bin/fontget
-        file_info:
-          mode: 0755
+    # GoReleaser automatically filters to Linux builds and includes binaries from 'builds'
+    # The binary will be placed in /usr/bin/fontget
 

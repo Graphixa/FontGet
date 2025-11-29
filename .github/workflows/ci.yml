@@ -96,10 +96,34 @@ jobs:
 
       - name: Verify binary
         run: |
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            ./fontget-${{ matrix.goos }}-${{ matrix.goarch }}.exe version
+          # Only verify binaries that match the runner's architecture
+          # ARM64 binaries can't run on x86_64 runners, so we just verify they exist
+          if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            # For ARM64, just verify the binary exists and has reasonable size
+            if [ "${{ matrix.goos }}" = "windows" ]; then
+              if [ -f "./fontget-${{ matrix.goos }}-${{ matrix.goarch }}.exe" ]; then
+                ls -lh ./fontget-${{ matrix.goos }}-${{ matrix.goarch }}.exe
+                echo "✓ ARM64 Windows binary created successfully"
+              else
+                echo "✗ ARM64 Windows binary not found"
+                exit 1
+              fi
+            else
+              if [ -f "./fontget-${{ matrix.goos }}-${{ matrix.goarch }}" ]; then
+                ls -lh ./fontget-${{ matrix.goos }}-${{ matrix.goarch }}
+                echo "✓ ARM64 ${{ matrix.goos }} binary created successfully"
+              else
+                echo "✗ ARM64 ${{ matrix.goos }} binary not found"
+                exit 1
+              fi
+            fi
           else
-            ./fontget-${{ matrix.goos }}-${{ matrix.goarch }} version
+            # For amd64, we can actually run the binary to verify it works
+            if [ "${{ matrix.goos }}" = "windows" ]; then
+              ./fontget-${{ matrix.goos }}-${{ matrix.goarch }}.exe version
+            else
+              ./fontget-${{ matrix.goos }}-${{ matrix.goarch }} version
+            fi
           fi
         shell: bash
 
