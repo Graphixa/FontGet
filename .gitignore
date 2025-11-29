@@ -18,6 +18,10 @@ docs/command-improvements.md
 .idea/
 *.swp
 
+# All files in the Plans folder
+plans/*
+
+
 # Dependency directories (vendor/)
 vendor/
 
