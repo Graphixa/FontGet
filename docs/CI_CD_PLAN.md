@@ -5,7 +5,7 @@
 This document outlines the CI/CD strategy for FontGet, including developer workflows, release triggers, and automated build processes. The pipeline uses **GoReleaser** (OSS) with **GitHub Actions** to build, test, and release FontGet across multiple platforms and package managers.
 
 **Related Plans:**
-- **Self-Update System**: See `docs/UPDATE_SYSTEM_PLAN.md` for update functionality
+- **Self-Update System**: ✅ **Completed** - Self-update system is fully implemented and functional
 
 ---
 
@@ -182,7 +182,7 @@ FontGet/
 **⚠️ Important Configuration Notes:**
 - Binary naming must use **hyphens** (not underscores): `fontget-windows-amd64.exe`
 - Binary name must be **lowercase**: `fontget` (not `Fontget`)
-- Required for self-update system compatibility (see `docs/UPDATE_SYSTEM_PLAN.md`)
+- Required for self-update system compatibility (binary naming: `fontget-{os}-{arch}{.ext}`)
 - GoReleaser automatically creates `fontget-{os}-{arch}{.ext}` when `binary: fontget` is set
 
 ---
@@ -704,32 +704,53 @@ winget:
 
 ---
 
-## 🎯 Next Steps
+## 🎯 Implementation Status
 
-### **To Set Up CI/CD Pipeline:**
+### **✅ Completed:**
 
-1. **Create `.goreleaser.yaml` configuration:**
-   - Copy the skeleton above
-   - Update with your actual repository details
-   - Test locally: `goreleaser release --snapshot`
+1. **✅ Created `.goreleaser.yaml` configuration:**
+   - Configured with correct binary naming (lowercase, hyphens)
+   - Set up for all platforms (Windows, macOS, Linux) and architectures (amd64, arm64)
+   - Configured archives, checksums, and Linux packages (.deb, .rpm)
+   - Configured raw binary uploads for self-update system
 
-2. **Create `.github/workflows/` directory:**
-   ```bash
-   mkdir -p .github/workflows
-   ```
+2. **✅ Created `.github/workflows/` directory and workflow files:**
+   - `ci.yml` - Continuous integration (build and test on all platforms)
+   - `release.yml` - Automated releases (uses GoReleaser, triggered by v* tags)
 
-3. **Create workflow files:**
-   - `ci.yml` - For continuous integration
-   - `release.yml` - For automated releases (uses GoReleaser)
+3. **✅ Tested the workflows:**
+   - CI workflow runs on every push/PR
+   - Release workflow successfully creates GitHub Releases with binaries and packages
 
-4. **Test the workflows:**
-   - Push a commit to trigger CI workflow
-   - Create a test tag to verify release workflow
+### **⏳ Pending (Package Managers):**
 
-5. **Configure GitHub repository:**
-   - Ensure Actions are enabled
-   - Set up required secrets (if using package managers)
-   - Test with a pre-release tag first
+The following package managers are configured in GoReleaser but require additional setup:
+
+1. **Homebrew** - Requires:
+   - Create `Graphixa/homebrew-tap` repository
+   - Set up `HOMEBREW_TAP_TOKEN` secret
+   - Configure GoReleaser `brews` section
+
+2. **Scoop** - Requires:
+   - Create `Graphixa/scoop-bucket` repository
+   - Set up `SCOOP_BUCKET_TOKEN` secret
+   - Configure GoReleaser `scoop` section
+
+3. **Chocolatey** - Requires:
+   - Register on Chocolatey.org
+   - Set up `CHOCOLATEY_API_KEY` secret
+   - Configure GoReleaser `chocolatey` section
+
+4. **Winget** - Requires:
+   - Create fork of `microsoft/winget-pkgs` or dedicated repo
+   - Set up `WINGET_PUSH_TOKEN` secret
+   - Configure GoReleaser `winget` section
+
+5. **AUR (Arch Linux)** - Requires:
+   - Manual submission to AUR (not automated via GoReleaser)
+   - Create and maintain PKGBUILD file
+
+**Note:** GitHub Releases, Linux packages (.deb, .rpm), and raw binaries are fully functional. Package manager integration is optional and can be added incrementally.
 
 ---
 
@@ -740,7 +761,7 @@ winget:
 - [Semantic Versioning](https://semver.org/)
 - [Go Build Constraints](https://pkg.go.dev/cmd/go#hdr-Build_constraints)
 - [Git Tagging Best Practices](https://git-scm.com/book/en/v2/Git-Basics-Tagging)
-- [Self-Update System Plan](docs/UPDATE_SYSTEM_PLAN.md) - Binary naming requirements
+- Self-update system is fully implemented - Binary naming: `fontget-{os}-{arch}{.ext}` (lowercase, hyphens)
 
 ---
 

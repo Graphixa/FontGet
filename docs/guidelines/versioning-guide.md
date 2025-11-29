@@ -6,7 +6,6 @@ This guide explains how versioning works in FontGet, from development builds to 
 
 **Related Documents:**
 - `docs/CI_CD_PLAN.md` - How CI/CD uses versions
-- `docs/UPDATE_SYSTEM_PLAN.md` - How self-update uses versions
 
 ---
 
