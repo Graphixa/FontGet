@@ -1,0 +1,71 @@
+project_name: fontget
+dist: dist
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: fontget
+    main: .
+    binary: fontget
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X fontget/internal/version.Version={{.Version}}
+      - -X fontget/internal/version.GitCommit={{.Commit}}
+      - -X fontget/internal/version.BuildDate={{.Date}}
+
+archives:
+  - id: default
+    builds:
+      - fontget
+    format_overrides:
+      - goos: windows
+        format: zip
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  name_template: "{{ .Tag }}-SNAPSHOT"
+
+changelog:
+  use: git
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+# Linux packages via NFPM (deb/rpm)
+nfpms:
+  - id: linux-packages
+    package_name: fontget
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
+    formats:
+      - deb
+      - rpm
+    maintainer: "Graphixa <https://github.com/Graphixa>"
+    description: "FontGet CLI tool for managing fonts"
+    license: "MIT"
+    vendor: "Graphixa"
+    homepage: "https://github.com/Graphixa/FontGet"
+    section: utils
+    bindir: /usr/bin
+    contents:
+      - src: ./dist/fontget_{{ .Os }}_{{ .Arch }}/fontget-{{ .Os }}-{{ .Arch }}
+        dst: /usr/bin/fontget
+        file_info:
+          mode: 0755
+
