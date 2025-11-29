@@ -1,5 +1,10 @@
 # FontGet
 
+[![Version](https://img.shields.io/github/v/release/Graphixa/FontGet)](https://github.com/Graphixa/FontGet/releases)
+[![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/Graphixa/FontGet)](go.mod)
+[![CI](https://img.shields.io/github/actions/workflow/status/Graphixa/FontGet/ci.yml?label=CI)](https://github.com/Graphixa/FontGet/actions)
+
 A tiny, cross-platform CLI tool to install and manage fonts from the command line.
 
 FontGet is a fast, font manager that makes it easy to discover, install, and organize fonts from Google Fonts, Nerd Fonts, and custom sources. It's made to be lightweight and to work on almost every system.
