@@ -7,9 +7,12 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"fontget/internal/logging"
+
+	"golang.org/x/sys/windows"
 )
 
 const (
@@ -128,4 +131,29 @@ func CreateHiddenDirectory(path string, perm os.FileMode) error {
 	}
 
 	return nil
+}
+
+// detectWin32TerminalRGB detects background color using Win32 API
+// This is used for legacy Windows console (not Windows Terminal)
+// Windows Terminal should use OSC 11 detection (handled in detect_terminal.go)
+func detectWin32TerminalRGB(timeout time.Duration) (TerminalRGB, error) {
+	// timeout is currently unused, but kept for symmetry with other detection functions
+	_ = timeout
+
+	// Get handle for STDOUT
+	handle := windows.Handle(os.Stdout.Fd())
+
+	// Call GetConsoleScreenBufferInfo
+	var info windows.ConsoleScreenBufferInfo
+	err := windows.GetConsoleScreenBufferInfo(handle, &info)
+	if err != nil {
+		return TerminalRGB{}, fmt.Errorf("failed to get console info: %w", err)
+	}
+
+	// Extract background colour index from Attributes >> 4 & 0x0F
+	// Attributes format: [background 4 bits][foreground 4 bits]
+	bgIndex := int((info.Attributes >> 4) & 0x0F)
+
+	// Convert that ANSI index via lookup table
+	return ansi16ToTerminalRGB(bgIndex), nil
 }

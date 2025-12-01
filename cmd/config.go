@@ -230,8 +230,8 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 			if validationErr, ok := err.(config.ValidationErrors); ok {
 				output.GetVerbose().Error("%v", validationErr)
 				output.GetDebug().Error("Validation errors: %v", validationErr)
-				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
-				fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.ErrorText.Render("Invalid"))
+				fmt.Printf("\n%s\n", ui.ErrorText.Render("Configuration validation failed"))
 				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n\n%s\n", validationErr.Error())
 				return nil
 			}
@@ -241,8 +241,8 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 			if errors.As(err, &validationErrors) {
 				output.GetVerbose().Error("%v", validationErrors)
 				output.GetDebug().Error("Wrapped validation errors: %v", validationErrors)
-				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
-				fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.ErrorText.Render("Invalid"))
+				fmt.Printf("\n%s\n", ui.ErrorText.Render("Configuration validation failed"))
 				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n\n%s\n", validationErrors.Error())
 				return nil
 			}
@@ -250,8 +250,8 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 			// For other errors
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("Unexpected validation error: %v", err)
-			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
-			fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.ErrorText.Render("Invalid"))
+			fmt.Printf("\n%s\n", ui.ErrorText.Render("Configuration validation failed"))
 			fmt.Printf("Unexpected error: %v\n", err)
 			return nil
 		}
@@ -266,8 +266,8 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 			GetLogger().Error("Configuration validation failed: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.ValidateUserPreferences() failed: %v", err)
-			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.FeedbackError.Render("Invalid"))
-			fmt.Printf("\n%s\n", ui.FeedbackError.Render("Configuration validation failed"))
+			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.ErrorText.Render("Invalid"))
+			fmt.Printf("\n%s\n", ui.ErrorText.Render("Configuration validation failed"))
 			fmt.Printf("Validation error: %v\n", err)
 			return nil
 		}
@@ -275,8 +275,8 @@ If all else fails, use 'fontget config reset' to restore to default settings.`,
 		// Success - show validation results
 		output.GetVerbose().Success("Configuration validation completed successfully")
 		output.GetDebug().State("Configuration validation process completed")
-		fmt.Printf("  ✓ %s | %s\n", "config.yaml", ui.FeedbackSuccess.Render("Valid"))
-		fmt.Printf("\n%s\n", ui.FeedbackSuccess.Render("Configuration file is valid"))
+		fmt.Printf("  ✓ %s | %s\n", "config.yaml", ui.SuccessText.Render("Valid"))
+		fmt.Printf("\n%s\n", ui.SuccessText.Render("Configuration file is valid"))
 
 		GetLogger().Info("Configuration validation operation completed successfully")
 		output.GetDebug().State("Config operation complete")
@@ -316,14 +316,14 @@ Useful when the configuration file is corrupted or you want to start fresh.`,
 			GetLogger().Error("Confirmation dialog failed: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("components.RunConfirm() failed: %v", err)
-			fmt.Printf("%s\n", ui.FeedbackError.Render("Confirmation dialog failed\n"))
+			fmt.Printf("%s\n", ui.ErrorText.Render("Confirmation dialog failed\n"))
 			return fmt.Errorf("unable to show confirmation dialog: %v", err)
 		}
 
 		if !confirmed {
 			output.GetVerbose().Info("User cancelled configuration reset")
 			output.GetDebug().State("User chose not to reset configuration")
-			fmt.Printf("%s\n", ui.FeedbackWarning.Render("Configuration reset cancelled, no changes have been made.\n"))
+			fmt.Printf("%s\n", ui.WarningText.Render("Configuration reset cancelled, no changes have been made.\n"))
 			return nil
 		}
 
@@ -338,15 +338,36 @@ Useful when the configuration file is corrupted or you want to start fresh.`,
 			GetLogger().Error("Failed to generate default config: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.GenerateInitialUserPreferences() failed: %v", err)
-			fmt.Printf("%s\n", ui.FeedbackError.Render("Configuration reset failed\n"))
+			fmt.Printf("%s\n", ui.ErrorText.Render("Configuration reset failed\n"))
 			fmt.Printf("Failed to generate default configuration: %v\n", err)
 			return nil
+		}
+
+		// Reset first-run state to trigger onboarding on next run
+		output.GetVerbose().Info("Resetting first-run state")
+		output.GetDebug().State("Calling config.ResetFirstRunState()")
+		if err := config.ResetFirstRunState(); err != nil {
+			GetLogger().Error("Failed to reset first-run state: %v", err)
+			output.GetVerbose().Warning("Failed to reset first-run state: %v", err)
+			output.GetDebug().Error("config.ResetFirstRunState() failed: %v", err)
+			// Continue anyway - config reset is still successful
+		}
+
+		// Reset accepted sources to clear license acceptances
+		output.GetVerbose().Info("Resetting accepted sources")
+		output.GetDebug().State("Calling config.ResetAcceptedSources()")
+		if err := config.ResetAcceptedSources(); err != nil {
+			GetLogger().Error("Failed to reset accepted sources: %v", err)
+			output.GetVerbose().Warning("Failed to reset accepted sources: %v", err)
+			output.GetDebug().Error("config.ResetAcceptedSources() failed: %v", err)
+			// Continue anyway - config reset is still successful
 		}
 
 		// Success - show reset results
 		output.GetVerbose().Success("Configuration reset completed successfully")
 		output.GetDebug().State("Configuration reset process completed")
-		fmt.Printf("%s\n", ui.FeedbackSuccess.Render("Configuration has been reset to defaults\n"))
+		fmt.Printf("%s\n", ui.SuccessText.Render("Configuration has been reset to defaults.\n"))
+		fmt.Println(ui.InfoText.Render("You will be prompted to accept the license agreements the next time you run FontGet."))
 
 		GetLogger().Info("Configuration reset operation completed successfully")
 		output.GetDebug().State("Config operation complete")
