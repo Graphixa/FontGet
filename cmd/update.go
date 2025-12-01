@@ -85,7 +85,7 @@ func handleCheckOnly() error {
 		}
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("update.CheckForUpdates() failed: %v", err)
-		fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Unable to check for updates: %v", err)))
+		fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Unable to check for updates: %v", err)))
 		return fmt.Errorf("update check failed: %w", err)
 	}
 
@@ -97,18 +97,18 @@ func handleCheckOnly() error {
 	output.GetDebug().State("Update check result - Available: %t, Current: %s, Latest: %s, NeedsUpdate: %t", result.Available, result.Current, result.Latest, result.NeedsUpdate)
 
 	if !result.Available {
-		fmt.Printf("%s\n", ui.FeedbackInfo.Render("No releases found on GitHub."))
+		fmt.Printf("%s\n", ui.InfoText.Render("No releases found on GitHub."))
 		return nil
 	}
 
 	if !result.NeedsUpdate {
-		fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("FontGet is up to date (v%s)", result.Current)))
+		fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("FontGet is up to date (v%s)", result.Current)))
 		return nil
 	}
 
 	// Show update information (no PageTitle for non-TUI commands)
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Update Version: v%s", result.Latest)))
+	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
+	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Update Version: v%s", result.Latest)))
 
 	return nil
 }
@@ -130,7 +130,7 @@ func handleUpdateFlow(autoYes bool) error {
 		}
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("update.CheckForUpdates() failed: %v", err)
-		fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Unable to check for updates: %v", err)))
+		fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Unable to check for updates: %v", err)))
 		return fmt.Errorf("update check failed: %w", err)
 	}
 
@@ -142,18 +142,18 @@ func handleUpdateFlow(autoYes bool) error {
 	output.GetDebug().State("Update check result - Available: %t, Current: %s, Latest: %s, NeedsUpdate: %t", result.Available, result.Current, result.Latest, result.NeedsUpdate)
 
 	if !result.Available {
-		fmt.Printf("%s\n", ui.FeedbackInfo.Render("No releases found on GitHub."))
+		fmt.Printf("%s\n", ui.InfoText.Render("No releases found on GitHub."))
 		return nil
 	}
 
 	if !result.NeedsUpdate {
-		fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("FontGet is up to date (v%s)", result.Current)))
+		fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("FontGet is up to date (v%s)", result.Current)))
 		return nil
 	}
 
 	// Show update information (no PageTitle for non-TUI commands)
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available: v%s", result.Latest)))
+	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
+	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Version Available: v%s", result.Latest)))
 
 	// Prompt for confirmation unless auto-yes
 	if !autoYes {
@@ -170,7 +170,7 @@ func handleUpdateFlow(autoYes bool) error {
 			}
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("components.RunConfirm() failed: %v", err)
-			fmt.Printf("%s\n", ui.FeedbackError.Render("Confirmation dialog failed"))
+			fmt.Printf("%s\n", ui.ErrorText.Render("Confirmation dialog failed"))
 			return fmt.Errorf("unable to show confirmation dialog: %w", err)
 		}
 
@@ -180,7 +180,7 @@ func handleUpdateFlow(autoYes bool) error {
 			}
 			output.GetVerbose().Info("User cancelled update")
 			output.GetDebug().State("User chose not to update")
-			fmt.Printf("%s\n", ui.FeedbackWarning.Render("Update cancelled. No changes have been made."))
+			fmt.Printf("%s\n", ui.WarningText.Render("Update cancelled. No changes have been made."))
 			return nil
 		}
 	} else {
@@ -206,7 +206,7 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	// If target equals current, treat as no-op and exit early
 	if targetVersion == currentVersion {
-		fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("FontGet is already at v%s (no changes made).", currentVersion)))
+		fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("FontGet is already at v%s (no changes made).", currentVersion)))
 		return nil
 	}
 
@@ -221,8 +221,8 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 	}
 
 	// Show update information (no PageTitle for non-TUI commands)
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Installed Version: v%s", currentVersion)))
-	fmt.Printf("%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Version Available: v%s", targetVersion)))
+	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Installed Version: v%s", currentVersion)))
+	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Version Available: v%s", targetVersion)))
 
 	// Warn on downgrade
 	if isDowngrade {
@@ -255,7 +255,7 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 			}
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("components.RunConfirm() failed: %v", err)
-			fmt.Printf("%s\n", ui.FeedbackError.Render("Confirmation dialog failed"))
+			fmt.Printf("%s\n", ui.ErrorText.Render("Confirmation dialog failed"))
 			return fmt.Errorf("unable to show confirmation dialog: %w", err)
 		}
 
@@ -265,7 +265,7 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 			}
 			output.GetVerbose().Info("User cancelled update")
 			output.GetDebug().State("User chose not to update")
-			fmt.Printf("%s\n", ui.FeedbackWarning.Render("Update cancelled. No changes have been made."))
+			fmt.Printf("%s\n", ui.WarningText.Render("Update cancelled. No changes have been made."))
 			return nil
 		}
 	} else {
@@ -300,8 +300,8 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet v%s", targetVersion)))
-	fmt.Printf("%s\n", ui.FeedbackText.Render("Run 'fontget version --release-notes' to see what's new."))
+	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully updated to FontGet v%s", targetVersion)))
+	fmt.Printf("%s\n", ui.Text.Render("Run 'fontget version --release-notes' to see what's new."))
 
 	return nil
 }
@@ -336,8 +336,8 @@ func performUpdate(currentVersion, latestVersion string) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully updated to FontGet v%s", latestVersion)))
-	fmt.Printf("%s\n", ui.FeedbackText.Render("Run 'fontget version --release-notes' to see what's new."))
+	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully updated to FontGet v%s", latestVersion)))
+	fmt.Printf("%s\n", ui.Text.Render("Run 'fontget version --release-notes' to see what's new."))
 
 	return nil
 }

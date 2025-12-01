@@ -203,3 +203,25 @@ func ShouldRefreshSources() (bool, error) {
 	// Check if more than 24 hours have passed
 	return time.Since(lastUpdated) > 24*time.Hour, nil
 }
+
+// ResetFirstRunState resets the first-run state, triggering onboarding on next run
+func ResetFirstRunState() error {
+	config, err := LoadAppState()
+	if err != nil {
+		return err
+	}
+
+	config.FirstRunCompleted = false
+	return SaveAppState(config)
+}
+
+// ResetAcceptedSources clears all accepted source licenses
+func ResetAcceptedSources() error {
+	config, err := LoadAppState()
+	if err != nil {
+		return err
+	}
+
+	config.AcceptedSources = make(map[string]SourceAccept)
+	return SaveAppState(config)
+}

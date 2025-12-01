@@ -636,7 +636,7 @@ func (m sourcesModel) listView() string {
 
 		// Highlight selected row
 		if i == m.cursor {
-			row = ui.TableSelectedRow.Render(row)
+			row = ui.CheckboxItemSelected.Render(row)
 		}
 
 		out += row + "\n"
@@ -835,7 +835,7 @@ func (m sourcesModel) saveConfirmView() string {
 func (m sourcesModel) builtinWarningView() string {
 	out := ui.PageTitle.Render("Warning") + "\n\n"
 	out += ui.RenderError(m.err) + "\n\n"
-	out += ui.FeedbackText.Render("Press " + ui.CommandKey.Render("Enter") + " to continue")
+	out += ui.Text.Render("Press " + ui.CommandKey.Render("Enter") + " to continue")
 
 	return out
 }

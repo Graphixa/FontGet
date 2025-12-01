@@ -50,12 +50,12 @@ var versionCmd = &cobra.Command{
 		if versionReleaseNotes {
 			// Check if it's a dev build (with or without commit hash)
 			if v == "dev" || strings.HasPrefix(v, "dev+") {
-				fmt.Println(ui.FeedbackText.Render("Release notes are only available for tagged releases."))
+				fmt.Println(ui.Text.Render("Release notes are only available for tagged releases."))
 				return
 			}
 			tag := "v" + v
-			fmt.Println(ui.FeedbackInfo.Render(fmt.Sprintf("Release notes for FontGet %s:", tag)))
-			fmt.Println(ui.FeedbackText.Render(fmt.Sprintf("https://github.com/Graphixa/FontGet/releases/tag/%s", tag)))
+			fmt.Println(ui.InfoText.Render(fmt.Sprintf("Release notes for FontGet %s:", tag)))
+			fmt.Println(ui.Text.Render(fmt.Sprintf("https://github.com/Graphixa/FontGet/releases/tag/%s", tag)))
 		}
 	},
 }

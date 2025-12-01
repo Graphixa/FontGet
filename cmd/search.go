@@ -338,7 +338,7 @@ font category (e.g., "Sans Serif", "Serif", "Monospace").
 
 		// Show when FontGet last updated sources
 		if lastUpdated, err := config.GetSourcesLastUpdated(); err == nil && !lastUpdated.IsZero() {
-			fmt.Printf("\n%s: %s\n", ui.FeedbackText.Render("Sources Last Updated"), lastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
+			fmt.Printf("\n%s: %s\n", ui.Text.Render("Sources Last Updated"), lastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
 		}
 
 		GetLogger().Info("Font search operation completed successfully")
@@ -426,7 +426,7 @@ func showAllCategories() error {
 	}
 
 	// Show usage example
-	fmt.Printf("\n%s\n", ui.FeedbackText.Render("Usage: fontget search -c \"Category Name\""))
+	fmt.Printf("\n%s\n", ui.Text.Render("Usage: fontget search -c \"Category Name\""))
 	fmt.Printf("Example: fontget search -c \"Sans Serif\"\n\n")
 
 	return nil

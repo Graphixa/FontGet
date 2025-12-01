@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"strings"
 
-	"fontget/internal/config"
-	"fontget/internal/logging"
+	fontgetCmd "fontget/cmd"
+	"fontget/internal/cmdutils"
 	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
@@ -17,21 +17,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// GetLogger is a placeholder - replace with actual logger function from your cmd package
-// The actual implementation is in cmd/root.go:
-// func GetLogger() *logging.Logger { return logger }
-func GetLogger() *logging.Logger {
-	return nil // Replace with actual logger implementation
-}
-
-// NOTE: No need for IsVerbose/IsDebug placeholders anymore!
-// Use the new clean output interface instead:
-// output.GetVerbose().Info("message") and output.GetDebug().Message("message")
-
 // Template for new commands. Replace "command" with your command name
 var commandCmd = &cobra.Command{
-	Use:   "command <required-arg>",
-	Short: "One-line description of what the command does",
+	Use:          "command <required-arg>",
+	Short:        "One-line description of what the command does",
+	SilenceUsage: true, // Prevents full help display on validation errors
 	Long: `Detailed description of what the command does and how it works.
 
 usage: fontget command [<options>]`,
@@ -55,10 +45,12 @@ usage: fontget command [<options>]`,
 			argValue = args[0]
 		}
 
-		// Validate input using modern UI styling
+		// Validate input using modern error handling pattern
+		// Pattern: Print error with ui.RenderError, show hint, return nil
 		if argValue == "" && flagValue == "" {
-			fmt.Printf("\n%s\n\n", ui.RenderError("A required argument is missing"))
-			return cmd.Help()
+			fmt.Printf("\n%s\n", ui.RenderError("A required argument is missing"))
+			fmt.Printf("Use 'fontget command --help' for more information.\n\n")
+			return nil // Return nil to prevent duplicate error from Cobra
 		}
 		return nil
 	},
@@ -87,14 +79,14 @@ usage: fontget command [<options>]`,
 		return completions, cobra.ShellCompDirectiveNoFileComp
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Get logger for consistent logging
-		logger := GetLogger()
-		if logger != nil {
-			logger.Info("Starting command operation")
-		}
+		// Always log operation start (file logging, not console)
+		fontgetCmd.GetLogger().Info("Starting command operation")
 
-		// Debug-level information for developers
-		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+		// Ensure manifest system is initialized (required for repository access)
+		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return fontgetCmd.GetLogger() }); err != nil {
+			fontgetCmd.GetLogger().Error("Failed to initialize manifest: %v", err)
+			return err
+		}
 
 		// Double check args to prevent panic
 		flagValue, _ := cmd.Flags().GetString("flag-name")
@@ -103,11 +95,18 @@ usage: fontget command [<options>]`,
 			argValue = args[0]
 		}
 		if argValue == "" && flagValue == "" {
-			return nil // Args validator will have already shown the help
+			return nil // Args validator will have already shown the error
 		}
 
-		// Print styled title using modern UI components
-		fmt.Printf("\n%s\n", ui.PageTitle.Render("Command Results"))
+		// Log parameters (always log to file)
+		fontgetCmd.GetLogger().Info("Command parameters - Arg: %s, Flag: %s", argValue, flagValue)
+
+		// Debug-level information for developers
+		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
+
+		// Print styled title using modern UI components (if needed)
+		// Note: Not all commands need PageTitle - use only when appropriate
+		// fmt.Printf("\n%s\n", ui.PageTitle.Render("Command Results"))
 
 		// Verbose-level information for users
 		output.GetVerbose().Info("Processing command with argument: %s", argValue)
@@ -121,19 +120,26 @@ usage: fontget command [<options>]`,
 		// Use optimized repository access (smart caching like search/list commands)
 		r, err := repo.GetRepository()
 		if err != nil {
-			if logger != nil {
-				logger.Error("Failed to initialize repository: %v", err)
-			}
+			fontgetCmd.GetLogger().Error("Failed to initialize repository: %v", err)
 			return fmt.Errorf("failed to initialize repository: %w", err)
 		}
 
 		// Get manifest from repository
 		manifest, err := r.GetManifest()
 		if err != nil {
-			if logger != nil {
-				logger.Error("Failed to get manifest: %v", err)
-			}
+			fontgetCmd.GetLogger().Error("Failed to get manifest: %v", err)
 			return fmt.Errorf("failed to get manifest: %w", err)
+		}
+
+		// Example: Process fonts from manifest
+		// Replace this with your actual command logic
+		for _, sourceInfo := range manifest.Sources {
+			for fontID, fontInfo := range sourceInfo.Fonts {
+				// Example processing - replace with your actual logic
+				_ = fontID
+				_ = fontInfo
+				// Add your processing logic here
+			}
 		}
 
 		// Print results using modern UI styling
@@ -144,65 +150,21 @@ usage: fontget command [<options>]`,
 		fmt.Println()
 
 		// Verbose information about the operation
-		output.GetVerbose().Info("Search completed successfully")
+		output.GetVerbose().Info("Operation completed successfully")
 		output.GetVerbose().Detail("Results", "Found %d matches", 0)
 
 		// Debug performance information
-		output.GetDebug().Performance("Search operation completed in <timing>")
+		output.GetDebug().Performance("Operation completed in <timing>")
 
-		// Define column widths (matching search command style)
-		columns := map[string]int{
-			"Name":       30, // For display name
-			"ID":         30, // For longer font IDs
-			"License":    12, // For license type
-			"Categories": 15, // For categories
-			"Source":     12, // For source name
-		}
-
-		// Print header with modern UI styling (matching search command)
-		header := fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
-			columns["Name"], "Name",
-			columns["ID"], "ID",
-			columns["License"], "License",
-			columns["Categories"], "Categories",
-			columns["Source"], "Source")
-		fmt.Println(ui.TableHeader.Render(header))
-		fmt.Println(ui.FeedbackText.Render(strings.Repeat("-", len(header))))
-
-		// Example: Process fonts from manifest
-		for _, sourceInfo := range manifest.Sources {
-			for fontID, fontInfo := range sourceInfo.Fonts {
-				// Example processing - replace with your actual logic
-				_ = fontID
-				_ = fontInfo
-				// Add your processing logic here
-			}
-		}
-
-		// Show when FontGet last updated sources (matching search command)
-		if lastUpdated, err := config.GetSourcesLastUpdated(); err == nil && !lastUpdated.IsZero() {
-			fmt.Printf("\n%s: %s\n", ui.FeedbackText.Render("Sources Last Updated"), lastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
-		}
-
-		if logger != nil {
-			logger.Info("Command operation completed successfully")
-		}
+		// Log operation completion (always log to file)
+		fontgetCmd.GetLogger().Info("Command operation completed successfully")
 		return nil
 	},
 }
 
-// Helper function to count total items in manifest
-func countTotalItems(manifest *repo.FontManifest) int {
-	total := 0
-	for _, source := range manifest.Sources {
-		total += len(source.Fonts)
-	}
-	return total
-}
-
 func init() {
 	// 1. Add the command to the root command
-	// Note: Replace rootCmd with the actual root command variable from your cmd package
+	// Note: Replace rootCmd with the actual root command variable from cmd package
 	// rootCmd.AddCommand(commandCmd)
 
 	// 2. Add subcommands if needed (for commands like sources, config, etc.)
@@ -235,7 +197,7 @@ func init() {
 /*
 Usage Instructions:
 
-1. Copy this template to a new file named after your command (e.g., add.go, remove.go)
+1. Copy this template to a new file in the cmd/ directory (e.g., cmd/command.go)
 2. Replace "command" with your command name in the variable name and all references
 3. Update the Use, Short, Long, and Example fields
 4. Choose the appropriate Args validator
@@ -245,6 +207,17 @@ Usage Instructions:
 8. Add flag completion if needed
 9. Mark flags as required if needed
 10. For commands with subcommands, follow the sources command pattern
+11. Register the command in cmd/root.go: rootCmd.AddCommand(commandCmd)
+
+IMPORTANT NOTES:
+
+- GetLogger() is available from cmd/root.go - when copying this template to cmd/ package, remove the "fontgetCmd" import alias and change fontgetCmd.GetLogger() to GetLogger()
+- Always use SilenceUsage: true to prevent full help display on validation errors
+- Always call cmdutils.EnsureManifestInitialized() before using repository
+- Always log operation start, parameters, errors, and completion to file
+- Use ui.RenderError() for error messages, return nil (not cmd.Help())
+- Use output.GetVerbose() for user-friendly detailed output
+- Use output.GetDebug() for developer diagnostic output
 
 PERFORMANCE BEST PRACTICES:
 - ALWAYS use repo.GetRepository() for normal operations (smart caching)
@@ -254,21 +227,26 @@ PERFORMANCE BEST PRACTICES:
 
 STYLING BEST PRACTICES:
 - Use ui.RenderError() for error messages
-- Use ui.PageTitle.Render() for main titles
 - Use ui.TableHeader.Render() for table headers
 - Use ui.TableSourceName.Render() for highlighted text
-- Use ui.FeedbackText.Render() for regular text
-- Use ui.FeedbackSuccess.Render() for success messages
-- Use ui.FeedbackWarning.Render() for warnings
-- Use ui.FeedbackInfo.Render() for info messages
+- Use ui.Text.Render() for regular text
+- Use ui.SuccessText.Render() for success messages
+- Use ui.WarningText.Render() for warnings
+- Use ui.InfoText.Render() for info messages
+- Use ui.ErrorText.Render() for error messages
 
 LOGGING BEST PRACTICES:
-- Always get logger with GetLogger()
-- Use logger.Info() for operation start/completion
-- Use logger.Error() for errors
+- Always use GetLogger() from cmd/root.go (no placeholder needed)
+- In this template, we use fontgetCmd.GetLogger() to avoid naming conflict with the cmd parameter
+- When copying to cmd/ package, remove the import alias and use GetLogger() directly
+- Use logger.Info() for operation start/completion and parameters
+- Use logger.Error() for all errors
 - Use logger.Warn() for warnings
+- Use logger.Debug() for detailed debugging information
+- ALWAYS log to file regardless of verbose/debug flags
+- Logger level is controlled by config (ErrorLevel/InfoLevel/DebugLevel based on flags)
 
-VERBOSE/DEBUG MODE BEST PRACTICES (NEW CLEAN INTERFACE):
+VERBOSE/DEBUG MODE BEST PRACTICES:
 - Use output.GetVerbose().Info(format, args...) for user-friendly detailed output
 - Use output.GetVerbose().Warning/Error/Success(format, args...) for different message types
 - Use output.GetVerbose().Detail(prefix, format, args...) for indented details
@@ -278,8 +256,13 @@ VERBOSE/DEBUG MODE BEST PRACTICES (NEW CLEAN INTERFACE):
 - Users can combine --verbose --debug for maximum detail
 - Keep normal output clean and ensure verbose/debug doesn't interfere with operation
 
+ERROR HANDLING PATTERN:
+- In Args validator: Print error with ui.RenderError(), show hint, return nil
+- In RunE: Return fmt.Errorf() with wrapped errors for actual failures
+- Always log errors to file with GetLogger().Error()
+
 EXAMPLES:
-```go
+
 // Verbose output (user-friendly)
 output.GetVerbose().Info("Installing fonts to: %s", fontDir)
 output.GetVerbose().Detail("Info", "Font exists at: %s", path)
@@ -291,7 +274,22 @@ output.GetDebug().Message("Debug mode enabled - detailed diagnostics")
 output.GetDebug().State("Current working directory: %s", dir)
 output.GetDebug().Performance("Operation completed in %v", duration)
 output.GetDebug().Error("Critical system error: %v", err)
-```
+
+// Error handling in Args validator
+Args: func(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
+		fmt.Printf("\n%s\n", ui.RenderError("A font name is required"))
+		fmt.Printf("Use 'fontget command --help' for more information.\n\n")
+		return nil // Prevents duplicate error from Cobra
+	}
+	return nil
+},
+
+// Error handling in RunE
+if err != nil {
+	fontgetCmd.GetLogger().Error("Operation failed: %v", err)
+	return fmt.Errorf("operation failed: %w", err)
+}
 
 Standard Help Formatting:
 - Use winget-style help with "usage:" line
@@ -302,99 +300,23 @@ Standard Help Formatting:
 Table Formatting (for list/search commands):
 - Use consistent column widths matching search command
 - Standard columns: Name, ID, License, Categories, Source
-- Use ui.FeedbackText.Render() for header separator
-- Include manifest info at bottom using ui.FeedbackText.Render()
+- Use ui.Text.Render() for header separator
+- Include manifest info at bottom using ui.Text.Render()
 
-Example for an "add" command:
+IMPORT STRUCTURE:
+Follow standard Go import grouping:
+1. Standard library (fmt, strings, etc.)
+2. Internal packages (fontget/internal/...)
+3. Third-party packages (github.com/...)
 
-var addCmd = &cobra.Command{
-	Use:   "add <font-name>",
-	Short: "Add a font to your system",
-	Long: `Downloads and installs a font from available sources.
+COMMAND STRUCTURE:
+1. Package declaration
+2. Imports (grouped: stdlib, internal, third-party)
+3. Constants (if any)
+4. Types (if any)
+5. Command definition (var commandCmd)
+6. Helper functions (if any)
+7. init() function
 
-usage: fontget add [<options>]`,
-	Example: `  fontget add "Fira Sans"
-  fontget add "Roboto" --style "Regular"
-  fontget add "Open Sans" -s "Bold"`,
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			fmt.Printf("\n%s\n\n", ui.RenderError("A font name is required"))
-			return cmd.Help()
-		}
-		return nil
-	},
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// Get logger
-		logger := GetLogger()
-		if logger != nil {
-			logger.Info("Starting font add operation")
-		}
-
-		// Debug-level information for developers
-		if IsDebug() {
-			fmt.Printf("%s Debug mode enabled - showing detailed diagnostic information\n",
-				ui.FeedbackInfo.Render("[DEBUG]"))
-		}
-
-		// Double check args to prevent panic
-		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			return nil // Args validator will have already shown the help
-		}
-
-		// Print styled title
-		fmt.Printf("\n%s\n", ui.PageTitle.Render("Adding Font"))
-
-		style, _ := cmd.Flags().GetString("style")
-		fontName := args[0]
-
-		// Debug-level information for developers
-		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
-
-		// Verbose-level information for users
-		output.GetVerbose().Info("Adding font: %s", fontName)
-		if style != "" {
-			output.GetVerbose().Info("Using style: %s", style)
-		}
-
-		// Example of different verbose/debug output types
-		output.GetVerbose().Detail("Operation", "Installing to user scope")
-		output.GetDebug().State("Current working directory: %s", "/path/to/dir")
-
-		// Example of error handling with verbose/debug output
-		// if err := someOperation(); err != nil {
-		//     output.GetVerbose().Error("Installation failed: %s", err.Error())
-		//     output.GetDebug().Error("Critical error in font installation: %v", err)
-		//     // Still log to file for debugging
-		//     if logger != nil {
-		//         logger.Error("Font installation failed: %v", err)
-		//     }
-		// }
-
-		// Use optimized repository access
-		r, err := repo.GetRepository()
-		if err != nil {
-			if logger != nil {
-				logger.Error("Failed to initialize repository: %v", err)
-			}
-			return fmt.Errorf("failed to initialize repository: %w", err)
-		}
-
-		// Add font logic here
-		fmt.Printf("Adding font: %s", ui.TableSourceName.Render(fontName))
-		if style != "" {
-			fmt.Printf(" (style: %s)", ui.TableSourceName.Render(style))
-		}
-		fmt.Println()
-
-		if logger != nil {
-			logger.Info("Font add operation completed successfully")
-		}
-		return nil
-	},
-}
-
-func init() {
-	rootCmd.AddCommand(addCmd)
-	addCmd.Flags().StringP("style", "s", "", "Font style to install")
-}
+For commands with subcommands, see cmd/sources.go for reference.
 */

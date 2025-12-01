@@ -51,7 +51,7 @@ func isVerboseEnabled() bool {
 func (v *VerboseLogger) Info(format string, args ...interface{}) {
 	if isVerboseEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackInfo.Render("[INFO]"), msg)
+		fmt.Printf("%s %s\n", ui.InfoText.Render("[INFO]"), msg)
 	}
 }
 
@@ -60,7 +60,7 @@ func (v *VerboseLogger) Info(format string, args ...interface{}) {
 func (v *VerboseLogger) Warning(format string, args ...interface{}) {
 	if isVerboseEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackWarning.Render("[WARNING]"), msg)
+		fmt.Printf("%s %s\n", ui.WarningText.Render("[WARNING]"), msg)
 	}
 }
 
@@ -69,7 +69,7 @@ func (v *VerboseLogger) Warning(format string, args ...interface{}) {
 func (v *VerboseLogger) Error(format string, args ...interface{}) {
 	if isVerboseEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackError.Render("[ERROR]"), msg)
+		fmt.Printf("%s %s\n", ui.ErrorText.Render("[ERROR]"), msg)
 	}
 }
 
@@ -78,7 +78,7 @@ func (v *VerboseLogger) Error(format string, args ...interface{}) {
 func (v *VerboseLogger) Success(format string, args ...interface{}) {
 	if isVerboseEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackSuccess.Render("[SUCCESS]"), msg)
+		fmt.Printf("%s %s\n", ui.SuccessText.Render("[SUCCESS]"), msg)
 	}
 }
 
@@ -87,7 +87,7 @@ func (v *VerboseLogger) Success(format string, args ...interface{}) {
 func (v *VerboseLogger) Detail(prefix, format string, args ...interface{}) {
 	if isVerboseEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("    %s %s\n", ui.FeedbackText.Render(prefix+":"), msg)
+		fmt.Printf("    %s %s\n", ui.Text.Render(prefix+":"), msg)
 	}
 }
 
@@ -129,15 +129,15 @@ func (v *VerboseLogger) DisplayFontOperationDetails(
 	// Display individual file operations
 	for _, file := range installedFiles {
 		variantName := extractVariantName(file, fontName)
-		fmt.Printf("      ↳ %s - %s to %s\n", variantName, ui.FeedbackSuccess.Render("[Installed]"), scopeLabel)
+		fmt.Printf("      ↳ %s - %s to %s\n", variantName, ui.SuccessText.Render("[Installed]"), scopeLabel)
 	}
 	for _, file := range skippedFiles {
 		variantName := extractVariantName(file, fontName)
-		fmt.Printf("      ↳ %s - %s to %s\n", variantName, ui.FeedbackWarning.Render("[Skipped] already installed"), scopeLabel)
+		fmt.Printf("      ↳ %s - %s to %s\n", variantName, ui.WarningText.Render("[Skipped] already installed"), scopeLabel)
 	}
 	for _, file := range failedFiles {
 		variantName := extractVariantName(file, fontName)
-		fmt.Printf("      ↳ %s - %s to %s\n", variantName, ui.FeedbackError.Render("[Failed]"), scopeLabel)
+		fmt.Printf("      ↳ %s - %s to %s\n", variantName, ui.ErrorText.Render("[Failed]"), scopeLabel)
 	}
 
 	// Show summary with download size
@@ -157,7 +157,7 @@ func (v *VerboseLogger) DisplayFontOperationDetails(
 	}
 
 	if summaryText != "" {
-		fmt.Printf("\n%s %s\n", ui.FeedbackInfo.Render("[INFO]"), ui.FeedbackText.Render(summaryText))
+		fmt.Printf("\n%s %s\n", ui.InfoText.Render("[INFO]"), ui.Text.Render(summaryText))
 	}
-	fmt.Printf("    %s\n\n", ui.FeedbackText.Render(fmt.Sprintf("Location: %s", fontDir)))
+	fmt.Printf("    %s\n\n", ui.Text.Render(fmt.Sprintf("Location: %s", fontDir)))
 }

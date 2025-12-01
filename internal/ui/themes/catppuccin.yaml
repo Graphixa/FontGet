@@ -1,0 +1,42 @@
+fontget_theme:
+  # Dark mode - Uses Catppuccin Mocha
+  dark_mode:
+    # Accent colors (referenced by multiple styles)
+    accent: "#cba6f7"          # Mauve - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
+    accent2: "#f5c2e7"         # Pink - TableSourceName, FormLabel, CardLabel
+    
+    # Status colors
+    warning: "#f9e2af"
+    error: "#e78284"
+    success: "#a6e3a1"
+    
+    # Page-specific colors
+    page_title: "#cba6f7"      # Could reference accent, but separate for flexibility
+    page_subtitle: "#7f849c"   # References grey_mid
+    
+    # Neutral colors (3 keys only)
+    grey_light: "#cdd6f4"      # All light text (unselected and selected) - Text color
+    grey_mid: "#7f849c"        # Borders, placeholders, subtitles, separators - Overlay 1
+    grey_dark: "#313244"       # All backgrounds - Surface 0
+    
+    # Progress bar gradient (object structure)
+    progress_bar_gradient:
+      color_start: "#cba6f7"  # Mauve (accent)
+      color_end: "#eba0ac"    # Peach
+
+  # Light mode - Uses Catppuccin Latte
+  light_mode:
+    accent: "#8839ef"
+    accent2: "#ea76cb"
+    warning: "#df8e1d"
+    error: "#d20f39"
+    success: "#40a02b"
+    page_title: "#8839ef"
+    page_subtitle: "#5c5f77"
+    grey_light: "#5c5f77"
+    grey_mid: "#8c8fa1"
+    grey_dark: "#acb0be"
+    progress_bar_gradient:
+      color_start: "#8839ef"
+      color_end: "#fe640b"
+

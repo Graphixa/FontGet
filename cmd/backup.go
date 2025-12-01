@@ -84,7 +84,7 @@ System fonts are always excluded from backups.`,
 			// Check if this is a cancellation (user chose not to overwrite)
 			if strings.Contains(err.Error(), "backup cancelled") {
 				// User cancelled - show friendly message and return nil (no error)
-				fmt.Printf("%s\n", ui.FeedbackWarning.Render("Backup cancelled - file already exists."))
+				fmt.Printf("%s\n", ui.WarningText.Render("Backup cancelled - file already exists."))
 				fmt.Println()
 				return nil
 			}
@@ -248,7 +248,7 @@ func performBackup(fm platform.FontManager, scopes []platform.InstallationScope,
 
 	GetLogger().Info("Backup operation complete - Backed up %d font families, %d files to %s", result.familyCount, result.fileCount, zipPath)
 	output.GetDebug().State("Backup operation complete - Families: %d, Files: %d", result.familyCount, result.fileCount)
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully backed up %d font families to %s", result.familyCount, zipPath)))
+	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully backed up %d font families to %s", result.familyCount, zipPath)))
 	fmt.Println()
 	return nil
 }
@@ -286,7 +286,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	// Count total families to backup
 	totalFamilies := len(fontMap)
 	if totalFamilies == 0 {
-		fmt.Printf("%s\n", ui.FeedbackWarning.Render("No fonts found to backup."))
+		fmt.Printf("%s\n", ui.WarningText.Render("No fonts found to backup."))
 		fmt.Println()
 		return nil
 	}
@@ -318,7 +318,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 
 	// Show success message after progress bar completes
 	if backupResult != nil {
-		fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully backed up %d font families to %s", backupResult.familyCount, zipPath)))
+		fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully backed up %d font families to %s", backupResult.familyCount, zipPath)))
 		fmt.Println()
 	}
 

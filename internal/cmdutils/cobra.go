@@ -27,22 +27,22 @@ func PrintElevationHelp(cmd *cobra.Command, platform string) {
 	switch platform {
 	case "windows":
 		// Error line in red
-		cmd.Println(ui.FeedbackError.Render("This operation requires administrator privileges."))
+		cmd.Println(ui.ErrorText.Render("This operation requires administrator privileges."))
 		fmt.Println()
 		// Guidance in normal feedback text
-		cmd.Println(ui.FeedbackText.Render("To run as administrator:"))
-		cmd.Println(ui.FeedbackText.Render("  1. Right-click on Command Prompt or PowerShell."))
-		cmd.Println(ui.FeedbackText.Render("  2. Select 'Run as administrator'."))
-		cmd.Println(ui.FeedbackText.Render(fmt.Sprintf("  3. Run: %s", fullCmd)))
+		cmd.Println(ui.Text.Render("To run as administrator:"))
+		cmd.Println(ui.Text.Render("  1. Right-click on Command Prompt or PowerShell."))
+		cmd.Println(ui.Text.Render("  2. Select 'Run as administrator'."))
+		cmd.Println(ui.Text.Render(fmt.Sprintf("  3. Run: %s", fullCmd)))
 	case "darwin", "linux":
 		// Error line in red
-		cmd.Println(ui.FeedbackError.Render("This operation requires root privileges."))
+		cmd.Println(ui.ErrorText.Render("This operation requires root privileges."))
 		fmt.Println()
 		// Guidance in normal feedback text
-		cmd.Println(ui.FeedbackText.Render("To run as root, prepend 'sudo' to your command, for example:"))
-		cmd.Println(ui.FeedbackText.Render(fmt.Sprintf("  sudo %s", fullCmd)))
+		cmd.Println(ui.Text.Render("To run as root, prepend 'sudo' to your command, for example:"))
+		cmd.Println(ui.Text.Render(fmt.Sprintf("  sudo %s", fullCmd)))
 	default:
-		cmd.Println(ui.FeedbackError.Render("This operation requires elevated privileges. Please re-run as administrator or root."))
+		cmd.Println(ui.ErrorText.Render("This operation requires elevated privileges. Please re-run as administrator or root."))
 	}
 	fmt.Println()
 }

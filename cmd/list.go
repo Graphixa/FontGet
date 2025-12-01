@@ -211,7 +211,7 @@ Flags:
 				}
 				fmt.Printf("\n%s\n\n", filterInfo)
 			} else {
-				fmt.Printf("\n%s\n\n", ui.FeedbackText.Render("Found 0 font families installed"))
+				fmt.Printf("\n%s\n\n", ui.Text.Render("Found 0 font families installed"))
 			}
 			return nil
 		}
@@ -228,7 +228,7 @@ Flags:
 			fmt.Printf("\n%s\n\n", filterInfo)
 		} else {
 			info := fmt.Sprintf("Found %d font families installed", len(names))
-			fmt.Printf("%s\n\n", ui.FeedbackText.Render(info))
+			fmt.Printf("%s\n\n", ui.Text.Render(info))
 		}
 
 		fmt.Println(ui.GetListTableHeader())

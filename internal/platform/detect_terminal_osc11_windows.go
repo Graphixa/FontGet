@@ -18,57 +18,60 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// debugLog writes debug output directly to stderr for immediate visibility
-// This bypasses the logging system to ensure we see what's happening
+// findOSC11Terminator finds the end of an OSC 11 response by looking for
+// BEL (0x07) or ST (ESC \) terminators. Returns the index after the terminator,
+// or -1 if no terminator is found.
+func findOSC11Terminator(data []byte) int {
+	belIdx := bytes.IndexByte(data, 0x07)
+	stIdx := bytes.Index(data, []byte{0x1b, 0x5c}) // ESC \
+
+	if belIdx >= 0 && stIdx >= 0 {
+		// Both found, use the earlier one
+		if belIdx < stIdx {
+			return belIdx + 1
+		}
+		return stIdx + 2
+	}
+	if belIdx >= 0 {
+		return belIdx + 1
+	}
+	if stIdx >= 0 {
+		return stIdx + 2
+	}
+	return -1
+}
+
+// debugLog writes debug output conditionally
+// Only outputs if FONTGET_OSC11_DEBUG environment variable is set
+// This allows detailed debugging when needed without spamming normal output
 func debugLog(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, "[OSC11-DEBUG] "+format+"\n", args...)
-	// Also try to log via logger if available
+	// Always log to file logger if available
 	if logger := logging.GetLogger(); logger != nil {
 		logger.Debug("[OSC11-Windows] "+format, args...)
+	}
+
+	// Only output to stderr if explicitly enabled via environment variable
+	if os.Getenv("FONTGET_OSC11_DEBUG") != "" {
+		fmt.Fprintf(os.Stderr, "[OSC11-DEBUG] "+format+"\n", args...)
 	}
 }
 
 var (
 	kernel32            = syscall.NewLazyDLL("kernel32.dll")
-	getStdHandle        = kernel32.NewProc("GetStdHandle")
 	getConsoleMode      = kernel32.NewProc("GetConsoleMode")
 	setConsoleMode      = kernel32.NewProc("SetConsoleMode")
-	readConsoleInput    = kernel32.NewProc("ReadConsoleInputW")
-	peekConsoleInput    = kernel32.NewProc("PeekConsoleInputW")
 	waitForSingleObject = kernel32.NewProc("WaitForSingleObject")
-	readFile            = kernel32.NewProc("ReadFile")
 	readConsoleA        = kernel32.NewProc("ReadConsoleA")
 )
 
 const (
-	STD_INPUT_HANDLE              = uintptr(0xFFFFFFF6)
 	ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
 	ENABLE_PROCESSED_INPUT        = 0x0001
 	ENABLE_LINE_INPUT             = 0x0002
 	ENABLE_ECHO_INPUT             = 0x0004
-	ENABLE_INSERT_MODE            = 0x0020
 	WAIT_OBJECT_0                 = 0x00000000
 	WAIT_TIMEOUT                  = 0x00000102
-	INFINITE                      = 0xFFFFFFFF
-	KEY_EVENT                     = 0x0001
 )
-
-// INPUT_RECORD structure for Windows Console API
-type inputRecord struct {
-	EventType uint16
-	_         [2]byte  // padding
-	Event     [20]byte // KEY_EVENT_RECORD is larger than 16 bytes
-}
-
-// KEY_EVENT_RECORD structure
-type keyEventRecord struct {
-	KeyDown         int32
-	RepeatCount     uint16
-	VirtualKeyCode  uint16
-	VirtualScanCode uint16
-	UnicodeChar     uint16
-	ControlKeyState uint32
-}
 
 // detectOSC11Windows is a Windows-specific implementation that uses console APIs
 // to read OSC 11 responses more reliably by setting console mode before reading
@@ -191,17 +194,7 @@ func detectOSC11Windows(timeout time.Duration) (TerminalRGB, error) {
 				response = append(response, readData...)
 
 				// Check for terminator: BEL (0x07) or ST (ESC \)
-				belIdx := bytes.IndexByte(response, 0x07)
-				stIdx := bytes.Index(response, []byte{0x1b, 0x5c})
-				termEnd := -1
-				if belIdx >= 0 {
-					termEnd = belIdx + 1
-				}
-				if stIdx >= 0 {
-					if termEnd == -1 || stIdx+2 < termEnd {
-						termEnd = stIdx + 2
-					}
-				}
+				termEnd := findOSC11Terminator(response)
 				if termEnd > 0 {
 					debugLog("Found terminator at index %d, complete response received!", termEnd-1)
 					debugLog("Complete response (hex): %s", hex.EncodeToString(response[:termEnd]))
@@ -216,7 +209,8 @@ func detectOSC11Windows(timeout time.Duration) (TerminalRGB, error) {
 			}
 		} else if ret == WAIT_TIMEOUT {
 			// Timeout - continue to next iteration or try stdin fallback
-			if iteration%10 == 0 || iteration <= 5 {
+			// Only log occasionally to reduce noise
+			if iteration <= 3 || iteration%10 == 0 {
 				debugLog("WaitForSingleObject timeout (iteration %d)", iteration)
 			}
 			continue
@@ -252,18 +246,8 @@ func detectOSC11Windows(timeout time.Duration) (TerminalRGB, error) {
 					debugLog("Approach 2: Read data (repr): %q", string(readData))
 					response = append(response, readData...)
 
-					// Check for terminator: BEL or ST
-					belIdx := bytes.IndexByte(response, 0x07)
-					stIdx := bytes.Index(response, []byte{0x1b, 0x5c})
-					termEnd := -1
-					if belIdx >= 0 {
-						termEnd = belIdx + 1
-					}
-					if stIdx >= 0 {
-						if termEnd == -1 || stIdx+2 < termEnd {
-							termEnd = stIdx + 2
-						}
-					}
+					// Check for terminator: BEL (0x07) or ST (ESC \)
+					termEnd := findOSC11Terminator(response)
 					if termEnd > 0 {
 						debugLog("Approach 2: Found terminator at index %d!", termEnd-1)
 						response = response[:termEnd]
@@ -285,24 +269,14 @@ func detectOSC11Windows(timeout time.Duration) (TerminalRGB, error) {
 				debugLog("Approach 2: Read data (repr): %q", string(readData))
 				response = append(response, readData...)
 
-				// Check for terminator: BEL or ST
-				belIdx := bytes.IndexByte(response, 0x07)
-				stIdx := bytes.Index(response, []byte{0x1b, 0x5c})
-				termEnd := -1
-				if belIdx >= 0 {
-					termEnd = belIdx + 1
-				}
-				if stIdx >= 0 {
-					if termEnd == -1 || stIdx+2 < termEnd {
-						termEnd = stIdx + 2
-					}
-				}
+				// Check for terminator: BEL (0x07) or ST (ESC \)
+				termEnd := findOSC11Terminator(response)
 				if termEnd > 0 {
 					debugLog("Approach 2: Found terminator at index %d!", termEnd-1)
 					response = response[:termEnd]
 					return parseOSC11RGB(response)
 				}
-			} else if err != nil && (stdinIteration%20 == 0 || stdinIteration <= 5) {
+			} else if err != nil && (stdinIteration <= 3 || stdinIteration%20 == 0) {
 				debugLog("Approach 2: Read attempt %d failed: %v", stdinIteration, err)
 			}
 

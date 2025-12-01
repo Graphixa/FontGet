@@ -289,12 +289,12 @@ func (m ProgressBarModel) View() string {
 		var styledIcon string
 		switch item.Status {
 		case "completed":
-			styledIcon = ui.FeedbackSuccess.Render("✓")
+			styledIcon = ui.SuccessText.Render("✓")
 		case "failed":
-			styledIcon = ui.FeedbackError.Render("✗")
+			styledIcon = ui.ErrorText.Render("✗")
 		case "skipped":
 			// Skipped items also use checkmark but green (since font is installed)
-			styledIcon = ui.FeedbackSuccess.Render("✓")
+			styledIcon = ui.SuccessText.Render("✓")
 		case "in_progress":
 			// Use spinner for in_progress status (unless in verbose/debug mode which uses static display)
 			if m.VerboseMode || m.DebugMode {
@@ -315,7 +315,7 @@ func (m ProgressBarModel) View() string {
 		// Format source name in brackets with purple color (if available)
 		var sourcePart string
 		if item.SourceName != "" {
-			sourcePart = " " + ui.FeedbackInfo.Render(fmt.Sprintf("[%s]", item.SourceName))
+			sourcePart = " " + ui.InfoText.Render(fmt.Sprintf("[%s]", item.SourceName))
 		}
 
 		// Format the status message
@@ -369,8 +369,8 @@ func (m ProgressBarModel) View() string {
 				if len(errorMsg) > 0 {
 					errorMsg = strings.ToUpper(string(errorMsg[0])) + errorMsg[1:]
 				}
-				// Apply error color styling (no bold) - FeedbackError already has the right color
-				statusText = ui.FeedbackError.Render(errorMsg)
+				// Apply error color styling (no bold) - ErrorText already has the right color
+				statusText = ui.ErrorText.Render(errorMsg)
 			} else {
 				// Fallback to generic message
 				statusText = "Installation failed"

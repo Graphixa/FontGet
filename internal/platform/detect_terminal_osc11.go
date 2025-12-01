@@ -14,6 +14,10 @@ import (
 // Works on xterm-compatible terminals and Windows Terminal
 // This is cross-platform and available on all platforms
 // On Windows Terminal, consider using detectOSC11Windows for better reliability
+//
+// OSC 11 responses can be terminated by either:
+// - BEL (0x07) - used by most xterm-compatible terminals
+// - ST (ESC \) - used by Windows Terminal
 func detectOSC11(timeout time.Duration) (TerminalRGB, error) {
 	// Check if stdin is a terminal
 	if !isTerminal(os.Stdin) {
@@ -43,11 +47,12 @@ func detectOSC11(timeout time.Duration) (TerminalRGB, error) {
 		}
 
 		// Read response from stdin
-		// Terminal should respond with: ESC ] 11 ; rgb:RR/GG/BB BEL
-		// or: ESC ] 11 ; rgb:RRRR/GGGG/BBBB BEL (16-bit)
+		// Terminal should respond with: ESC ] 11 ; rgb:RR/GG/BB BEL or ST
+		// or: ESC ] 11 ; rgb:RRRR/GGGG/BBBB BEL or ST (16-bit)
+		// Windows Terminal uses ST (ESC \) instead of BEL
 		reader := bufio.NewReader(os.Stdin)
 
-		// Read until we get a BEL character or timeout
+		// Read until we get a terminator (BEL or ST) or timeout
 		// Try to read response - use a more aggressive approach for Windows
 		// Read in a loop with small delays to catch the response
 		var response []byte
@@ -64,17 +69,21 @@ func detectOSC11(timeout time.Duration) (TerminalRGB, error) {
 				if err == nil && n > 0 {
 					response = append(response, buf[:n]...)
 
-					// Check if we got a terminator (BEL or ST)
+					// Check for terminator: BEL (0x07) or ST (ESC \)
 					belIdx := bytes.IndexByte(response, 0x07)
-					stIdx := bytes.Index(response, []byte{0x1b, 0x5c}) // ESC \
+					stIdx := bytes.Index(response, []byte{0x1b, 0x5c})
 					termEnd := -1
-					if belIdx >= 0 {
-						termEnd = belIdx + 1
-					}
-					if stIdx >= 0 {
-						if termEnd == -1 || stIdx+2 < termEnd {
+					if belIdx >= 0 && stIdx >= 0 {
+						// Both found, use the earlier one
+						if belIdx < stIdx {
+							termEnd = belIdx + 1
+						} else {
 							termEnd = stIdx + 2
 						}
+					} else if belIdx >= 0 {
+						termEnd = belIdx + 1
+					} else if stIdx >= 0 {
+						termEnd = stIdx + 2
 					}
 					if termEnd > 0 {
 						response = response[:termEnd]
@@ -93,17 +102,21 @@ func detectOSC11(timeout time.Duration) (TerminalRGB, error) {
 			if err == nil && n > 0 {
 				response = append(response, buf[:n]...)
 
-				// Check for terminator (BEL or ST)
+				// Check for terminator: BEL (0x07) or ST (ESC \)
 				belIdx := bytes.IndexByte(response, 0x07)
 				stIdx := bytes.Index(response, []byte{0x1b, 0x5c})
 				termEnd := -1
-				if belIdx >= 0 {
-					termEnd = belIdx + 1
-				}
-				if stIdx >= 0 {
-					if termEnd == -1 || stIdx+2 < termEnd {
+				if belIdx >= 0 && stIdx >= 0 {
+					// Both found, use the earlier one
+					if belIdx < stIdx {
+						termEnd = belIdx + 1
+					} else {
 						termEnd = stIdx + 2
 					}
+				} else if belIdx >= 0 {
+					termEnd = belIdx + 1
+				} else if stIdx >= 0 {
+					termEnd = stIdx + 2
 				}
 				if termEnd > 0 {
 					response = response[:termEnd]
@@ -144,8 +157,9 @@ func detectOSC11(timeout time.Duration) (TerminalRGB, error) {
 }
 
 // parseOSC11RGB parses OSC 11 response format
-// Expected format: ESC ] 11 ; rgb:RR/GG/BB BEL
-// or: ESC ] 11 ; rgb:RRRR/GGGG/BBBB BEL (16-bit)
+// Expected format: ESC ] 11 ; rgb:RR/GG/BB BEL or ST
+// or: ESC ] 11 ; rgb:RRRR/GGGG/BBBB BEL or ST (16-bit)
+// Windows Terminal uses ST (ESC \) as terminator, others use BEL (0x07)
 func parseOSC11RGB(data []byte) (TerminalRGB, error) {
 	// Convert to string for easier parsing
 	str := string(data)

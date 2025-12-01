@@ -739,7 +739,7 @@ Removal scope can be specified with the --scope flag:
 						installedFontNames = filteredInstalledFontNames
 
 						// Show header first
-						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
+						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
 
 						// Show all not-found fonts grouped together
 						if len(trulyNotFound) == 1 {
@@ -760,13 +760,13 @@ Removal scope can be specified with the --scope flag:
 							similar = filteredSimilar
 
 							if len(similar) > 0 {
-								fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
-								fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+								fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
 								for _, similarFont := range similar {
 									fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
 								}
 							} else {
-								fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf(" - %s", fontName)))
+								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf(" - %s", fontName)))
 							}
 						} else {
 							// Multiple fonts - show grouped format
@@ -803,7 +803,7 @@ Removal scope can be specified with the --scope flag:
 							// Show consolidated suggestions if any
 							if len(allSimilar) > 0 {
 								fmt.Println()
-								fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+								fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
 								for _, similarFont := range allSimilar {
 									fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
 								}
@@ -822,7 +822,7 @@ Removal scope can be specified with the --scope flag:
 					// Display fonts found in opposite scope as a separate section
 					if len(fontsInOppositeScope) > 0 {
 						// Use FeedbackWarning (yellow, no bold) for the header message
-						fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
+						fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
 						for _, fontName := range notFoundFonts {
 							if properName, foundInOpposite := fontsInOppositeScope[fontName]; foundInOpposite {
 								fmt.Printf(" - %s\n", properName)
@@ -1447,7 +1447,7 @@ Removal scope can be specified with the --scope flag:
 				installedFontNames = filteredInstalledFontNames
 
 				// Show header first
-				fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
+				fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
 
 				// Show all not-found fonts grouped together
 				if len(notFoundFonts) == 1 {
@@ -1468,13 +1468,13 @@ Removal scope can be specified with the --scope flag:
 					similar = filteredSimilar
 
 					if len(similar) > 0 {
-						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
-						fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+						fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
 						for _, similarFont := range similar {
 							fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
 						}
 					} else {
-						fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf(" - %s", fontName)))
+						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf(" - %s", fontName)))
 					}
 				} else {
 					// Multiple fonts - show grouped format
@@ -1511,7 +1511,7 @@ Removal scope can be specified with the --scope flag:
 					// Show consolidated suggestions if any
 					if len(allSimilar) > 0 {
 						fmt.Println()
-						fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these installed fonts?"))
+						fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
 						for _, similarFont := range allSimilar {
 							fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
 						}
@@ -1552,7 +1552,7 @@ Removal scope can be specified with the --scope flag:
 				}
 
 				// Use FeedbackWarning (yellow, no bold) for the header message
-				fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
+				fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
 				for _, fontName := range uniqueFonts {
 					fmt.Printf(" - %s\n", fontName)
 				}

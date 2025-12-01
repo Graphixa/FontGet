@@ -208,7 +208,7 @@ var sourcesInfoCmd = &cobra.Command{
 				if len(visible) < ui.TableColSrcName {
 					pad = ui.TableColSrcName - len(visible)
 				}
-				nameStyled = ui.FormReadOnly.Render(nameText) + ui.FeedbackError.Render(tag) + strings.Repeat(" ", pad)
+				nameStyled = ui.FormReadOnly.Render(nameText) + ui.ErrorText.Render(tag) + strings.Repeat(" ", pad)
 			} else {
 				nameText := shared.TruncateString(sourceName, ui.TableColSrcName)
 				paddedName := fmt.Sprintf("%-*s", ui.TableColSrcName, nameText)
@@ -380,7 +380,7 @@ func runSourcesUpdateVerbose() error {
 
 		// Source is reachable, now download the full content
 		fmt.Printf("Source Found\n")
-		fmt.Printf("Downloading from: %s\n", ui.ContentHighlight.Render(source.URL))
+		fmt.Printf("Downloading from: %s\n", ui.InfoText.Render(source.URL))
 		resp, err := client.Get(source.URL)
 		if err != nil {
 			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to download source - %v", err)))
@@ -439,16 +439,16 @@ func runSourcesUpdateVerbose() error {
 		for _, sourceInfo := range fontManifest.Sources {
 			totalFonts += len(sourceInfo.Fonts)
 		}
-		fmt.Printf("%s %d\n", ui.ContentHighlight.Render("Total fonts available:"), totalFonts)
+		fmt.Printf("%s %d\n", ui.InfoText.Render("Total fonts available:"), totalFonts)
 	}
 
 	// Status Report at the bottom (only shown in verbose mode - this function is only called in verbose mode)
-	fmt.Printf("\n%s\n", ui.ReportTitle.Render("Status Report"))
+	fmt.Printf("\n%s\n", ui.TextBold.Render("Status Report"))
 	fmt.Printf("---------------------------------------------\n")
 	fmt.Printf("%s: %s  |  %s: %s  |  %s: %s\n\n",
-		ui.FeedbackSuccess.Render("Updated"), ui.ContentText.Render(fmt.Sprintf("%d", successful)),
-		ui.FeedbackWarning.Render("Skipped"), ui.ContentText.Render("0"),
-		ui.FeedbackError.Render("Failed"), ui.ContentText.Render(fmt.Sprintf("%d", failed)))
+		ui.SuccessText.Render("Updated"), ui.Text.Render(fmt.Sprintf("%d", successful)),
+		ui.WarningText.Render("Skipped"), ui.Text.Render("0"),
+		ui.ErrorText.Render("Failed"), ui.Text.Render(fmt.Sprintf("%d", failed)))
 
 	return nil
 }
@@ -619,7 +619,7 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 
 		// Start with a blank line for consistent spacing
 		fmt.Println()
-		fmt.Printf("%s %s\n\n", ui.ContentLabel.Render("Sources Path:"), sourcesDir)
+		fmt.Printf("%s %s\n\n", ui.TextBold.Render("Sources Path:"), sourcesDir)
 
 		// Validate individual source files
 		entries, err := os.ReadDir(sourcesDir)
@@ -648,24 +648,24 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 					if info, err := os.Stat(filePath); err == nil {
 						size := formatFileSize(info.Size())
 						fmt.Printf("  %s %s (%s) | %s\n",
-							ui.FeedbackSuccess.Render("✓"),
+							ui.SuccessText.Render("✓"),
 							entry.Name(),
 							size,
-							ui.FeedbackSuccess.Render("Valid"))
+							ui.SuccessText.Render("Valid"))
 						output.GetDebug().State("File %s is valid, size: %s", entry.Name(), size)
 					} else {
 						fmt.Printf("  %s %s | %s\n",
-							ui.FeedbackSuccess.Render("✓"),
+							ui.SuccessText.Render("✓"),
 							entry.Name(),
-							ui.FeedbackSuccess.Render("Valid"))
+							ui.SuccessText.Render("Valid"))
 						output.GetDebug().State("File %s is valid", entry.Name())
 					}
 					validCount++
 				} else {
 					fmt.Printf("  %s %s | %s\n",
-						ui.FeedbackError.Render("✗"),
+						ui.ErrorText.Render("✗"),
 						entry.Name(),
-						ui.FeedbackError.Render("Invalid"))
+						ui.ErrorText.Render("Invalid"))
 					invalidCount++
 					output.GetVerbose().Warning("File %s is invalid", entry.Name())
 					output.GetDebug().State("File %s failed validation", entry.Name())
@@ -686,11 +686,11 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 		output.GetDebug().State("Validation results: %d valid, %d invalid", validCount, invalidCount)
 
 		if invalidCount > 0 {
-			fmt.Printf("\n%s\n", ui.FeedbackWarning.Render("One or more sources failed to validate."))
+			fmt.Printf("\n%s\n", ui.WarningText.Render("One or more sources failed to validate."))
 			fmt.Printf("Run 'fontget sources validate --help' for troubleshooting steps.\n\n")
 			output.GetVerbose().Warning("Sources validation found %d invalid files", invalidCount)
 		} else {
-			fmt.Printf("\n%s\n", ui.FeedbackSuccess.Render("All source files are valid\n"))
+			fmt.Printf("\n%s\n", ui.SuccessText.Render("All source files are valid\n"))
 			output.GetVerbose().Success("All source files are valid")
 		}
 

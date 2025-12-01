@@ -404,7 +404,7 @@ func (m updateModel) View() string {
 		// Status indicator - clean text-based
 		var indicator string
 		if i < m.currentSource {
-			indicator = ui.FeedbackSuccess.Render("✓")
+			indicator = ui.SuccessText.Render("✓")
 		} else if i == m.currentSource {
 			indicator = m.spinner.View()
 		} else {
@@ -413,7 +413,7 @@ func (m updateModel) View() string {
 
 		// Error indicator
 		if err, hasError := m.errors[source]; hasError {
-			indicator = ui.FeedbackError.Render("✗")
+			indicator = ui.ErrorText.Render("✗")
 			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", indicator, m.getDisplayName(source), err))
 		} else {
 			// Show verbose status if available
@@ -464,34 +464,34 @@ func (m updateModel) renderSummary() string {
 	// Individual source results first
 	for _, source := range m.sources {
 		if err, hasError := m.errors[source]; hasError {
-			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", ui.FeedbackError.Render("✗"), m.getDisplayName(source), err))
+			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", ui.ErrorText.Render("✗"), m.getDisplayName(source), err))
 		} else {
 			// Show verbose status if available
 			if m.verbose && m.status[source] != "" {
-				content.WriteString(fmt.Sprintf("   %s %s - %s\n", ui.FeedbackSuccess.Render("✓"), m.getDisplayName(source), m.status[source]))
+				content.WriteString(fmt.Sprintf("   %s %s - %s\n", ui.SuccessText.Render("✓"), m.getDisplayName(source), m.status[source]))
 			} else {
-				content.WriteString(fmt.Sprintf("   %s %s\n", ui.FeedbackSuccess.Render("✓"), m.getDisplayName(source)))
+				content.WriteString(fmt.Sprintf("   %s %s\n", ui.SuccessText.Render("✓"), m.getDisplayName(source)))
 			}
 		}
 	}
 
 	// Add font count in darker gray - calculate actual count
 	fontCount := m.calculateFontCount()
-	content.WriteString(fmt.Sprintf("\n%s\n", ui.FeedbackText.Render(fmt.Sprintf("Total fonts available: %d", fontCount))))
+	content.WriteString(fmt.Sprintf("\n%s\n", ui.Text.Render(fmt.Sprintf("Total fonts available: %d", fontCount))))
 
 	// Status Report at the bottom (only shown in verbose mode)
 	if m.verbose {
 		content.WriteString("\n")
-		content.WriteString(ui.ReportTitle.Render("Status Report"))
+		content.WriteString(ui.TextBold.Render("Status Report"))
 		content.WriteString("\n")
 		content.WriteString("---------------------------------------------")
 		content.WriteString("\n")
 
 		// Status line with colors like install command
 		content.WriteString(fmt.Sprintf("%s: %d  |  %s: %d  |  %s: %d\n\n",
-			ui.FeedbackSuccess.Render("Updated"), successful,
-			ui.FeedbackWarning.Render("Skipped"), 0, // No skipped in update
-			ui.FeedbackError.Render("Failed"), failed))
+			ui.SuccessText.Render("Updated"), successful,
+			ui.WarningText.Render("Skipped"), 0, // No skipped in update
+			ui.ErrorText.Render("Failed"), failed))
 	} else {
 		// Add blank line at end if not verbose
 		content.WriteString("\n")

@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 	"fontget/internal/config"
-	"fontget/internal/license"
 	"fontget/internal/logging"
+	"fontget/internal/onboarding"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/shared"
@@ -68,8 +68,9 @@ var rootCmd = &cobra.Command{
 			config.Level = logging.InfoLevel
 			config.ConsoleOutput = false // Don't show regular logs in verbose mode
 		} else {
-			// Default mode: minimal logging, no console output
-			config.Level = logging.ErrorLevel
+			// Default mode: Log Info/Warn/Error to file (standard CLI behavior)
+			// Console output is minimal (errors only), but file has full audit trail
+			config.Level = logging.InfoLevel
 			config.ConsoleOutput = false
 		}
 
@@ -77,6 +78,16 @@ var rootCmd = &cobra.Command{
 		logger, err = logging.New(config)
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger: %w", err)
+		}
+
+		// Initialize theme system
+		if err := ui.InitThemeManager(); err != nil {
+			return fmt.Errorf("failed to initialize theme manager: %w", err)
+		}
+
+		// Initialize styles based on theme
+		if err := ui.InitStyles(); err != nil {
+			return fmt.Errorf("failed to initialize styles: %w", err)
 		}
 
 		// Skip license check for certain commands
@@ -87,8 +98,8 @@ var rootCmd = &cobra.Command{
 		}
 
 		if !skipLicenseCommands[cmd.Name()] {
-			// Check first run and license acceptance
-			if err := license.CheckFirstRunAndPrompt(); err != nil {
+			// Run first-run onboarding (welcome, license, settings)
+			if err := onboarding.RunFirstRunOnboarding(); err != nil {
 				return err
 			}
 		}
@@ -144,7 +155,8 @@ Examples:
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
-{{end}}{{end}}{{end}}`)
+{{end}}{{end}}{{end}}
+`)
 
 	// Set custom usage template with extra spacing
 	rootCmd.SetUsageTemplate(`{{if .Runnable}}Usage:
@@ -161,30 +173,7 @@ Available Commands:
 {{end}}{{end}}
 {{end}}`)
 
-	// Add completion command
-	completionCmd := &cobra.Command{
-		Use:   "completion",
-		Short: "Generate completion script",
-		Long: `Generate shell completion scripts.
-
-Supports bash, zsh, and PowerShell. See documentation for installation instructions.`,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			shell := args[0]
-			switch shell {
-			case "bash":
-				return rootCmd.GenBashCompletion(cmd.OutOrStdout())
-			case "zsh":
-				return rootCmd.GenZshCompletion(cmd.OutOrStdout())
-			case "powershell":
-				return rootCmd.GenPowerShellCompletion(cmd.OutOrStdout())
-			default:
-				return fmt.Errorf("unsupported shell: %s", shell)
-			}
-		},
-		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"bash", "zsh", "powershell"},
-	}
-	rootCmd.AddCommand(completionCmd)
+	// Completion command is now in cmd/completion.go
 }
 
 // Execute runs the root command
@@ -252,7 +241,7 @@ func performStartupUpdateCheck() {
 
 			// Show notification if update is available
 			if result.UpdateAvailable {
-				fmt.Printf("\n%s\n", ui.FeedbackInfo.Render(update.FormatUpdateNotification(result.CurrentVersion, result.LatestVersion)))
+				fmt.Printf("\n%s\n", ui.InfoText.Render(update.FormatUpdateNotification(result.CurrentVersion, result.LatestVersion)))
 			}
 		},
 	)

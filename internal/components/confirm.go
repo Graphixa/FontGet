@@ -73,7 +73,7 @@ func (m ConfirmModel) View() string {
 	}
 
 	// Message
-	result.WriteString(ui.FeedbackText.Render(m.Message))
+	result.WriteString(ui.Text.Render(m.Message))
 	result.WriteString("\n\n")
 
 	// Confirmation prompt - match sources_manage.go styling

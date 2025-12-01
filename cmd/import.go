@@ -359,7 +359,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 
 		// If no fonts to install, exit
 		if len(fontsToInstall) == 0 {
-			fmt.Printf("%s\n", ui.FeedbackWarning.Render("No fonts to install. All fonts in the manifest are either invalid or not found in the repository."))
+			fmt.Printf("%s\n", ui.WarningText.Render("No fonts to install. All fonts in the manifest are either invalid or not found in the repository."))
 			fmt.Println()
 			return nil
 		}
@@ -484,7 +484,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		if !IsDebug() {
 			// Show disabled sources
 			for sourceName, fontNames := range disabledSourceFonts {
-				fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following fonts require '%s' which is currently disabled:", sourceName)))
+				fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following fonts require '%s' which is currently disabled:", sourceName)))
 				for _, fontName := range fontNames {
 					fmt.Printf("  - %s\n", fontName)
 				}
@@ -497,7 +497,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 
 			// Show missing sources
 			for sourceName, fontNames := range missingSourceFonts {
-				fmt.Printf("%s\n", ui.FeedbackWarning.Render(fmt.Sprintf("The following fonts require '%s' which is not available in your sources:", sourceName)))
+				fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following fonts require '%s' which is not available in your sources:", sourceName)))
 				for _, fontName := range fontNames {
 					fmt.Printf("  - %s\n", fontName)
 				}
@@ -511,7 +511,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 
 			// Show invalid fonts (no Font ID)
 			if len(invalidFonts) > 0 {
-				fmt.Printf("%s\n", ui.FeedbackWarning.Render("The following fonts in the manifest have no Font ID and will be skipped:"))
+				fmt.Printf("%s\n", ui.WarningText.Render("The following fonts in the manifest have no Font ID and will be skipped:"))
 				for _, fontName := range invalidFonts {
 					fmt.Printf("  - %s\n", fontName)
 				}
@@ -555,7 +555,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 				}
 
 				if len(remainingNotFound) > 0 {
-					fmt.Printf("%s\n", ui.FeedbackWarning.Render("The following fonts were not found in the repository:"))
+					fmt.Printf("%s\n", ui.WarningText.Render("The following fonts were not found in the repository:"))
 					for _, fontName := range remainingNotFound {
 						fmt.Printf("  - %s\n", fontName)
 					}

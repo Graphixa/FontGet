@@ -83,6 +83,19 @@ func ValidateStrictAppConfig(data map[string]interface{}) error {
 	}
 	// Update section is optional, so we don't require it
 
+	// Validate Theme section (optional for backward compatibility)
+	if themeSection, exists := data["Theme"]; exists {
+		if themeMap, ok := themeSection.(map[string]interface{}); ok {
+			errors = append(errors, validateThemeSection(themeMap)...)
+		} else {
+			errors = append(errors, ValidationError{
+				Field:   "Theme",
+				Message: "must be an object",
+			})
+		}
+	}
+	// Theme section is optional, so we don't require it
+
 	if len(errors) > 0 {
 		return errors
 	}
@@ -365,6 +378,50 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 			})
 		}
 	}
+
+	return errors
+}
+
+// validateThemeSection validates the Theme section
+func validateThemeSection(theme map[string]interface{}) ValidationErrors {
+	var errors ValidationErrors
+
+	// Validate Name (optional string, can be empty to use default)
+	if name, exists := theme["Name"]; exists {
+		if _, ok := name.(string); !ok {
+			errors = append(errors, ValidationError{
+				Field:   "Theme.Name",
+				Message: fmt.Sprintf("must be a string, got %s", getTypeName(name)),
+			})
+		}
+	}
+	// Name is optional, so empty or missing is fine
+
+	// Validate Mode (optional string, must be "auto", "dark", or "light" if present)
+	if mode, exists := theme["Mode"]; exists {
+		if modeStr, ok := mode.(string); ok {
+			validModes := []string{"auto", "dark", "light"}
+			valid := false
+			for _, validMode := range validModes {
+				if modeStr == validMode {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				errors = append(errors, ValidationError{
+					Field:   "Theme.Mode",
+					Message: fmt.Sprintf("must be one of: %s, got '%s'", strings.Join(validModes, ", "), modeStr),
+				})
+			}
+		} else {
+			errors = append(errors, ValidationError{
+				Field:   "Theme.Mode",
+				Message: fmt.Sprintf("must be a string, got %s", getTypeName(mode)),
+			})
+		}
+	}
+	// Mode is optional, defaults to "auto" if not present
 
 	return errors
 }

@@ -9,9 +9,6 @@ A tiny, cross-platform CLI tool to install and manage fonts from the command lin
 
 FontGet is a fast, font manager that makes it easy to discover, install, and organize fonts from Google Fonts, Nerd Fonts, and custom sources. It's made to be lightweight and to work on almost every system.
 
-> [!NOTE]
-> Binaries are available for both `amd64` and `arm64` architectures.
-
 ## Features
 
 - Install fonts from **Google Fonts** and **Nerd Fonts** out of the box
@@ -29,7 +26,7 @@ FontGet is a fast, font manager that makes it easy to discover, install, and org
 
 Install FontGet on your system using one of the commands below. FontGet is a single binary executable with no external dependencies. 
 
->A comprehensive list of installation options can be found in the [Installation Guide](docs/installation.md).
+> Binaries are available for both `amd64` and `arm64` architectures.
 
 #### Mac, Linux (Shell)
 
@@ -43,15 +40,16 @@ curl -fsSL https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/insta
 irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 | iex
 ```
 
+More installation options can be found in the [Installation Guide](docs/installation.md).
+
 ## Installation via Package Manager 
 
 ### Windows
 
 **[WinGet](https://winstall.app/)**
 ```
-
-> [!NOTE]
-> Winget package is coming soon. For now, use the PowerShell install script.
+winget install --id "graphixa.fontget"
+```
 
 **[Chocolatey](https://chocolatey.org/)**
 
@@ -59,17 +57,11 @@ irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 
 choco install fontget
 ```
 
-> [!NOTE]
-> Chocolatey package is coming soon. For now, use the PowerShell install script.
-
 **[Scoop](https://scoop.sh/)**
 
 ```powershell
 scoop install fontget
 ```
-
-> [!NOTE]
-> Scoop bucket is coming soon. For now, use the PowerShell install script.
 
 ### macOS
 
@@ -78,9 +70,6 @@ scoop install fontget
 ```sh
 brew install fontget
 ```
-
-> [!NOTE]
-> Homebrew installation is coming soon. For now, use the shell install script.
 
 ### Linux
 
@@ -92,15 +81,10 @@ yay -S fontget
 paru -S fontget
 ```
 
-### Build and install from source
+### Build and Install from Source
 
-Complete instructions for building FontGet from source can be found in the [Contributing guide](docs/contributing.md).
+Instructions for building FontGet from source can be found in the [Contributing guide](docs/contributing.md).
 
-```bash
-git clone https://github.com/Graphixa/FontGet.git
-cd FontGet
-go build -o fontget
-```
 
 ## Using FontGet
 

@@ -87,3 +87,42 @@ nfpms:
     # GoReleaser automatically filters to Linux builds and includes binaries from 'builds'
     # The binary will be placed in /usr/bin/fontget
 
+# Homebrew Cask (macOS)
+# Using homebrew_casks instead of deprecated brews (since GoReleaser v2.10)
+homebrew_casks:
+  - name: fontget
+    repository:
+      owner: Graphixa
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://github.com/Graphixa/FontGet"
+    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line"
+    license: "MIT"
+    # Use the default archive (darwin builds only)
+    # GoReleaser will automatically filter to darwin archives
+    ids:
+      - default
+    binaries:
+      - fontget
+    # Remove quarantine attribute to allow execution on macOS
+    # This is required for unsigned binaries from GitHub releases
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/fontget"]
+          end
+
+# Scoop bucket (Windows)
+# Using repository instead of deprecated bucket field
+scoops:
+  - name: fontget
+    repository:
+      owner: Graphixa
+      name: scoop-bucket
+      branch: main
+      token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
+    homepage: "https://github.com/Graphixa/FontGet"
+    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line"
+    license: "MIT"

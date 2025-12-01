@@ -142,7 +142,7 @@ or a full file path.`,
 			// Check if this is a cancellation (user chose not to overwrite)
 			if strings.Contains(err.Error(), "export cancelled") {
 				// User cancelled - show friendly message and return nil (no error)
-				fmt.Printf("%s\n", ui.FeedbackWarning.Render("Export cancelled - file already exists."))
+				fmt.Printf("%s\n", ui.WarningText.Render("Export cancelled - file already exists."))
 				fmt.Println()
 				return nil
 			}
@@ -205,7 +205,7 @@ or a full file path.`,
 		if len(exportedFonts) == 0 {
 			// Start with a blank line for consistent spacing
 			fmt.Println()
-			fmt.Printf("%s\n", ui.FeedbackWarning.Render("No fonts found matching the specified criteria."))
+			fmt.Printf("%s\n", ui.WarningText.Render("No fonts found matching the specified criteria."))
 			fmt.Println()
 			return nil
 		}
@@ -214,7 +214,7 @@ or a full file path.`,
 		GetLogger().Info("Export operation complete - Exported %d font families to %s", len(exportedFonts), outputFile)
 
 		// Show success message
-		fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
+		fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
 		fmt.Println()
 
 		return nil
@@ -273,13 +273,13 @@ func performFullExport(fontManager platform.FontManager, scopes []platform.Insta
 	if len(exportedFonts) == 0 {
 		// Start with a blank line for consistent spacing
 		fmt.Println()
-		fmt.Printf("%s\n", ui.FeedbackWarning.Render("No fonts found matching the specified criteria."))
+		fmt.Printf("%s\n", ui.WarningText.Render("No fonts found matching the specified criteria."))
 		fmt.Println()
 		return nil
 	}
 
 	output.GetDebug().State("Export operation complete - Exported: %d font families", len(exportedFonts))
-	fmt.Printf("%s\n", ui.FeedbackSuccess.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
+	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
 	fmt.Println()
 	return nil
 }

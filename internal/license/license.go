@@ -6,26 +6,52 @@ import (
 	"os"
 	"strings"
 
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/repo"
+	"fontget/internal/ui"
 )
 
 // PromptForSourceAcceptance prompts the user to accept licenses for a source
+// This function uses styled UI components for better presentation
 func PromptForSourceAcceptance(sourceName string) (bool, error) {
+	// Display styled license information
 	fmt.Println()
-	fmt.Println("FontGet installs fonts from various sources. These fonts are subject to their respective license agreements.")
+	fmt.Println(ui.PageTitle.Render("License Agreement"))
 	fmt.Println()
-	fmt.Printf("Do you accept the license agreements from the following sources:\n")
-	fmt.Printf("- %s\n", sourceName)
+	fmt.Println(ui.Text.Render("FontGet installs fonts from various sources."))
+	fmt.Println(ui.Text.Render("These fonts are subject to their respective license agreements."))
 	fmt.Println()
-	fmt.Println("To review a particular font's license, run: fontget info <font-id> --license")
+	fmt.Printf("%s %s\n", ui.InfoText.Render("Source:"), ui.TableSourceName.Render(sourceName))
 	fmt.Println()
-	fmt.Print("Do you accept? (y/n): ")
+	fmt.Println(ui.Text.Render("To review a particular font's license, run:"))
+	fmt.Printf("  %s\n", ui.CommandExample.Render("fontget info <font-id> --license"))
+	fmt.Println()
 
+	// Use confirmation dialog for better UX
+	message := fmt.Sprintf("Do you accept the license agreements from %s?", ui.TableSourceName.Render(sourceName))
+	confirmed, err := components.RunConfirm(
+		"",
+		message,
+	)
+	if err != nil {
+		// Fallback to basic prompt if confirmation dialog fails
+		// User-friendly error handling per verbose/debug guidelines
+		return promptForSourceAcceptanceFallback(sourceName)
+	}
+
+	// Section ends - confirmation dialog handles its own spacing via alt screen
+	return confirmed, nil
+}
+
+// promptForSourceAcceptanceFallback provides a basic fallback if the confirmation dialog fails
+func promptForSourceAcceptanceFallback(sourceName string) (bool, error) {
+	fmt.Print("Do you accept? (y/n): ")
 	reader := bufio.NewReader(os.Stdin)
 	response, err := reader.ReadString('\n')
 	if err != nil {
-		return false, fmt.Errorf("failed to read user input: %w", err)
+		// User-friendly error message per verbose/debug guidelines
+		return false, fmt.Errorf("unable to read response: %w", err)
 	}
 
 	response = strings.ToLower(strings.TrimSpace(response))
@@ -47,7 +73,8 @@ func CheckAndPromptForSource(sourceName string) error {
 	// Prompt user for acceptance
 	accepted, err = PromptForSourceAcceptance(sourceName)
 	if err != nil {
-		return fmt.Errorf("failed to prompt for license acceptance: %w", err)
+		// User-friendly error message per verbose/debug guidelines
+		return fmt.Errorf("unable to prompt for license acceptance: %w", err)
 	}
 
 	if !accepted {
@@ -56,13 +83,16 @@ func CheckAndPromptForSource(sourceName string) error {
 
 	// Save acceptance
 	if err := config.AcceptSource(sourceName); err != nil {
-		return fmt.Errorf("failed to save license acceptance: %w", err)
+		// User-friendly error message per verbose/debug guidelines
+		return fmt.Errorf("unable to save license acceptance: %w", err)
 	}
 
 	return nil
 }
 
 // CheckFirstRunAndPrompt checks if this is the first run and prompts for Google Fonts acceptance
+// DEPRECATED: This function is kept for backward compatibility.
+// New code should use onboarding.RunFirstRunOnboarding() directly from cmd/root.go
 func CheckFirstRunAndPrompt() error {
 	// Check if this is the first run
 	isFirstRun, err := config.IsFirstRun()
@@ -74,8 +104,11 @@ func CheckFirstRunAndPrompt() error {
 		return nil // Not first run, continue normally
 	}
 
-	// Show welcome message
-	fmt.Println("Welcome to FontGet! This is your first time using the tool.")
+	// Show welcome message with styled UI
+	fmt.Println()
+	fmt.Println(ui.PageTitle.Render("Welcome to FontGet!"))
+	fmt.Println()
+	fmt.Println(ui.Text.Render("This is your first time using FontGet. Let's get you set up."))
 	fmt.Println()
 
 	// Check if Google Fonts is already accepted (shouldn't be on first run, but just in case)

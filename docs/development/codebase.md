@@ -575,11 +575,22 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Configuration management
 **Files**:
 - `user_preferences.go`: User preferences configuration (renamed from `app_config.go`)
+  - **AppConfig structure**: Configuration, Logging, Update, and Theme sections
+  - **Theme configuration**: Theme.Name (theme file name) and Theme.Mode (dark/light)
+  - Configuration loading, saving, and validation
 - `app_state.go`: Core application state types and functions
+  - First-run state management
+  - Source acceptance tracking
 - `manifest.go`: Font sources manifest management
 - `validation.go`: Configuration validation
 
-**Status**: ✅ Active - Core configuration system
+**Key Features**:
+- **Theme Configuration**: Users can set theme name and mode in `config.yaml`
+  - Theme files must be placed in `~/.fontget/themes/` directory
+  - Empty theme name uses embedded default (Catppuccin)
+  - Mode can be "dark" or "light" (defaults to "dark")
+
+**Status**: ✅ Active - Core configuration system with theme support
 
 ### `internal/repo/`
 **Purpose**: Font repository management
@@ -630,27 +641,44 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - `hexToPinColor`: Converts hex colors to pin package color constants
   - Various rendering utilities for titles, errors, success messages
 - `styles.go`: Centralized styling and theming
-  - Catppuccin Mocha color palette
+  - **Theme-aware styling system**: All styles initialized from theme files via `InitStyles()`
+  - **Semantic color system**: Theme files define semantic color keys (accent, warning, error, etc.) that are referenced by multiple styles
   - Page structure styles (titles, subtitles, content)
-  - User feedback styles (info, warning, error, success)
+  - Message styles (Text, InfoText, WarningText, ErrorText, SuccessText)
   - Data display styles (tables, lists)
   - Form styles (labels, inputs, placeholders)
   - Command styles (keys, labels, examples)
   - Card styles (titles, labels, content, borders)
-  - Progress bar styles (headers, text, containers)
+  - Button, Checkbox, and Switch component styles
+  - Progress bar styles with gradient support
   - **Spinner styles**: Color constants and pin package color mapping (`SpinnerColor`, `SpinnerDoneColor`, `PinColorMap`)
+- `theme.go`: Theme management system
+  - **Theme abstraction layer**: Loads themes from YAML files in `~/.fontget/themes/`
+  - **Embedded default theme**: Catppuccin theme embedded in binary as fallback
+  - **Theme configuration**: Theme selection via `config.yaml` (Theme.Name and Theme.Mode)
+  - **Mode support**: Dark and light mode support per theme
+  - **ThemeManager**: Handles theme loading, mode switching, and color retrieval
 - `tables.go`: Table formatting constants and functions
   - Table column width constants (`TableColName`, `TableColID`, etc.)
   - Table header functions (`GetSearchTableHeader`, `GetListTableHeader`, etc.)
   - Table separator function (`GetTableSeparator`)
+- `themes/`: Theme definition files
+  - `catppuccin.yaml`: Default embedded theme (Catppuccin Mocha/Latte)
+  - `gruvbox.yaml`: Gruvbox theme (available for user installation)
 
 **Key Features**:
-- **Centralized Styling**: All colors and styles defined in `styles.go` for consistency
+- **Theme System**: YAML-based theme files with semantic color system
+  - Themes stored in `~/.fontget/themes/` directory
+  - Default theme (Catppuccin) embedded in binary
+  - Theme selection via `config.yaml` Theme section
+  - Supports both dark and light modes
+- **Semantic Colors**: Theme files define semantic keys (accent, warning, error, grey_light, etc.) that are mapped to multiple UI styles
+- **Centralized Styling**: All styles initialized from theme on startup via `InitStyles()`
 - **Unified Table API**: All table formatting in one place for consistency
 - **Spinner Integration**: Pin spinner colors mapped from hex to pin package constants
 - **Color Mapping**: `PinColorMap` provides hex-to-pin color conversion for spinner components
 
-**Status**: ✅ Active - UI system
+**Status**: ✅ Active - UI system with theme support
 
 ### `internal/output/`
 **Purpose**: Output management
@@ -773,13 +801,32 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Status**: ✅ Active - Development documentation
 
 ### `docs/`
-**Purpose**: Additional documentation
+**Purpose**: User-facing documentation
 **Files**:
-- `shell-completions.md`: Shell completion setup
-- `STYLE_GUIDE.md`: Code style guidelines
-- `terminal-setup.md`: Terminal setup instructions
+- `installation.md`: Installation guide
+- `terminal-setup.md`: Terminal setup instructions (includes shell completions)
+- `contributing.md`: Contributing guidelines
 
-**Status**: ✅ Active - Documentation
+**Status**: ✅ Active - User documentation
+
+### `docs/development/`
+**Purpose**: Development documentation and guidelines
+**Files**:
+- `codebase.md`: This file - comprehensive codebase overview
+- `style-guide.md`: Code style guidelines
+
+**Status**: ✅ Active - Development documentation
+
+### `docs/development/guidelines/`
+**Purpose**: Development guidelines and best practices
+**Files**:
+- `codebase-layout-guidelines.md`: Codebase organization guidelines
+- `logging-guidelines.md`: Logging best practices
+- `spacing-guidelines.md`: Output spacing guidelines
+- `verbose-debug-guidelines.md`: Verbose and debug output guidelines
+- `versioning-guide.md`: Versioning and release guidelines
+
+**Status**: ✅ Active - Development guidelines
 
 ### `docs/maintenance/documentation-sync.md`
 **Purpose**: Documentation synchronization
@@ -788,15 +835,6 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ---
 
 ## Configuration Files
-
-### `Makefile`
-**Purpose**: Build automation
-**Functionality**:
-- Build commands
-- Version injection
-- Development utilities
-
-**Status**: ✅ Active - Build system
 
 ### `sources/`
 **Purpose**: Source data storage

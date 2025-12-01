@@ -4,34 +4,43 @@ This document defines the color scheme and visual hierarchy for FontGet, ensurin
 
 ## Color Palette
 
-| Name       | Hex Code | Usage in FontGet                    |
-|------------|----------|-------------------------------------|
-| Rosewater  | #f5e0dc  | -                                   |
-| Flamingo   | #f2cdcd  | -                                   |
-| Pink       | #f5c2e7  | Font names, field labels, examples, key info |
-| Mauve      | #cba6f7  | Page titles, report titles, info messages |
-| Red        | #e78284  | Error messages, critical warnings   |
-| Maroon     | #eba0ac  | -                                   |
-| Peach      | #fab387  | -                                   |
-| Yellow     | #f9e2af  | Warning messages, skipped status    |
-| Green      | #a6e3a1  | Success messages, installed status  |
-| Teal       | #94e2d5  | -                                   |
-| Sky        | #89dceb  | -                                   |
-| Sapphire   | #74c7ec  | -                                   |
-| Blue       | #89b4fa  | Information, links                  |
-| Lavender   | #b4befe  | -                                   |
-| Text       | #cdd6f4  | Primary text, regular content       |
-| Subtext 1  | #bac2de  | Command keys, command labels        |
-| Subtext 0  | #9399b2  | Built-in tags, tertiary text        |
-| Overlay 2  | #9399b2  | -                                   |
-| Overlay 1  | #7f849c  | Form placeholders                   |
-| Overlay 0  | #6c7086  | Page subtitles, form read-only      |
-| Surface 2  | #585b70  | -                                   |
-| Surface 1  | #45475a  | -                                   |
-| Surface 0  | #313244  | Title backgrounds, key backgrounds  |
-| Base       | #1e1e2e  | Main background                     |
-| Mantle     | #181825  | -                                   |
-| Crust      | #11111b  | -                                   |
+This table shows which styles use each color, making it easy to see which styles share colors.
+
+| Name       | Hex Code | Used By (Style Names) |
+|------------|----------|----------------------|
+| **Accent Colors** |
+| Mauve      | #cba6f7  | `InfoText`, `PageTitle` (FG), `CardTitle` (FG), `CheckboxCursor`, `SpinnerColor`, `ProgressBarGradientStart` |
+| Pink       | #f5c2e7  | `TableSourceName`, `FormLabel`, `CardLabel` |
+| **Status Colors** |
+| Yellow     | #f9e2af  | `WarningText` |
+| Red        | #e78284  | `ErrorText` |
+| Green      | #a6e3a1  | `SuccessText`, `CheckboxChecked`, `SpinnerDoneColor` |
+| **Neutral Colors** |
+| Subtext 1  | #bac2de  | `CommandKey` (FG), `CommandLabel`, `ButtonNormal`, `SwitchLeftNormal`, `SwitchRightNormal` |
+| Text       | #cdd6f4  | `ButtonSelected` (FG), `SwitchLeftSelected` (FG), `SwitchRightSelected` (FG) |
+| Overlay 1  | #7f849c  | `FormPlaceholder`, `CardBorder`, `SwitchSeparator` |
+| Overlay 0  | #6c7086  | `PageSubtitle`, `FormReadOnly` |
+| Surface 0  | #313244  | `PageTitle` (BG), `TableRowSelected` (BG), `CardTitle` (BG), `CommandKey` (BG), `ButtonSelected` (BG), `CheckboxItemSelected` (BG), `SwitchLeftSelected` (BG), `SwitchRightSelected` (BG) |
+| **Unused Colors** |
+| Rosewater  | #f5e0dc  | - |
+| Flamingo   | #f2cdcd  | - |
+| Maroon     | #eba0ac  | - (used in `ProgressBarGradientEnd`) |
+| Peach      | #fab387  | - |
+| Teal       | #94e2d5  | - |
+| Sky        | #89dceb  | - |
+| Sapphire   | #74c7ec  | - |
+| Blue       | #89b4fa  | - |
+| Lavender   | #b4befe  | - |
+| Subtext 0  | #9399b2  | `RenderSourceNameWithTag` (utility function) |
+| Overlay 2  | #9399b2  | - |
+| Surface 2  | #585b70  | - |
+| Surface 1  | #45475a  | - |
+| Base       | #1e1e2e  | - |
+| Mantle     | #181825  | - |
+| Crust      | #11111b  | - |
+| **Special** |
+| Text Light | #4c4f69  | `FormInput` (Light mode - adaptive) |
+| No Color   | (default) | `Text`, `TextBold`, `TableHeader`, `CommandExample`, `CardContent`, `CheckboxUnchecked` |
 
 ## Style Categories
 
@@ -44,12 +53,12 @@ FontGet uses a clear categorization system for different types of UI elements:
 - **ContentText** - Regular text content (Adaptive colors for terminal compatibility)
 - **ContentHighlight** - Highlighted content (Yellow)
 
-### 2. USER FEEDBACK STYLES - Interactive responses and notifications
-- **FeedbackInfo** - Informational messages (Mauve)
-- **FeedbackText** - Supporting text (Terminal default)
-- **FeedbackWarning** - Warning messages (Yellow)
-- **FeedbackError** - Error messages (Red)
-- **FeedbackSuccess** - Success messages (Green)
+### 2. MESSAGE STYLES - User notifications and responses
+- **Text** - Regular text content (Terminal default)
+- **InfoText** - Informational messages (Mauve)
+- **WarningText** - Warning messages (Yellow)
+- **ErrorText** - Error messages (Red)
+- **SuccessText** - Success messages (Green)
 
 ### 3. DATA DISPLAY STYLES - Tables, lists, and data presentation
 - **TableHeader** - Column headers (Terminal default)
@@ -71,7 +80,7 @@ FontGet uses a clear categorization system for different types of UI elements:
 ### 6. CARD STYLES - Card components and layouts
 - **CardTitle** - Card titles integrated into borders (Mauve with Surface 0 background)
 - **CardLabel** - Labels within cards (Pink - matches FormLabel)
-- **CardContent** - Regular content within cards (Terminal default - matches FeedbackText)
+- **CardContent** - Regular content within cards (Terminal default - matches Text)
 - **CardBorder** - Card border styling (Overlay 1 color)
 - **CardContainer** - Container for cards with proper spacing
 
@@ -84,9 +93,9 @@ FontGet uses a clear categorization system for different types of UI elements:
 ui.PageTitle.Render("Font Search Results")
 
 // Status messages
-ui.FeedbackSuccess.Render("Installed")
-ui.FeedbackWarning.Render("Skipped")
-ui.FeedbackError.Render("Failed to install")
+ui.SuccessText.Render("Installed")
+ui.WarningText.Render("Skipped")
+ui.ErrorText.Render("Failed to install")
 
 // Table content
 ui.TableSourceName.Render("Roboto")
@@ -117,7 +126,7 @@ Status reports use a specific pattern where only the status word is colored:
 // Instead of coloring the entire message
 msg := fmt.Sprintf("  - \"%s\" (%s to %s scope)", 
     fontDisplayName, 
-    ui.FeedbackSuccess.Render("Installed"), 
+    ui.SuccessText.Render("Installed"), 
     scope)
 fmt.Println(ui.ContentText.Render(msg))
 ```
@@ -167,10 +176,12 @@ This creates:
 6. **Primary Text** - Terminal default for better compatibility
 
 ### Status Colors
-- **Success** - Green (#a6e3a1) with bold
-- **Warning** - Yellow (#f9e2af) with bold
-- **Error** - Red (#f38ba8) with bold
-- **Info** - Mauve (#cba6f7) with bold
+- **Success** - Green (#a6e3a1) - Use `SuccessText`
+- **Warning** - Yellow (#f9e2af) - Use `WarningText`
+- **Error** - Red (#e78284) - Use `ErrorText`
+- **Info** - Mauve (#cba6f7) - Use `InfoText`
+
+**Note:** The old `Feedback*` style names (`FeedbackText`, `FeedbackInfo`, `FeedbackWarning`, `FeedbackError`, `FeedbackSuccess`) are deprecated but still available as aliases for backward compatibility. Use the new names (`Text`, `InfoText`, `WarningText`, `ErrorText`, `SuccessText`) in all new code.
 
 ### Background Usage
 - **Page Titles** - Surface 0 (#313244) background
@@ -242,18 +253,3 @@ fmt.Printf("%-*s %-*s %-*s\n",
 6. **Table Width** - Never exceed 120 characters total width for tables
 7. **Card Design** - Use integrated titles in borders for better visual hierarchy
 8. **Padding Control** - Use vertical and horizontal padding separately for different use cases
-
-## Migration from Old Styles
-
-The old style names have been updated to the new categorization:
-
-| Old Name | New Name | Category |
-|----------|----------|----------|
-| `Title` | `PageTitle` | Page Structure |
-| `Header` | `TableHeader` | Data Display |
-| `SourceName` | `TableSourceName` | Data Display |
-| `MessageText` | `FeedbackText` | User Feedback |
-| `MessageWarning` | `FeedbackWarning` | User Feedback |
-| `MessageError` | `FeedbackError` | User Feedback |
-| `MessageSuccess` | `FeedbackSuccess` | User Feedback |
-| `ContentSubtitle` | `ReportTitle` | Page Structure |

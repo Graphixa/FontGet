@@ -16,6 +16,7 @@ type AppConfig struct {
 	Configuration ConfigurationSection `yaml:"Configuration"`
 	Logging       LoggingSection       `yaml:"Logging"`
 	Update        UpdateSection        `yaml:"Update"`
+	Theme         ThemeSection         `yaml:"Theme"`
 }
 
 // ConfigurationSection represents the main configuration settings
@@ -38,6 +39,12 @@ type UpdateSection struct {
 	CheckInterval int    `yaml:"CheckInterval"` // Hours between checks
 	LastChecked   string `yaml:"LastChecked"`   // ISO timestamp
 	UpdateChannel string `yaml:"UpdateChannel"` // stable/beta/nightly
+}
+
+// ThemeSection represents theme configuration
+type ThemeSection struct {
+	Name string `yaml:"Name"` // Theme name (e.g., "catppuccin", "gruvbox") - empty string uses default
+	Mode string `yaml:"Mode"` // "auto" (detect from terminal), "dark", or "light" - defaults to "auto"
 }
 
 // GetAppConfigDir returns the app-specific config directory (~/.fontget)
@@ -88,6 +95,10 @@ func DefaultUserPreferences() *AppConfig {
 			LastChecked:   "",    // Never checked
 			UpdateChannel: "stable",
 		},
+		Theme: ThemeSection{
+			Name: "",     // Empty string uses embedded default theme (catppuccin)
+			Mode: "auto", // "auto" detects terminal theme, "dark" or "light" for manual override
+		},
 	}
 }
 
@@ -132,6 +143,29 @@ func GetUserPreferences() *AppConfig {
 				}
 				if loadedConfig.Update.UpdateChannel != "" {
 					config.Update.UpdateChannel = loadedConfig.Update.UpdateChannel
+				}
+			}
+
+			// Merge Theme section if it exists (optional for backward compatibility)
+			if loadedConfig.Theme.Name != "" || loadedConfig.Theme.Mode != "" {
+				// Start from existing defaults and overlay loaded values
+				if loadedConfig.Theme.Name != "" {
+					config.Theme.Name = loadedConfig.Theme.Name
+				}
+				if loadedConfig.Theme.Mode != "" {
+					config.Theme.Mode = loadedConfig.Theme.Mode
+				}
+
+				// Ensure mode is valid: allow "auto", "dark", "light"
+				switch config.Theme.Mode {
+				case "", "auto", "dark", "light":
+					// Treat empty as "auto"
+					if config.Theme.Mode == "" {
+						config.Theme.Mode = "auto"
+					}
+				default:
+					// Unknown value - fall back to auto-detection
+					config.Theme.Mode = "auto"
 				}
 			}
 		}
@@ -242,6 +276,9 @@ Update:
   CheckInterval: 24 # Hours between update checks
   LastChecked: "" # ISO timestamp of last check (automatically updated)
   UpdateChannel: "stable" # Update channel: stable, beta, or nightly
+Theme:
+  Name: "" # Theme name (e.g., "catppuccin", "gruvbox") - empty string uses embedded default
+  Mode: auto # Theme mode: auto (detect from terminal), dark, or light
 `
 
 	// Write config file
@@ -271,6 +308,10 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"CheckInterval": config.Update.CheckInterval,
 			"LastChecked":   config.Update.LastChecked,
 			"UpdateChannel": config.Update.UpdateChannel,
+		},
+		"Theme": map[string]interface{}{
+			"Name": config.Theme.Name,
+			"Mode": config.Theme.Mode,
 		},
 	}
 

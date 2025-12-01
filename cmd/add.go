@@ -88,7 +88,7 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 	}
 
 	// Multiple fonts - show grouped format
-	fmt.Printf("%s\n", ui.FeedbackError.Render("The following font(s) were not found:"))
+	fmt.Printf("%s\n", ui.ErrorText.Render("The following font(s) were not found:"))
 	for _, fontName := range notFoundFonts {
 		fmt.Printf("  - %s\n", fontName)
 	}
@@ -115,7 +115,7 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 	// Show consolidated suggestions if any
 	if len(allSimilar) > 0 {
 		fmt.Println()
-		fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
+		fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these fonts?"))
 
 		// Load repository for detailed font information
 		repository, err := repo.GetRepository()
@@ -182,26 +182,26 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 			fmt.Println()
 		} else {
 			// No matches found, show general guidance
-			fmt.Printf("%s\n", ui.FeedbackText.Render("Try using the search command to find available fonts."))
-			fmt.Printf("\n%s\n", ui.FeedbackText.Render("Example:"))
+			fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
+			fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
 			fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
 		}
 	} else {
 		// No suggestions at all, show general guidance
 		fmt.Println()
-		fmt.Printf("%s\n", ui.FeedbackText.Render("Try using the search command to find available fonts."))
-		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Example:"))
+		fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
+		fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
 		fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
 	}
 }
 
 // showFontNotFoundWithSuggestions displays font not found error with suggestions in table format
 func showFontNotFoundWithSuggestions(fontName string, similar []string) {
-	fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+	fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
 	// If no similar fonts found, show general guidance
 	if len(similar) == 0 {
-		fmt.Printf("%s\n", ui.FeedbackText.Render("Try using the search command to find available fonts."))
-		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Example:"))
+		fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
+		fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
 		fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
 		return
 	}
@@ -210,7 +210,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 	repository, err := repo.GetRepository()
 	if err != nil {
 		// If we can't load repository, show simple list (like remove command)
-		fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
+		fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these fonts?"))
 		for _, font := range similar {
 			fmt.Printf("  - %s\n", ui.TableSourceName.Render(font))
 		}
@@ -238,7 +238,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 
 	// If we found matches, display them in table format
 	if len(uniqueMatches) > 0 {
-		fmt.Printf("%s\n\n", ui.FeedbackText.Render("Did you mean one of these fonts?"))
+		fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these fonts?"))
 		// Use consistent column widths and apply styling to the entire formatted string
 		fmt.Printf("%s\n", ui.GetSearchTableHeader())
 		fmt.Printf("%s\n", ui.GetTableSeparator())
@@ -269,11 +269,11 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 	} else {
 		// Fallback: if similar font names were found but couldn't be resolved to matches
 		// This suggests the font exists in our cache but is no longer available from sources
-		fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("Font '%s' was not able to be downloaded and installed.", fontName)))
-		fmt.Printf("%s\n", ui.FeedbackText.Render("It may have been removed from the font source."))
-		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Please refresh FontGet sources using:"))
+		fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' was not able to be downloaded and installed.", fontName)))
+		fmt.Printf("%s\n", ui.Text.Render("It may have been removed from the font source."))
+		fmt.Printf("\n%s\n", ui.Text.Render("Please refresh FontGet sources using:"))
 		fmt.Printf("  %s\n", ui.CommandExample.Render("fontget sources update"))
-		fmt.Printf("\n%s\n", ui.FeedbackText.Render("Try using the search command to find other available fonts:"))
+		fmt.Printf("\n%s\n", ui.Text.Render("Try using the search command to find other available fonts:"))
 		fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
 	}
 }
@@ -322,8 +322,8 @@ func findMatchesInRepository(repository *repo.Repository, fontName string) []rep
 // showMultipleMatchesAndExit displays search results and instructs user to use specific font ID
 func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 
-	fmt.Printf("\n%s\n", ui.FeedbackInfo.Render(fmt.Sprintf("Multiple fonts found matching '%s'.", fontName)))
-	fmt.Printf("%s\n\n", ui.FeedbackText.Render("Please specify the exact font ID to install from a specific source."))
+	fmt.Printf("\n%s\n", ui.InfoText.Render(fmt.Sprintf("Multiple fonts found matching '%s'.", fontName)))
+	fmt.Printf("%s\n\n", ui.Text.Render("Please specify the exact font ID to install from a specific source."))
 
 	// Use consistent column widths and apply styling to the entire formatted string
 	fmt.Printf("%s\n", ui.GetSearchTableHeader())
@@ -746,9 +746,9 @@ Installation scope can be specified with the --scope flag:
 				}
 			} else {
 				// In normal/verbose mode, show user-friendly message
-				fmt.Printf("%s\n", ui.FeedbackError.Render("The following fonts were not found in any source:"))
+				fmt.Printf("%s\n", ui.ErrorText.Render("The following fonts were not found in any source:"))
 				for _, fontName := range notFoundFonts {
-					fmt.Printf("%s\n", ui.FeedbackError.Render(fmt.Sprintf("  - %s", fontName)))
+					fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("  - %s", fontName)))
 				}
 				// Add blank line before "Try using..." message (within section)
 				fmt.Println()

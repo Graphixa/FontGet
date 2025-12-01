@@ -18,7 +18,7 @@ func RenderTitleWithSubtitle(title, subtitle string) string {
 		return PageTitle.Render(title) + "\n"
 	}
 	return PageTitle.Render(title) + "\n" +
-		FeedbackText.Render(subtitle) + "\n"
+		Text.Render(subtitle) + "\n"
 }
 
 // RenderStatusReport renders a status report with consistent styling
@@ -26,7 +26,7 @@ func RenderStatusReport(title string, items map[string]int) string {
 	var content strings.Builder
 
 	content.WriteString("\n")
-	content.WriteString(ReportTitle.Render(title))
+	content.WriteString(TextBold.Render(title))
 	content.WriteString("\n")
 	content.WriteString("---------------------------------------------")
 	content.WriteString("\n")
@@ -37,13 +37,13 @@ func RenderStatusReport(title string, items map[string]int) string {
 		var style lipgloss.Style
 		switch label {
 		case "Installed", "Updated", "Success":
-			style = FeedbackSuccess
+			style = SuccessText
 		case "Failed", "Error":
-			style = FeedbackError
+			style = ErrorText
 		case "Skipped", "Warning":
-			style = FeedbackWarning
+			style = WarningText
 		default:
-			style = ContentText
+			style = Text
 		}
 		statusItems = append(statusItems, fmt.Sprintf("%s: %d", style.Render(label), count))
 	}
@@ -75,7 +75,7 @@ func RenderSearchResults(query string, count int) string {
 func RenderLoadingScreen(message string) string {
 	return fmt.Sprintf("\n%s\n\n%s\n\n%s",
 		PageTitle.Render("FontGet"),
-		FeedbackText.Render(message),
+		Text.Render(message),
 		CommandLabel.Render("Please wait..."),
 	)
 }

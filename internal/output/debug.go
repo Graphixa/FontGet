@@ -40,7 +40,7 @@ func isDebugEnabled() bool {
 func (d *DebugLogger) Message(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackInfo.Render("[DEBUG]"), msg)
+		fmt.Printf("%s %s\n", ui.InfoText.Render("[DEBUG]"), msg)
 	}
 }
 
@@ -49,7 +49,7 @@ func (d *DebugLogger) Message(format string, args ...interface{}) {
 func (d *DebugLogger) Error(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackError.Render("[DEBUG ERROR]"), msg)
+		fmt.Printf("%s %s\n", ui.ErrorText.Render("[DEBUG ERROR]"), msg)
 	}
 }
 
@@ -58,7 +58,7 @@ func (d *DebugLogger) Error(format string, args ...interface{}) {
 func (d *DebugLogger) Warning(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackWarning.Render("[DEBUG WARNING]"), msg)
+		fmt.Printf("%s %s\n", ui.WarningText.Render("[DEBUG WARNING]"), msg)
 	}
 }
 
@@ -67,7 +67,7 @@ func (d *DebugLogger) Warning(format string, args ...interface{}) {
 func (d *DebugLogger) Performance(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackText.Render("[DEBUG PERF]"), msg)
+		fmt.Printf("%s %s\n", ui.Text.Render("[DEBUG PERF]"), msg)
 	}
 }
 
@@ -76,6 +76,6 @@ func (d *DebugLogger) Performance(format string, args ...interface{}) {
 func (d *DebugLogger) State(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.FeedbackText.Render("[DEBUG STATE]"), msg)
+		fmt.Printf("%s %s\n", ui.Text.Render("[DEBUG STATE]"), msg)
 	}
 }
