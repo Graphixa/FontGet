@@ -100,6 +100,15 @@ var rootCmd = &cobra.Command{
 		if !skipLicenseCommands[cmd.Name()] {
 			// Run first-run onboarding (welcome, license, settings)
 			if err := onboarding.RunFirstRunOnboarding(); err != nil {
+				// If onboarding was cancelled or incomplete, exit gracefully
+				// The first run status remains false, so onboarding will restart on next command
+				// Don't show error message for cancellation - it's expected behavior
+				if err.Error() == "onboarding cancelled - please complete setup to continue" ||
+					err.Error() == "onboarding incomplete - please complete setup to continue" {
+					// Exit silently - user cancelled, will be prompted again next time
+					os.Exit(0)
+				}
+				// For other errors, return them normally
 				return err
 			}
 		}

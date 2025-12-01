@@ -47,6 +47,12 @@ var (
 	// Colors: Set by InitStyles() from theme
 	InfoText = lipgloss.NewStyle()
 
+	// SecondaryText - Secondary informational text using accent2 color
+	// Usage: Secondary informational messages, headings, labels that need accent2 color
+	// Example: ui.SecondaryText.Render("Secondary information")
+	// Colors: Set by InitStyles() from theme
+	SecondaryText = lipgloss.NewStyle()
+
 	// WarningText - Warning messages
 	// Usage: Warning messages, cautions
 	// Example: ui.WarningText.Render("Warning: This action cannot be undone")
@@ -426,6 +432,9 @@ func InitStyles() error {
 	InfoText = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colors.Accent))
 
+	SecondaryText = lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colors.Accent2))
+
 	WarningText = lipgloss.NewStyle().
 		Foreground(lipgloss.Color(colors.Warning))
 
@@ -455,13 +464,13 @@ func InitStyles() error {
 
 	// COMMAND COMPONENT
 	CommandKey = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
+		Foreground(lipgloss.Color(colors.GreyMid)).
 		Background(lipgloss.Color(colors.GreyDark)).
 		Bold(true).
 		Padding(0, 1)
 
 	CommandLabel = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
+		Foreground(lipgloss.Color(colors.GreyMid)).
 		Bold(true)
 
 	// CARD COMPONENT
@@ -489,20 +498,20 @@ func InitStyles() error {
 		Bold(true)
 
 	ButtonSelected = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
-		Background(lipgloss.Color(colors.GreyDark)).
+		Foreground(lipgloss.Color(colors.GreyDark)).  // Inverted: dark text
+		Background(lipgloss.Color(colors.GreyLight)). // Inverted: light background
 		Bold(true)
 
 	// CHECKBOX COMPONENT
 	CheckboxChecked = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Success)).
+		Foreground(lipgloss.Color(colors.Accent2)). // Use accent color instead of success
 		Bold(true)
 
 	CheckboxItemSelected = lipgloss.NewStyle().
 		Background(lipgloss.Color(colors.GreyDark))
 
 	CheckboxCursor = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent)).
+		Foreground(lipgloss.Color(colors.Accent2)).
 		Bold(true)
 
 	// SWITCH COMPONENT
@@ -511,8 +520,8 @@ func InitStyles() error {
 		Bold(true)
 
 	SwitchLeftSelected = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
-		Background(lipgloss.Color(colors.GreyDark)).
+		Foreground(lipgloss.Color(colors.GreyDark)).  // Inverted: dark text
+		Background(lipgloss.Color(colors.GreyLight)). // Inverted: light background
 		Bold(true)
 
 	SwitchRightNormal = lipgloss.NewStyle().
@@ -520,8 +529,8 @@ func InitStyles() error {
 		Bold(true)
 
 	SwitchRightSelected = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
-		Background(lipgloss.Color(colors.GreyDark)).
+		Foreground(lipgloss.Color(colors.GreyDark)).  // Inverted: dark text
+		Background(lipgloss.Color(colors.GreyLight)). // Inverted: light background
 		Bold(true)
 
 	SwitchSeparator = lipgloss.NewStyle().

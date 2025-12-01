@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"fontget/internal/config"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // OnboardingStep represents a single step in the onboarding flow
@@ -92,14 +94,36 @@ func RunFirstRunOnboarding() error {
 		return nil // Not first run, skip onboarding
 	}
 
-	// Create and run the default onboarding flow
-	flow := NewDefaultOnboardingFlow()
-	if err := flow.Run(); err != nil {
-		// Error messages from flow.Run() are already user-friendly
-		return err
+	// Use enhanced onboarding flow with interactive TUI
+	model := NewEnhancedOnboardingModel()
+	program := tea.NewProgram(model, tea.WithAltScreen())
+
+	finalModel, err := program.Run()
+	if err != nil {
+		// User-friendly error message per verbose/debug guidelines
+		return fmt.Errorf("onboarding failed: %w", err)
 	}
 
-	// Mark first run as completed
+	// Check if onboarding was actually completed (not just quit early)
+	if m, ok := finalModel.(*EnhancedOnboardingModel); ok {
+		if m.quitting && !m.onboardingCompleted {
+			// User quit early (Ctrl+C, Q, etc.) - don't mark as completed
+			// Return a specific error that indicates cancellation (not failure)
+			// This allows the command to exit gracefully, and onboarding will restart on next command
+			// since FirstRunCompleted is still false
+			return fmt.Errorf("onboarding cancelled - please complete setup to continue")
+		}
+		if !m.onboardingCompleted {
+			// User didn't complete the flow - don't mark as completed
+			// Onboarding will restart on next command since FirstRunCompleted is still false
+			return fmt.Errorf("onboarding incomplete - please complete setup to continue")
+		}
+	} else {
+		// Couldn't cast to EnhancedOnboardingModel - assume incomplete
+		return fmt.Errorf("onboarding incomplete - please complete setup to continue")
+	}
+
+	// Only mark as completed if user successfully finished the entire flow
 	if err := config.MarkFirstRunCompleted(); err != nil {
 		// User-friendly error message per verbose/debug guidelines
 		return fmt.Errorf("unable to complete setup: %w", err)
