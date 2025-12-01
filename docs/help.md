@@ -173,33 +173,6 @@ fontget sources update --verbose
 
 ---
 
-### `cache`
-
-#### Purpose
-Manage the font cache for performance and storage
-
-#### Why It Matters
-Cache can grow large, users need to manage it and troubleshoot issues
-
-#### Subcommands
-- `status` - Show cache statistics
-- `clear` - Clear all cached data
-- `validate` - Check cache integrity
-
-#### Usage Example
-```bash
-# Show cache information
-fontget cache status
-
-# Clear all cached data
-fontget cache clear
-
-# Validate cache integrity
-fontget cache validate
-```
-
----
-
 ### `config`
 
 #### Purpose
@@ -346,10 +319,6 @@ fontget import --file fonts.csv
 | &nbsp;&nbsp;&nbsp;- `update` | Update source data | `--verbose, -v` |
 | &nbsp;&nbsp;&nbsp;- `manage` | Interactive management |  |
 | &nbsp;&nbsp;&nbsp;- `validate` | Validate sources integrity |  |
-| `cache` | Manage font cache |  |
-| &nbsp;&nbsp;&nbsp;- `status` | Show cache statistics |  |
-| &nbsp;&nbsp;&nbsp;- `clear` | Clear cached data |  |
-| &nbsp;&nbsp;&nbsp;- `validate` | Validate cache integrity |  |
 | `config` | Manage configuration |  |
 | &nbsp;&nbsp;&nbsp;- `info` | Display current config |  |
 | &nbsp;&nbsp;&nbsp;- `edit` | Open config file in editor |  |
