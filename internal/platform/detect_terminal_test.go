@@ -3,6 +3,7 @@ package platform
 import (
 	"os"
 	"testing"
+	"time"
 )
 
 func TestClassifyTerminalTheme(t *testing.T) {
@@ -106,13 +107,20 @@ func TestTerminalThemeFromEnvOrDetectOverride(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			orig := os.Getenv(envVar)
-			defer os.Setenv(envVar, orig)
+			defer func() {
+				if orig != "" {
+					os.Setenv(envVar, orig)
+				} else {
+					os.Unsetenv(envVar)
+				}
+			}()
 
-			if err := os.Setenv(envVar, tt.value); err != nil {
-				t.Fatalf("failed to set %s: %v", envVar, err)
-			}
+			os.Setenv(envVar, tt.value)
 
-			res, err := TerminalThemeFromEnvOrDetect(envVar, 0)
+			// Use a very short timeout to prevent hanging in CI environments
+			// Since we're setting the override, detection should never be called,
+			// but this ensures the test completes quickly if something goes wrong
+			res, err := TerminalThemeFromEnvOrDetect(envVar, 10*time.Millisecond)
 			if err != nil {
 				t.Fatalf("TerminalThemeFromEnvOrDetect returned error with override %q: %v", tt.value, err)
 			}
