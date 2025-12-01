@@ -9,6 +9,7 @@
 
 # Set error handling
 $ErrorActionPreference = "Stop"
+$ProgressPreference = 'SilentlyContinue'
 
 # Repository information
 $Repo = "Graphixa/FontGet"
