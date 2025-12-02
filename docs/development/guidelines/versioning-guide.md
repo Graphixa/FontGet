@@ -4,11 +4,6 @@
 
 This guide explains how versioning works in FontGet, from development builds to production releases. It covers semantic versioning, git tags, CI/CD integration, and the self-update system.
 
-**Related Documents:**
-- `docs/CI_CD_PLAN.md` - How CI/CD uses versions
-
----
-
 ## 🎯 What is Versioning?
 
 **Versioning** is a way to identify different releases of your software. Each version number tells users:
