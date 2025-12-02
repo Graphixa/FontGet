@@ -47,11 +47,12 @@ winget install --id=Graphixa.FontGet
 #### Homebrew (Mac)
 
 ```sh
+brew tap Graphixa/homebrew-tap
 brew install fontget
 ```
 
 > [!NOTE]
-> Homebrew installation is coming soon. For now, use the shell install script.
+> You need to add the tap first before installing, as FontGet is not in the main Homebrew repository.
 
 #### Chocolatey (Windows)
 
@@ -65,11 +66,12 @@ choco install fontget
 #### Scoop (Windows)
 
 ```powershell
+scoop bucket add fontget https://github.com/Graphixa/scoop-bucket
 scoop install fontget
 ```
 
 > [!NOTE]
-> Scoop bucket is coming soon. For now, use the PowerShell install script.
+> You need to add the bucket first before installing, as FontGet is not in the main Scoop repository.
 
 ### Debian/Ubuntu (`.deb` package)
 

@@ -60,6 +60,7 @@ choco install fontget
 **[Scoop](https://scoop.sh/)**
 
 ```powershell
+scoop bucket add fontget https://github.com/Graphixa/scoop-bucket
 scoop install fontget
 ```
 
@@ -68,6 +69,7 @@ scoop install fontget
 **[Homebrew](https://formulae.brew.sh/)**
 
 ```sh
+brew tap Graphixa/homebrew-tap
 brew install fontget
 ```
 
