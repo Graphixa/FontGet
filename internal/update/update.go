@@ -99,6 +99,10 @@ func UpdateToLatest() error {
 		return mapLibraryError(err)
 	}
 
+	// Clean up old binary backup file after successful update
+	// The library may create a .old file on Windows during the update process
+	cleanupOldBinary(cmdPath)
+
 	return nil
 }
 
@@ -149,7 +153,31 @@ func UpdateToVersion(targetVersion string) error {
 		return mapLibraryError(err)
 	}
 
+	// Clean up old binary backup file after successful update
+	// The library may create a .old file on Windows during the update process
+	cleanupOldBinary(cmdPath)
+
 	return nil
+}
+
+// cleanupOldBinary removes the .old backup file created during updates
+// On Windows, the self-update library renames the old binary to .old before replacing it
+// This function cleans up that backup file after a successful update
+// Errors during cleanup are silently ignored to avoid failing the update process
+func cleanupOldBinary(execPath string) {
+	// Construct the .old backup file path
+	oldPath := execPath + ".old"
+	
+	// Check if the backup file exists
+	if _, err := os.Stat(oldPath); err == nil {
+		// File exists, try to remove it
+		if err := os.Remove(oldPath); err != nil {
+			// Silently ignore cleanup errors - the .old file is just a backup
+			// and can be manually removed if needed. We don't want to fail the
+			// update process if cleanup fails, as the update itself was successful.
+			_ = err
+		}
+	}
 }
 
 // parseVersion parses a version string to semver.Version
