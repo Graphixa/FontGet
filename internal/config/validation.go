@@ -140,13 +140,13 @@ func validateConfigurationSection(config map[string]interface{}) ValidationError
 			}
 		default:
 			errors = append(errors, ValidationError{
-				Field:   "Configuration.UsePopularitySort",
+				Field:   "Configuration.EnablePopularitySort",
 				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(usePopularitySort)),
 			})
 		}
 	} else {
 		errors = append(errors, ValidationError{
-			Field:   "Configuration.UsePopularitySort",
+			Field:   "Configuration.EnablePopularitySort",
 			Message: "field is required",
 		})
 	}
@@ -180,35 +180,35 @@ func validateLoggingSection(logging map[string]interface{}) ValidationErrors {
 		})
 	}
 
-	// Validate MaxSize
-	if maxSize, exists := logging["MaxSize"]; exists {
+	// Validate MaxLogSize
+	if maxSize, exists := logging["MaxLogSize"]; exists {
 		if maxSizeStr, ok := maxSize.(string); ok {
 			if maxSizeStr == "" {
 				errors = append(errors, ValidationError{
-					Field:   "Logging.MaxSize",
+					Field:   "Logging.MaxLogSize",
 					Message: "cannot be empty",
 				})
 			}
 		} else {
 			errors = append(errors, ValidationError{
-				Field:   "Logging.MaxSize",
+				Field:   "Logging.MaxLogSize",
 				Message: fmt.Sprintf("must be a string, got %s", getTypeName(maxSize)),
 			})
 		}
 	} else {
 		errors = append(errors, ValidationError{
-			Field:   "Logging.MaxSize",
+			Field:   "Logging.MaxLogSize",
 			Message: "field is required",
 		})
 	}
 
-	// Validate MaxFiles
-	if maxFiles, exists := logging["MaxFiles"]; exists {
+	// Validate MaxLogFiles
+	if maxFiles, exists := logging["MaxLogFiles"]; exists {
 		switch v := maxFiles.(type) {
 		case int:
 			if v <= 0 {
 				errors = append(errors, ValidationError{
-					Field:   "Logging.MaxFiles",
+					Field:   "Logging.MaxLogFiles",
 					Message: "must be greater than 0",
 				})
 			}
@@ -216,7 +216,7 @@ func validateLoggingSection(logging map[string]interface{}) ValidationErrors {
 			// YAML numbers are often parsed as float64
 			if v <= 0 {
 				errors = append(errors, ValidationError{
-					Field:   "Logging.MaxFiles",
+					Field:   "Logging.MaxLogFiles",
 					Message: "must be greater than 0",
 				})
 			}
@@ -224,24 +224,24 @@ func validateLoggingSection(logging map[string]interface{}) ValidationErrors {
 			// Try to convert string to int
 			if intVal, err := strconv.Atoi(v); err != nil {
 				errors = append(errors, ValidationError{
-					Field:   "Logging.MaxFiles",
+					Field:   "Logging.MaxLogFiles",
 					Message: fmt.Sprintf("must be an integer, got string '%s'", v),
 				})
 			} else if intVal <= 0 {
 				errors = append(errors, ValidationError{
-					Field:   "Logging.MaxFiles",
+					Field:   "Logging.MaxLogFiles",
 					Message: "must be greater than 0",
 				})
 			}
 		default:
 			errors = append(errors, ValidationError{
-				Field:   "Logging.MaxFiles",
+				Field:   "Logging.MaxLogFiles",
 				Message: fmt.Sprintf("must be an integer, got %s", getTypeName(maxFiles)),
 			})
 		}
 	} else {
 		errors = append(errors, ValidationError{
-			Field:   "Logging.MaxFiles",
+			Field:   "Logging.MaxLogFiles",
 			Message: "field is required",
 		})
 	}
@@ -338,7 +338,7 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 			}
 		default:
 			errors = append(errors, ValidationError{
-				Field:   "Update.CheckInterval",
+				Field:   "Update.UpdateCheckInterval",
 				Message: fmt.Sprintf("must be an integer, got %s", getTypeName(checkInterval)),
 			})
 		}

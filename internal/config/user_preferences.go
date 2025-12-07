@@ -46,7 +46,6 @@ type NetworkSection struct {
 // LimitsSection represents size limits configuration
 type LimitsSection struct {
 	MaxSourceFileSize  string `yaml:"MaxSourceFileSize"`  // Maximum size for source JSON files (e.g., "50MB")
-	MinFontFileSize    string `yaml:"MinFontFileSize"`    // Minimum valid font file size (e.g., "1KB")
 	FileCopyBufferSize string `yaml:"FileCopyBufferSize"` // Buffer size for file operations (e.g., "32KB")
 }
 
@@ -112,7 +111,6 @@ func DefaultUserPreferences() *AppConfig {
 		},
 		Limits: LimitsSection{
 			MaxSourceFileSize:  "50MB",
-			MinFontFileSize:    "1KB",
 			FileCopyBufferSize: "32KB",
 		},
 		Update: UpdateSection{
@@ -201,9 +199,6 @@ func GetUserPreferences() *AppConfig {
 			// Merge Limits section if it exists (optional for backward compatibility)
 			if loadedConfig.Limits.MaxSourceFileSize != "" {
 				config.Limits.MaxSourceFileSize = loadedConfig.Limits.MaxSourceFileSize
-			}
-			if loadedConfig.Limits.MinFontFileSize != "" {
-				config.Limits.MinFontFileSize = loadedConfig.Limits.MinFontFileSize
 			}
 			if loadedConfig.Limits.FileCopyBufferSize != "" {
 				config.Limits.FileCopyBufferSize = loadedConfig.Limits.FileCopyBufferSize
@@ -450,7 +445,6 @@ Network:
   DownloadTimeout: "30s" # Download timeout: cancel if no data transferred for this duration (stall detection)
 Limits:
   MaxSourceFileSize: "50MB" # Maximum size for source JSON files
-  MinFontFileSize: "1KB"     # Minimum valid font file size
   FileCopyBufferSize: "32KB" # Buffer size for file operations
 Update:
   AutoCheck: true # Check for updates on startup
@@ -490,7 +484,6 @@ func ValidateUserPreferences(config *AppConfig) error {
 		},
 		"Limits": map[string]interface{}{
 			"MaxSourceFileSize":  config.Limits.MaxSourceFileSize,
-			"MinFontFileSize":    config.Limits.MinFontFileSize,
 			"FileCopyBufferSize": config.Limits.FileCopyBufferSize,
 		},
 		"Update": map[string]interface{}{
