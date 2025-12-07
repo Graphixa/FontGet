@@ -18,8 +18,8 @@ func TestCheckboxList_Render(t *testing.T) {
 				HasFocus: true,
 			},
 			verify: func(t *testing.T, output string) {
-				if output == "" {
-					t.Error("Render() should return empty string for empty list")
+				if output != "" {
+					t.Errorf("Render() should return empty string for empty list, got: %q", output)
 				}
 			},
 		},

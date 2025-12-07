@@ -1,6 +1,7 @@
 package components
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -13,12 +14,12 @@ func TestButton_Render(t *testing.T) {
 		{
 			name:     "unselected button",
 			button:   Button{Text: "OK", Selected: false},
-			wantCont: "[   OK   ]",
+			wantCont: "[  OK  ]",
 		},
 		{
 			name:     "selected button",
 			button:   Button{Text: "Next", Selected: true},
-			wantCont: "[   Next  ]",
+			wantCont: "[  Next  ]",
 		},
 		{
 			name:     "custom action button",
@@ -33,9 +34,10 @@ func TestButton_Render(t *testing.T) {
 			if got == "" {
 				t.Error("Render() returned empty string")
 			}
-			// Check that the button text is present
-			if len(got) < len(tt.wantCont) {
-				t.Errorf("Render() output too short, got: %q", got)
+			// Check that the button text is present (strip ANSI codes for comparison)
+			// The rendered output includes ANSI color codes, so we check if it contains the expected text
+			if !strings.Contains(got, tt.wantCont) {
+				t.Errorf("Render() output should contain %q, got: %q", tt.wantCont, got)
 			}
 		})
 	}
