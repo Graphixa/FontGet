@@ -90,6 +90,8 @@ FontGet uses a clear categorization system for different types of UI elements:
 ### 3. DATA DISPLAY STYLES - Tables, lists, and data presentation
 - **TableHeader** - Column headers (Terminal default - no theme color)
 - **TableSourceName** - Font names in search/add results (uses `accent2`)
+  - Used by `RenderSourceNameWithTag()` for colored source names with tags
+  - For plain source names, use `Text.Render(name) + " " + RenderSourceTag(isBuiltIn)`
 - **TableRow** - Regular table rows (Terminal default - no theme color)
 - **TableRowSelected** - Selected rows (uses `grey_dark` background)
 
@@ -173,6 +175,11 @@ ui.CardTitle.Render("Font Details")
 ui.CardLabel.Render("Name:")
 ui.CardContent.Render("Roboto Mono")
 ui.CardBorder.Render("Card content here")
+
+// Source name rendering
+ui.RenderSourceNameWithTag("Google Fonts", true)  // Colored name with tag
+ui.RenderSourceTag(true)  // Just the tag: "[Built-in]"
+ui.Text.Render("Google Fonts") + " " + ui.RenderSourceTag(true)  // Plain name with styled tag
 ```
 
 ### Status Report Styling
@@ -315,6 +322,26 @@ fmt.Printf("%-*s %-*s %-*s\n",
     TableColSource, "Source")
 ```
 
+## Utility Functions
+
+### Source Name Rendering
+
+FontGet provides utility functions for rendering source names with type tags:
+
+- **`RenderSourceNameWithTag(name, isBuiltIn)`** - Renders source name with tag using colored `TableSourceName` style
+  - Used in: search, add, and other commands where colored source names are desired
+  - Example: `ui.RenderSourceNameWithTag("Google Fonts", true)` → "Google Fonts [Built-in]" (name colored, tag styled)
+
+- **`RenderSourceTag(isBuiltIn)`** - Renders just the type tag (`[Built-in]` or `[Custom]`)
+  - Can be used independently for flexible rendering
+  - Example: `ui.RenderSourceTag(true)` → "[Built-in]"
+
+- **Plain source names** - For uncolored source names with styled tags, combine manually:
+  - Example: `ui.Text.Render("Google Fonts") + " " + ui.RenderSourceTag(true)`
+  - Used in: sources manage command where source names should be plain text
+
+**Note**: The sources manage command uses plain `Text` style for source names to maintain a cleaner, less colorful appearance, while still showing styled tags.
+
 ## Usage Guidelines
 
 1. **Consistency** - Use the same style category for similar elements
@@ -327,6 +354,7 @@ fmt.Printf("%-*s %-*s %-*s\n",
 8. **Padding Control** - Use vertical and horizontal padding separately for different use cases
 9. **Semantic Colors** - Reference semantic color keys in theme files, not specific hex values
 10. **Terminal Defaults** - Use terminal default colors for base text to ensure compatibility
+11. **Source Name Styling** - Use `RenderSourceNameWithTag()` for colored names, or combine `Text` with `RenderSourceTag()` for plain names
 
 ## Migration Notes
 

@@ -518,7 +518,7 @@ func (m SettingsConfirmModel) View() string {
 		},
 		{
 			name:        "Sorting method",
-			value:       formatSorting(m.defaults.Configuration.UsePopularitySort),
+			value:       formatSorting(m.defaults.Configuration.EnablePopularitySort),
 			description: "When searching for fonts, results will be sorted by popularity first (most commonly used fonts appear first), then alphabetically. This helps you find popular fonts more easily.",
 		},
 	}

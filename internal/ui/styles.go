@@ -352,17 +352,23 @@ var (
 // UTILITY FUNCTIONS - Common rendering patterns
 // ============================================================================
 
-// RenderSourceNameWithTag renders a source name with its type tag
-// Usage: Display source names with [Built-in] or [Custom] tags
+// RenderSourceTag renders just the source type tag ([Built-in] or [Custom])
+// Usage: Display source type tags separately from source names
+// Example: ui.RenderSourceTag(true) // Returns "[Built-in]"
+func RenderSourceTag(isBuiltIn bool) string {
+	if isBuiltIn {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("#9399b2")).Render("[Built-in]") // Subtext 0
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render("[Custom]") // Text
+}
+
+// RenderSourceNameWithTag renders a source name with its type tag using TableSourceName color
+// Usage: Display source names with [Built-in] or [Custom] tags (colored name)
 // Example: ui.RenderSourceNameWithTag("Google Fonts", true)
+// Note: Uses TableSourceName style for the name
 func RenderSourceNameWithTag(name string, isBuiltIn bool) string {
 	baseName := TableSourceName.Render(name)
-	var tag string
-	if isBuiltIn {
-		tag = lipgloss.NewStyle().Foreground(lipgloss.Color("#9399b2")).Render("[Built-in]") // Subtext 0
-	} else {
-		tag = lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render("[Custom]") // Text
-	}
+	tag := RenderSourceTag(isBuiltIn)
 	return baseName + " " + tag
 }
 

@@ -120,8 +120,8 @@ func validateConfigurationSection(config map[string]interface{}) ValidationError
 	}
 	// If DefaultEditor doesn't exist, that's fine - it's optional
 
-	// Validate UsePopularitySort (required boolean)
-	if usePopularitySort, exists := config["UsePopularitySort"]; exists {
+	// Validate EnablePopularitySort (required boolean)
+	if usePopularitySort, exists := config["EnablePopularitySort"]; exists {
 		switch v := usePopularitySort.(type) {
 		case bool:
 			// Valid boolean value
@@ -134,7 +134,7 @@ func validateConfigurationSection(config map[string]interface{}) ValidationError
 				// Valid boolean string
 			default:
 				errors = append(errors, ValidationError{
-					Field:   "Configuration.UsePopularitySort",
+					Field:   "Configuration.EnablePopularitySort",
 					Message: fmt.Sprintf("must be a boolean, got string '%s'", v),
 				})
 			}
@@ -305,13 +305,13 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 		}
 	}
 
-	// Validate CheckInterval (optional integer, must be > 0 if present)
-	if checkInterval, exists := update["CheckInterval"]; exists {
+	// Validate UpdateCheckInterval (optional integer, must be > 0 if present)
+	if checkInterval, exists := update["UpdateCheckInterval"]; exists {
 		switch v := checkInterval.(type) {
 		case int:
 			if v <= 0 {
 				errors = append(errors, ValidationError{
-					Field:   "Update.CheckInterval",
+					Field:   "Update.UpdateCheckInterval",
 					Message: "must be greater than 0",
 				})
 			}
@@ -319,7 +319,7 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 			// YAML numbers are often parsed as float64
 			if v <= 0 {
 				errors = append(errors, ValidationError{
-					Field:   "Update.CheckInterval",
+					Field:   "Update.UpdateCheckInterval",
 					Message: "must be greater than 0",
 				})
 			}
@@ -327,12 +327,12 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 			// Try to convert string to int
 			if intVal, err := strconv.Atoi(v); err != nil {
 				errors = append(errors, ValidationError{
-					Field:   "Update.CheckInterval",
+					Field:   "Update.UpdateCheckInterval",
 					Message: fmt.Sprintf("must be an integer, got string '%s'", v),
 				})
 			} else if intVal <= 0 {
 				errors = append(errors, ValidationError{
-					Field:   "Update.CheckInterval",
+					Field:   "Update.UpdateCheckInterval",
 					Message: "must be greater than 0",
 				})
 			}
@@ -344,11 +344,11 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 		}
 	}
 
-	// Validate LastChecked (optional string, should be ISO timestamp if present)
-	if lastChecked, exists := update["LastChecked"]; exists {
+	// Validate LastUpdateCheck (optional string, should be ISO timestamp if present)
+	if lastChecked, exists := update["LastUpdateCheck"]; exists {
 		if _, ok := lastChecked.(string); !ok {
 			errors = append(errors, ValidationError{
-				Field:   "Update.LastChecked",
+				Field:   "Update.LastUpdateCheck",
 				Message: fmt.Sprintf("must be a string, got %s", getTypeName(lastChecked)),
 			})
 		}

@@ -93,7 +93,7 @@ func GetLogger() *Logger {
 	return globalLogger
 }
 
-// New creates a new logger instance
+// New creates a new logger instance using the default log directory
 func New(config Config) (*Logger, error) {
 	// Get the appropriate log directory based on OS
 	logDir, err := getLogDirectory()
@@ -101,14 +101,23 @@ func New(config Config) (*Logger, error) {
 		return nil, fmt.Errorf("failed to get log directory: %w", err)
 	}
 
+	// Create the log file in default directory
+	logFile := filepath.Join(logDir, "fontget.log")
+	return NewWithPath(config, logFile)
+}
+
+// NewWithPath creates a new logger instance with a custom log file path
+func NewWithPath(config Config, logFilePath string) (*Logger, error) {
+	// Extract directory from log file path
+	logDir := filepath.Dir(logFilePath)
+
 	// Create log directory if it doesn't exist
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
 	// Create the log file
-	logFile := filepath.Join(logDir, "fontget.log")
-	file, err := os.OpenFile(logFile, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}

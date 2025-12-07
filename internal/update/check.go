@@ -71,7 +71,7 @@ func FormatUpdateNotification(currentVersion, latestVersion string) string {
 	return fmt.Sprintf("FontGet v%s is available (you have v%s).\nRun 'fontget update' to upgrade.", latestVersion, currentVersion)
 }
 
-// GetLastCheckedTimestamp returns the current time as an ISO timestamp string
+// GetLastCheckedTimestamp returns the current time as an ISO timestamp string in UTC
 func GetLastCheckedTimestamp() string {
-	return time.Now().Format(time.RFC3339)
+	return time.Now().UTC().Format(time.RFC3339)
 }

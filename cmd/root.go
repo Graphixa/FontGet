@@ -56,26 +56,62 @@ var rootCmd = &cobra.Command{
 		return cmd.Help()
 	},
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// Load user preferences to get logging config
+		appConfig := config.GetUserPreferences()
+
 		// Initialize logger with appropriate level based on flags
-		config := logging.DefaultConfig()
+		logConfig := logging.DefaultConfig()
 
 		// Debug flag enables full logging with timestamps to console
 		if debug {
-			config.Level = logging.DebugLevel
-			config.ConsoleOutput = true // Show all logs to console in debug mode
+			logConfig.Level = logging.DebugLevel
+			logConfig.ConsoleOutput = true // Show all logs to console in debug mode
 		} else if verbose {
 			// Verbose flag enables INFO level but no console logging (cleaner output)
-			config.Level = logging.InfoLevel
-			config.ConsoleOutput = false // Don't show regular logs in verbose mode
+			logConfig.Level = logging.InfoLevel
+			logConfig.ConsoleOutput = false // Don't show regular logs in verbose mode
 		} else {
 			// Default mode: Log Info/Warn/Error to file (standard CLI behavior)
 			// Console output is minimal (errors only), but file has full audit trail
-			config.Level = logging.InfoLevel
-			config.ConsoleOutput = false
+			logConfig.Level = logging.InfoLevel
+			logConfig.ConsoleOutput = false
+		}
+
+		// Apply logging config from config.yaml if available
+		if appConfig != nil {
+			// Parse MaxLogSize from config (e.g., "10MB" -> 10)
+			if appConfig.Logging.MaxLogSize != "" {
+				maxSize, err := config.ParseMaxSize(appConfig.Logging.MaxLogSize)
+				if err == nil {
+					logConfig.MaxSize = maxSize
+				}
+			}
+
+			// Use MaxLogFiles from config
+			if appConfig.Logging.MaxLogFiles > 0 {
+				logConfig.MaxBackups = appConfig.Logging.MaxLogFiles
+			}
 		}
 
 		var err error
-		logger, err = logging.New(config)
+		// Use LogPath from config if available, otherwise use default
+		if appConfig != nil && appConfig.Logging.LogPath != "" {
+			expandedLogPath, expandErr := config.ExpandLogPath(appConfig.Logging.LogPath)
+			if expandErr == nil {
+				logger, err = logging.NewWithPath(logConfig, expandedLogPath)
+				if err != nil {
+					// Fallback to default if NewWithPath fails
+					logger, err = logging.New(logConfig)
+				}
+			} else {
+				// Fallback to default if expansion fails
+				logger, err = logging.New(logConfig)
+			}
+		} else {
+			// Use default log path
+			logger, err = logging.New(logConfig)
+		}
+
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger: %w", err)
 		}
@@ -236,21 +272,45 @@ func performStartupUpdateCheck() {
 	// Perform check in background
 	update.PerformStartupCheck(
 		appConfig.Update.AutoCheck,
-		appConfig.Update.CheckInterval,
-		appConfig.Update.LastChecked,
+		appConfig.Update.UpdateCheckInterval,
+		appConfig.Update.LastUpdateCheck,
 		func(result *update.CheckResult) {
-			// Update LastChecked timestamp in config
-			appConfig.Update.LastChecked = update.GetLastCheckedTimestamp()
+			// Update LastUpdateCheck timestamp in config (UTC)
+			appConfig.Update.LastUpdateCheck = update.GetLastCheckedTimestamp()
 			if err := config.SaveUserPreferences(appConfig); err != nil {
 				// Silently fail - don't interrupt user experience
 				if logger != nil {
-					logger.Error("Failed to save LastChecked timestamp: %v", err)
+					logger.Error("Failed to save LastUpdateCheck timestamp: %v", err)
 				}
 			}
 
 			// Show notification if update is available
 			if result.UpdateAvailable {
-				fmt.Printf("\n%s\n", ui.InfoText.Render(update.FormatUpdateNotification(result.CurrentVersion, result.LatestVersion)))
+				// Check if AutoUpdate is enabled
+				if appConfig.Update.AutoUpdate {
+					// Auto-install update
+					if logger != nil {
+						logger.Info("AutoUpdate enabled - automatically installing update from %s to %s", result.CurrentVersion, result.LatestVersion)
+					}
+					// Perform update in background (non-blocking)
+					go func() {
+						err := update.UpdateToLatest()
+						if err != nil {
+							if logger != nil {
+								logger.Error("Auto-update failed: %v", err)
+							}
+							fmt.Printf("\n%s\n", ui.ErrorText.Render(fmt.Sprintf("Auto-update failed: %v. Run 'fontget update' manually.", err)))
+						} else {
+							if logger != nil {
+								logger.Info("Auto-update successful - updated to %s", result.LatestVersion)
+							}
+							fmt.Printf("\n%s\n", ui.SuccessText.Render(fmt.Sprintf("FontGet has been automatically updated to v%s", result.LatestVersion)))
+						}
+					}()
+				} else {
+					// Just notify user
+					fmt.Printf("\n%s\n", ui.InfoText.Render(update.FormatUpdateNotification(result.CurrentVersion, result.LatestVersion)))
+				}
 			}
 		},
 	)

@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"fontget/internal/config"
+	"fontget/internal/network"
 	"io"
 	"net/http"
 	"os"
@@ -16,8 +18,10 @@ import (
 // FetchURLContent fetches content from a URL with cross-platform compatibility
 func FetchURLContent(url string) (string, error) {
 	// Create HTTP client with timeout
+	appConfig := config.GetUserPreferences()
+	generalTimeout := config.ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: generalTimeout,
 	}
 
 	// Make request
@@ -65,8 +69,18 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	req.Header.Set("User-Agent", "fontget-cli")
 
 	// Download file
+	appConfig := config.GetUserPreferences()
+	downloadTimeout := config.ParseDuration(appConfig.Network.DownloadTimeout, 30*time.Second)
+
+	// Don't use http.Client.Timeout for downloads - it times out even during active transfers
+	// Instead, use ResponseHeaderTimeout to detect connection issues early
+	// The stall detector handles inactivity detection (no overall timeout needed)
+	transport := &http.Transport{
+		ResponseHeaderTimeout: 10 * time.Second, // Detect connection/header issues early
+	}
 	client := &http.Client{
-		Timeout: 5 * time.Minute, // Increased timeout for large archive files
+		Transport: transport,
+		// NO Timeout field - let stall detector handle it
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -77,6 +91,12 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, font.DownloadURL)
 	}
+
+	// Wrap response body with stall detection
+	// No overall timeout (0) - downloads can take as long as needed if there's activity
+	// Only timeout if no activity for downloadTimeout duration
+	stallReader := network.WrapReaderWithStallDetection(resp.Body, downloadTimeout, 0)
+	defer stallReader.Close()
 
 	// Create target file
 	targetPath := filepath.Join(targetDir, font.Path)
@@ -90,9 +110,9 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	if font.SHA != "" {
 		// Create SHA-256 hash
 		hash := sha256.New()
-		tee := io.TeeReader(resp.Body, hash)
+		tee := io.TeeReader(stallReader, hash)
 
-		// Copy file content
+		// Copy file content with stall detection
 		if _, err := io.Copy(file, tee); err != nil {
 			return "", fmt.Errorf("failed to write file: %w", err)
 		}
@@ -105,7 +125,8 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 		}
 	} else {
 		// Just copy the file content if we don't have a SHA hash
-		if _, err := io.Copy(file, resp.Body); err != nil {
+		// Use stallReader instead of resp.Body for stall detection
+		if _, err := io.Copy(file, stallReader); err != nil {
 			return "", fmt.Errorf("failed to write file: %w", err)
 		}
 	}

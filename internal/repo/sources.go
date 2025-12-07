@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fontget/internal/config"
+	"fontget/internal/network"
 	"fontget/internal/ui"
 )
 
@@ -21,7 +22,7 @@ var usePopularityScoring = true
 // SetPopularityScoring sets the popularity scoring preference from user config
 func SetPopularityScoring() {
 	userPrefs := config.GetUserPreferences()
-	usePopularityScoring = userPrefs.Configuration.UsePopularitySort
+	usePopularityScoring = userPrefs.Configuration.EnablePopularitySort
 }
 
 // SearchConfig contains all tunable parameters for the search algorithm
@@ -182,9 +183,18 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 		progress(0, 1, fmt.Sprintf("Downloading %s source...", sourceName))
 	}
 
-	// Create HTTP client with timeout to prevent hanging
+	// Create HTTP client - don't use Timeout for downloads
+	// ResponseHeaderTimeout detects connection issues early
+	// Stall detector handles inactivity detection (no overall timeout needed)
+	appConfig := config.GetUserPreferences()
+	downloadTimeout := config.ParseDuration(appConfig.Network.DownloadTimeout, 30*time.Second)
+
+	transport := &http.Transport{
+		ResponseHeaderTimeout: 10 * time.Second, // Detect connection/header issues early
+	}
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Transport: transport,
+		// NO Timeout field - let stall detector handle it
 	}
 	resp, err := client.Get(url)
 	if err != nil {
@@ -196,8 +206,14 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 		return nil, fmt.Errorf("failed to download %s source: HTTP %d", sourceName, resp.StatusCode)
 	}
 
+	// Wrap response body with stall detection
+	// No overall timeout (0) - downloads can take as long as needed if there's activity
+	// Only timeout if no activity for downloadTimeout duration
+	stallReader := network.WrapReaderWithStallDetection(resp.Body, downloadTimeout, 0)
+	defer stallReader.Close()
+
 	var sourceData SourceData
-	if err := json.NewDecoder(resp.Body).Decode(&sourceData); err != nil {
+	if err := json.NewDecoder(stallReader).Decode(&sourceData); err != nil {
 		return nil, fmt.Errorf("error parsing %s source: %w", sourceName, err)
 	}
 

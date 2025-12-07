@@ -346,9 +346,11 @@ func runSourcesUpdateVerbose() error {
 
 		fmt.Printf("Checking for updates for %s\n", sourceName)
 
-		// Create HTTP client with shorter timeout for faster error detection
+		// Create HTTP client with timeout for quick validation
+		appConfig := config.GetUserPreferences()
+		requestTimeout := config.ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
 		client := &http.Client{
-			Timeout: 5 * time.Second,
+			Timeout: requestTimeout,
 		}
 
 		// First, check if source is reachable with HEAD request (fast validation)

@@ -30,9 +30,9 @@ func ShouldCheckForUpdates(config *UpdateConfig) bool {
 	return time.Since(config.LastChecked) >= interval
 }
 
-// MarkChecked updates the LastChecked timestamp to now
+// MarkChecked updates the LastChecked timestamp to now (UTC)
 func MarkChecked(config *UpdateConfig) {
-	config.LastChecked = time.Now()
+	config.LastChecked = time.Now().UTC()
 }
 
 // DefaultUpdateConfig returns default update configuration

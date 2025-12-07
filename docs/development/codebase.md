@@ -348,6 +348,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Allows adding, editing, and removing custom sources
 - Handles source priority and configuration
 - Supports built-in source management
+- Uses reusable TUI components (CheckboxList, ButtonGroup) for consistent UI
 
 **Key Functions**:
 - `NewSourcesModel`: TUI model initialization
@@ -356,11 +357,21 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `addSource`: Adding new sources
 - `updateSource`: Editing existing sources
 - `saveChanges`: Persisting changes to manifest
+- `initCheckboxList`: Initializes checkbox list component from sources
+- `syncCheckboxListToSources`: Syncs checkbox state to sources
+- `syncSourcesToCheckboxList`: Syncs source state to checkbox list
+
+**Key Features**:
+- **Checkbox Component**: Uses `components.CheckboxList` for source enable/disable management
+- **Button Components**: Uses `components.ButtonGroup` for confirmation dialogs (save, delete)
+- **Plain Source Names**: Source names use `ui.Text` (plain text) with styled tags via `ui.RenderSourceTag()`
+- **Consistent UI**: Shares components with enhanced onboarding for unified experience
 
 **Interfaces**:
 - Uses `internal/config` for manifest operations
 - Uses `internal/functions` for source utilities
-- Uses `internal/ui` for TUI components
+- Uses `internal/ui` for TUI components and styling
+- Uses `internal/components` for reusable TUI components (CheckboxList, ButtonGroup)
 - Uses Bubble Tea for TUI framework
 
 **Status**: ✅ Active - Core functionality
@@ -578,6 +589,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - **AppConfig structure**: Configuration, Logging, Update, and Theme sections
   - **Theme configuration**: Theme.Name (theme file name) and Theme.Mode (dark/light)
   - Configuration loading, saving, and validation
+  - **Helper functions**: `ExpandLogPath()` (expands $home in log paths), `ParseMaxSize()` (parses "10MB" format)
 - `app_state.go`: Core application state types and functions
   - First-run state management
   - Source acceptance tracking
@@ -589,8 +601,14 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Theme files must be placed in `~/.fontget/themes/` directory
   - Empty theme name uses embedded default (Catppuccin)
   - Mode can be "dark" or "light" (defaults to "dark")
+- **Logging Configuration**: LogPath, MaxSize, and MaxFiles from config.yaml are connected to logger
+  - LogPath supports `$home` variable expansion
+  - MaxSize parses string format (e.g., "10MB") to integer
+- **Update Configuration**: AutoCheck, AutoUpdate, CheckInterval, and LastChecked are fully connected
+  - LastChecked uses UTC timezone for consistency
+  - AutoUpdate automatically installs updates when enabled and available
 
-**Status**: ✅ Active - Core configuration system with theme support
+**Status**: ✅ Active - Core configuration system with theme support and full config connections
 
 ### `internal/repo/`
 **Purpose**: Font repository management
@@ -640,6 +658,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - `RunSpinner`: Pin spinner wrapper with progress feedback
   - `hexToPinColor`: Converts hex colors to pin package color constants
   - Various rendering utilities for titles, errors, success messages
+  - `RenderSourceTag()`: Renders source type tags (`[Built-in]` or `[Custom]`) independently
+  - `RenderSourceNameWithTag()`: Renders source names with tags using colored `TableSourceName` style
 - `styles.go`: Centralized styling and theming
   - **Theme-aware styling system**: All styles initialized from theme files via `InitStyles()`
   - **Semantic color system**: Theme files define semantic color keys (accent, warning, error, etc.) that are referenced by multiple styles
@@ -709,10 +729,16 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: File logging system
 **Files**:
 - `logger.go`: Logger implementation with file rotation and level management
+  - `New()`: Creates logger with default OS-specific log directory
+  - `NewWithPath()`: Creates logger with custom log file path (used for config.yaml LogPath)
 - `config.go`: Logging configuration
 
 **Key Features**:
-- **File-based logging**: All logs written to `fontget.log` in platform-specific log directory
+- **File-based logging**: All logs written to `fontget.log` in platform-specific log directory OR custom path from config
+- **Config Integration**: LogPath, MaxSize, and MaxFiles from `config.yaml` are connected
+  - LogPath supports `$home` variable expansion (e.g., `$home/.fontget/logs/fontget.log`)
+  - MaxSize parses string format (e.g., "10MB") to integer megabytes
+  - MaxFiles controls number of rotated log files to keep
 - **Log rotation**: Automatic rotation based on size, age, and backup count
 - **Level management**: Log levels (ErrorLevel, InfoLevel, DebugLevel) controlled by verbose/debug flags
 - **Always active**: GetLogger() calls should always log to file regardless of verbose/debug flags
@@ -727,7 +753,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Use `GetLogger().Warn()` for warnings
 - Use `GetLogger().Debug()` for detailed debugging information
 
-**Status**: ✅ Active - Logging system
+**Status**: ✅ Active - Logging system with config.yaml integration
 
 ### `internal/sources/`
 **Purpose**: Source definitions
@@ -742,6 +768,22 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `version.go`: Version information
 
 **Status**: ✅ Active - Version management
+
+### `internal/update/`
+**Purpose**: Self-update system
+**Files**:
+- `update.go`: Update implementation (UpdateToLatest, UpdateToVersion)
+- `check.go`: Update checking logic (CheckForUpdates, PerformStartupCheck)
+- `config.go`: Update configuration types (UpdateConfig)
+
+**Key Features**:
+- **Auto-check on startup**: Checks config.yaml `AutoCheck` and `CheckInterval` settings
+- **Auto-update**: When `AutoUpdate: true` and update is available, automatically installs in background
+- **UTC timestamps**: `LastChecked` uses UTC timezone for consistency across timezones
+- **Non-blocking**: Startup checks run in goroutine to avoid blocking application startup
+- **Error handling**: Graceful fallback if update check fails (silent failure during startup)
+
+**Status**: ✅ Active - Self-update system with config.yaml integration
 
 ### `internal/templates/`
 **Purpose**: Code templates

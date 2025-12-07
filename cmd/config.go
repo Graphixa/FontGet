@@ -71,7 +71,7 @@ var configInfoCmd = &cobra.Command{
 		} else {
 			output.GetVerbose().Info("Using custom editor from configuration")
 		}
-		output.GetVerbose().Info("Logging configuration - Path: %s, MaxSize: %s", appConfig.Logging.LogPath, appConfig.Logging.MaxSize)
+		output.GetVerbose().Info("Logging configuration - Path: %s, MaxSize: %s", appConfig.Logging.LogPath, appConfig.Logging.MaxLogSize)
 		output.GetDebug().State("Editor resolution - DefaultEditor: '%s', Actual: '%s'", appConfig.Configuration.DefaultEditor, actualEditor)
 		output.GetDebug().State("Logging config: %+v", appConfig.Logging)
 
@@ -83,14 +83,14 @@ var configInfoCmd = &cobra.Command{
 		cards = append(cards, components.ConfigurationInfoCard(
 			configPath,
 			actualEditor,
-			fmt.Sprintf("%t", appConfig.Configuration.UsePopularitySort),
+			fmt.Sprintf("%t", appConfig.Configuration.EnablePopularitySort),
 		))
 
 		// Logging configuration card
 		cards = append(cards, components.LoggingConfigCard(
 			appConfig.Logging.LogPath,
-			appConfig.Logging.MaxSize,
-			fmt.Sprintf("%d", appConfig.Logging.MaxFiles),
+			appConfig.Logging.MaxLogSize,
+			fmt.Sprintf("%d", appConfig.Logging.MaxLogFiles),
 		))
 
 		// Render all cards

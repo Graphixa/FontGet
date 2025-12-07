@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/functions"
 	"fontget/internal/output"
@@ -20,19 +21,22 @@ import (
 
 // sourcesModel represents the main model for the sources management TUI
 type sourcesModel struct {
-	sources      []functions.SourceItem
-	cursor       int
-	manifest     *config.Manifest
-	state        string // "list", "add", "edit", "confirm", "save_confirm", "builtin_warning"
-	nameInput    textinput.Model
-	urlInput     textinput.Model
-	prefixInput  textinput.Model
-	focusedField int
-	err          string
-	editingIndex int
-	readOnly     bool // true when viewing built-in source details
-	width        int  // terminal width
-	height       int  // terminal height
+	sources       []functions.SourceItem
+	cursor        int
+	manifest      *config.Manifest
+	state         string // "list", "add", "edit", "confirm", "save_confirm", "builtin_warning"
+	nameInput     textinput.Model
+	urlInput      textinput.Model
+	prefixInput   textinput.Model
+	focusedField  int
+	err           string
+	editingIndex  int
+	readOnly      bool                     // true when viewing built-in source details
+	width         int                      // terminal width
+	height        int                      // terminal height
+	checkboxList  *components.CheckboxList // Checkbox list for sources
+	saveButtons   *components.ButtonGroup  // Button group for save confirmation
+	deleteButtons *components.ButtonGroup  // Button group for delete confirmation
 }
 
 // Styles are now centralized in internal/ui/styles.go
@@ -57,6 +61,17 @@ func NewSourcesModel() (*sourcesModel, error) {
 
 	// Sort sources using the centralized sorting function
 	functions.SortSources(sm.sources)
+
+	// Initialize checkbox list
+	sm.initCheckboxList()
+
+	// Initialize save confirmation buttons
+	sm.saveButtons = components.NewButtonGroup([]string{"Yes", "No"}, 0) // Yes selected by default
+	sm.saveButtons.SetFocus(true)                                        // Buttons have focus by default
+
+	// Initialize delete confirmation buttons
+	sm.deleteButtons = components.NewButtonGroup([]string{"Yes", "No"}, 0) // Yes selected by default
+	sm.deleteButtons.SetFocus(true)                                        // Buttons have focus by default
 
 	// Initialize text inputs with default width (will be updated on window resize)
 	sm.nameInput = textinput.New()
@@ -99,6 +114,56 @@ func (m *sourcesModel) updateInputWidths() {
 	m.prefixInput.Width = width
 }
 
+// initCheckboxList initializes the checkbox list from sources
+func (m *sourcesModel) initCheckboxList() {
+	items := make([]components.CheckboxItem, len(m.sources))
+	for i, source := range m.sources {
+		items[i] = components.CheckboxItem{
+			Label:   ui.Text.Render(source.Name) + " " + ui.RenderSourceTag(source.IsBuiltIn),
+			Checked: source.Enabled,
+			Enabled: true, // All sources can be toggled
+		}
+	}
+	m.checkboxList = components.NewCheckboxList(items)
+	m.checkboxList.Cursor = m.cursor
+	m.checkboxList.SetFocus(true) // Checkbox list has focus by default
+}
+
+// syncCheckboxListToSources syncs checkbox list state to sources
+func (m *sourcesModel) syncCheckboxListToSources() {
+	if m.checkboxList == nil {
+		return
+	}
+	// Update sources from checkbox list
+	for i := range m.sources {
+		if i < len(m.checkboxList.Items) {
+			m.sources[i].Enabled = m.checkboxList.Items[i].Checked
+		}
+	}
+	// Update cursor position
+	m.cursor = m.checkboxList.Cursor
+}
+
+// syncSourcesToCheckboxList syncs sources state to checkbox list
+func (m *sourcesModel) syncSourcesToCheckboxList() {
+	if m.checkboxList == nil {
+		return
+	}
+	// Ensure checkbox list has the right number of items
+	if len(m.checkboxList.Items) != len(m.sources) {
+		m.initCheckboxList()
+		return
+	}
+	// Update checkbox list from sources
+	for i := range m.checkboxList.Items {
+		if i < len(m.sources) {
+			m.checkboxList.Items[i].Checked = m.sources[i].Enabled
+			m.checkboxList.Items[i].Label = ui.Text.Render(m.sources[i].Name) + " " + ui.RenderSourceTag(m.sources[i].IsBuiltIn)
+		}
+	}
+	m.checkboxList.Cursor = m.cursor
+}
+
 // Init initializes the model
 func (m sourcesModel) Init() tea.Cmd {
 	return textinput.Blink
@@ -120,15 +185,17 @@ func (m sourcesModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // routeStateUpdate routes messages to the appropriate state handler based on current state
 func (m sourcesModel) routeStateUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Create pointer for methods that modify state
+	mp := &m
 	switch m.state {
 	case "list":
-		return m.updateList(msg)
+		return mp.updateList(msg)
 	case "add", "edit":
 		return m.updateForm(msg)
 	case "confirm":
-		return m.updateConfirm(msg)
+		return mp.updateConfirm(msg)
 	case "save_confirm":
-		return m.updateSaveConfirm(msg)
+		return mp.updateSaveConfirm(msg)
 	case "builtin_warning":
 		return m.updateBuiltinWarning(msg)
 	default:
@@ -137,31 +204,38 @@ func (m sourcesModel) routeStateUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // updateList handles updates in list state
-func (m sourcesModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *sourcesModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Ensure checkbox list is initialized
+	if m.checkboxList == nil {
+		m.initCheckboxList()
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+
+		// Handle checkbox list navigation and toggling
+		if m.checkboxList != nil && m.checkboxList.HasFocus {
+			handled := m.checkboxList.HandleKey(key)
+			if handled {
+				// Sync checkbox list state to sources
+				m.syncCheckboxListToSources()
+				return m, nil
+			}
+		}
+
+		switch key {
 		case "esc", "ctrl+c":
 			// Check if there are any changes made
 			if m.hasChanges() {
 				m.state = "save_confirm"
+				// Reset button focus when entering save confirmation
+				if m.saveButtons != nil {
+					m.saveButtons.ResetToDefault()
+					m.saveButtons.SetFocus(true)
+				}
 			} else {
 				return m, tea.Quit
-			}
-
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-
-		case "down", "j":
-			if m.cursor < len(m.sources)-1 {
-				m.cursor++
-			}
-
-		case " ", "enter":
-			if len(m.sources) > 0 {
-				m.sources[m.cursor].Enabled = !m.sources[m.cursor].Enabled
 			}
 
 		case "a":
@@ -196,6 +270,11 @@ func (m sourcesModel) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = "Built-in sources cannot be deleted. You can only enable/disable them."
 				} else {
 					m.state = "confirm"
+					// Reset button focus when entering delete confirmation
+					if m.deleteButtons != nil {
+						m.deleteButtons.ResetToDefault()
+						m.deleteButtons.SetFocus(true)
+					}
 				}
 			}
 
@@ -267,43 +346,99 @@ func (m sourcesModel) updateForm(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // updateConfirm handles updates in confirm state
 func (m sourcesModel) updateConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Work with pointer to ensure state changes persist
+	mp := &m
+	if mp.deleteButtons == nil {
+		mp.deleteButtons = components.NewButtonGroup([]string{"Yes", "No"}, 0)
+		mp.deleteButtons.SetFocus(true)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+
+		// Handle button navigation
+		action := mp.deleteButtons.HandleKey(key)
+		if action != "" {
+			switch action {
+			case "yes":
+				if len(mp.sources) > 0 {
+					mp.sources = append(mp.sources[:mp.cursor], mp.sources[mp.cursor+1:]...)
+					if mp.cursor >= len(mp.sources) {
+						mp.cursor = len(mp.sources) - 1
+					}
+				}
+				mp.state = "list"
+				// Reinitialize checkbox list after deletion
+				mp.initCheckboxList()
+				return mp, nil
+			case "no":
+				mp.state = "list"
+				return mp, nil
+			}
+		}
+
+		// Fallback for direct key presses
+		switch key {
 		case "y", "Y":
-			if len(m.sources) > 0 {
-				m.sources = append(m.sources[:m.cursor], m.sources[m.cursor+1:]...)
-				if m.cursor >= len(m.sources) {
-					m.cursor = len(m.sources) - 1
+			if len(mp.sources) > 0 {
+				mp.sources = append(mp.sources[:mp.cursor], mp.sources[mp.cursor+1:]...)
+				if mp.cursor >= len(mp.sources) {
+					mp.cursor = len(mp.sources) - 1
 				}
 			}
-			m.state = "list"
+			mp.state = "list"
+			// Reinitialize checkbox list after deletion
+			mp.initCheckboxList()
+			return mp, nil
 
 		case "n", "N", "esc":
-			m.state = "list"
+			mp.state = "list"
+			return mp, nil
 
 		case "ctrl+c":
-			return m, tea.Quit
+			return mp, tea.Quit
 		}
 	}
 
-	return m, nil
+	return mp, nil
 }
 
 // updateSaveConfirm handles updates in save confirmation state
 func (m sourcesModel) updateSaveConfirm(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Work with pointer to ensure state changes persist
+	mp := &m
+	if mp.saveButtons == nil {
+		mp.saveButtons = components.NewButtonGroup([]string{"Yes", "No"}, 0)
+		mp.saveButtons.SetFocus(true)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+
+		// Handle button navigation
+		action := mp.saveButtons.HandleKey(key)
+		if action != "" {
+			switch action {
+			case "yes":
+				return mp, mp.saveChanges()
+			case "no":
+				return mp, tea.Quit
+			}
+		}
+
+		// Fallback for direct key presses
+		switch key {
 		case "y", "Y":
-			return m, m.saveChanges()
+			return mp, mp.saveChanges()
 		case "n", "N", "esc":
-			return m, tea.Quit
+			return mp, tea.Quit
 		case "ctrl+c":
-			return m, tea.Quit
+			return mp, tea.Quit
 		}
 	}
-	return m, nil
+	return mp, nil
 }
 
 // updateBuiltinWarning handles updates in built-in warning state
@@ -472,6 +607,9 @@ func (m *sourcesModel) addSource() {
 
 	// Find the new source's position using the utility function
 	m.cursor = functions.FindSourceIndex(m.sources, name)
+
+	// Reinitialize checkbox list to reflect new source
+	m.initCheckboxList()
 }
 
 // updateSource updates an existing source
@@ -496,6 +634,9 @@ func (m *sourcesModel) updateSource() {
 
 	// Find the updated source's position using the utility function
 	m.cursor = functions.FindSourceIndex(m.sources, name)
+
+	// Reinitialize checkbox list to reflect updated source
+	m.initCheckboxList()
 }
 
 // saveChanges saves the configuration to the new manifest system
@@ -607,39 +748,21 @@ func (m sourcesModel) listView() string {
 			ui.CommandKey.Render("A") + "dd  " + ui.CommandKey.Render("Q") + "uit"
 	}
 
+	// Ensure checkbox list is initialized and synced
+	// Note: We work with a pointer for initialization, but View is read-only
+	mp := &m
+	if mp.checkboxList == nil {
+		mp.initCheckboxList()
+	} else {
+		// Sync sources to checkbox list to ensure labels are up to date
+		mp.syncSourcesToCheckboxList()
+	}
+
 	out := ui.PageTitle.Render("FontGet Sources Manager") + "\n\n"
 
-	// Define column widths - simplified structure
-	statusWidth := 6 // For "[x] " or "[ ] "
-	nameWidth := 35  // Source name column (wider to accommodate type)
-
-	// Table rows
-	for i, source := range m.sources {
-		cursor := "  "
-		if i == m.cursor {
-			cursor = "> "
-		}
-
-		checkbox := "[ ]"
-		if source.Enabled {
-			checkbox = "[x]"
-		}
-
-		// Build styled source name with styled tag using the utility function
-		sourceNameWithType := ui.RenderSourceNameWithTag(source.Name, source.IsBuiltIn)
-
-		// Format the row with proper spacing - align with header
-		row := fmt.Sprintf("%s%-*s %-*s",
-			cursor,
-			statusWidth, checkbox,
-			nameWidth, sourceNameWithType)
-
-		// Highlight selected row
-		if i == m.cursor {
-			row = ui.CheckboxItemSelected.Render(row)
-		}
-
-		out += row + "\n"
+	// Render checkbox list
+	if mp.checkboxList != nil {
+		out += mp.checkboxList.Render()
 	}
 
 	out += "\n"
@@ -801,32 +924,60 @@ func (m sourcesModel) confirmView() string {
 		return ui.RenderError("No sources to delete")
 	}
 
+	// Work with pointer for button initialization
+	mp := &m
+	if mp.deleteButtons == nil {
+		mp.deleteButtons = components.NewButtonGroup([]string{"Yes", "No"}, 0)
+		mp.deleteButtons.SetFocus(true)
+	}
+
 	source := m.sources[m.cursor]
 	out := ui.PageTitle.Render("Confirm Deletion") + "\n\n"
 	styledName := ui.TableSourceName.Render(source.Name)
 	out += fmt.Sprintf("Are you sure you want to delete '%s'?\nThis cannot be undone.\n\n", styledName)
 
+	// Render button group
+	if mp.deleteButtons != nil {
+		out += mp.deleteButtons.Render()
+		out += "\n"
+	}
+
+	// Keyboard help
 	commands := []string{
-		ui.RenderKeyWithDescription("Y", "Yes"),
-		ui.RenderKeyWithDescription("N", "No"),
+		ui.RenderKeyWithDescription("←/→", "Navigate"),
+		ui.RenderKeyWithDescription("Enter", "Select"),
 	}
 	helpText := strings.Join(commands, "  ")
-	out += helpText
+	out += "\n" + helpText
 
 	return out
 }
 
 // saveConfirmView renders the save confirmation
 func (m sourcesModel) saveConfirmView() string {
+	// Work with pointer for button initialization
+	mp := &m
+	if mp.saveButtons == nil {
+		mp.saveButtons = components.NewButtonGroup([]string{"Yes", "No"}, 0)
+		mp.saveButtons.SetFocus(true)
+	}
+
 	out := ui.PageTitle.Render("Save Changes") + "\n\n"
 	out += "You have unsaved changes. Do you want to save your changes?\n\n"
 
+	// Render button group
+	if mp.saveButtons != nil {
+		out += mp.saveButtons.Render()
+		out += "\n"
+	}
+
+	// Keyboard help
 	commands := []string{
-		ui.RenderKeyWithDescription("Y", "Yes"),
-		ui.RenderKeyWithDescription("N", "No"),
+		ui.RenderKeyWithDescription("←/→", "Navigate"),
+		ui.RenderKeyWithDescription("Enter", "Select"),
 	}
 	helpText := strings.Join(commands, "  ")
-	out += helpText
+	out += "\n" + helpText
 
 	return out
 }

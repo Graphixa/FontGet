@@ -246,7 +246,7 @@ font category (e.g., "Sans Serif", "Serif", "Monospace").
 				baseScore := 50 // Base score from config
 				// Check if popularity scoring is enabled
 				userPrefs := config.GetUserPreferences()
-				usePopularity := userPrefs.Configuration.UsePopularitySort
+				usePopularity := userPrefs.Configuration.EnablePopularitySort
 				var popularityBonus int
 				if usePopularity {
 					popularityBonus = results[i].Popularity / 2 // Correct popularity calculation (divisor = 2)
@@ -301,7 +301,7 @@ font category (e.g., "Sans Serif", "Serif", "Monospace").
 				baseScore := 50 // Base score from config
 				// Check if popularity scoring is enabled
 				userPrefs := config.GetUserPreferences()
-				usePopularity := userPrefs.Configuration.UsePopularitySort
+				usePopularity := userPrefs.Configuration.EnablePopularitySort
 				var popularityBonus int
 				if usePopularity {
 					popularityBonus = results[i].Popularity / 2 // Correct popularity calculation (divisor = 2)

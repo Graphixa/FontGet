@@ -47,7 +47,7 @@ func NewEnhancedOnboardingModel() *EnhancedOnboardingModel {
 	settingsValues := map[string]interface{}{
 		"autoCheck":         defaults.Update.AutoCheck,
 		"autoUpdate":        defaults.Update.AutoUpdate,
-		"usePopularitySort": defaults.Configuration.UsePopularitySort,
+		"usePopularitySort": defaults.Configuration.EnablePopularitySort,
 	}
 
 	model := &EnhancedOnboardingModel{
@@ -157,14 +157,23 @@ func (m *EnhancedOnboardingModel) resetStepViewFlag() {
 
 // SaveSelections saves all selections to config files
 func (m *EnhancedOnboardingModel) SaveSelections() error {
-	// Save source selections
+	// Save source selections to manifest
+	manifest, err := config.LoadManifest()
+	if err != nil {
+		return fmt.Errorf("failed to load manifest: %w", err)
+	}
+
+	// Update source enabled states in manifest
 	for name, enabled := range m.sourceSelections {
-		// Only update if different from default
-		defaultSources := sources.DefaultSources()
-		if info, exists := defaultSources[name]; exists && info.Enabled != enabled {
-			// Source state changed - we'll handle this in the sources step
-			// For now, we just track the selection
+		if sourceConfig, exists := manifest.Sources[name]; exists {
+			sourceConfig.Enabled = enabled
+			manifest.Sources[name] = sourceConfig
 		}
+	}
+
+	// Save manifest with updated source states
+	if err := config.SaveManifest(manifest); err != nil {
+		return fmt.Errorf("failed to save source selections: %w", err)
 	}
 
 	// Save settings
@@ -185,7 +194,7 @@ func (m *EnhancedOnboardingModel) SaveSelections() error {
 		appConfig.Update.AutoUpdate = autoUpdate
 	}
 	if usePopularitySort, ok := m.settingsValues["usePopularitySort"].(bool); ok {
-		appConfig.Configuration.UsePopularitySort = usePopularitySort
+		appConfig.Configuration.EnablePopularitySort = usePopularitySort
 	}
 
 	// Save config

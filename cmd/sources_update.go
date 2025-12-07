@@ -34,7 +34,6 @@ type updateModel struct {
 	manifest         *repo.FontManifest
 	verbose          bool
 	initialFontCount int
-	timeout          time.Duration
 }
 
 // updateProgressMsg represents progress update
@@ -60,11 +59,14 @@ type updateFinishedMsg struct {
 
 // createHTTPClient creates a properly configured HTTP client with timeouts
 func createHTTPClient() *http.Client {
+	appConfig := config.GetUserPreferences()
+	generalTimeout := config.ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
+
 	return &http.Client{
-		Timeout: 10 * time.Second,
+		Timeout: generalTimeout,
 		Transport: &http.Transport{
-			ResponseHeaderTimeout: 5 * time.Second,
-			IdleConnTimeout:       30 * time.Second,
+			ResponseHeaderTimeout: 5 * time.Second,  // Keep internal transport timeout
+			IdleConnTimeout:       30 * time.Second, // Keep internal transport timeout
 			MaxIdleConns:          10,
 			MaxIdleConnsPerHost:   2,
 		},
@@ -103,7 +105,8 @@ func NewUpdateModel(verbose bool) (*updateModel, error) {
 		startTime:        time.Now(),
 		verbose:          verbose,
 		initialFontCount: initialFontCount,
-		timeout:          60 * time.Second, // 1 minute total timeout
+		// No operation-level timeout - individual source downloads use DownloadTimeout
+		// Operation completes when all sources are processed (success or failure)
 	}, nil
 }
 
@@ -119,12 +122,8 @@ func (m updateModel) Init() tea.Cmd {
 func (m updateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
-	// Check for timeout
-	if time.Since(m.startTime) > m.timeout {
-		m.errors["system"] = "update timeout exceeded"
-		m.quitting = true
-		return m, tea.Quit
-	}
+	// No operation-level timeout check - individual downloads use DownloadTimeout
+	// Operation completes when all sources are processed
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -207,20 +206,15 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		}
 
 		// Create HTTP client with proper timeout and context handling
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		appConfig := config.GetUserPreferences()
+		requestTimeout := config.ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 		defer cancel()
 
 		client := createHTTPClient()
 
-		// Check if we should abort due to timeout
-		if time.Since(m.startTime) > m.timeout {
-			cancel()
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("update timeout exceeded"),
-			}
-		}
+		// Individual source downloads use DownloadTimeout via stall detector
+		// No operation-level timeout check needed
 
 		// Store verbose info for display in TUI
 		if m.verbose {
@@ -285,7 +279,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		}
 
 		// Read the response body with size limit to prevent memory issues
-		const maxSize = 50 * 1024 * 1024 // 50MB limit
+		maxSize := config.ParseSize(appConfig.Limits.MaxSourceFileSize, 50*1024*1024) // Default 50MB
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
 		if err != nil {
 			return updateCompleteMsg{
@@ -296,11 +290,12 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		}
 
 		// Check if we hit the size limit
-		if len(body) == maxSize {
+		if len(body) == int(maxSize) {
+			maxSizeMB := maxSize / (1024 * 1024)
 			return updateCompleteMsg{
 				source: source,
 				status: "Failed",
-				error:  fmt.Errorf("source file too large (max 50MB)"),
+				error:  fmt.Errorf("source file too large (max %dMB)", maxSizeMB),
 			}
 		}
 
