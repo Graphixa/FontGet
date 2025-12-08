@@ -19,6 +19,7 @@ type ConfirmModel struct {
 	Quit        bool
 	Width       int
 	Height      int
+	buttons     *ButtonGroup
 }
 
 // NewConfirmModel creates a new confirmation dialog
@@ -34,16 +35,38 @@ func NewConfirmModel(title, message string) *ConfirmModel {
 }
 
 // Init initializes the confirmation dialog
-func (m ConfirmModel) Init() tea.Cmd {
+func (m *ConfirmModel) Init() tea.Cmd {
 	return nil
 }
 
 // Update handles messages and updates the confirmation dialog
-func (m ConfirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *ConfirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Initialize buttons if needed
+	if m.buttons == nil {
+		m.buttons = NewButtonGroup([]string{m.ConfirmText, m.CancelText}, 0)
+		m.buttons.SetFocus(true)
+	}
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "y", "Y", "enter":
+		key := msg.String()
+
+		// Handle button navigation
+		action := m.buttons.HandleKey(key)
+		if action != "" {
+			switch strings.ToLower(action) {
+			case strings.ToLower(m.ConfirmText), "yes", "save", "accept":
+				m.Confirmed = true
+				return m, tea.Quit
+			case strings.ToLower(m.CancelText), "no", "discard", "cancel":
+				m.Confirmed = false
+				return m, tea.Quit
+			}
+		}
+
+		// Fallback for direct key presses (backward compatibility)
+		switch key {
+		case "y", "Y":
 			m.Confirmed = true
 			return m, tea.Quit
 		case "n", "N", "esc":
@@ -63,8 +86,14 @@ func (m ConfirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // View renders the confirmation dialog
-func (m ConfirmModel) View() string {
+func (m *ConfirmModel) View() string {
 	var result strings.Builder
+
+	// Initialize buttons if needed
+	if m.buttons == nil {
+		m.buttons = NewButtonGroup([]string{m.ConfirmText, m.CancelText}, 0)
+		m.buttons.SetFocus(true)
+	}
 
 	// Title
 	if m.Title != "" {
@@ -76,12 +105,19 @@ func (m ConfirmModel) View() string {
 	result.WriteString(ui.Text.Render(m.Message))
 	result.WriteString("\n\n")
 
-	// Confirmation prompt - match sources_manage.go styling
+	// Render button group
+	if m.buttons != nil {
+		result.WriteString(m.buttons.Render())
+		result.WriteString("\n")
+	}
+
+	// Keyboard help
 	commands := []string{
-		ui.RenderKeyWithDescription("Y", m.ConfirmText),
-		ui.RenderKeyWithDescription("N", m.CancelText),
+		ui.RenderKeyWithDescription("←/→", "Navigate"),
+		ui.RenderKeyWithDescription("Enter", "Select"),
 	}
 	helpText := strings.Join(commands, "  ")
+	result.WriteString("\n")
 	result.WriteString(helpText)
 
 	return result.String()
@@ -100,7 +136,7 @@ func RunConfirm(title, message string) (bool, error) {
 	}
 
 	// Check if the user confirmed
-	if m, ok := finalModel.(ConfirmModel); ok {
+	if m, ok := finalModel.(*ConfirmModel); ok {
 		return m.Confirmed, nil
 	}
 
@@ -122,7 +158,7 @@ func RunConfirmWithOptions(title, message, confirmText, cancelText string) (bool
 	}
 
 	// Check if the user confirmed
-	if m, ok := finalModel.(ConfirmModel); ok {
+	if m, ok := finalModel.(*ConfirmModel); ok {
 		return m.Confirmed, nil
 	}
 

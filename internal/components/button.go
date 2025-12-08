@@ -107,16 +107,8 @@ func NewButtonGroup(buttonTexts []string, defaultSelected int) *ButtonGroup {
 
 	buttons := make([]Button, len(buttonTexts))
 	for i, text := range buttonTexts {
+		// Normalize to lower for action matching; map is currently identity but kept for clarity
 		action := strings.ToLower(text)
-		// Map common button texts to actions
-		switch strings.ToLower(text) {
-		case "ok", "continue", "next", "accept", "yes":
-			action = strings.ToLower(text)
-		case "back", "cancel", "no":
-			action = strings.ToLower(text)
-		default:
-			action = strings.ToLower(text)
-		}
 
 		buttons[i] = Button{
 			Text:     text,
