@@ -1,15 +1,18 @@
 # FontGet Commands Reference
 
-This document provides a comprehensive overview of all FontGet commands, their purpose, and usage examples.
+This document provides a comprehensive overview of all FontGet commands, their Purpose, and usage examples.
 
 ---
 
 ## Core Commands
 
 ### `add`
-**Purpose**: Install fonts from various sources (Google Fonts, Font Squirrel, Nerd Fonts)  
-**Why it matters**: Core functionality - this is what users use to get fonts  
-**Subcommands**: None (takes font name or ID as argument)
+
+**Purpose:** Install fonts from various sources (Google Fonts, Font Squirrel, Nerd Fonts)
+
+**Subcommands:** None (takes font name or ID as argument)
+
+#### Examples:
 
 ```bash
 # Install from any available source
