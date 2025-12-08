@@ -1,0 +1,23 @@
+fontget_theme:
+  # Accent colors
+  accent: "#8839ef"
+  accent2: "#179299"
+
+  # Status colors
+  warning: "#df8e1d"
+  error: "#d20f39"
+  success: "#40a02b"
+
+  # Page-specific colors
+  page_title: "#8839ef"
+  page_subtitle: "#8c8fa1"
+
+  # Neutral colors (3 keys only) | Neutrals are in reverse order from dark mode to accomodate contrast in light themes
+  grey_light: "#4c4f69"
+  grey_mid: "#8c8fa1"
+  grey_dark: "#ccd0da"
+
+  # Progress bar gradient (object structure)
+  progress_bar_gradient:
+    color_start: "#8839ef"
+    color_end: "#fe640b"

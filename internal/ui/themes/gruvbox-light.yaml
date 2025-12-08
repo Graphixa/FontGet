@@ -1,0 +1,14 @@
+fontget_theme:
+  accent: "#af3a03" # Orange
+  accent2: "#427b58" # Aqua
+  warning: "#b57614" # Yellow
+  error: "#9d0006" # Red
+  success: "#79740e" # Green
+  page_title: "#af3a03" # Orange
+  page_subtitle: "#bdae93" # bg3 - Grey for subtitles
+  grey_light: "#7c6f64" # fg4 - Dark text on light background
+  grey_mid: "#bdae93" # bg3 - Borders, placeholders, subtitles
+  grey_dark: "#fbf1c7" # bg0 - Light background
+  progress_bar_gradient:
+    color_start: "#427b58" # Aqua
+    color_end: "#8f3f71" # Pink

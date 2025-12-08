@@ -42,9 +42,8 @@ fontget_theme:
     grey_light: "#4c4f69"
     grey_mid: "#8c8fa1"
     grey_dark: "#ccd0da"  
-
+    
     # Progress bar gradient (object structure)
     progress_bar_gradient:
       color_start: "#8839ef"
       color_end: "#fe640b"
-
