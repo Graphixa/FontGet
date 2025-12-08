@@ -62,7 +62,7 @@ type UpdateSection struct {
 // ThemeSection represents theme configuration
 type ThemeSection struct {
 	Name string `yaml:"Name"` // Theme name (e.g., "catppuccin", "gruvbox") - empty string uses default
-	Mode string `yaml:"Mode"` // "auto" (detect from terminal), "dark", or "light" - defaults to "auto"
+	Mode string `yaml:"Mode"` // "dark" or "light" - defaults to "dark"
 }
 
 // GetAppConfigDir returns the app-specific config directory (~/.fontget)
@@ -123,7 +123,7 @@ func DefaultUserPreferences() *AppConfig {
 		},
 		Theme: ThemeSection{
 			Name: "",     // Empty string uses embedded default theme (catppuccin)
-			Mode: "auto", // "auto" detects terminal theme, "dark" or "light" for manual override
+			Mode: "dark", // Default to dark mode (no auto-detection)
 		},
 	}
 }
@@ -215,16 +215,17 @@ func GetUserPreferences() *AppConfig {
 					config.Theme.Mode = loadedConfig.Theme.Mode
 				}
 
-				// Ensure mode is valid: allow "auto", "dark", "light"
+				// Ensure mode is valid: only "dark" or "light" allowed
+				// Migrate "auto" to "dark" for backward compatibility
 				switch config.Theme.Mode {
-				case "", "auto", "dark", "light":
-					// Treat empty as "auto"
-					if config.Theme.Mode == "" {
-						config.Theme.Mode = "auto"
-					}
+				case "", "auto":
+					// Migrate empty or "auto" to "dark" (no longer supporting auto-detection)
+					config.Theme.Mode = "dark"
+				case "dark", "light":
+					// Valid modes - keep as is
 				default:
-					// Unknown value - fall back to auto-detection
-					config.Theme.Mode = "auto"
+					// Unknown value - default to "dark"
+					config.Theme.Mode = "dark"
 				}
 			}
 		}
@@ -635,7 +636,7 @@ Update:
   UpdateChannel: "stable" # Update channel: stable, beta, or nightly
 Theme:
   Name: "" # Theme name (e.g., "catppuccin", "gruvbox") - empty string uses embedded default
-  Mode: auto # Theme mode: auto (detect from terminal), dark, or light
+  Mode: dark # Theme mode: dark or light
 `
 
 	// Write config file

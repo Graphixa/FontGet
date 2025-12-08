@@ -397,10 +397,10 @@ func validateThemeSection(theme map[string]interface{}) ValidationErrors {
 	}
 	// Name is optional, so empty or missing is fine
 
-	// Validate Mode (optional string, must be "auto", "dark", or "light" if present)
+	// Validate Mode (optional string, must be "dark" or "light" if present)
 	if mode, exists := theme["Mode"]; exists {
 		if modeStr, ok := mode.(string); ok {
-			validModes := []string{"auto", "dark", "light"}
+			validModes := []string{"dark", "light"}
 			valid := false
 			for _, validMode := range validModes {
 				if modeStr == validMode {
@@ -421,7 +421,7 @@ func validateThemeSection(theme map[string]interface{}) ValidationErrors {
 			})
 		}
 	}
-	// Mode is optional, defaults to "auto" if not present
+	// Mode is optional, defaults to "dark" if not present
 
 	return errors
 }

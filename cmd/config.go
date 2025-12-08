@@ -281,42 +281,100 @@ var configEditCmd = &cobra.Command{
 		output.GetVerbose().Info("Configuration file path: %s", configPath)
 		output.GetDebug().State("Config path resolved: %s", configPath)
 
-		// Load current config to ensure it exists
+		// Try to load current config, but don't block if validation fails
 		output.GetVerbose().Info("Loading current configuration")
 		output.GetDebug().State("Loading user preferences from disk")
 
 		appConfig, err := config.LoadUserPreferences()
+		var editor string
+		var validationErrors config.ValidationErrors
+
 		if err != nil {
-			GetLogger().Error("Failed to load config: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.LoadUserPreferences() failed: %v", err)
-			return fmt.Errorf("unable to load configuration: %v", err)
+			// Check if this is a validation error by checking the error message
+			// and manually validating to get the actual errors
+			errMsg := err.Error()
+			if strings.Contains(errMsg, "configuration validation failed") {
+				// Manually validate the file to get the validation errors
+				data, readErr := os.ReadFile(configPath)
+				if readErr == nil {
+					var rawData map[string]interface{}
+					if yamlErr := yaml.Unmarshal(data, &rawData); yamlErr == nil {
+						if valErr := config.ValidateStrictAppConfig(rawData); valErr != nil {
+							if valErrs, ok := valErr.(config.ValidationErrors); ok {
+								validationErrors = valErrs
+							}
+						}
+					}
+				}
+
+				// Show validation errors but continue
+				if len(validationErrors) > 0 {
+					fmt.Println()
+					fmt.Printf("%s\n", ui.WarningText.Render("Configuration validation issues found:"))
+					for _, validationErr := range validationErrors {
+						fmt.Printf("  - %s: %s\n", validationErr.Field, validationErr.Message)
+					}
+				} else {
+					// Fallback if we couldn't extract errors
+					fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Configuration validation failed: %v", err)))
+				}
+
+				// Use default editor since we can't load the config
+				editor = getDefaultEditorForOS()
+			} else {
+				// For non-validation errors (file doesn't exist, etc.), try to create it
+				// If config file doesn't exist, create it with defaults
+				if _, statErr := os.Stat(configPath); os.IsNotExist(statErr) {
+					output.GetVerbose().Info("Config file doesn't exist, creating default")
+					if createErr := config.GenerateInitialUserPreferences(); createErr != nil {
+						GetLogger().Error("Failed to create config: %v", createErr)
+						output.GetVerbose().Error("%v", createErr)
+						return fmt.Errorf("unable to create configuration file: %v", createErr)
+					}
+					// Try loading again after creation
+					appConfig, err = config.LoadUserPreferences()
+					if err != nil {
+						// Still failed, use default editor
+						editor = getDefaultEditorForOS()
+					} else {
+						editor = config.GetEditorWithFallback(appConfig)
+					}
+				} else {
+					// File exists but has other errors, use default editor
+					GetLogger().Error("Failed to load config: %v", err)
+					output.GetVerbose().Error("%v", err)
+					output.GetDebug().Error("config.LoadUserPreferences() failed: %v", err)
+					fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("Unable to load configuration: %v", err)))
+					fmt.Printf("%s\n", ui.InfoText.Render("Opening config file in editor anyway..."))
+					fmt.Println()
+					editor = getDefaultEditorForOS()
+				}
+			}
+		} else {
+			output.GetVerbose().Info("Configuration loaded successfully")
+			output.GetDebug().State("Configuration loaded: %+v", appConfig)
+
+			// Save config to ensure it exists on disk (only if we successfully loaded it)
+			output.GetVerbose().Info("Ensuring configuration file exists on disk")
+			output.GetDebug().State("Saving configuration to disk")
+
+			if err := config.SaveUserPreferences(appConfig); err != nil {
+				GetLogger().Error("Failed to save config: %v", err)
+				output.GetVerbose().Error("%v", err)
+				output.GetDebug().Error("config.SaveUserPreferences() failed: %v", err)
+				// Don't block on save errors, just continue to open editor
+				output.GetVerbose().Info("Continuing despite save error")
+			} else {
+				output.GetVerbose().Info("Configuration file saved successfully")
+				output.GetDebug().State("Configuration file exists on disk")
+			}
+
+			// Get the editor to use
+			editor = config.GetEditorWithFallback(appConfig)
 		}
 
-		output.GetVerbose().Info("Configuration loaded successfully")
-		output.GetDebug().State("Configuration loaded: %+v", appConfig)
-
-		// Save config to ensure it exists on disk
-		output.GetVerbose().Info("Ensuring configuration file exists on disk")
-		output.GetDebug().State("Saving configuration to disk")
-
-		if err := config.SaveUserPreferences(appConfig); err != nil {
-			GetLogger().Error("Failed to save config: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("config.SaveUserPreferences() failed: %v", err)
-			return fmt.Errorf("unable to save configuration: %v", err)
-		}
-
-		output.GetVerbose().Info("Configuration file saved successfully")
-		output.GetDebug().State("Configuration file exists on disk")
-
-		// Get the editor to use
-		editor := config.GetEditorWithFallback(appConfig)
 		output.GetVerbose().Info("Using editor: %s", editor)
 		output.GetDebug().State("Editor resolved: %s", editor)
-
-		// Open the configuration file in the editor
-		fmt.Printf("Opening config.yaml in %s...\n", editor)
 
 		output.GetVerbose().Info("Preparing to open editor with configuration file")
 		output.GetDebug().State("Operating system: %s", runtime.GOOS)
@@ -346,10 +404,37 @@ var configEditCmd = &cobra.Command{
 
 		output.GetVerbose().Success("Editor opened successfully")
 		output.GetDebug().State("Editor process started successfully")
-		fmt.Printf("config.yaml opened in %s\n", editor)
+		if len(validationErrors) > 0 {
+			fmt.Println()
+			fmt.Printf("%s\n", ui.InfoText.Render("After fixing the issues, run 'fontget config validate' to verify your changes."))
+			fmt.Println()
+		}
 		output.GetDebug().State("Config operation complete")
 		return nil
 	},
+}
+
+// getDefaultEditorForOS returns the platform-specific default editor
+// On Unix-like systems, checks the $EDITOR environment variable first
+func getDefaultEditorForOS() string {
+	switch runtime.GOOS {
+	case "windows":
+		return "notepad.exe"
+	case "darwin":
+		// macOS: check $EDITOR first, then fall back to TextEdit
+		if editor := os.Getenv("EDITOR"); editor != "" {
+			return editor
+		}
+		return "open -e"
+	default: // Linux and others
+		// Check $EDITOR environment variable first (standard Unix convention)
+		if editor := os.Getenv("EDITOR"); editor != "" {
+			return editor
+		}
+		// Fallback to common editors, trying vi first as it's more universally available
+		// than nano on minimal systems
+		return "vi"
+	}
 }
 
 var configValidateCmd = &cobra.Command{
@@ -474,14 +559,14 @@ Useful when the file is corrupted or you want to start fresh.`,
 			GetLogger().Error("Confirmation dialog failed: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("components.RunConfirm() failed: %v", err)
-			fmt.Printf("%s\n", ui.ErrorText.Render("Confirmation dialog failed\n"))
+			fmt.Printf("%s\n", ui.ErrorText.Render("Confirmation dialog failed"))
 			return fmt.Errorf("unable to show confirmation dialog: %v", err)
 		}
 
 		if !confirmed {
 			output.GetVerbose().Info("User cancelled configuration reset")
 			output.GetDebug().State("User chose not to reset configuration")
-			fmt.Printf("%s\n", ui.WarningText.Render("Configuration reset cancelled, no changes have been made.\n"))
+			fmt.Printf("%s\n", ui.WarningText.Render("Configuration reset cancelled, no changes have been made."))
 			return nil
 		}
 
@@ -496,7 +581,7 @@ Useful when the file is corrupted or you want to start fresh.`,
 			GetLogger().Error("Failed to generate default config: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("config.GenerateInitialUserPreferences() failed: %v", err)
-			fmt.Printf("%s\n", ui.ErrorText.Render("Configuration reset failed\n"))
+			fmt.Printf("%s\n", ui.ErrorText.Render("Configuration reset failed"))
 			fmt.Printf("Failed to generate default configuration: %v\n", err)
 			return nil
 		}
@@ -524,8 +609,8 @@ Useful when the file is corrupted or you want to start fresh.`,
 		// Success - show reset results
 		output.GetVerbose().Success("Configuration reset completed successfully")
 		output.GetDebug().State("Configuration reset process completed")
-		fmt.Printf("%s\n", ui.SuccessText.Render("Configuration has been reset to defaults.\n"))
-		fmt.Println(ui.InfoText.Render("You will be prompted to accept the license agreements the next time you run FontGet."))
+		fmt.Printf("%s\n", ui.SuccessText.Render("Configuration has been reset to defaults."))
+		fmt.Printf("%s\n", ui.InfoText.Render("You will be prompted to accept the license agreements the next time you run FontGet."))
 
 		GetLogger().Info("Configuration reset operation completed successfully")
 		output.GetDebug().State("Config operation complete")

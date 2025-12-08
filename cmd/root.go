@@ -116,14 +116,17 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("failed to initialize logger: %w", err)
 		}
 
-		// Initialize theme system
+		// Initialize theme system (non-blocking - uses fast timeout)
+		// Theme detection happens quickly and doesn't delay command execution
 		if err := ui.InitThemeManager(); err != nil {
-			return fmt.Errorf("failed to initialize theme manager: %w", err)
+			// Non-fatal: continue with default theme if detection fails
+			// This prevents theme detection issues from breaking commands
 		}
 
 		// Initialize styles based on theme
 		if err := ui.InitStyles(); err != nil {
-			return fmt.Errorf("failed to initialize styles: %w", err)
+			// Non-fatal: continue with default styles if initialization fails
+			// This prevents theme issues from breaking commands
 		}
 
 		// Skip license check for certain commands

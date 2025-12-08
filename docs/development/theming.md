@@ -101,7 +101,7 @@ The theme is configured in `~/.fontget/config.yaml`:
 ```yaml
 Theme:
   Name: ""      # Empty string uses embedded default (catppuccin)
-  Mode: "auto"  # "auto" (detect from terminal), "dark", or "light"
+  Mode: "dark"  # "dark" or "light" (defaults to "dark")
 ```
 
 ### Configuration Options
@@ -109,52 +109,43 @@ Theme:
 - **`Name`**: Theme file name without extension (e.g., "gruvbox" for `gruvbox.yaml`)
   - Empty string (`""`) uses the embedded default theme
   - If theme file is not found, falls back to embedded default
-- **`Mode`**: Theme mode - `"auto"`, `"dark"`, or `"light"` (defaults to `"auto"`)
-  - **`"auto"`**: Automatically detects terminal theme using `termenv.HasDarkBackground()`
-    - Checks `FONTGET_THEME_MODE` environment variable first (allows manual override)
-    - Falls back to terminal detection if env var is not set or set to "auto"
-  - **`"dark"`**: Force dark mode
-  - **`"light"`**: Force light mode
+- **`Mode`**: Theme mode - `"dark"` or `"light"` (defaults to `"dark"`)
+  - **`"dark"`**: Use dark mode colors
+  - **`"light"`**: Use light mode colors
 
-### Automatic Theme Detection
+### Environment Variable Override
 
-FontGet uses the `termenv` package (already included via lipgloss) to automatically detect your terminal's theme:
+You can override the theme mode using the `FONTGET_THEME_MODE` environment variable:
 
-- **How it works**: Queries the terminal for its background color to determine if it's dark or light
-- **Environment override**: Set `FONTGET_THEME_MODE=dark` or `FONTGET_THEME_MODE=light` to override detection
-- **Fallback**: If detection fails, defaults to dark mode
+- **Set environment variable**:
+  ```powershell
+  # Windows PowerShell
+  $env:FONTGET_THEME_MODE="light"  # or "dark"
+  ```
+  ```bash
+  # Linux/macOS
+  export FONTGET_THEME_MODE=light  # or "dark"
+  ```
 
-#### Windows Terminal Limitations
-
-**Important**: Automatic theme detection may not work reliably on Windows Terminal. Windows Terminal doesn't properly support the ANSI escape sequences used to query background color, so `termenv.HasDarkBackground()` may return incorrect results.
-
-**Workarounds for Windows Terminal**:
-
-1. **Use environment variable** (recommended):
-   ```powershell
-   $env:FONTGET_THEME_MODE="light"  # or "dark"
-   ```
-
-2. **Set in config.yaml**:
-   ```yaml
-   Theme:
-     Mode: "light"  # or "dark" - explicitly set instead of "auto"
-   ```
-
-3. **Per-session override**:
-   ```powershell
-   $env:FONTGET_THEME_MODE="light"; fontget search roboto
-   ```
+- **Per-session override**:
+  ```powershell
+  # Windows PowerShell
+  $env:FONTGET_THEME_MODE="light"; fontget search roboto
+  ```
+  ```bash
+  # Linux/macOS
+  FONTGET_THEME_MODE=light fontget search roboto
+  ```
 
 The environment variable takes precedence over config file settings, making it easy to override when needed.
 
 ## Theme Validation
 
-FontGet automatically validates theme files when they are loaded. The validation ensures that all required color keys are present in both `dark_mode` and `light_mode` sections.
+FontGet automatically validates theme files when they are loaded. The validation ensures that all required color keys are present in the theme file.
 
 ### Required Color Keys
 
-All of the following keys must be present and non-empty in both modes:
+All of the following keys must be present and non-empty:
 
 - `accent`
 - `accent2`
@@ -173,7 +164,6 @@ All of the following keys must be present and non-empty in both modes:
 
 - **On theme load**: If a theme file is missing required keys, FontGet will fallback to the embedded default theme (Catppuccin)
 - **Error handling**: Validation errors are handled gracefully - the application continues to work with the default theme
-- **Both modes validated**: Both `dark_mode` and `light_mode` must have all required keys
 
 ## Switching Themes
 
