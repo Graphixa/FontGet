@@ -24,7 +24,7 @@ func TestButton_Render(t *testing.T) {
 		{
 			name:     "custom action button",
 			button:   Button{Text: "Accept", Selected: false, Action: "accept"},
-			wantCont: "[  Accept ]",
+			wantCont: "[  Accept  ]",
 		},
 	}
 

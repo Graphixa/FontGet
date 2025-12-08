@@ -84,7 +84,7 @@ func (m EnhancedOnboardingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// User quit early - don't mark as completed
 			m.quitting = true
 			m.onboardingCompleted = false
-			return m, tea.Quit
+			return &m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -97,7 +97,7 @@ func (m EnhancedOnboardingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.steps[m.currentStep].Update(&m, msg)
 	}
 
-	return m, nil
+	return &m, nil
 }
 
 // View renders the current step
