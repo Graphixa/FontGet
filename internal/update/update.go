@@ -134,21 +134,21 @@ func UpdateToVersion(targetVersion string) error {
 		return fmt.Errorf("version mismatch: found %s, expected %s", release.Version.String(), targetVersion)
 	}
 
-	// Get current version for UpdateCommand
-	currentVersionStr := version.GetVersion()
-	currentVersion, err := parseVersion(currentVersionStr)
-	if err != nil {
-		return fmt.Errorf("failed to parse current version '%s': %w", currentVersionStr, err)
-	}
-
 	// Get executable path
 	cmdPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	// Library handles: download, checksum verification, binary replacement, rollback
-	_, err = updater.UpdateCommand(cmdPath, currentVersion, githubSlug)
+	// Find the asset URL for the current platform
+	assetURL := release.AssetURL
+	if assetURL == "" {
+		return fmt.Errorf("no asset URL found for version %s", targetVersion)
+	}
+
+	// Update to the specific release using UpdateTo
+	// This handles: download, checksum verification, binary replacement, rollback
+	err = selfupdate.UpdateTo(assetURL, cmdPath)
 	if err != nil {
 		return mapLibraryError(err)
 	}
@@ -167,7 +167,7 @@ func UpdateToVersion(targetVersion string) error {
 func cleanupOldBinary(execPath string) {
 	// Construct the .old backup file path
 	oldPath := execPath + ".old"
-	
+
 	// Check if the backup file exists
 	if _, err := os.Stat(oldPath); err == nil {
 		// File exists, try to remove it
