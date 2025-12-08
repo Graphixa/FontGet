@@ -106,9 +106,8 @@ func handleCheckOnly() error {
 		return nil
 	}
 
-	// Show update information (no PageTitle for non-TUI commands)
-	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
-	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Update Version: v%s", result.Latest)))
+	// Show update information with styled labels
+	displayVersionInfo(result.Current, result.Latest, "")
 
 	return nil
 }
@@ -151,9 +150,8 @@ func handleUpdateFlow(autoYes bool) error {
 		return nil
 	}
 
-	// Show update information (no PageTitle for non-TUI commands)
-	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Installed Version: v%s", result.Current)))
-	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Version Available: v%s", result.Latest)))
+	// Show update information with styled labels
+	displayVersionInfo(result.Current, result.Latest, result.Latest)
 
 	// Prompt for confirmation unless auto-yes
 	if !autoYes {
@@ -220,9 +218,8 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 		}
 	}
 
-	// Show update information (no PageTitle for non-TUI commands)
-	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Installed Version: v%s", currentVersion)))
-	fmt.Printf("%s\n", ui.InfoText.Render(fmt.Sprintf("Version Available: v%s", targetVersion)))
+	// Show update information with styled labels
+	displayVersionInfo(currentVersion, targetVersion, targetVersion)
 
 	// Warn on downgrade
 	if isDowngrade {
@@ -300,8 +297,7 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully updated to FontGet v%s", targetVersion)))
-	fmt.Printf("%s\n", ui.Text.Render("Run 'fontget version --release-notes' to see what's new."))
+	// Spinner already shows success message, no need to duplicate
 
 	return nil
 }
@@ -336,30 +332,42 @@ func performUpdate(currentVersion, latestVersion string) error {
 
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
-	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully updated to FontGet v%s", latestVersion)))
-	fmt.Printf("%s\n", ui.Text.Render("Run 'fontget version --release-notes' to see what's new."))
+	// Spinner already shows success message, no need to duplicate
 
 	return nil
 }
 
-// formatReleaseNotes formats release notes for display (first 10 lines)
-func formatReleaseNotes(notes string) string {
-	if notes == "" {
-		return ""
+// displayVersionInfo displays version information with styled labels
+// installedVersion: current installed version (without "v" prefix)
+// availableVersion: available version to update to (without "v" prefix)
+// latestVersion: latest version for changelog link (without "v" prefix, empty string to skip link)
+func displayVersionInfo(installedVersion, availableVersion, latestVersion string) {
+	// Ensure versions have "v" prefix for display
+	installedDisplay := installedVersion
+	if !strings.HasPrefix(installedVersion, "v") {
+		installedDisplay = "v" + installedVersion
+	}
+	availableDisplay := availableVersion
+	if !strings.HasPrefix(availableVersion, "v") {
+		availableDisplay = "v" + availableVersion
 	}
 
-	lines := strings.Split(notes, "\n")
+	// Style labels with InfoText, version numbers with plain Text
+	installedLabel := ui.InfoText.Render("Installed:")
+	availableLabel := ui.InfoText.Render("Available:")
+	installedValue := ui.Text.Render(installedDisplay)
+	availableValue := ui.Text.Render(availableDisplay)
 
-	// Trim trailing empty lines to avoid extra blank space at the end
-	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
-		lines = lines[:len(lines)-1]
+	fmt.Printf("%s %s\n", installedLabel, installedValue)
+	fmt.Printf("%s %s\n", availableLabel, availableValue)
+
+	// Add changelog link only in normal mode (not verbose/debug)
+	if latestVersion != "" && !IsVerbose() && !IsDebug() {
+		latestDisplay := latestVersion
+		if !strings.HasPrefix(latestVersion, "v") {
+			latestDisplay = "v" + latestVersion
+		}
+		changelogURL := fmt.Sprintf("https://github.com/Graphixa/FontGet/releases/tag/%s", latestDisplay)
+		fmt.Printf("\n%s\n", ui.Text.Render(fmt.Sprintf("Changelog: %s", changelogURL)))
 	}
-
-	maxLines := 10
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-		return strings.Join(lines, "\n") + "\n..."
-	}
-
-	return strings.Join(lines, "\n")
 }

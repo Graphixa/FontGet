@@ -120,13 +120,23 @@ func UpdateToVersion(targetVersion string) error {
 	}
 
 	// Find the release with the target version
+	// The library handles both "1.0.4" and "v1.0.4" formats automatically,
+	// but we'll try both to be safe
 	release, found, err := updater.DetectVersion(githubSlug, targetVersion)
 	if err != nil {
-		return fmt.Errorf("failed to check for version: %w", err)
+		return fmt.Errorf("failed to check for version '%s': %w", targetVersion, err)
+	}
+
+	// If not found, try with "v" prefix (common GitHub tag format)
+	if !found {
+		release, found, err = updater.DetectVersion(githubSlug, "v"+targetVersion)
+		if err != nil {
+			return fmt.Errorf("failed to check for version 'v%s': %w", targetVersion, err)
+		}
 	}
 
 	if !found {
-		return fmt.Errorf("version %s not found", targetVersion)
+		return fmt.Errorf("version %s not found on GitHub. The release may not exist, may be a pre-release (which are ignored), or may not have assets for your platform", targetVersion)
 	}
 
 	// Verify the found version matches target
