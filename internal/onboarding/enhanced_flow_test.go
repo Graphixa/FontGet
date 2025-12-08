@@ -183,7 +183,7 @@ func TestEnhancedOnboardingModel_Update(t *testing.T) {
 		t.Error("Update(KeyCtrlC) should set quitting to true")
 	}
 
-	if !enhancedModel.onboardingCompleted {
+	if enhancedModel.onboardingCompleted {
 		t.Error("Update(KeyCtrlC) should set onboardingCompleted to false")
 	}
 
