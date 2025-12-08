@@ -317,9 +317,36 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 		if !shouldSuppressVerbose {
 			output.GetVerbose().Info("Scanning %s scope: %s", scope, fontDir)
 		}
+		output.GetDebug().State("Checking font directory: %s (scope: %s)", fontDir, scope)
+
+		// Check if directory exists and is accessible
+		if _, err := os.Stat(fontDir); os.IsNotExist(err) {
+			output.GetVerbose().Warning("Font directory does not exist: %s", fontDir)
+			output.GetDebug().Warning("Directory %s does not exist, skipping", fontDir)
+			continue // Skip this scope, don't fail
+		}
+
+		// Check read permissions
+		if _, err := os.Open(fontDir); err != nil {
+			if os.IsPermission(err) {
+				output.GetVerbose().Warning("No read permission for font directory: %s", fontDir)
+				output.GetDebug().Error("Permission denied accessing %s: %v", fontDir, err)
+				// For machine scope, suggest using sudo
+				if scope == platform.MachineScope {
+					return nil, fmt.Errorf("insufficient permissions to read %s. Try running with sudo or use --scope user", fontDir)
+				}
+				// For user scope, this is unusual but not fatal
+				output.GetDebug().Warning("Permission denied for user scope directory (unusual), continuing...")
+				continue
+			}
+			output.GetDebug().Error("Unable to access font directory %s: %v", fontDir, err)
+			return nil, fmt.Errorf("unable to access font directory %s: %w", fontDir, err)
+		}
+
 		names, err := platform.ListInstalledFonts(fontDir)
 		if err != nil {
-			return nil, err
+			output.GetDebug().Error("platform.ListInstalledFonts() failed for %s: %v", fontDir, err)
+			return nil, fmt.Errorf("failed to list fonts in %s: %w", fontDir, err)
 		}
 		if !shouldSuppressVerbose {
 			output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)

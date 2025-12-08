@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 type darwinFontManager struct {
@@ -90,11 +91,14 @@ func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope
 		return fmt.Errorf("failed to copy font file: %w", err)
 	}
 
-	// Update the font cache
+	// Update the font cache (non-critical on macOS 14+)
+	// Fonts in ~/Library/Fonts and /Library/Fonts are auto-detected by macOS
 	if err := m.updateFontCache(scope); err != nil {
-		// Clean up the file if cache update fails
-		os.Remove(targetPath)
-		return fmt.Errorf("failed to update font cache: %w", err)
+		// Cache refresh failure is non-critical - font is already installed
+		// On macOS 14+, fonts are auto-detected without manual cache refresh
+		// Don't remove the file - installation succeeded, cache refresh is optional
+		// Return a warning-style error that can be handled gracefully
+		return fmt.Errorf("font installed successfully, but cache refresh failed (non-critical): %w", err)
 	}
 
 	return nil
@@ -120,9 +124,13 @@ func (m *darwinFontManager) RemoveFont(fontName string, scope InstallationScope)
 		return fmt.Errorf("failed to remove font file: %w", err)
 	}
 
-	// Update the font cache
+	// Update the font cache (non-critical on macOS 14+)
+	// Font removal is effective immediately, cache refresh is optional
 	if err := m.updateFontCache(scope); err != nil {
-		return fmt.Errorf("failed to update font cache: %w", err)
+		// Cache refresh failure is non-critical - font is already removed
+		// On macOS 14+, font removal is effective without manual cache refresh
+		// Return a warning-style error that can be handled gracefully
+		return fmt.Errorf("font removed successfully, but cache refresh failed (non-critical): %w", err)
 	}
 
 	return nil
@@ -145,38 +153,62 @@ func (m *darwinFontManager) RequiresElevation(scope InstallationScope) bool {
 	return scope == MachineScope
 }
 
-// updateFontCache runs atsutil to update the font cache
+// updateFontCache refreshes the font cache on macOS
+// Uses modern method compatible with macOS 14+ (Sonoma)
+// On macOS 14+, atsutil was removed, so we use pkill fontd instead
 func (m *darwinFontManager) updateFontCache(scope InstallationScope) error {
-	var cmds []*exec.Cmd
+	// Modern approach: restart fontd service to refresh cache
+	// fontd automatically restarts and picks up new fonts
+	// This works on both older macOS versions and macOS 14+
 
-	switch scope {
-	case UserScope:
-		// Reset user font cache
-		cmds = []*exec.Cmd{
-			exec.Command("atsutil", "databases", "-removeUser"),
-			exec.Command("atsutil", "server", "-shutdown"),
-			exec.Command("atsutil", "server", "-ping"),
+	// Try pkill first (more reliable and available on all macOS versions)
+	cmd := exec.Command("pkill", "fontd")
+	if output, err := cmd.CombinedOutput(); err != nil {
+		// pkill returns non-zero exit code if no process was found
+		// This is not necessarily an error - fontd may not be running
+		// Check if the error is "no process found" vs actual failure
+		errStr := string(output)
+		if !contains(errStr, "No matching processes") && !contains(errStr, "no process found") {
+			// If pkill fails for other reasons, try killall as fallback
+			cmd = exec.Command("killall", "fontd")
+			if output, err := cmd.CombinedOutput(); err != nil {
+				// Both methods failed, but this is non-critical
+				// macOS will auto-detect fonts in ~/Library/Fonts and /Library/Fonts
+				// Fonts will be available after app restart or system refresh
+				return fmt.Errorf("failed to refresh font cache (non-critical, fonts will still work): %v\nOutput: %s", err, string(output))
+			}
 		}
-	case MachineScope:
-		// Reset system font cache
-		cmds = []*exec.Cmd{
-			exec.Command("atsutil", "databases", "-remove"),
-			exec.Command("atsutil", "databases", "-removeUser"),
-			exec.Command("atsutil", "server", "-shutdown"),
-			exec.Command("atsutil", "server", "-ping"),
-		}
-	default:
-		return fmt.Errorf("invalid installation scope: %s", scope)
 	}
 
-	// Execute each command in sequence
-	for _, cmd := range cmds {
-		if output, err := cmd.CombinedOutput(); err != nil {
-			return fmt.Errorf("atsutil command failed: %v\nOutput: %s", err, string(output))
-		}
-	}
+	// Small delay to allow fontd to restart
+	time.Sleep(500 * time.Millisecond)
 
 	return nil
+}
+
+// contains checks if a string contains a substring (case-insensitive)
+func contains(s, substr string) bool {
+	s = toLower(s)
+	substr = toLower(substr)
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// toLower converts a string to lowercase (simple implementation)
+func toLower(s string) string {
+	result := make([]byte, len(s))
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+		result[i] = c
+	}
+	return string(result)
 }
 
 // CreateHiddenDirectory creates a directory and sets it as hidden on macOS

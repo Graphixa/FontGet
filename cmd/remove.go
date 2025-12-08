@@ -269,9 +269,23 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 		err := params.FontManager.RemoveFont(matchingFont, params.Scope)
 
 		if err != nil {
+			// Check if error is related to font cache refresh (non-critical on macOS 14+)
+			errStr := err.Error()
+			isCacheError := strings.Contains(strings.ToLower(errStr), "cache refresh failed (non-critical)")
+
+			if isCacheError {
+				// Font was removed successfully, only cache refresh failed
+				// This is non-critical - treat as success
+				output.GetDebug().Warning("Font cache refresh failed (non-critical on macOS 14+): %s", matchingFont)
+				output.GetDebug().State("Font removed successfully, cache refresh is optional. Font removal is effective immediately.")
+				removed++
+				details = append(details, fontDisplayName)
+				continue
+			}
+
+			// Actual removal failure
 			failed++
 			var errorMsg string
-			errStr := err.Error()
 			if containsAny(errStr, []string{"in use", "access denied", "permission"}) {
 				errorMsg = "Font is in use or access denied"
 			} else {
@@ -279,10 +293,11 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 			}
 			errors = append(errors, errorMsg)
 			details = append(details, fontDisplayName+" (Failed)")
-			output.GetDebug().State("fontManager.RemoveFont() failed for %s: %v", matchingFont, err)
+			output.GetDebug().Error("fontManager.RemoveFont() failed for %s: %v", matchingFont, err)
 			continue
 		}
 
+		output.GetDebug().State("Successfully removed font: %s", fontDisplayName)
 		removed++
 		details = append(details, fontDisplayName)
 	}

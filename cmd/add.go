@@ -959,6 +959,7 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 		if !force {
 			expectedPath := filepath.Join(fontDir, fontDisplayName)
 			if _, err := os.Stat(expectedPath); err == nil {
+				output.GetDebug().State("Font already installed, skipping: %s", fontDisplayName)
 				skipped++
 				os.Remove(fontPath) // Clean up temp file
 				skippedFiles = append(skippedFiles, fontDisplayName)
@@ -967,17 +968,36 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 		}
 
 		// Install the font
+		output.GetDebug().State("Installing font file: %s to %s (scope: %s)", fontDisplayName, fontDir, installScope)
 		installErr := fontManager.InstallFont(fontPath, installScope, force)
 
 		if installErr != nil {
+			// Check if error is related to font cache refresh (non-critical on macOS 14+)
+			errStr := installErr.Error()
+			isCacheError := strings.Contains(strings.ToLower(errStr), "cache refresh failed (non-critical)")
+
+			if isCacheError {
+				// Font was installed successfully, only cache refresh failed
+				// This is non-critical - treat as success
+				output.GetDebug().Warning("Font cache refresh failed (non-critical on macOS 14+): %s", fontDisplayName)
+				output.GetDebug().State("Font installed successfully, cache refresh is optional. Font will be available after app restart.")
+				installed++
+				installedFiles = append(installedFiles, fontDisplayName)
+				os.Remove(fontPath) // Clean up temp file
+				continue
+			}
+
+			// Actual installation failure
 			os.Remove(fontPath) // Clean up temp file
 			failed++
 			errorMsg := makeUserFriendlyError(fontDisplayName, installErr)
 			errors = append(errors, errorMsg)
 			failedFiles = append(failedFiles, fontDisplayName)
-			output.GetDebug().State("fontManager.InstallFont() failed for %s: %v", fontDisplayName, installErr)
+			output.GetDebug().Error("fontManager.InstallFont() failed for %s: %v", fontDisplayName, installErr)
 			continue
 		}
+
+		output.GetDebug().State("Successfully installed font: %s", fontDisplayName)
 
 		// Clean up temp file
 		os.Remove(fontPath)
