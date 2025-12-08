@@ -34,7 +34,7 @@ Install FontGet on your system using one of the commands below. FontGet is a sin
 curl -fsSL https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.sh | sh
 ```
 
-#### PowerShell (Windows)
+#### Windows (PowerShell)
 
 ```powershell
 irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 | iex
