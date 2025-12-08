@@ -18,8 +18,7 @@ var completionCmd = &cobra.Command{
 	Short: "Generate or install shell completion scripts",
 	Long: `Generate or install shell completion scripts.
 
-Supports bash, zsh, and PowerShell. Use --install to automatically install
-completions to your shell configuration file.
+Supports bash, zsh, and PowerShell. Use --install to auto-install to your shell config.
 
 Examples:
   # Generate completion script (output to stdout)

@@ -357,12 +357,11 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 var addCmd = &cobra.Command{
 	Use:          "add <font-id> [<font-id2> <font-id3> ...]",
 	Aliases:      []string{"install"},
-	Short:        "Install fonts on your system",
+	Short:        "Install fonts from configured sources",
 	SilenceUsage: true,
-	Long: `Install fonts from available font sources.
+	Long: `Install fonts from configured sources. Install one or multiple fonts in a single command.
 
 Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
-Multiple fonts can be installed in a single command.
 
 Font names with spaces must be wrapped in quotes (e.g., "Open Sans").
 

@@ -24,16 +24,8 @@ var updateCmd = &cobra.Command{
 	Use:          "update",
 	Short:        "Update FontGet to the latest version",
 	SilenceUsage: true,
-	Long: `Check for updates and optionally install the latest version of FontGet.
-
-By default, this command checks for updates and prompts for confirmation
-before installing. Use flags to customize behavior.
-
-The update system automatically:
-- Checks GitHub Releases for the latest version
-- Verifies checksums for security
-- Handles binary replacement safely
-- Rolls back on failure`,
+	Long: `Check for updates and optionally install them.
+Verifies checksums, handles binary replacement safely, and rolls back on failure.`,
 	Example: `  fontget update              # Check and prompt for update
   fontget update --check      # Only check, don't install
   fontget update -y            # Auto-confirm update

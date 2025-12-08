@@ -448,9 +448,8 @@ var configResetCmd = &cobra.Command{
 	Short:        "Reset configuration to defaults",
 	SilenceUsage: true,
 	Long: `Reset the configuration file to default values.
-
-Replaces the existing configuration file with defaults while preserving log files.
-Useful when the configuration file is corrupted or you want to start fresh.`,
+Replaces the config with defaults while preserving log files.
+Useful when the file is corrupted or you want to start fresh.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration reset operation")
 

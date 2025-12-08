@@ -21,10 +21,8 @@ var searchCmd = &cobra.Command{
 	SilenceUsage: true,
 	Long: `Search for fonts from all configured sources.
 
-The search query matches font names. Use the --category flag to filter by
-font category (e.g., "Sans Serif", "Serif", "Monospace").
-
-`,
+Use --category to filter by category (e.g., "Sans Serif", "Serif", "Monospace").
+Use -c without a value to list categories.`,
 	Example: `  fontget search fira
   fontget search "Fira Sans"
   fontget search -c "Sans Serif"

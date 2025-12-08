@@ -395,19 +395,8 @@ var removeCmd = &cobra.Command{
 	Aliases:      []string{"uninstall"},
 	Short:        "Remove fonts from your system",
 	SilenceUsage: true,
-	Long: `Remove fonts from your system.
-
-Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
-Multiple fonts can be removed in a single command.
-
-Font names with spaces must be wrapped in quotes (e.g., "Open Sans").
-
-Removal scope can be specified with the --scope flag:
-  - user (default): Remove from current user only
-  - machine: Remove from system-wide installation (requires administrator privileges)
-  - all: Remove from both user and system-wide locations (requires administrator privileges)
-
-`,
+	Long: `Remove one or multiple fonts by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
+Names with spaces must be quoted. Scope: user (default), machine, or all (admin for system-wide).`,
 	Example: `  fontget remove "Roboto"
   fontget remove "google.roboto"
   fontget remove "Open Sans" "Fira Sans" "Noto Sans"

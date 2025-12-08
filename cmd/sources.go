@@ -26,10 +26,8 @@ var sourcesCmd = &cobra.Command{
 	Use:          "sources",
 	Short:        "Manage FontGet font sources",
 	SilenceUsage: true,
-	Long: `Manage font sources.
-
-Font sources provide the data needed to discover and install fonts. Only add
-sources from trusted locations.`,
+	Long: `Manage font sources. Sources provide data to discover and install fonts.
+Only add sources from trusted locations.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If no subcommand is provided, show help
 		return cmd.Help()
@@ -588,8 +586,7 @@ var sourcesValidateCmd = &cobra.Command{
 	Use:          "validate",
 	Short:        "Validate cached sources integrity",
 	SilenceUsage: true,
-	Long: `Validate source files and report any issues.
-
+	Long: `Validate source files and report issues.
 If validation fails, run 'fontget sources update' to refresh the source files.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting sources validation operation")
