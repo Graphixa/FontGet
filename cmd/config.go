@@ -3,8 +3,12 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
+	"sort"
+	"strconv"
+	"strings"
 
 	"fontget/internal/components"
 	"fontget/internal/config"
@@ -12,7 +16,167 @@ import (
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
+
+// buildConfigCardsFromYAML builds cards dynamically from the YAML config file structure
+func buildConfigCardsFromYAML(configPath string, appConfig *config.AppConfig, actualEditor string) ([]components.Card, error) {
+	// Read the YAML file as raw map to preserve structure
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	// Parse as generic map to preserve YAML structure
+	var rawData map[string]interface{}
+	if err := yaml.Unmarshal(data, &rawData); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	var cards []components.Card
+
+	// Define section order for consistent display
+	sectionOrder := []string{"Configuration", "Logging", "Network", "Limits", "Update", "Theme"}
+
+	// Build cards for each section in order
+	for _, sectionName := range sectionOrder {
+		sectionData, exists := rawData[sectionName]
+		if !exists {
+			continue
+		}
+
+		sectionMap, ok := sectionData.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		// Build card sections from the YAML data
+		var cardSections []components.CardSection
+
+		// Special handling for Configuration section - add config path and resolved editor
+		if sectionName == "Configuration" {
+			cardSections = append(cardSections, components.CardSection{
+				Label: "Location",
+				Value: configPath,
+			})
+			cardSections = append(cardSections, components.CardSection{
+				Label: "",
+				Value: "", // Empty line for spacing
+			})
+		}
+
+		// Get keys and sort them for consistent display
+		keys := make([]string, 0, len(sectionMap))
+		for key := range sectionMap {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		// Build sections from sorted keys
+		for _, key := range keys {
+			value := sectionMap[key]
+
+			// Skip if this is Configuration section and we're processing DefaultEditor
+			// (we'll use the resolved editor instead)
+			if sectionName == "Configuration" && key == "DefaultEditor" {
+				cardSections = append(cardSections, components.CardSection{
+					Label: "Default Editor",
+					Value: actualEditor,
+				})
+				continue
+			}
+
+			// Format the value as string
+			valueStr := formatConfigValue(value)
+
+			// Format the label (convert camelCase to Title Case)
+			label := formatConfigLabel(key)
+
+			cardSections = append(cardSections, components.CardSection{
+				Label: label,
+				Value: valueStr,
+			})
+		}
+
+		// Create card for this section
+		if len(cardSections) > 0 {
+			card := components.NewCardWithSections(sectionName, cardSections)
+			cards = append(cards, card)
+		}
+	}
+
+	return cards, nil
+}
+
+// formatConfigValue formats a config value as a string for display
+func formatConfigValue(value interface{}) string {
+	if value == nil {
+		return "(empty)"
+	}
+
+	switch v := value.(type) {
+	case string:
+		if v == "" {
+			return "(empty)"
+		}
+		return v
+	case bool:
+		return strconv.FormatBool(v)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case float64:
+		// YAML numbers might be parsed as float64
+		if v == float64(int64(v)) {
+			return strconv.FormatInt(int64(v), 10)
+		}
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	default:
+		// For other types, use reflection or string conversion
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// formatConfigLabel converts camelCase to Title Case
+func formatConfigLabel(key string) string {
+	// Handle common abbreviations and special cases
+	replacements := map[string]string{
+		"DefaultEditor":        "Default Editor",
+		"EnablePopularitySort": "Enable Popularity Sort",
+		"LogPath":              "Log Path",
+		"MaxLogSize":           "Max Log Size",
+		"MaxLogFiles":          "Max Log Files",
+		"RequestTimeout":       "Request Timeout",
+		"DownloadTimeout":      "Download Timeout",
+		"MaxSourceFileSize":    "Max Source File Size",
+		"FileCopyBufferSize":   "File Copy Buffer Size",
+		"AutoCheck":            "Auto Check",
+		"AutoUpdate":           "Auto Update",
+		"UpdateCheckInterval":  "Update Check Interval",
+		"LastUpdateCheck":      "Last Update Check",
+		"UpdateChannel":        "Update Channel",
+	}
+
+	if replacement, exists := replacements[key]; exists {
+		return replacement
+	}
+
+	// Convert camelCase to Title Case
+	var result strings.Builder
+	for i, r := range key {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result.WriteString(" ")
+		}
+		// Capitalize first letter, keep rest as-is
+		if i == 0 && r >= 'a' && r <= 'z' {
+			result.WriteRune(r - 32) // Convert to uppercase
+		} else {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
 
 var configCmd = &cobra.Command{
 	Use:          "config",
@@ -75,23 +239,18 @@ var configInfoCmd = &cobra.Command{
 		output.GetDebug().State("Editor resolution - DefaultEditor: '%s', Actual: '%s'", appConfig.Configuration.DefaultEditor, actualEditor)
 		output.GetDebug().State("Logging config: %+v", appConfig.Logging)
 
+		// Build cards dynamically from YAML structure
+		cards, err := buildConfigCardsFromYAML(configPath, appConfig, actualEditor)
+		if err != nil {
+			GetLogger().Error("Failed to build config cards: %v", err)
+			output.GetVerbose().Error("Failed to build config cards: %v", err)
+			output.GetDebug().Error("buildConfigCardsFromYAML() failed: %v", err)
+			// Fallback to basic display
+			return fmt.Errorf("unable to build configuration display: %v", err)
+		}
+
 		// Display configuration information using card components
 		fmt.Println() // Add space between command and first card
-		var cards []components.Card
-
-		// Configuration info card
-		cards = append(cards, components.ConfigurationInfoCard(
-			configPath,
-			actualEditor,
-			fmt.Sprintf("%t", appConfig.Configuration.EnablePopularitySort),
-		))
-
-		// Logging configuration card
-		cards = append(cards, components.LoggingConfigCard(
-			appConfig.Logging.LogPath,
-			appConfig.Logging.MaxLogSize,
-			fmt.Sprintf("%d", appConfig.Logging.MaxLogFiles),
-		))
 
 		// Render all cards
 		if len(cards) > 0 {

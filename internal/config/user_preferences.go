@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
@@ -413,10 +414,63 @@ func GenerateInitialUserPreferences() error {
 	return saveDefaultAppConfigWithComments(configPath)
 }
 
-// SaveUserPreferences saves the user preferences to file
+// SaveUserPreferences saves the user preferences to file, preserving comments if the file exists
 func SaveUserPreferences(config *AppConfig) error {
 	configPath := GetAppConfigPath()
 
+	// Check if file exists - if it does, try to preserve comments
+	if _, err := os.Stat(configPath); err == nil {
+		// File exists - preserve comments by using yaml.Node
+		return saveUserPreferencesWithComments(configPath, config)
+	}
+
+	// File doesn't exist - use default template with comments
+	return saveDefaultAppConfigWithComments(configPath)
+}
+
+// saveUserPreferencesWithComments saves config while preserving existing comments
+func saveUserPreferencesWithComments(configPath string, config *AppConfig) error {
+	// Read existing file to preserve comments
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		// If we can't read it, fall back to regular marshal
+		return saveUserPreferencesWithoutComments(configPath, config)
+	}
+
+	// Parse into yaml.Node to preserve comments
+	var node yaml.Node
+	if err := yaml.Unmarshal(data, &node); err != nil {
+		// If parsing fails, fall back to regular marshal
+		return saveUserPreferencesWithoutComments(configPath, config)
+	}
+
+	// Update values in the node tree
+	if err := updateNodeWithConfig(&node, config); err != nil {
+		// If update fails, fall back to regular marshal
+		return saveUserPreferencesWithoutComments(configPath, config)
+	}
+
+	// Write to file
+	file, err := os.Create(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to create config file: %w", err)
+	}
+	defer file.Close()
+
+	// Marshal the node tree back to YAML (preserves comments)
+	encoder := yaml.NewEncoder(file)
+	encoder.SetIndent(2)
+	defer encoder.Close()
+
+	if err := encoder.Encode(&node); err != nil {
+		return fmt.Errorf("failed to encode YAML: %w", err)
+	}
+
+	return nil
+}
+
+// saveUserPreferencesWithoutComments saves config without preserving comments (fallback)
+func saveUserPreferencesWithoutComments(configPath string, config *AppConfig) error {
 	// Marshal config to YAML
 	data, err := yaml.Marshal(config)
 	if err != nil {
@@ -428,6 +482,133 @@ func SaveUserPreferences(config *AppConfig) error {
 		return fmt.Errorf("failed to write app config file: %w", err)
 	}
 
+	return nil
+}
+
+// updateNodeWithConfig updates a yaml.Node tree with values from AppConfig
+func updateNodeWithConfig(node *yaml.Node, config *AppConfig) error {
+	// Find the root mapping node
+	if node.Kind != yaml.DocumentNode || len(node.Content) == 0 {
+		return fmt.Errorf("invalid YAML structure")
+	}
+
+	root := node.Content[0]
+	if root.Kind != yaml.MappingNode {
+		return fmt.Errorf("root node is not a mapping")
+	}
+
+	// Update each section in the config
+	sections := map[string]interface{}{
+		"Configuration": config.Configuration,
+		"Logging":       config.Logging,
+		"Network":       config.Network,
+		"Limits":        config.Limits,
+		"Update":        config.Update,
+		"Theme":         config.Theme,
+	}
+
+	// Iterate through root mapping pairs (key, value, key, value, ...)
+	for i := 0; i < len(root.Content); i += 2 {
+		if i+1 >= len(root.Content) {
+			break
+		}
+
+		keyNode := root.Content[i]
+		valueNode := root.Content[i+1]
+
+		sectionName := keyNode.Value
+		if sectionData, exists := sections[sectionName]; exists {
+			// Update this section's values
+			if err := updateSectionNode(valueNode, sectionData); err != nil {
+				return fmt.Errorf("failed to update section %s: %w", sectionName, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// updateSectionNode updates a section node with new values
+func updateSectionNode(sectionNode *yaml.Node, sectionData interface{}) error {
+	if sectionNode.Kind != yaml.MappingNode {
+		return fmt.Errorf("section node is not a mapping")
+	}
+
+	// Convert section data to map for easier lookup
+	sectionMap := make(map[string]interface{})
+	v := reflect.ValueOf(sectionData)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	t := v.Type()
+
+	for i := 0; i < v.NumField(); i++ {
+		field := t.Field(i)
+		yamlTag := field.Tag.Get("yaml")
+		if yamlTag == "" || yamlTag == "-" {
+			continue
+		}
+
+		// Extract field name from yaml tag (handle ",omitempty" etc.)
+		fieldName := strings.Split(yamlTag, ",")[0]
+		fieldValue := v.Field(i).Interface()
+		sectionMap[fieldName] = fieldValue
+	}
+
+	// Update values in the section node
+	for i := 0; i < len(sectionNode.Content); i += 2 {
+		if i+1 >= len(sectionNode.Content) {
+			break
+		}
+
+		keyNode := sectionNode.Content[i]
+		valueNode := sectionNode.Content[i+1]
+
+		keyName := keyNode.Value
+		if newValue, exists := sectionMap[keyName]; exists {
+			// Update the value node
+			if err := updateValueNode(valueNode, newValue); err != nil {
+				return fmt.Errorf("failed to update value for %s: %w", keyName, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// updateValueNode updates a value node with a new value
+func updateValueNode(valueNode *yaml.Node, newValue interface{}) error {
+	switch v := newValue.(type) {
+	case string:
+		valueNode.Kind = yaml.ScalarNode
+		valueNode.Value = v
+		valueNode.Tag = "!!str"
+	case bool:
+		valueNode.Kind = yaml.ScalarNode
+		valueNode.Value = strconv.FormatBool(v)
+		valueNode.Tag = "!!bool"
+	case int:
+		valueNode.Kind = yaml.ScalarNode
+		valueNode.Value = strconv.Itoa(v)
+		valueNode.Tag = "!!int"
+	case int64:
+		valueNode.Kind = yaml.ScalarNode
+		valueNode.Value = strconv.FormatInt(v, 10)
+		valueNode.Tag = "!!int"
+	default:
+		// For complex types, marshal and update
+		data, err := yaml.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("failed to marshal value: %w", err)
+		}
+		var newNode yaml.Node
+		if err := yaml.Unmarshal(data, &newNode); err != nil {
+			return fmt.Errorf("failed to unmarshal value: %w", err)
+		}
+		if len(newNode.Content) > 0 {
+			*valueNode = *newNode.Content[0]
+		}
+	}
 	return nil
 }
 
