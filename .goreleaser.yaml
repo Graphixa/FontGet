@@ -1,3 +1,5 @@
+version: 2
+
 project_name: fontget
 dist: dist
 
@@ -26,11 +28,12 @@ builds:
 
 archives:
   - id: default
-    builds:
+    ids:
       - fontget
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
@@ -38,7 +41,7 @@ checksum:
   algorithm: sha256
 
 snapshot:
-  name_template: "{{ .Tag }}-SNAPSHOT"
+  version_template: "{{ .Tag }}-SNAPSHOT"
 
 release:
   # Upload raw binaries in addition to archives (required for self-update system)
@@ -70,7 +73,7 @@ changelog:
 # Linux packages via NFPM (deb/rpm)
 nfpms:
   - id: linux-packages
-    builds:
+    ids:
       - fontget
     package_name: fontget
     file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Arch }}"
