@@ -2,37 +2,17 @@
 
 ## 🎯 **CURRENT PRIORITY: Beta Preparation**
 
-### **Phase 1: CI/CD Pipeline (HIGH PRIORITY - Beta Blocking)**
+### **Phase 1: CI/CD Pipeline (HIGH PRIORITY - Beta Blocking)** ✅ **COMPLETED**
 
-#### **GitHub Actions Setup**
-- [ ] **Create cross-platform build workflow**
-  - [ ] Windows build (amd64, arm64)
-  - [ ] macOS build (amd64, arm64)
-  - [ ] Linux build (amd64, arm64)
-  - [ ] Build matrix configuration
-  - [ ] Artifact upload and naming conventions
-
-#### **Release Automation**
-- [ ] **Automated version tagging and releases**
-  - [ ] Semantic versioning support
-  - [ ] Automated changelog generation
-  - [ ] Release notes automation
-  - [ ] Binary verification and checksums (SHA256)
-  - [ ] GitHub Releases integration
-
-#### **Testing & Quality Assurance**
-- [ ] **Automated testing pipeline**
-  - [ ] Unit test execution on all platforms
-  - [ ] Integration test suite
-  - [ ] Cross-platform compatibility testing
-  - [ ] Build verification tests
-
-#### **Distribution Preparation**
-- [ ] **Package manager preparation**
-  - [ ] Homebrew formula (macOS)
-  - [ ] Chocolatey package (Windows)
-  - [ ] Linux package formats (deb, rpm) - if applicable
-  - [ ] Installation script updates
+#### **Distribution Preparation** ✅ **MOSTLY COMPLETED**
+- [x] **Package manager preparation**
+  - [x] Homebrew formula (macOS)
+  - [ ] Chocolatey package (Windows) - Optional, not blocking
+  - [x] Linux package formats (deb, rpm)
+  - [x] Scoop manifest (Windows)
+  - [x] Installation script updates
+  - [x] GoReleaser configuration for automated releases
+  - [x] GitHub Actions CI/CD workflows (ci.yml, release.yml)
 
 #### **Code Signing & Security** (if applicable)
 - [ ] **Code signing setup**
@@ -46,12 +26,6 @@
 
 ### **Phase 2: Help Text & Documentation**
 
-#### **Help Text Improvements** ✅ **COMPLETED**
-- [x] Review all command help text
-- [x] Apply verbose/debug principles to all commands
-- [x] Standardize terminology and wording
-- [x] Remove redundancy and improve clarity
-
 #### **Documentation Updates**
 - [ ] **Update user documentation**
   - [ ] Update README with improved help text examples
@@ -64,18 +38,6 @@
 ## 🔧 **Code Quality Improvements**
 
 ### **Phase 3: Code Cleanup & Refactoring**
-
-#### **Debug & Logging Cleanup**
-- [x] **Review debug output consistency** ✅ **COMPLETED**
-  - [x] Ensure all debug messages follow the same format
-  - [x] Verify debug output provides useful information
-  - [x] Standardize debug message formatting across all commands
-  - [x] Optimize debug performance (ensure no impact when disabled)
-  - [x] **File logging review**: Reviewed and fixed GetLogger() usage across all commands
-    - [x] Removed conditional GetLogger() calls (no IsDebug() wrappers)
-    - [x] Added comprehensive logging to commands missing it (list, export, backup)
-    - [x] Ensured all commands log: operation start, parameters, errors, completion
-    - [x] Verified GetLogger() always logs to file regardless of flags
 
 #### **Code Quality Assessment**
 - [ ] **Identify and fix code smells**
@@ -172,131 +134,74 @@
 
 ### **Phase 6: New Commands & Features**
 
-#### **Self-Update System** (HIGH PRIORITY - Post-Beta)
-- [ ] **Library Integration**
-  - [ ] Add `github.com/rhysd/go-github-selfupdate/selfupdate` to `go.mod`
-  - [ ] Create `internal/update/` package (wrapper around library)
-  - [ ] Implement `CheckForUpdates()` function using library
-  - [ ] Implement `UpdateToLatest()` function using library
-  - [ ] **Note**: Library handles GitHub API, version comparison, platform detection, checksum verification, and binary replacement automatically
+#### **Self-Update System** ✅ **MOSTLY COMPLETE** (HIGH PRIORITY - Post-Beta)
+- [x] **Library Integration**
+  - [x] Add `github.com/rhysd/go-github-selfupdate/selfupdate` to `go.mod`
+  - [x] Create `internal/update/` package (wrapper around library)
+  - [x] Implement `CheckForUpdates()` function using library
+  - [x] Implement `UpdateToLatest()` function using library
+  - [x] **Note**: Library handles GitHub API, version comparison, platform detection, checksum verification, and binary replacement automatically
 
-- [ ] **Update Command Implementation**
-  - [ ] `fontget update` - Check for updates and prompt to install
-  - [ ] `fontget update --check` - Only check for updates, don't install
-  - [ ] `fontget update -y` - Skip confirmation prompt
-  - [ ] `fontget update --version / -v <version>` - Update to specific version (should we support downgrading from here???)
-  - [ ] Show current vs. available version
-  - [ ] Display release notes/changelog from GitHub release
-  - [ ] Atomic binary replacement (cross-platform safe)
+- [x] **Update Command Implementation**
+  - [x] `fontget update` - Check for updates and prompt to install
+  - [x] `fontget update --check` - Only check for updates, don't install
+  - [x] `fontget update -y` - Skip confirmation prompt
+  - [x] `fontget update --version / -v <version>` - Update to specific version (supports downgrading)
+  - [x] Show current vs. available version
+  - [x] Display changelog link (in normal mode)
+  - [x] Atomic binary replacement (cross-platform safe)
 
-- [ ] **Cross-Platform Binary Replacement** ✅ **Handled by Library**
+- [x] **Cross-Platform Binary Replacement** ✅ **Handled by Library**
   - [x] Library handles Windows binary replacement (atomic with rollback)
   - [x] Library handles macOS/Linux binary replacement (atomic with rollback)
   - [x] Library handles "file in use" errors
   - [x] Library handles backup and rollback automatically
-  - [ ] **Action Required**: Ensure CI/CD builds binaries with naming: `fontget-{os}-{arch}{.ext}`
-  - [ ] **Action Required**: Ensure CI/CD generates `checksums.txt` with SHA256 checksums
+  - [x] **CI/CD**: GoReleaser generates binaries with proper naming and `checksums.txt` with SHA256 checksums
 
-- [ ] **Configuration Integration**
-  - [ ] Add `Update` section to `config.yaml`:
+- [x] **Configuration Integration**
+  - [x] Add `Update` section to `config.yaml`:
     ```yaml
     Update:
       AutoCheck: true          # Check for updates on startup
       AutoUpdate: false        # Automatically install updates (manual by default)
-      CheckInterval: 24        # Hours between checks
-      LastChecked: ""          # Timestamp of last check
-      UpdateChannel: "stable"  # stable/dev (future)
+      UpdateCheckInterval: 24  # Hours between checks
+      LastChecked: ""          # Timestamp of last check (auto-updated)
+      UpdateChannel: "stable"  # stable/beta/nightly
     ```
-  - [ ] First-run prompt: "Would you like FontGet to check for updates automatically?"
-  - [ ] Configurable via `fontget config edit`
-  - [ ] Respect `--no-check` flag to skip startup checks
+  - [x] First-run prompt in onboarding flow
+  - [x] Configurable via `fontget config edit` and `fontget config info`
+  - [x] Respects `Update.AutoCheck` and `Update.UpdateCheckInterval` settings
 
-- [ ] **Startup Update Check** (Optional)
-  - [ ] Check `Update.AutoCheck` and `Update.CheckInterval`
-  - [ ] Only check if interval has passed
-  - [ ] Non-blocking check (don't delay startup)
-  - [ ] Show notification if update available: "FontGet v1.2.3 is available (you have v1.2.2). Run 'fontget update' to upgrade."
-  - [ ] Suppress notification if `--quiet` flag used
+- [x] **Startup Update Check**
+  - [x] Check `Update.AutoCheck` and `Update.UpdateCheckInterval`
+  - [x] Only check if interval has passed
+  - [x] Non-blocking check (don't delay startup)
+  - [x] Show notification if update available
+  - [x] Auto-update support when `Update.AutoUpdate` is enabled
 
-- [ ] **Error Handling & Edge Cases**
-  - [ ] Map library errors to user-friendly messages
-  - [ ] Network errors: "Unable to check for updates. Check your internet connection."
-  - [ ] GitHub API errors: "Unable to fetch update information. GitHub API may be unavailable."
-  - [ ] Invalid checksums: Library handles retry, show user-friendly error
-  - [ ] Insufficient permissions: "Insufficient permissions. Try running as administrator/sudo."
-  - [ ] Binary locked/in use: "FontGet is currently running. Please close other instances."
+- [x] **Error Handling & Edge Cases**
+  - [x] Map library errors to user-friendly messages
+  - [x] Network errors handled with user-friendly messages
+  - [x] GitHub API errors handled gracefully
+  - [x] Invalid checksums: Library handles retry, shows user-friendly error
+  - [x] Insufficient permissions: User-friendly error messages
+  - [x] Binary locked/in use: Handled by library
   - [ ] Handle pre-release versions (respect UpdateChannel) - may need custom filtering
-
-- [ ] **User Experience**
-  - [ ] Clear progress indicators during download
-  - [ ] Show download size and speed
-  - [ ] Confirmation prompt with version info
-  - [ ] Success message with new version
-  - [ ] Verbose/debug output support
-  - [ ] Integration with existing UI styles
 
 - [ ] **Testing Requirements**
   - [ ] Integration tests with library (test update flow)
-  - [ ] Manual testing on Windows, macOS, Linux
-  - [ ] Test rollback mechanism (library handles, but verify)
-  - [ ] Test edge cases (no internet, API down, etc.)
-  - [ ] Test error message mapping
-  - [ ] Verify binary naming matches library expectations
+  - [x] Manual testing on Windows, macOS, Linux
+  - [x] Test rollback mechanism (library handles, verified)
+  - [x] Test edge cases (no internet, API down, etc.)
+  - [x] Test error message mapping
+  - [x] Verify binary naming matches library expectations
 
-- [ ] **Security Considerations** ✅ **Handled by Library**
+- [x] **Security Considerations** ✅ **Handled by Library**
   - [x] Library verifies SHA256 checksums before installation
   - [x] Library uses HTTPS for all downloads
   - [x] Library doesn't execute binary until verified
   - [x] Library clears temp files after update
   - [ ] **Future**: Code signing verification (library doesn't support, can add later)
-
-#### **Backup System**
-- [x] **Add `backup` command**
-  - [x] Backup installed font files to zip archive
-  - [x] Organize fonts by source and family name
-  - [x] Auto-detect accessible scopes based on elevation
-  - [x] Deduplicate fonts across scopes
-  - [x] Exclude system fonts (always excluded)
-  - [x] Progress bar with per-file progress updates
-  - [x] **Date-based filenames**: Default format `font-backup-YYYY-MM-DD.zip`
-  - [x] **Overwrite confirmation**: Prompt user before overwriting existing files
-  - [x] Integrate with verbose/debug output and UI styles
-
-#### **Export/Import System**
-- [x] **Add `export` command**
-  - [x] Export installed fonts/collections
-  - [x] Support export by match string, source, or all
-  - [x] Output manifest (JSON) with versions and variants
-  - [x] Exclude system fonts (always excluded)
-  - [x] Export fonts that match repository entries (Font IDs available)
-  - [x] Support directory or file path via -o flag (winget-style)
-  - [x] Integrate with verbose/debug output and UI styles
-  - [x] Use pin spinner for progress feedback
-  - [x] **Date-based filenames**: Default format `fontget-export-YYYY-MM-DD.json`
-  - [x] **Overwrite confirmation**: Prompt user before overwriting existing files
-  - [x] **Nerd Fonts handling**: Groups families by Font ID (one Font ID can install multiple families like ZedMono, ZedMono Mono, ZedMono Propo)
-  - [x] **Backup fonts feature**: Renamed `--copy-files` to `--backup-fonts` and improved to package font files into organized zipped directory (fonts organized by Font ID or family name)
-
-- [x] **Add `import` command**
-  - [x] Import fonts from a fontget export file
-  - [x] Validate import file structure and font availability
-  - [x] Resolve Font IDs and install missing fonts
-  - [x] Show per-font status with consistent reporting
-  - [x] Integrate with verbose/debug output and UI styles
-  - [x] **Nerd Fonts handling**: Deduplicates by Font ID and displays comma-separated family names (e.g., "Installed ZedMono, ZedMono Mono, ZedMono Propo")
-  - [ ] **UI/UX improvements**: Line-by-line progress display (items appear as they complete, counter only in progress bar title)
-  - [x] **Status message improvements**: Cleaner messaging for install/import/remove commands
-    - [x] Single-scope operations: No scope clutter in status messages ("Installed", "Removed", "Skipped... already installed")
-    - [x] Multi-scope operations: Show scope in status messages ("Removed from user scope", "Removed from machine scope")
-    - [x] Title updates: "for All Users" for machine scope, "for All Scopes (Machine & User)" for --all scope
-  - [x] **Source availability detection**: When importing fonts with Font IDs that reference disabled/unavailable sources, detect and inform the user:
-    - [x] Check if source from export file exists in current manifest
-    - [x] Check if source is enabled (if it exists)
-    - [x] Group fonts by missing/disabled source
-    - [x] **If source exists but is disabled**: Display message like "The following fonts require '{Source Name}' which is currently disabled. Enable this source via 'fontget sources manage' to import these fonts: [list of font families]"
-    - [x] **If source doesn't exist** (custom source): Display message like "The following fonts require '{Source Name}' which is not available in your sources. Add this source via 'fontget sources manage' to import these fonts: [list of font families]"
-    - [x] For built-in sources that don't exist: Suggest running `fontget sources update` to refresh sources
-    - [x] Handle both built-in sources (can be refreshed) and custom sources (must be manually added with URL/prefix)
 
 #### **Sources Management CLI Flags**
 - [ ] **Add non-TUI flags to `sources manage`**
@@ -309,66 +214,30 @@
 
 ---
 
-## ✅ **COMPLETED WORK**
-
-### **Foundation & Architecture**
-- [x] Manifest-based sources system implementation
-- [x] Output system redesign (verbose/debug interfaces)
-- [x] Configuration consolidation
-- [x] Priority system implementation
-- [x] UI component system (cards, forms, confirmations, hierarchical lists)
-
-### **Command Standardization**
-- [x] Verbose/debug support across all commands (add, remove, search, list, info, config, sources)
-- [x] Visual consistency across all commands
-- [x] Shared function consolidation
-- [x] Table standardization
-- [x] Error handling standardization
-
-### **Font Management Features**
-- [x] Font matching feature with optimized index-based matching
-- [x] Font ID support in add and remove commands
-- [x] Protected system font filtering
-- [x] Nerd Fonts variant handling
-- [x] List command enhancements (Font ID, License, Categories, Source columns)
-- [x] Pre-installation font checking (detects already-installed fonts before downloading)
-- [x] Backup command with date-based filenames and overwrite confirmation
-- [x] Export command enhancements (date-based filenames and overwrite confirmation)
-
-### **Performance Optimizations**
-- [x] Font suggestion performance optimization (90ms → 10ms)
-- [x] Optimized font matching with in-memory index
-
-### **Code Cleanup**
-- [x] Removed 231 lines of unused code
-- [x] Fixed duplicate manage command bug
-- [x] Source priority ordering consistency
-- [x] Font matching logic corrections
-- [x] Centralized spinner color configuration in styles.go
-- [x] Improved color mapping with PinColorMap for pin package integration
-
 ### **User Experience Improvements**
 - [ ] Line-by-line progress display for install/import/remove commands (items appear as they complete)
 - [x] Cleaner status messages (removed redundant counters from individual items, counter only in progress bar title)
 - [x] Improved scope messaging (no scope clutter for single-scope operations, clear scope indication for multi-scope)
 - [x] Title updates for machine scope operations ("for All Users", "for All Scopes (Machine & User)")
+- [x] Button-based confirmation dialogs (replaced Y/N prompts with interactive button UI)
+- [x] Improved update command output (styled version display, changelog links)
 
 ---
 
 ## 📋 **SUCCESS CRITERIA**
 
 ### **Beta Release Readiness:**
-- [ ] CI/CD pipeline fully operational
-- [ ] Automated builds for all target platforms
-- [ ] Automated release process
-- [ ] All help text reviewed and improved
-- [ ] Code quality improvements completed
-- [ ] Cross-platform testing verified
+- [x] CI/CD pipeline fully operational
+- [x] Automated builds for all target platforms
+- [x] Automated release process (GoReleaser)
+- [x] All help text reviewed and improved
+- [ ] Code quality improvements completed (ongoing)
+- [x] Cross-platform testing verified
 
 ### **Post-Beta Goals:**
 - [ ] Performance optimizations implemented
-- [ ] Export/import functionality added
-- [ ] Update system implemented
+- [x] Export/import functionality added
+- [x] Update system implemented
 - [ ] Comprehensive test coverage
 
 ---
@@ -394,12 +263,15 @@
 
 ## 📊 **Current Status**
 
-**Overall Progress**: Foundation complete, commands standardized, ready for beta preparation
+**Overall Progress**: Foundation complete, commands standardized, CI/CD operational, update system implemented, ready for beta
 
 **Next Steps**: 
-1. **IMMEDIATE**: Set up CI/CD pipeline (Phase 1)
-2. **SHORT TERM**: Code quality improvements (Phase 3)
-3. **MEDIUM TERM**: UX enhancements (Phase 4)
-4. **LONG TERM**: Performance optimizations and new features (Phases 5-6)
+1. **SHORT TERM**: Code quality improvements (Phase 3)
+2. **MEDIUM TERM**: UX enhancements (Phase 4)
+3. **LONG TERM**: Performance optimizations and new features (Phases 5-6)
 
-**Blockers for Beta**: CI/CD pipeline setup
+**Recent Completions**: 
+- ✅ CI/CD pipeline fully operational
+- ✅ Self-update system implemented
+- ✅ Export/import functionality complete
+- ✅ Help text reviewed and improved
