@@ -5,19 +5,17 @@ This document provides a comprehensive overview of all FontGet commands, their P
 ## `add`
 
 ### Purpose
-Install fonts from various sources (Google Fonts, Font Squirrel, Nerd Fonts)
-
-### Subcommands
-None (takes font name or ID as argument)
+Install fonts from configured sources.
 
 ### Flags
-- `--scope, -s` - Specify installation scope:
-  - `user` (default) - Install for current user only
-  - `machine` - Install system-wide (requires elevation)
-- `--force, -f` - Force reinstall even if font already exists
+- `--scope, -s` - Installation scope: `user` (default) or `machine` (admin required)
+- `--force, -f` - Overwrite existing fonts
+
+### Notes
+- Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
+- Names with spaces must be quoted: "Open Sans".
 
 ### Examples
-
 ```bash
 # Install from any available source
 fontget add "roboto"
@@ -27,57 +25,43 @@ fontget add "google.roboto"
 
 # Force reinstall existing font
 fontget add "roboto" --force
-
-# Install with verbose output
-fontget add "roboto" --verbose
-
-# Install with debug diagnostics
-fontget add "roboto" --debug
-
 ```
 
 ## `search`
 
 ### Purpose
-Search for fonts across all sources with fuzzy matching
-
-### Subcommands
-None (takes search query as argument)
+Search for available fonts.
 
 ### Flags
-- `--category, -c` - Filter fonts by category:
-  - `Sans Serif`, `Serif`, `Display`, `Handwriting`, `Monospace`, `Other`
+- `--category, -c` - Filter by category (e.g., Sans Serif, Serif, Monospace). Use `-c` alone to list categories.
 
-### Usage Example
+### Examples
 ```bash
-# Find all sans-serif fonts
+# Find all fonts containing the word 'sans'
 fontget search "sans"
 
-# Find specific font
+# Find all fonts named 'roboto'
 fontget search "roboto"
 
 # Find fonts by category
-fontget search "mono" --category "Monospace"
+fontget search "robo" --category "Monospace"
+
+# List possible search categories
+fontget search -c
 ```
 
 ## `list`
 
 ### Purpose
-Show installed fonts with details (name, variants, source, etc.)
-
-### Subcommands
-None (shows all installed fonts)
+List installed fonts.
 
 ### Flags
-- `--scope, -s` - Filter by installation scope:
-  - `user` - Show fonts from user scope only
-  - `machine` - Show fonts from machine scope only
-  - `all` (default) - Show fonts from both scopes
-- `--family, -a` - Filter installed fonts by family name
-- `--type, -t` - Filter installed fonts by file type (TTF, OTF, etc.)
-- `--full, -f` - Show font styles in hierarchical view
+- `--scope, -s` - Filter by installation scope (`user`, `machine`, or `all` default)
+- `--type, -t` - Filter by font type (e.g., TTF, OTF)
+- `--full, -f` - Show all variants in hierarchical view
+- `--family, -a` - Filter by family name
 
-### Usage Example
+### Examples
 ```bash
 # List all installed fonts
 fontget list
@@ -91,26 +75,24 @@ fontget list --family "Roboto"
 # List fonts by type
 fontget list --type TTF
 
-# Show font styles in hierarchical view
+# Show font and variants in a hierarchical view
 fontget list --full
 ```
 
 ## `remove`
 
 ### Purpose
-Uninstall fonts from the system
-
-### Subcommands
-None (takes font name as argument)
+Remove fonts from your system.
 
 ### Flags
-- `--scope, -s` - Specify removal scope:
-  - `user` (default) - Remove from user scope only
-  - `machine` - Remove from machine scope only (requires elevation)
-  - `all` - Remove from both scopes
-- `--force, -f` - Force removal even if font is protected
+- `--scope, -s` - Removal scope (`user` default, `machine`, or `all`; system-wide requires admin)
+- `--force, -f` - Force removal even if protected
 
-### Usage Example
+### Notes
+- Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
+- Names with spaces must be quoted: "Open Sans".
+
+### Examples
 ```bash
 # Remove font from user scope
 fontget remove "roboto"
@@ -125,16 +107,16 @@ fontget remove "roboto" --force
 ## `info`
 
 ### Purpose
-Show detailed information about a specific font
-
-### Subcommands
-None (takes font name or ID as argument)
+Display detailed information about a font.
 
 ### Flags
-- `--license, -l` - Show only license information for a font
-- `--metadata, -m` - Show only metadata information for a font
+- `--license, -l` - Show license information only
+- `--metadata, -m` - Show metadata only
 
-### Usage Example
+### Notes
+- Shows font name, ID, source, available variants, license, categories, and tags.
+
+### Examples
 ```bash
 # Show complete font details
 fontget info "roboto"
@@ -149,18 +131,21 @@ fontget info "roboto" --metadata
 ## `sources`
 
 ### Purpose
-Manage font sources (Google Fonts, Font Squirrel, Nerd Fonts)
+Manage font sources.
 
 ### Subcommands
 - `info` - Show sources information
-- `update` - Update source data
-- `manage` - Interactive source management
-- `validate` - Validate cached sources integrity
+- `update` - Refresh source configurations and font database
+- `validate` - Validate source files
+- `manage` - Interactive source management (TUI)
 
 ### Flags
-- `--verbose, -v` - Show detailed error messages during source updates
+- `--verbose, -v` - Show detailed output during updates
 
-### Usage Example
+### Notes
+- Only add sources from trusted locations.
+
+### Examples
 ```bash
 # Show sources information
 fontget sources info
@@ -174,8 +159,7 @@ fontget sources manage
 # Validate sources integrity
 fontget sources validate
 
-# Update with verbose output
-fontget sources update --verbose
+
 ```
 
 ## `config`
@@ -189,10 +173,7 @@ Manage FontGet configuration settings
 - `validate` - Validate configuration file integrity
 - `reset` - Reset configuration to defaults
 
-### Flags
-No command-specific flags (use subcommands: `validate`, `reset`)
-
-### Usage Example
+### Examples
 ```bash
 # Show current configuration
 fontget config info
@@ -207,20 +188,28 @@ fontget config validate
 fontget config reset
 ```
 
+### Notes
+- `config validate`: checks config integrity. If it fails, edit with `fontget config edit` or reset with `fontget config reset`.
+- `config reset`: replaces the config with defaults while preserving log files.
+
 ## `update`
 
 ### Purpose
-Update FontGet to the latest version from GitHub Releases
-
-### Subcommands
-None (updates the entire application)
+Update FontGet to the latest version
 
 ### Flags
 - `--check, -c` - Only check for updates, don't install
 - `-y` - Skip confirmation prompt and auto-confirm update
-- `--version <version>` - Update to specific version (e.g., 1.2.3)
+- `--version <version>` - Update or downgrade to specific version (e.g., 1.2.1)
 
-### Usage Example
+### Notes
+- Updates are downloaded from GitHub Releases
+- Checksums are automatically verified for security
+- Binary replacement is atomic and safe across all platforms
+- Failed updates automatically roll back to the previous version
+- Startup update checks are non-blocking and respect the `CheckInterval` setting
+
+### Examples
 ```bash
 # Check for updates and prompt to install
 fontget update
@@ -234,8 +223,6 @@ fontget update -y
 # Update to specific version
 fontget update --version 1.2.3
 
-# Check with verbose output
-fontget update --check --verbose
 ```
 
 ### Configuration
@@ -250,20 +237,10 @@ Update:
   UpdateChannel: "stable" # Update channel: stable, beta, or nightly
 ```
 
-### Notes
-- Updates are downloaded from GitHub Releases
-- Checksums are automatically verified for security
-- Binary replacement is atomic and safe across all platforms
-- Failed updates automatically roll back to the previous version
-- Startup update checks are non-blocking and respect the `CheckInterval` setting
-
 ## `export`
 
 ### Purpose
 Export installed fonts to a JSON manifest file that can be used to restore fonts on another system
-
-### Subcommands
-None (takes output file as optional argument)
 
 ### Flags
 - `--output, -o` - Output file path (default: fonts-export.json). Can specify directory or full file path
@@ -272,7 +249,7 @@ None (takes output file as optional argument)
 - `--all, -a` - Export all installed fonts (including those without Font IDs)
 - `--matched` - Export only fonts that match repository entries (default behavior, cannot be used with --all)
 
-### Usage Example
+### Examples
 ```bash
 # Export to default file (fonts-export.json)
 fontget export
@@ -301,8 +278,6 @@ fontget export "fonts.json" --all
 ### Purpose
 Import fonts from a FontGet export manifest file (JSON format)
 
-### Subcommands
-None (takes manifest file path as argument)
 
 ### Flags
 - `--scope, -s` - Installation scope override:
@@ -311,7 +286,7 @@ None (takes manifest file path as argument)
   - If not specified, auto-detects based on elevation
 - `--force, -f` - Force installation even if font is already installed
 
-### Usage Example
+### Examples
 ```bash
 # Import from manifest file
 fontget import "fonts.json"
@@ -331,11 +306,11 @@ fontget import "fonts.json" --scope machine
 ### Purpose
 Backup installed font files to a zip archive organized by source and family name
 
-### Subcommands
-None (takes output path as optional argument)
-
-### Flags
-No command-specific flags
+### Notes
+- Automatically detects accessible scopes (user vs machine) based on elevation
+- Fonts are deduplicated across scopes
+- System fonts are always excluded
+- Prompts before overwriting existing backup files
 
 ### Usage Example
 ```bash
@@ -352,26 +327,18 @@ fontget backup "D:\Backups"
 fontget backup "D:\Backups\my-fonts.zip"
 ```
 
-### Notes
-- Automatically detects accessible scopes (user vs machine) based on elevation
-- Fonts are deduplicated across scopes
-- System fonts are always excluded
-- Prompts before overwriting existing backup files
 
 ## `version`
 
 ### Purpose
-Show FontGet version and build information
+Display version and build information.
 
-### Subcommands
-None
 
 ### Flags
 - `--release-notes` - Show release notes link for the current version
 
-### Usage Example
+### Examples
 ```bash
-# Show version information
 fontget version
 
 # Show version with release notes link
@@ -384,15 +351,16 @@ fontget version --debug
 ## `completion`
 
 ### Purpose
-Generate or install shell completion scripts for bash, zsh, and PowerShell
-
-### Subcommands
-None (takes shell name as argument)
+Generate shell completion scripts.
 
 ### Flags
-- `--install` - Automatically install completion script to shell configuration file
+- `--install` - Automatically install the completion script to the shell configuration
 
-### Usage Example
+### Notes
+- Supports bash, zsh, and PowerShell. See documentation for installation steps.
+- After installation, restart your terminal or reload your shell configuration.
+
+### Examples
 ```bash
 # Generate completion script for bash (output to stdout)
 fontget completion bash
@@ -412,11 +380,6 @@ fontget completion zsh --install
 fontget completion powershell --install
 ```
 
-### Notes
-- Supported shells: `bash`, `zsh`, `powershell`
-- After installation, restart your terminal or reload your shell configuration
-- Auto-detection works on Unix-like systems (Linux, macOS)
-
 
 # Quick Reference
 
@@ -429,7 +392,7 @@ fontget completion powershell --install
 | `info` | Show font details | `--license, -l`, `--metadata, -m` |
 | `sources` | Manage font sources |  |
 | &nbsp;&nbsp;&nbsp;- `info` | Show sources information |  |
-| &nbsp;&nbsp;&nbsp;- `update` | Update source data | `--verbose, -v` |
+| &nbsp;&nbsp;&nbsp;- `update` | Refresh source configurations and font database | `--verbose, -v` |
 | &nbsp;&nbsp;&nbsp;- `manage` | Interactive management |  |
 | &nbsp;&nbsp;&nbsp;- `validate` | Validate sources integrity |  |
 | `config` | Manage configuration |  |
@@ -440,7 +403,7 @@ fontget completion powershell --install
 | `export` | Export fonts to manifest | `--output, -o`, `--match, -m`, `--source, -s`, `--all, -a`, `--matched` |
 | `import` | Import fonts from manifest | `--scope, -s`, `--force, -f` |
 | `backup` | Backup font files to zip |  |
-| `version` | Show version information | `--release-notes` |
+| `version` | Display version and build information | `--release-notes` |
 | `completion` | Generate completion script | `--install` |
 | `update` | Update FontGet | `--check, -c`, `-y`, `--version` |
 | _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs` |
