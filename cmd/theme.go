@@ -125,11 +125,18 @@ func NewThemeSelectionModel() (*themeSelectionModel, error) {
 
 // Init initializes the model
 func (m themeSelectionModel) Init() tea.Cmd {
-	return nil
+	// Initialize preview animations
+	return m.preview.Init()
 }
 
 // Update handles messages and updates the model
 func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle preview animation updates
+	if cmd, shouldRedraw := m.preview.Update(msg); shouldRedraw {
+		// Preview requested a redraw, return the command
+		return m, cmd
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

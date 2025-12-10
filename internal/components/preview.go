@@ -3,23 +3,81 @@ package components
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"fontget/internal/ui"
 
+	"github.com/charmbracelet/bubbles/spinner"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // PreviewModel represents the theme preview component
 type PreviewModel struct {
-	theme *ui.Theme
-	mode  string
+	theme             *ui.Theme
+	mode              string
+	spinner           spinner.Model
+	progressPercent   float64
+	progressDirection int // 1 for increasing, -1 for decreasing
 }
 
 // NewPreviewModel creates a new preview model
 func NewPreviewModel() *PreviewModel {
+	// Create spinner
+	spin := spinner.New()
+	spin.Spinner = spinner.Dot
+
 	return &PreviewModel{
-		mode: "dark",
+		mode:              "dark",
+		spinner:           spin,
+		progressPercent:   0.0,
+		progressDirection: 1, // Start increasing
 	}
+}
+
+// Init initializes the preview model with tick commands
+func (m *PreviewModel) Init() tea.Cmd {
+	return tea.Batch(
+		m.spinner.Tick,
+		previewTickCmd(),
+	)
+}
+
+// Update handles messages for animation
+func (m *PreviewModel) Update(msg tea.Msg) (tea.Cmd, bool) {
+	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return cmd, true // Request redraw
+
+	case previewTickMsg:
+		// Update progress bar (cycle 0-100% over ~4 seconds)
+		// Each tick is ~100ms, so 40 ticks = 4 seconds
+		m.progressPercent += 0.025 * float64(m.progressDirection) // 2.5% per tick
+
+		if m.progressPercent >= 1.0 {
+			m.progressPercent = 1.0
+			m.progressDirection = -1 // Start decreasing
+		} else if m.progressPercent <= 0.0 {
+			m.progressPercent = 0.0
+			m.progressDirection = 1 // Start increasing
+		}
+
+		return previewTickCmd(), true // Request redraw and schedule next tick
+	}
+
+	return nil, false
+}
+
+// previewTickMsg is sent periodically to update animations
+type previewTickMsg time.Time
+
+// previewTickCmd returns a command that sends a tick message after ~100ms
+func previewTickCmd() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return previewTickMsg(t)
+	})
 }
 
 // LoadTheme loads a theme for preview
@@ -67,11 +125,10 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, fmt.Sprintf("%s %s", button1Rendered, button2Rendered))
 	lines = append(lines, "") // Spacing
 
-	// Checkboxes
+	// Checkboxes side-by-side to save space
 	checkboxChecked := previewStyles.CheckboxChecked.Render("[x]")
 	checkboxUnchecked := previewStyles.CheckboxUnchecked.Render("[ ]")
-	lines = append(lines, fmt.Sprintf("%s Checked item", checkboxChecked))
-	lines = append(lines, fmt.Sprintf("%s Unchecked item", checkboxUnchecked))
+	lines = append(lines, fmt.Sprintf("%s Checked  %s Unchecked", checkboxChecked, checkboxUnchecked))
 	lines = append(lines, "") // Spacing
 
 	// Switch
@@ -81,10 +138,21 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, switchRendered)
 	lines = append(lines, "") // Spacing
 
-	// Status messages
-	lines = append(lines, previewStyles.SuccessText.Render("✓ Success message"))
-	lines = append(lines, previewStyles.WarningText.Render("! Warning message"))
-	lines = append(lines, previewStyles.ErrorText.Render("✗ Error message"))
+	// Status messages - all on one line to save space
+	successMsg := previewStyles.SuccessText.Render("✓ Success")
+	warningMsg := previewStyles.WarningText.Render("! Warning")
+	errorMsg := previewStyles.ErrorText.Render("✗ Error")
+	statusLine := fmt.Sprintf("%s  %s  %s", successMsg, warningMsg, errorMsg)
+	lines = append(lines, statusLine)
+	lines = append(lines, "") // Spacing
+
+	// Spinner and Progress bar side-by-side to save space
+	spinnerChar := strings.TrimSpace(m.spinner.View())
+	spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Accent))
+	spinnerRendered := spinnerStyle.Render(spinnerChar + " Loading")
+	progressPercent := int(m.progressPercent * 100)
+	progressBar := m.renderStaticProgressBar(progressPercent, colors)
+	lines = append(lines, fmt.Sprintf("%s  %s", spinnerRendered, progressBar))
 	lines = append(lines, "") // Spacing
 
 	// Card example using card renderer for consistent title-in-border
@@ -209,4 +277,104 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 		ErrorText: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colors.Error)),
 	}
+}
+
+// renderStaticProgressBar creates a static progress bar for preview
+// Uses a simplified version without duplicating helper functions from progress_bar.go
+func (m *PreviewModel) renderStaticProgressBar(percent int, colors *ui.ModeColors) string {
+	barWidth := 20 // Compact width for preview
+	filled := int(float64(barWidth) * float64(percent) / 100.0)
+	empty := barWidth - filled
+
+	// Get gradient colors
+	startColor := colors.ProgressBarGradient.ColorStart
+	endColor := colors.ProgressBarGradient.ColorEnd
+
+	// Build the progress bar manually with gradient colors
+	var barBuilder strings.Builder
+
+	// Filled portion with gradient - simplified interpolation
+	for i := 0; i < filled; i++ {
+		// Calculate color interpolation for gradient effect
+		var ratio float64
+		if filled > 1 {
+			ratio = float64(i) / float64(filled-1)
+		} else {
+			ratio = 0.0
+		}
+		if ratio > 1.0 {
+			ratio = 1.0
+		}
+		if ratio < 0.0 {
+			ratio = 0.0
+		}
+
+		// Interpolate color between start and end
+		gradientColor := interpolateHexColorSimple(startColor, endColor, ratio)
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(gradientColor))
+		barBuilder.WriteString(style.Render("█"))
+	}
+
+	// Empty portion
+	emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyMid))
+	for i := 0; i < empty; i++ {
+		barBuilder.WriteString(emptyStyle.Render("░"))
+	}
+
+	barVisual := barBuilder.String()
+	percentText := fmt.Sprintf("%d%%", percent)
+
+	return fmt.Sprintf("[%s] %s", barVisual, percentText)
+}
+
+// interpolateHexColorSimple interpolates between two hex colors (simplified version)
+func interpolateHexColorSimple(start, end string, ratio float64) string {
+	// Parse hex colors to RGB
+	startRGB := hexToRGBSimple(start)
+	endRGB := hexToRGBSimple(end)
+
+	// Interpolate each component
+	r := int(float64(startRGB[0])*(1-ratio) + float64(endRGB[0])*ratio)
+	g := int(float64(startRGB[1])*(1-ratio) + float64(endRGB[1])*ratio)
+	b := int(float64(startRGB[2])*(1-ratio) + float64(endRGB[2])*ratio)
+
+	// Convert back to hex
+	return rgbToHexSimple(r, g, b)
+}
+
+// hexToRGBSimple converts a hex color string to RGB values
+func hexToRGBSimple(hex string) [3]int {
+	// Remove # if present
+	hex = strings.TrimPrefix(hex, "#")
+
+	// Parse hex string
+	var r, g, b int
+	fmt.Sscanf(hex, "%02x%02x%02x", &r, &g, &b)
+
+	return [3]int{r, g, b}
+}
+
+// rgbToHexSimple converts RGB values to a hex color string
+func rgbToHexSimple(r, g, b int) string {
+	// Clamp values to valid range
+	if r < 0 {
+		r = 0
+	}
+	if r > 255 {
+		r = 255
+	}
+	if g < 0 {
+		g = 0
+	}
+	if g > 255 {
+		g = 255
+	}
+	if b < 0 {
+		b = 0
+	}
+	if b > 255 {
+		b = 255
+	}
+
+	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
 }

@@ -49,13 +49,15 @@ func CalculatePanelLayout(config LayoutConfig) PanelLayout {
 		availableHeight = 10
 	}
 
-	// Calculate panel widths (50/50 split accounting for separator)
+	// Calculate panel widths (30/70 split accounting for separator)
+	// Left column: 30%, Right column: 70%
 	panelAreaWidth := availableWidth - separatorWidth
 	if panelAreaWidth < 0 {
 		panelAreaWidth = 0
 	}
 
-	leftWidth := panelAreaWidth / 2
+	// 30% for left, 70% for right
+	leftWidth := int(float64(panelAreaWidth) * 0.3)
 	rightWidth := panelAreaWidth - leftWidth
 
 	// Ensure minimum panel widths
