@@ -300,9 +300,9 @@ func (m ProgressBarModel) View() string {
 			if m.VerboseMode || m.DebugMode {
 				styledIcon = "○" // Static circle for verbose/debug mode
 			} else {
-				// Get spinner character, trim whitespace, and apply styling
+				// Get spinner character, trim whitespace, and apply styling using theme color
 				styledIcon = strings.TrimSpace(m.Spinner.View())
-				styledIcon = lipgloss.NewStyle().Foreground(lipgloss.Color("#cba6f7")).Render(styledIcon)
+				styledIcon = lipgloss.NewStyle().Foreground(lipgloss.Color(ui.SpinnerColor)).Render(styledIcon)
 			}
 		default:
 			// Other statuses - use a space to maintain alignment

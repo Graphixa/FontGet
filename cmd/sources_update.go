@@ -91,7 +91,7 @@ func NewUpdateModel(verbose bool) (*updateModel, error) {
 	// Create spinner
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
-	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("#cba6f7")) // Mauve color
+	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(ui.SpinnerColor)) // Use theme color (accent)
 
 	// Skip initial font count calculation for faster startup
 	initialFontCount := 0

@@ -133,73 +133,92 @@ Flags:
 		}
 		// Debug: initial parameter dump removed to reduce noise
 
-		fonts, err := collectFonts(scopes, fm, typeFilter)
-		if err != nil {
-			GetLogger().Error("Failed to collect fonts: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("collectFonts() failed: %v", err)
-			return fmt.Errorf("unable to read installed fonts: %v", err)
-		}
-		output.GetDebug().State("Collected %d font files before filtering", len(fonts))
-
-		// Group fonts by family first (before matching to repository)
-		families := groupByFamily(fonts)
-		var allFamilyNames []string
-		for k := range families {
-			allFamilyNames = append(allFamilyNames, k)
-		}
-		sort.Strings(allFamilyNames)
-		output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
-
-		// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
-		output.GetVerbose().Info("Matching installed fonts to repository...")
-		output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
-		matches, err := repo.MatchAllInstalledFonts(allFamilyNames, shared.IsCriticalSystemFont)
-		if err != nil {
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", err)
-			// Continue without matches (fonts will show blank fields)
-			matches = make(map[string]*repo.InstalledFontMatch)
-		} else {
-			matchCount := 0
-			for _, match := range matches {
-				if match != nil {
-					matchCount++
-				}
-			}
-			output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
-			// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-			if IsVerbose() {
-				fmt.Println()
-			}
-		}
-
-		// Populate match data into ParsedFont structs
-		for familyName, fontGroup := range families {
-			if match, exists := matches[familyName]; exists && match != nil {
-				// Update all fonts in this family group with match data
-				for i := range fontGroup {
-					fontGroup[i].FontID = match.FontID
-					fontGroup[i].License = match.License
-					fontGroup[i].Categories = match.Categories
-					fontGroup[i].Source = match.Source
-				}
-				families[familyName] = fontGroup
-			}
-		}
-
-		// Apply filters (now that Font IDs are populated)
-		// Filter by family name and Font ID (type filter already applied during collection)
-		// Apply filter using helper function
-		filteredFamilies := filterFontsByFamilyAndID(families, familyFilter)
-
-		// Get sorted list of filtered family names
+		// Variables to capture from spinner operation
+		var fonts []ParsedFont
+		var families map[string][]ParsedFont
+		var matches map[string]*repo.InstalledFontMatch
 		var names []string
-		for k := range filteredFamilies {
-			names = append(names, k)
+		var filteredFamilies map[string][]ParsedFont
+
+		// Wrap the main work (collecting, grouping, matching, filtering) in a spinner
+		err = ui.RunSpinner("Listing fonts...", "Fonts listed", func() error {
+			var workErr error
+
+			// Collect fonts
+			fonts, workErr = collectFonts(scopes, fm, typeFilter)
+			if workErr != nil {
+				GetLogger().Error("Failed to collect fonts: %v", workErr)
+				output.GetVerbose().Error("%v", workErr)
+				output.GetDebug().Error("collectFonts() failed: %v", workErr)
+				return fmt.Errorf("unable to read installed fonts: %w", workErr)
+			}
+			output.GetDebug().State("Collected %d font files before filtering", len(fonts))
+
+			// Group fonts by family first (before matching to repository)
+			families = groupByFamily(fonts)
+			var allFamilyNames []string
+			for k := range families {
+				allFamilyNames = append(allFamilyNames, k)
+			}
+			sort.Strings(allFamilyNames)
+			output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
+
+			// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
+			output.GetVerbose().Info("Matching installed fonts to repository...")
+			output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
+			matches, workErr = repo.MatchAllInstalledFonts(allFamilyNames, shared.IsCriticalSystemFont)
+			if workErr != nil {
+				output.GetVerbose().Error("%v", workErr)
+				output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", workErr)
+				// Continue without matches (fonts will show blank fields)
+				matches = make(map[string]*repo.InstalledFontMatch)
+			} else {
+				matchCount := 0
+				for _, match := range matches {
+					if match != nil {
+						matchCount++
+					}
+				}
+				output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
+				// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+				if IsVerbose() {
+					fmt.Println()
+				}
+			}
+
+			// Populate match data into ParsedFont structs
+			for familyName, fontGroup := range families {
+				if match, exists := matches[familyName]; exists && match != nil {
+					// Update all fonts in this family group with match data
+					for i := range fontGroup {
+						fontGroup[i].FontID = match.FontID
+						fontGroup[i].License = match.License
+						fontGroup[i].Categories = match.Categories
+						fontGroup[i].Source = match.Source
+					}
+					families[familyName] = fontGroup
+				}
+			}
+
+			// Apply filters (now that Font IDs are populated)
+			// Filter by family name and Font ID (type filter already applied during collection)
+			// Apply filter using helper function
+			filteredFamilies = filterFontsByFamilyAndID(families, familyFilter)
+
+			// Get sorted list of filtered family names
+			for k := range filteredFamilies {
+				names = append(names, k)
+			}
+			sort.Strings(names)
+			output.GetDebug().State("After filtering: %d font families remaining", len(names))
+
+			return nil
+		})
+
+		if err != nil {
+			// Spinner already showed the error message
+			return err
 		}
-		sort.Strings(names)
-		output.GetDebug().State("After filtering: %d font families remaining", len(names))
 
 		if len(names) == 0 {
 

@@ -148,7 +148,8 @@ func (m *PreviewModel) View(width int) string {
 
 	// Spinner and Progress bar side-by-side to save space
 	spinnerChar := strings.TrimSpace(m.spinner.View())
-	spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Accent))
+	// Use ui.SpinnerColor which is set from theme's accent color
+	spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ui.SpinnerColor))
 	spinnerRendered := spinnerStyle.Render(spinnerChar + " Loading")
 	progressPercent := int(m.progressPercent * 100)
 	progressBar := m.renderStaticProgressBar(progressPercent, colors)
