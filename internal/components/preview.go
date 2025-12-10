@@ -56,27 +56,50 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, previewStyles.PageTitle.Render("Page Title"))
 	lines = append(lines, "") // Spacing
 
-	// Card example (separated at bottom)
-	cardTitle := previewStyles.CardTitle.Render("Card Title")
-	cardLabel := previewStyles.CardLabel.Render("Label:")
-	cardContent := previewStyles.CardContent.Render("Card content goes here")
-	card := fmt.Sprintf("%s\n%s %s\n%s", cardTitle, cardLabel, cardContent, cardContent)
-	lines = append(lines, "") // Spacing before card
-	lines = append(lines, previewStyles.CardBorder.Render(card))
+	// Page Subtitle
+	lines = append(lines, previewStyles.PageSubtitle.Render("Page Subtitle"))
+	lines = append(lines, "") // Spacing
+
+	// Regular Text
+	lines = append(lines, previewStyles.Text.Render("Regular text content"))
+	lines = append(lines, "") // Spacing
+
+	// Info Text
+	lines = append(lines, previewStyles.InfoText.Render("ℹ Info message"))
+	lines = append(lines, "") // Spacing
 
 	// Buttons - use proper Button and Selected styles
-	// Render with proper button format: "[  Text  ]"
 	button1Rendered := previewStyles.ButtonNormal.Render("[  Button  ]")
 	button2Rendered := previewStyles.ButtonSelected.Render("[  Selected  ]")
 	lines = append(lines, fmt.Sprintf("%s %s", button1Rendered, button2Rendered))
 	lines = append(lines, "") // Spacing
 
-	// Status messages with spacing between each
+	// Checkboxes
+	checkboxChecked := previewStyles.CheckboxChecked.Render("[x]")
+	checkboxUnchecked := previewStyles.CheckboxUnchecked.Render("[ ]")
+	lines = append(lines, fmt.Sprintf("%s Checked item", checkboxChecked))
+	lines = append(lines, fmt.Sprintf("%s Unchecked item", checkboxUnchecked))
+	lines = append(lines, "") // Spacing
+
+	// Switch
+	switchComp := NewSwitchWithLabels("On", "Off", true)
+	switchComp.Value = true
+	switchRendered := switchComp.Render()
+	lines = append(lines, switchRendered)
+	lines = append(lines, "") // Spacing
+
+	// Status messages
 	lines = append(lines, previewStyles.SuccessText.Render("✓ Success message"))
-	lines = append(lines, "") // Spacing
 	lines = append(lines, previewStyles.WarningText.Render("! Warning message"))
-	lines = append(lines, "") // Spacing
 	lines = append(lines, previewStyles.ErrorText.Render("✗ Error message"))
+	lines = append(lines, "") // Spacing
+
+	// Card example
+	cardTitle := previewStyles.CardTitle.Render("Card Title")
+	cardLabel := previewStyles.CardLabel.Render("Label:")
+	cardContent := previewStyles.CardContent.Render("Card content")
+	card := fmt.Sprintf("%s\n%s %s", cardTitle, cardLabel, cardContent)
+	lines = append(lines, previewStyles.CardBorder.Render(card))
 
 	content := strings.Join(lines, "\n")
 
@@ -86,16 +109,21 @@ func (m *PreviewModel) View(width int) string {
 
 // previewStyles holds temporary styles for preview
 type previewStyles struct {
-	PageTitle      lipgloss.Style
-	CardTitle      lipgloss.Style
-	CardLabel      lipgloss.Style
-	CardContent    lipgloss.Style
-	CardBorder     lipgloss.Style
-	ButtonNormal   lipgloss.Style
-	ButtonSelected lipgloss.Style
-	SuccessText    lipgloss.Style
-	WarningText    lipgloss.Style
-	ErrorText      lipgloss.Style
+	PageTitle         lipgloss.Style
+	PageSubtitle      lipgloss.Style
+	Text              lipgloss.Style
+	InfoText          lipgloss.Style
+	CardTitle         lipgloss.Style
+	CardLabel         lipgloss.Style
+	CardContent       lipgloss.Style
+	CardBorder        lipgloss.Style
+	ButtonNormal      lipgloss.Style
+	ButtonSelected    lipgloss.Style
+	CheckboxChecked   lipgloss.Style
+	CheckboxUnchecked lipgloss.Style
+	SuccessText       lipgloss.Style
+	WarningText       lipgloss.Style
+	ErrorText         lipgloss.Style
 }
 
 // createPreviewStyles creates temporary styles for preview using theme colors
@@ -106,6 +134,16 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 			Foreground(lipgloss.Color(colors.PageTitle)).
 			Background(lipgloss.Color(colors.GreyDark)).
 			Padding(0, 1),
+
+		PageSubtitle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color(colors.PageSubtitle)),
+
+		Text: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colors.GreyLight)),
+
+		InfoText: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colors.Accent)),
 
 		CardTitle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colors.Accent)).
@@ -137,6 +175,13 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 			Foreground(lipgloss.Color(colors.GreyDark)).
 			Background(lipgloss.Color(colors.GreyLight)).
 			Bold(true),
+
+		CheckboxChecked: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colors.Accent2)).
+			Bold(true),
+
+		CheckboxUnchecked: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colors.GreyMid)),
 
 		SuccessText: lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colors.Success)),

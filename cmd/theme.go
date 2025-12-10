@@ -189,27 +189,7 @@ func (m themeSelectionModel) View() string {
 		return ""
 	}
 
-	// Calculate layout - 50/50 split
-	separatorWidth := 1
-	availableWidth := m.width - separatorWidth
-	leftWidth := availableWidth / 2
-	rightWidth := availableWidth - leftWidth
-
-	// Build left panel (theme list)
-	leftPanel := m.renderLeftPanel(leftWidth)
-
-	// Build right panel (preview)
-	rightPanel := m.renderRightPanel(rightWidth)
-
-	// Add a padded separator to keep spacing consistent
-	separator := lipgloss.NewStyle().
-		Padding(0, 1).
-		Render("│")
-
-	// Combine panels using lipgloss JoinHorizontal (top aligned)
-	combined := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, separator, rightPanel)
-
-	// Add title
+	// Build header and footer first to measure their actual heights
 	title := ui.PageTitle.Render("Theme Selection")
 	currentInfo := ui.PageSubtitle.Render(fmt.Sprintf("Current: %s %s", m.currentTheme, m.currentMode))
 
@@ -226,11 +206,79 @@ func (m themeSelectionModel) View() string {
 		errorText = "\n" + ui.ErrorText.Render(m.err)
 	}
 
-	return fmt.Sprintf("%s\n%s\n\n%s\n\n%s%s", title, currentInfo, combined, help, errorText)
+	// Calculate header and footer heights
+	headerHeight := countLines(title + "\n" + currentInfo)
+	footerHeight := countLines(help + errorText)
+	if errorText == "" {
+		footerHeight = 1 // Just help text
+	}
+
+	// Calculate layout using helper function
+	layoutConfig := LayoutConfig{
+		TerminalWidth:  m.width,
+		TerminalHeight: m.height,
+		HeaderHeight:   headerHeight,
+		FooterHeight:   footerHeight,
+		MarginWidth:    2, // 1 char on each side
+		SeparatorWidth: 1,
+	}
+
+	layout := CalculatePanelLayout(layoutConfig)
+
+	// Build left panel content (theme list)
+	leftContent := m.renderLeftPanelContent(layout.LeftWidth, layout.PanelHeight)
+
+	// Build right panel content (preview)
+	rightContent := m.renderRightPanelContent(layout.RightWidth, layout.PanelHeight)
+
+	// Render combined panels with shared border
+	colors := ui.GetCurrentColors()
+	separatorColor := lipgloss.Color(colors.GreyMid)
+	borderColor := lipgloss.Color(colors.GreyMid)
+	combined := renderCombinedPanels(
+		layout.LeftWidth,
+		layout.RightWidth,
+		layout.PanelHeight,
+		leftContent,
+		rightContent,
+		ui.CardBorder,
+		separatorColor,
+		borderColor,
+	)
+
+	// Add margins around the combined panels to prevent border wrapping
+	margin := 1 // 1 char margin on each side
+	marginedCombined := lipgloss.NewStyle().
+		PaddingLeft(margin).
+		PaddingRight(margin).
+		Render(combined)
+
+	// Build content manually to avoid extra spacing from JoinVertical
+	// JoinVertical adds newlines between elements, so we build manually
+	var content strings.Builder
+	content.WriteString(title)
+	content.WriteString("\n")
+	content.WriteString(currentInfo)
+	content.WriteString("\n")
+	content.WriteString(marginedCombined)
+	if help != "" {
+		content.WriteString("\n")
+		content.WriteString(help)
+	}
+	if errorText != "" {
+		content.WriteString(errorText)
+	}
+
+	// Constrain entire output to terminal width only
+	// Don't use Height() as it adds unwanted padding/spacing
+	return lipgloss.NewStyle().
+		Width(m.width).
+		MaxWidth(m.width).
+		Render(content.String())
 }
 
-// renderLeftPanel renders the left panel with theme list
-func (m themeSelectionModel) renderLeftPanel(width int) string {
+// renderLeftPanelContent renders the left panel content (without border)
+func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
 	// Find the longest theme name for fixed width
 	maxWidth := 0
 	for _, option := range m.themes {
@@ -241,7 +289,7 @@ func (m themeSelectionModel) renderLeftPanel(width int) string {
 
 	var lines []string
 
-	// Render buttons with fixed width (no checkmark prefix)
+	// Render buttons with fixed width
 	for i, option := range m.themes {
 		buttonText := option.DisplayName
 		button := components.Button{
@@ -256,33 +304,20 @@ func (m themeSelectionModel) renderLeftPanel(width int) string {
 		lines = append(lines, rendered)
 	}
 
-	// Add "Add Custom Theme" option (future)
-	// lines = append(lines, "\n"+ui.Text.Render("[ Add Custom Theme ]"))
-
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
-
-	// Constrain width and add padding for nicer spacing
-	panelStyle := lipgloss.NewStyle().
-		Width(width).
-		Padding(1, 2)
-
-	return ui.CardBorder.
-		Width(width).
-		Render(panelStyle.Render(content))
+	return content
 }
 
-// renderRightPanel renders the right panel with preview
-func (m themeSelectionModel) renderRightPanel(width int) string {
-	preview := m.preview.View(width - 4) // leave room for padding
+// renderRightPanelContent renders the right panel content (without border)
+func (m themeSelectionModel) renderRightPanelContent(width, height int) string {
+	// Calculate content width (accounting for border and padding)
+	contentWidth := width - 4
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
 
-	// Wrap preview in card border (equal frame like left panel)
-	panelStyle := lipgloss.NewStyle().
-		Width(width).
-		Padding(1, 2)
-
-	return ui.CardBorder.
-		Width(width).
-		Render(panelStyle.Render(preview))
+	preview := m.preview.View(contentWidth)
+	return preview
 }
 
 // applyTheme applies the selected theme to the config
