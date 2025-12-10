@@ -213,7 +213,7 @@ func renderPanelWithoutLeftBorder(width, height int, content string, borderStyle
 }
 
 // renderCombinedPanels renders two panels side-by-side with a shared border
-func renderCombinedPanels(leftWidth, rightWidth, height int, leftContent, rightContent string, borderStyle lipgloss.Style, separatorColor, borderColor lipgloss.Color) string {
+func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftContent, rightContent string, borderStyle lipgloss.Style, separatorColor, borderColor lipgloss.Color, titleStyle lipgloss.Style) string {
 	// Guard minimums to avoid negative repeat counts
 	if leftWidth < 4 {
 		leftWidth = 4
@@ -225,16 +225,18 @@ func renderCombinedPanels(leftWidth, rightWidth, height int, leftContent, rightC
 		height = 3
 	}
 
-	// Calculate content dimensions (accounting for border and padding)
-	leftContentWidth := leftWidth - 4
+	// Calculate content dimensions
+	// Border: 2 chars (left + right), inner padding: 2 chars (1 on each side)
+	// Total: 4 chars consumed from width
+	leftContentWidth := leftWidth - 2 // border only, padding is in content
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
-	rightContentWidth := rightWidth - 4
+	rightContentWidth := rightWidth - 2 // border only, padding is in content
 	if rightContentWidth < 0 {
 		rightContentWidth = 0
 	}
-	// Content height: borders (top/bottom) consume 2, no vertical padding
+	// Content height: borders (top/bottom) consume 2
 	contentHeight := height - 2
 	if contentHeight < 1 {
 		contentHeight = 1
@@ -256,8 +258,8 @@ func renderCombinedPanels(leftWidth, rightWidth, height int, leftContent, rightC
 
 	// Border color is passed as parameter
 
-	// Build border frame manually
-	// Top border: ╭─────┬─────╮
+	// Build border frame manually with title integrated into top border
+	// Top border: ╭ Title ───┬────╮
 	// Middle:    │     │     │
 	// Bottom:    ╰─────┴─────╯
 
@@ -285,6 +287,10 @@ func renderCombinedPanels(leftWidth, rightWidth, height int, leftContent, rightC
 	separatorChar := separatorStyle.Render(vertical)
 	horizontalChar := borderCharStyle.Render(horizontal)
 
+	// Styled title
+	titleRendered := titleStyle.Render(title)
+	titleWidth := lipgloss.Width(titleRendered)
+
 	// Inner widths for top/bottom segments (avoid negative repeat)
 	leftInner := leftWidth - 2
 	if leftInner < 0 {
@@ -295,8 +301,16 @@ func renderCombinedPanels(leftWidth, rightWidth, height int, leftContent, rightC
 		rightInner = 0
 	}
 
-	// Build top border
-	topBorder := topLeftChar + strings.Repeat(horizontalChar, leftInner) + topTeeChar + strings.Repeat(horizontalChar, rightInner) + topRightChar
+	// Space available on left segment for title (leave 1 space padding)
+	leftSegmentWidth := leftInner
+	titlePad := 1
+	remainingLeft := leftSegmentWidth - titleWidth - titlePad
+	if remainingLeft < 0 {
+		remainingLeft = 0
+	}
+
+	topBorderLeft := topLeftChar + titleRendered + strings.Repeat(horizontalChar, remainingLeft) + strings.Repeat(horizontalChar, titlePad)
+	topBorder := topBorderLeft + topTeeChar + strings.Repeat(horizontalChar, rightInner) + topRightChar
 
 	// Build bottom border
 	bottomBorder := bottomLeftChar + strings.Repeat(horizontalChar, leftInner) + bottomTeeChar + strings.Repeat(horizontalChar, rightInner) + bottomRightChar
@@ -320,20 +334,19 @@ func renderCombinedPanels(leftWidth, rightWidth, height int, leftContent, rightC
 		rightLines = rightLines[:maxLines]
 	}
 
-	// Build middle lines
-	// Format: │ padding + content + padding │ padding + content + padding │
+	// Build middle lines - content already has padding from renderLeftPanelContent/renderRightPanelContent
 	var middleLines []string
 	for i := 0; i < maxLines; i++ {
 		leftLine := leftLines[i]
 		rightLine := rightLines[i]
 
-		// Pad lines to exact content width (border padding is handled separately)
+		// Content already has padding, just ensure width matches
 		leftPadded := lipgloss.NewStyle().Width(leftContentWidth).Render(leftLine)
 		rightPadded := lipgloss.NewStyle().Width(rightContentWidth).Render(rightLine)
 
-		// Build line: │ [padding] left content [padding] │ [padding] right content [padding] │
-		// Border padding is 1 char on each side
-		middleLine := leftBorderChar + " " + leftPadded + " " + separatorChar + " " + rightPadded + " " + rightBorderChar
+		// Build line: │ left content │ right content │
+		// Content already includes its own padding
+		middleLine := leftBorderChar + leftPadded + separatorChar + rightPadded + rightBorderChar
 		middleLines = append(middleLines, middleLine)
 	}
 

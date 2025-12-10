@@ -56,16 +56,9 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, previewStyles.PageTitle.Render("Page Title"))
 	lines = append(lines, "") // Spacing
 
-	// Page Subtitle
-	lines = append(lines, previewStyles.PageSubtitle.Render("Page Subtitle"))
-	lines = append(lines, "") // Spacing
-
-	// Regular Text
+	// Info Text (no emoji), then regular text beneath
+	lines = append(lines, previewStyles.InfoText.Render("Info message"))
 	lines = append(lines, previewStyles.Text.Render("Regular text content"))
-	lines = append(lines, "") // Spacing
-
-	// Info Text
-	lines = append(lines, previewStyles.InfoText.Render("ℹ Info message"))
 	lines = append(lines, "") // Spacing
 
 	// Buttons - use proper Button and Selected styles
@@ -94,12 +87,12 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, previewStyles.ErrorText.Render("✗ Error message"))
 	lines = append(lines, "") // Spacing
 
-	// Card example
-	cardTitle := previewStyles.CardTitle.Render("Card Title")
-	cardLabel := previewStyles.CardLabel.Render("Label:")
-	cardContent := previewStyles.CardContent.Render("Card content")
-	card := fmt.Sprintf("%s\n%s %s", cardTitle, cardLabel, cardContent)
-	lines = append(lines, previewStyles.CardBorder.Render(card))
+	// Card example using card renderer for consistent title-in-border
+	card := NewCard("Card Title", previewStyles.CardLabel.Render("Label:")+" "+previewStyles.CardContent.Render("Card content"))
+	card.Width = width - 2 // allow a little breathing room
+	card.VerticalPadding = 0
+	card.HorizontalPadding = 1
+	lines = append(lines, card.Render())
 
 	content := strings.Join(lines, "\n")
 

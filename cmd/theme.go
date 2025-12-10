@@ -189,29 +189,23 @@ func (m themeSelectionModel) View() string {
 		return ""
 	}
 
-	// Build header and footer first to measure their actual heights
-	title := ui.PageTitle.Render("Theme Selection")
-	currentInfo := ui.PageSubtitle.Render(fmt.Sprintf("Current: %s %s", m.currentTheme, m.currentMode))
-
-	// Add keyboard help using consistent styling
+	// Build title (integrated into frame) and footer (commands + current theme)
+	titleText := "Theme Selection"
+	// Footer: commands on left, current theme on right
 	var commands []string
 	commands = append(commands, ui.RenderKeyWithDescription("↑/↓", "Navigate"))
 	commands = append(commands, ui.RenderKeyWithDescription("Enter", "Select"))
 	commands = append(commands, ui.RenderKeyWithDescription("Esc", "Cancel"))
 	help := strings.Join(commands, "  ")
 
-	// Add error if any
-	errorText := ""
+	currentInfo := fmt.Sprintf("Current Theme: %s %s", m.currentTheme, m.currentMode)
 	if m.err != "" {
-		errorText = "\n" + ui.ErrorText.Render(m.err)
+		currentInfo = currentInfo + "  " + ui.ErrorText.Render(m.err)
 	}
 
-	// Calculate header and footer heights
-	headerHeight := countLines(title + "\n" + currentInfo)
-	footerHeight := countLines(help + errorText)
-	if errorText == "" {
-		footerHeight = 1 // Just help text
-	}
+	// Footer is a single line; height = 1
+	headerHeight := 0 // title is inside the frame
+	footerHeight := 1
 
 	// Calculate layout using helper function
 	layoutConfig := LayoutConfig{
@@ -231,11 +225,12 @@ func (m themeSelectionModel) View() string {
 	// Build right panel content (preview)
 	rightContent := m.renderRightPanelContent(layout.RightWidth, layout.PanelHeight)
 
-	// Render combined panels with shared border
+	// Render combined panels with shared border and title
 	colors := ui.GetCurrentColors()
 	separatorColor := lipgloss.Color(colors.GreyMid)
 	borderColor := lipgloss.Color(colors.GreyMid)
 	combined := renderCombinedPanels(
+		titleText,
 		layout.LeftWidth,
 		layout.RightWidth,
 		layout.PanelHeight,
@@ -244,6 +239,7 @@ func (m themeSelectionModel) View() string {
 		ui.CardBorder,
 		separatorColor,
 		borderColor,
+		ui.PageTitle,
 	)
 
 	// Add margins around the combined panels to prevent border wrapping
@@ -253,24 +249,14 @@ func (m themeSelectionModel) View() string {
 		PaddingRight(margin).
 		Render(combined)
 
-	// Build content manually to avoid extra spacing from JoinVertical
-	// JoinVertical adds newlines between elements, so we build manually
-	var content strings.Builder
-	content.WriteString(title)
-	content.WriteString("\n")
-	content.WriteString(currentInfo)
-	content.WriteString("\n")
-	content.WriteString(marginedCombined)
-	if help != "" {
-		content.WriteString("\n")
-		content.WriteString(help)
-	}
-	if errorText != "" {
-		content.WriteString(errorText)
-	}
+	// Footer line: commands left, current info right
+	footer := m.renderFooter(help, currentInfo, m.width)
 
-	// Constrain entire output to terminal width only
-	// Don't use Height() as it adds unwanted padding/spacing
+	var content strings.Builder
+	content.WriteString(marginedCombined)
+	content.WriteString("\n")
+	content.WriteString(footer)
+
 	return lipgloss.NewStyle().
 		Width(m.width).
 		MaxWidth(m.width).
@@ -279,17 +265,14 @@ func (m themeSelectionModel) View() string {
 
 // renderLeftPanelContent renders the left panel content (without border)
 func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
-	// Find the longest theme name for fixed width
-	maxWidth := 0
-	for _, option := range m.themes {
-		if len(option.DisplayName) > maxWidth {
-			maxWidth = len(option.DisplayName)
-		}
+	// Content width: panel width minus border (2) and inner padding (2)
+	contentWidth := width - 4
+	if contentWidth < 10 {
+		contentWidth = 10
 	}
 
 	var lines []string
 
-	// Render buttons with fixed width
 	for i, option := range m.themes {
 		buttonText := option.DisplayName
 		button := components.Button{
@@ -297,27 +280,41 @@ func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
 			Selected: (i == m.selectedIndex && m.buttons.HasFocus),
 		}
 		rendered := button.Render()
-		// Pad to fixed width using lipgloss
-		// Calculate target width: max text length + button padding (6 chars for "[  Text  ]")
-		targetWidth := maxWidth + 6
-		rendered = lipgloss.NewStyle().Width(targetWidth).Render(rendered)
+		// Center the button within available width
+		rendered = lipgloss.NewStyle().
+			Width(contentWidth).
+			Align(lipgloss.Center).
+			Render(rendered)
 		lines = append(lines, rendered)
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	return content
+	// Add inner padding (1 char on all sides)
+	return lipgloss.NewStyle().Padding(1, 1).Render(content)
 }
 
 // renderRightPanelContent renders the right panel content (without border)
 func (m themeSelectionModel) renderRightPanelContent(width, height int) string {
-	// Calculate content width (accounting for border and padding)
+	// Content width: panel width minus border (2) and inner padding (2)
 	contentWidth := width - 4
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
 
 	preview := m.preview.View(contentWidth)
-	return preview
+	// Add inner padding (1 char on all sides)
+	return lipgloss.NewStyle().Padding(1, 1).Render(preview)
+}
+
+// renderFooter aligns commands on the left and current info on the right
+func (m themeSelectionModel) renderFooter(help, current string, totalWidth int) string {
+	left := help
+	right := current
+	gap := totalWidth - lipgloss.Width(left) - lipgloss.Width(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + right
 }
 
 // applyTheme applies the selected theme to the config
