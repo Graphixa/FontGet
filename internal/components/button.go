@@ -34,6 +34,46 @@ func (b Button) Render() string {
 	return ui.ButtonNormal.Render(brackets)
 }
 
+// RenderFullWidth renders a button that expands to fill the specified width
+// The text is centered within the button, and the brackets expand to fill the width
+func (b Button) RenderFullWidth(width int) string {
+	if width < 5 {
+		width = 5 // Minimum width for a button
+	}
+
+	// Calculate available space for text and padding
+	// Format: [  Text  ] - brackets take 2 chars, padding takes 4 chars (2 each side)
+	availableTextWidth := width - 6 // 2 for brackets + 4 for padding
+	if availableTextWidth < 0 {
+		availableTextWidth = 0
+	}
+
+	// Truncate text if too long
+	text := b.Text
+	if len(text) > availableTextWidth {
+		text = text[:availableTextWidth]
+	}
+
+	// Calculate padding to center text
+	textWidth := len(text)
+	totalPadding := availableTextWidth - textWidth
+	leftPadding := totalPadding / 2
+	rightPadding := totalPadding - leftPadding
+
+	// Build the button: [  Text  ]
+	paddedText := fmt.Sprintf("%s%s%s",
+		strings.Repeat(" ", leftPadding+2), // +2 for inner padding
+		text,
+		strings.Repeat(" ", rightPadding+2)) // +2 for inner padding
+	brackets := fmt.Sprintf("[%s]", paddedText)
+
+	// Apply styling
+	if b.Selected {
+		return ui.ButtonSelected.Render(brackets)
+	}
+	return ui.ButtonNormal.Render(brackets)
+}
+
 // RenderGroup renders a button group with spacing between buttons
 // Only shows selected state when HasFocus is true
 func (bg ButtonGroup) Render() string {

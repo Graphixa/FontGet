@@ -88,9 +88,20 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, "") // Spacing
 
 	// Card example using card renderer for consistent title-in-border
-	card := NewCard("Card Title", previewStyles.CardLabel.Render("Label:")+" "+previewStyles.CardContent.Render("Card content"))
+	// Make it look like fontget info with multiple sections
+	cardContent := strings.Builder{}
+	cardContent.WriteString(previewStyles.CardLabel.Render("Name:") + " " + previewStyles.CardContent.Render("Example Font"))
+	cardContent.WriteString("\n")
+	cardContent.WriteString(previewStyles.CardLabel.Render("ID:") + " " + previewStyles.CardContent.Render("example.font"))
+	cardContent.WriteString("\n")
+	cardContent.WriteString("\n") // Empty line for spacing
+	cardContent.WriteString(previewStyles.CardLabel.Render("Category:") + " " + previewStyles.CardContent.Render("Sans Serif"))
+	cardContent.WriteString("\n")
+	cardContent.WriteString(previewStyles.CardLabel.Render("Tags:") + " " + previewStyles.CardContent.Render("modern, clean"))
+
+	card := NewCard("Card Title", cardContent.String())
 	card.Width = width - 2 // allow a little breathing room
-	card.VerticalPadding = 0
+	card.VerticalPadding = 1
 	card.HorizontalPadding = 1
 	lines = append(lines, card.Render())
 

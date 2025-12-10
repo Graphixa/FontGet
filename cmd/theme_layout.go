@@ -225,14 +225,15 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 		height = 3
 	}
 
-	// Calculate content dimensions
-	// Border: 2 chars (left + right), inner padding: 2 chars (1 on each side)
-	// Total: 4 chars consumed from width
-	leftContentWidth := leftWidth - 2 // border only, padding is in content
+	// Calculate content dimensions so that middle lines align perfectly:
+	// 1 (left border) + leftContentWidth + 1 (separator) + rightContentWidth + 1 (right border)
+	// should equal leftWidth + 1 + rightWidth
+	// => leftContentWidth + rightContentWidth = leftWidth + rightWidth - 3
+	leftContentWidth := leftWidth - 1
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
-	rightContentWidth := rightWidth - 2 // border only, padding is in content
+	rightContentWidth := rightWidth - 1
 	if rightContentWidth < 0 {
 		rightContentWidth = 0
 	}
@@ -287,33 +288,52 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 	separatorChar := separatorStyle.Render(vertical)
 	horizontalChar := borderCharStyle.Render(horizontal)
 
-	// Styled title
-	titleRendered := titleStyle.Render(title)
-	titleWidth := lipgloss.Width(titleRendered)
+	// Styled title (no extra padding)
+	titleRendered := titleStyle.Padding(0, 0).Render(title)
+	titleWidth := lipgloss.Width(titleRendered) // Visual width (strips ANSI codes)
 
-	// Inner widths for top/bottom segments (avoid negative repeat)
-	leftInner := leftWidth - 2
+	// Total border width must be: leftWidth + 1 (separator) + rightWidth
+	totalBorderWidth := leftWidth + 1 + rightWidth
+
+	// Inner widths for top/bottom segments (width minus corners)
+	leftInner := leftWidth - 1 // exclude left corner
 	if leftInner < 0 {
 		leftInner = 0
 	}
-	rightInner := rightWidth - 2
+	rightInner := rightWidth - 1 // exclude right corner
 	if rightInner < 0 {
 		rightInner = 0
 	}
 
-	// Space available on left segment for title (leave 1 space padding)
-	leftSegmentWidth := leftInner
-	titlePad := 1
-	remainingLeft := leftSegmentWidth - titleWidth - titlePad
+	// Title placement: single dash after corner, then space, title, space, dash, remaining dashes
+	// Pattern: ╭─ Title ─────┬────╮
+	leftFixed := 1 + 1 + titleWidth + 1 + 1 // dash + space + title + space + dash
+	remainingLeft := leftInner - leftFixed
 	if remainingLeft < 0 {
 		remainingLeft = 0
 	}
 
-	topBorderLeft := topLeftChar + titleRendered + strings.Repeat(horizontalChar, remainingLeft) + strings.Repeat(horizontalChar, titlePad)
-	topBorder := topBorderLeft + topTeeChar + strings.Repeat(horizontalChar, rightInner) + topRightChar
+	topBorderLeft := topLeftChar + horizontalChar + " " + titleRendered + " " + horizontalChar + strings.Repeat(horizontalChar, remainingLeft)
+	topBorderRight := strings.Repeat(horizontalChar, rightInner) + topRightChar
 
-	// Build bottom border
-	bottomBorder := bottomLeftChar + strings.Repeat(horizontalChar, leftInner) + bottomTeeChar + strings.Repeat(horizontalChar, rightInner) + bottomRightChar
+	// Combine: left segment + tee + right segment
+	topBorder := topBorderLeft + topTeeChar + topBorderRight
+
+	// Verify and fix total width
+	actualWidth := lipgloss.Width(topBorder)
+	if actualWidth != totalBorderWidth {
+		adjust := totalBorderWidth - actualWidth
+		newRightInner := rightInner + adjust
+		if newRightInner < 0 {
+			newRightInner = 0
+		}
+		topBorderRight = strings.Repeat(horizontalChar, newRightInner) + topRightChar
+		topBorder = topBorderLeft + topTeeChar + topBorderRight
+	}
+
+	// Build bottom border (same inner widths as top, but no title)
+	// Left inner = leftWidth - 1, right inner = rightWidth - 1
+	bottomBorder := bottomLeftChar + strings.Repeat(horizontalChar, leftWidth-1) + bottomTeeChar + strings.Repeat(horizontalChar, rightWidth-1) + bottomRightChar
 
 	// Split content into lines
 	leftLines := strings.Split(strings.TrimRight(leftConstrained, "\n"), "\n")

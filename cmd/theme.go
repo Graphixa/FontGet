@@ -279,17 +279,13 @@ func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
 			Text:     buttonText,
 			Selected: (i == m.selectedIndex && m.buttons.HasFocus),
 		}
-		rendered := button.Render()
-		// Center the button within available width
-		rendered = lipgloss.NewStyle().
-			Width(contentWidth).
-			Align(lipgloss.Center).
-			Render(rendered)
+		// Use RenderFullWidth to make button expand to fill the column width
+		rendered := button.RenderFullWidth(contentWidth)
 		lines = append(lines, rendered)
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	// Add inner padding (1 char on all sides)
+	// Add inner padding (1 char on all sides - top, bottom, left, right)
 	return lipgloss.NewStyle().Padding(1, 1).Render(content)
 }
 
@@ -307,14 +303,32 @@ func (m themeSelectionModel) renderRightPanelContent(width, height int) string {
 }
 
 // renderFooter aligns commands on the left and current info on the right
+// Aligns with card borders (accounting for 1 char margin on each side)
 func (m themeSelectionModel) renderFooter(help, current string, totalWidth int) string {
-	left := help
-	right := current
-	gap := totalWidth - lipgloss.Width(left) - lipgloss.Width(right)
+	// Card has 1 char margin on left, so footer should align with left border
+	// Left border position: margin (1) + border char (1) = position 2
+	// Right border position: totalWidth - margin (1) - border char (1) = totalWidth - 2
+	leftBorderPos := 2
+	rightBorderPos := totalWidth - 2
+
+	// Left side: align with left border (position 2)
+	left := strings.Repeat(" ", leftBorderPos) + help
+
+	// Right side: align with right border
+	rightWidth := lipgloss.Width(current)
+	rightStart := rightBorderPos - rightWidth
+	if rightStart < 0 {
+		rightStart = 0
+	}
+
+	// Calculate gap
+	leftEnd := leftBorderPos + lipgloss.Width(help)
+	gap := rightStart - leftEnd
 	if gap < 1 {
 		gap = 1
 	}
-	return left + strings.Repeat(" ", gap) + right
+
+	return left + strings.Repeat(" ", gap) + current
 }
 
 // applyTheme applies the selected theme to the config
