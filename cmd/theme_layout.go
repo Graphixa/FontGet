@@ -226,14 +226,16 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 	}
 
 	// Calculate content dimensions so that middle lines align perfectly:
-	// 1 (left border) + leftContentWidth + 1 (separator) + rightContentWidth + 1 (right border)
+	// Content has padding (1 on each side = 2 total) added in renderLeftPanelContent/renderRightPanelContent
+	// So: 1 (left border) + leftContentWidth (with padding) + 1 (separator) + rightContentWidth (with padding) + 1 (right border)
 	// should equal leftWidth + 1 + rightWidth
-	// => leftContentWidth + rightContentWidth = leftWidth + rightWidth - 3
-	leftContentWidth := leftWidth - 1
+	// Content with padding = panel width - border (2) = panel width - 2
+	// But we account for the border in the line construction, so content width = panel width - 1
+	leftContentWidth := leftWidth - 1 // accounts for left border, content has its own padding
 	if leftContentWidth < 0 {
 		leftContentWidth = 0
 	}
-	rightContentWidth := rightWidth - 1
+	rightContentWidth := rightWidth - 1 // accounts for right border, content has its own padding
 	if rightContentWidth < 0 {
 		rightContentWidth = 0
 	}
@@ -243,17 +245,16 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 		contentHeight = 1
 	}
 
-	// Trim and constrain content
+	// Trim content - don't constrain width here, we'll do it per-line to ensure exact alignment
 	leftTrimmed := trimContent(leftContent)
 	rightTrimmed := trimContent(rightContent)
 
+	// Constrain height only - width will be handled per-line
 	leftConstrained := lipgloss.NewStyle().
-		Width(leftContentWidth).
 		Height(contentHeight).
 		Render(leftTrimmed)
 
 	rightConstrained := lipgloss.NewStyle().
-		Width(rightContentWidth).
 		Height(contentHeight).
 		Render(rightTrimmed)
 
@@ -288,8 +289,8 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 	separatorChar := separatorStyle.Render(vertical)
 	horizontalChar := borderCharStyle.Render(horizontal)
 
-	// Styled title (no extra padding)
-	titleRendered := titleStyle.Padding(0, 0).Render(title)
+	// Styled title (with natural padding from PageTitle style: 1 space on each side)
+	titleRendered := titleStyle.Render(title)
 	titleWidth := lipgloss.Width(titleRendered) // Visual width (strips ANSI codes)
 
 	// Total border width must be: leftWidth + 1 (separator) + rightWidth
@@ -305,23 +306,44 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 		rightInner = 0
 	}
 
-	// Title placement: single dash after corner, then space, title, space, dash, remaining dashes
+	// Title placement: match card component pattern: dash + space + title + space + dash
 	// Pattern: ╭─ Title ─────┬────╮
-	leftFixed := 1 + 1 + titleWidth + 1 + 1 // dash + space + title + space + dash
-	remainingLeft := leftInner - leftFixed
+	// The title already has padding (1 space on each side) from PageTitle style, but we add spaces around it like the card does
+	// Critical: The T-junction must be at exactly leftWidth characters from the start
+	// Left segment structure: corner (1) + dash (1) + space (1) + title + space (1) + dash (1) + remaining dashes
+	// Total left segment width must be exactly leftWidth
+	// So: remaining dashes = leftWidth - 1 (corner) - 1 (dash) - 1 (space) - titleWidth - 1 (space) - 1 (dash)
+	titleSectionWidth := 1 + 1 + titleWidth + 1 + 1 // dash + space + title + space + dash (excluding corner)
+	remainingLeft := leftInner - titleSectionWidth
 	if remainingLeft < 0 {
 		remainingLeft = 0
 	}
 
+	// Build left segment: corner + title section + remaining dashes
+	// This should total exactly leftWidth (corner + leftInner)
 	topBorderLeft := topLeftChar + horizontalChar + " " + titleRendered + " " + horizontalChar + strings.Repeat(horizontalChar, remainingLeft)
+
+	// Verify left segment width is exactly leftWidth (corner + leftInner)
+	leftSegmentWidth := lipgloss.Width(topBorderLeft)
+	if leftSegmentWidth != leftWidth {
+		// Adjust remaining dashes to make it exactly leftWidth
+		actualRemaining := leftWidth - lipgloss.Width(topLeftChar+horizontalChar+" "+titleRendered+" "+horizontalChar)
+		if actualRemaining < 0 {
+			actualRemaining = 0
+		}
+		topBorderLeft = topLeftChar + horizontalChar + " " + titleRendered + " " + horizontalChar + strings.Repeat(horizontalChar, actualRemaining)
+	}
+
+	// Right segment should be exactly rightWidth - 1 (rightInner) + corner
 	topBorderRight := strings.Repeat(horizontalChar, rightInner) + topRightChar
 
 	// Combine: left segment + tee + right segment
 	topBorder := topBorderLeft + topTeeChar + topBorderRight
 
-	// Verify and fix total width
+	// Verify total width matches (should be leftWidth + 1 + rightWidth)
 	actualWidth := lipgloss.Width(topBorder)
 	if actualWidth != totalBorderWidth {
+		// Adjust right segment to fix total width
 		adjust := totalBorderWidth - actualWidth
 		newRightInner := rightInner + adjust
 		if newRightInner < 0 {
@@ -360,12 +382,36 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 		leftLine := leftLines[i]
 		rightLine := rightLines[i]
 
-		// Content already has padding, just ensure width matches
-		leftPadded := lipgloss.NewStyle().Width(leftContentWidth).Render(leftLine)
-		rightPadded := lipgloss.NewStyle().Width(rightContentWidth).Render(rightLine)
+		// Get the actual visual width (strips ANSI codes)
+		leftLineWidth := lipgloss.Width(leftLine)
+		rightLineWidth := lipgloss.Width(rightLine)
+
+		// Pad to exact width needed (leftContentWidth and rightContentWidth)
+		// Content already has padding, so we just need to ensure width matches
+		var leftPadded string
+		if leftLineWidth < leftContentWidth {
+			// Pad with spaces on the right
+			leftPadded = leftLine + strings.Repeat(" ", leftContentWidth-leftLineWidth)
+		} else if leftLineWidth > leftContentWidth {
+			// Truncate if too wide (shouldn't happen, but safety check)
+			leftPadded = lipgloss.NewStyle().Width(leftContentWidth).MaxWidth(leftContentWidth).Render(leftLine)
+		} else {
+			leftPadded = leftLine
+		}
+
+		var rightPadded string
+		if rightLineWidth < rightContentWidth {
+			// Pad with spaces on the right
+			rightPadded = rightLine + strings.Repeat(" ", rightContentWidth-rightLineWidth)
+		} else if rightLineWidth > rightContentWidth {
+			// Truncate if too wide (shouldn't happen, but safety check)
+			rightPadded = lipgloss.NewStyle().Width(rightContentWidth).MaxWidth(rightContentWidth).Render(rightLine)
+		} else {
+			rightPadded = rightLine
+		}
 
 		// Build line: │ left content │ right content │
-		// Content already includes its own padding
+		// Content already includes its own padding, and we've ensured exact width
 		middleLine := leftBorderChar + leftPadded + separatorChar + rightPadded + rightBorderChar
 		middleLines = append(middleLines, middleLine)
 	}

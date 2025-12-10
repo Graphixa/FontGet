@@ -265,8 +265,10 @@ func (m themeSelectionModel) View() string {
 
 // renderLeftPanelContent renders the left panel content (without border)
 func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
-	// Content width: panel width minus border (2) and inner padding (2)
-	contentWidth := width - 4
+	// Panel structure: │ (border) + content with padding + │ (separator)
+	// Content with padding should be: width - 1 (minus left border)
+	// Content before padding: (width - 1) - 2 = width - 3
+	contentWidth := width - 3
 	if contentWidth < 10 {
 		contentWidth = 10
 	}
@@ -279,26 +281,28 @@ func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
 			Text:     buttonText,
 			Selected: (i == m.selectedIndex && m.buttons.HasFocus),
 		}
-		// Use RenderFullWidth to make button expand to fill the column width
+		// Use RenderFullWidth to make button expand to fill the content width
 		rendered := button.RenderFullWidth(contentWidth)
 		lines = append(lines, rendered)
 	}
 
 	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
-	// Add inner padding (1 char on all sides - top, bottom, left, right)
+	// Add equal padding on all sides (1 char each)
 	return lipgloss.NewStyle().Padding(1, 1).Render(content)
 }
 
 // renderRightPanelContent renders the right panel content (without border)
 func (m themeSelectionModel) renderRightPanelContent(width, height int) string {
-	// Content width: panel width minus border (2) and inner padding (2)
-	contentWidth := width - 4
+	// Panel structure: │ (separator) + content with padding + │ (border)
+	// Content with padding should be: width - 1 (minus right border)
+	// Content before padding: (width - 1) - 2 = width - 3
+	contentWidth := width - 3
 	if contentWidth < 0 {
 		contentWidth = 0
 	}
 
 	preview := m.preview.View(contentWidth)
-	// Add inner padding (1 char on all sides)
+	// Add equal padding on all sides (1 char each)
 	return lipgloss.NewStyle().Padding(1, 1).Render(preview)
 }
 

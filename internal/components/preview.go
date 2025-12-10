@@ -100,7 +100,20 @@ func (m *PreviewModel) View(width int) string {
 	cardContent.WriteString(previewStyles.CardLabel.Render("Tags:") + " " + previewStyles.CardContent.Render("modern, clean"))
 
 	card := NewCard("Card Title", cardContent.String())
-	card.Width = width - 2 // allow a little breathing room
+	// Card width should fit within the available content width
+	// The 'width' parameter is the content width available (already accounting for panel padding)
+	// The card's Width is used for the content area, and the card adds its own border (2 chars: left + right)
+	// So card.Width should be: available width - card border (2) = width - 2
+	// But we also need to account for the card's horizontal padding (1 on each side = 2 total)
+	// So the actual content width inside the card will be: card.Width - 2 (padding)
+	// To fit properly: card.Width = width - 2 (border) - some margin for safety
+	// Actually, looking at the card renderer, it uses c.Width for the content width constraint
+	// and the border is built separately, so the total card width will be c.Width + 2 (borders)
+	// To fit in 'width', we need: c.Width + 2 <= width, so c.Width <= width - 2
+	card.Width = width - 2
+	if card.Width < 20 {
+		card.Width = 20 // Minimum width for card to render properly
+	}
 	card.VerticalPadding = 1
 	card.HorizontalPadding = 1
 	lines = append(lines, card.Render())
