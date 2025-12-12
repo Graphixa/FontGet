@@ -397,31 +397,7 @@ func validateThemeSection(theme map[string]interface{}) ValidationErrors {
 	}
 	// Name is optional, so empty or missing is fine
 
-	// Validate Mode (optional string, must be "dark" or "light" if present)
-	if mode, exists := theme["Mode"]; exists {
-		if modeStr, ok := mode.(string); ok {
-			validModes := []string{"dark", "light"}
-			valid := false
-			for _, validMode := range validModes {
-				if modeStr == validMode {
-					valid = true
-					break
-				}
-			}
-			if !valid {
-				errors = append(errors, ValidationError{
-					Field:   "Theme.Mode",
-					Message: fmt.Sprintf("must be one of: %s, got '%s'", strings.Join(validModes, ", "), modeStr),
-				})
-			}
-		} else {
-			errors = append(errors, ValidationError{
-				Field:   "Theme.Mode",
-				Message: fmt.Sprintf("must be a string, got %s", getTypeName(mode)),
-			})
-		}
-	}
-	// Mode is optional, defaults to "dark" if not present
+	// Mode field is ignored (backward compatibility - old configs may have it)
 
 	return errors
 }

@@ -12,17 +12,15 @@ import (
 
 // ThemeInfo represents information about an available theme
 type ThemeInfo struct {
-	Name        string   // "catppuccin"
-	Modes       []string // ["dark", "light"]
-	IsBuiltIn   bool     // true for embedded themes
-	DisplayName string   // "Catppuccin"
+	Name        string // "catppuccin"
+	IsBuiltIn   bool   // true for embedded themes
+	DisplayName string // "Catppuccin"
 }
 
-// ThemeOption represents a specific theme+mode combination for selection
+// ThemeOption represents a theme for selection
 type ThemeOption struct {
 	ThemeName   string // "catppuccin"
-	Mode        string // "dark" or "light"
-	DisplayName string // "Catppuccin Dark"
+	DisplayName string // "Catppuccin"
 	IsBuiltIn   bool   // true for embedded themes
 	IsSelected  bool   // true if currently active
 	FilePath    string // Path to theme file (for loading) - empty for embedded
@@ -30,8 +28,16 @@ type ThemeOption struct {
 
 // DiscoverThemes discovers all available themes (both embedded and user themes)
 // Returns a list of ThemeInfo grouped by theme name
+// Always includes "system" theme as a built-in option
 func DiscoverThemes() ([]ThemeInfo, error) {
 	themeMap := make(map[string]*ThemeInfo)
+
+	// 0. Add "system" theme as a special built-in (always available)
+	themeMap["system"] = &ThemeInfo{
+		Name:        "system",
+		IsBuiltIn:   true,
+		DisplayName: "System",
+	}
 
 	// 1. Scan embedded themes
 	embeddedThemes, err := discoverEmbeddedThemes()
@@ -49,11 +55,9 @@ func DiscoverThemes() ([]ThemeInfo, error) {
 		// We'll continue with embedded themes only
 	}
 	for _, theme := range userThemes {
-		// If theme already exists (from embedded), merge modes
-		if existing, ok := themeMap[theme.Name]; ok {
-			// Merge modes, avoiding duplicates
-			existing.Modes = mergeModes(existing.Modes, theme.Modes)
-		} else {
+		// If theme already exists (from embedded), keep embedded version
+		// User themes with same name override embedded themes
+		if _, ok := themeMap[theme.Name]; !ok {
 			themeMap[theme.Name] = theme
 		}
 	}
@@ -82,32 +86,26 @@ func discoverEmbeddedThemes() ([]*ThemeInfo, error) {
 			return nil
 		}
 
-		// Parse filename: {theme-name}-{mode}.yaml
+		// Parse filename: embedded themes use {theme-name}.yaml
 		baseName := filepath.Base(path)
 		if !strings.HasSuffix(baseName, ".yaml") {
 			return nil // Skip non-YAML files
 		}
 
-		themeName, mode, err := parseThemeFileName(baseName)
-		if err != nil {
-			return nil // Skip invalid filenames
+		// Extract theme name from filename (remove .yaml extension)
+		themeName := strings.TrimSuffix(baseName, ".yaml")
+		if themeName == "" {
+			return nil // Skip empty filenames
 		}
 
 		// Get or create theme info
-		theme, ok := themeMap[themeName]
-		if !ok {
-			theme = &ThemeInfo{
+		if _, ok := themeMap[themeName]; !ok {
+			theme := &ThemeInfo{
 				Name:        themeName,
-				Modes:       []string{},
 				IsBuiltIn:   true,
 				DisplayName: formatThemeDisplayName(themeName),
 			}
 			themeMap[themeName] = theme
-		}
-
-		// Add mode if not already present
-		if !contains(theme.Modes, mode) {
-			theme.Modes = append(theme.Modes, mode)
 		}
 
 		return nil
@@ -149,37 +147,31 @@ func discoverUserThemes() ([]*ThemeInfo, error) {
 			return nil
 		}
 
-		// Parse filename: {theme-name}-{mode}.yaml
+		// Parse filename: {theme-name}.yaml
 		baseName := filepath.Base(path)
 		if !strings.HasSuffix(baseName, ".yaml") {
 			return nil // Skip non-YAML files
 		}
 
-		// Skip old format files (no -{mode} suffix)
-		if !strings.Contains(baseName, "-dark.yaml") && !strings.Contains(baseName, "-light.yaml") {
-			return nil // Skip old format files
+		// Extract theme name from filename (remove .yaml extension)
+		themeName := strings.TrimSuffix(baseName, ".yaml")
+		if themeName == "" {
+			return nil // Skip empty filenames
 		}
 
-		themeName, mode, err := parseThemeFileName(baseName)
-		if err != nil {
-			return nil // Skip invalid filenames
+		// Skip "system" theme (it's built-in)
+		if themeName == "system" {
+			return nil
 		}
 
 		// Get or create theme info
-		theme, ok := themeMap[themeName]
-		if !ok {
-			theme = &ThemeInfo{
+		if _, ok := themeMap[themeName]; !ok {
+			theme := &ThemeInfo{
 				Name:        themeName,
-				Modes:       []string{},
 				IsBuiltIn:   false,
 				DisplayName: formatThemeDisplayName(themeName),
 			}
 			themeMap[themeName] = theme
-		}
-
-		// Add mode if not already present
-		if !contains(theme.Modes, mode) {
-			theme.Modes = append(theme.Modes, mode)
 		}
 
 		return nil
@@ -196,32 +188,6 @@ func discoverUserThemes() ([]*ThemeInfo, error) {
 	}
 
 	return themes, nil
-}
-
-// parseThemeFileName parses a theme filename to extract theme name and mode
-// Format: {theme-name}-{mode}.yaml
-// Examples: "catppuccin-dark.yaml" -> ("catppuccin", "dark", nil)
-//
-//	"gruvbox-light.yaml" -> ("gruvbox", "light", nil)
-func parseThemeFileName(filename string) (themeName string, mode string, err error) {
-	// Remove .yaml extension
-	base := strings.TrimSuffix(filename, ".yaml")
-
-	// Check for -dark or -light suffix
-	if strings.HasSuffix(base, "-dark") {
-		themeName = strings.TrimSuffix(base, "-dark")
-		mode = "dark"
-		return themeName, mode, nil
-	}
-
-	if strings.HasSuffix(base, "-light") {
-		themeName = strings.TrimSuffix(base, "-light")
-		mode = "light"
-		return themeName, mode, nil
-	}
-
-	// Invalid format
-	return "", "", fmt.Errorf("invalid theme filename format: %s (expected {name}-{dark|light}.yaml)", filename)
 }
 
 // formatThemeDisplayName formats a theme name for display
@@ -243,68 +209,54 @@ func formatThemeDisplayName(themeName string) string {
 }
 
 // GetThemeOptions converts ThemeInfo list to ThemeOption list for TUI
-// Includes current theme/mode to mark as selected
-func GetThemeOptions(currentThemeName string, currentMode string) ([]ThemeOption, error) {
+// Includes current theme to mark as selected
+// Returns options sorted with System first, then alphabetical by display name
+func GetThemeOptions(currentThemeName string) ([]ThemeOption, error) {
 	themes, err := DiscoverThemes()
 	if err != nil {
 		return nil, err
 	}
 
 	var options []ThemeOption
+	var systemOption *ThemeOption
 
 	for _, theme := range themes {
-		for _, mode := range theme.Modes {
-			// Format mode for display (capitalize first letter)
-			modeDisplay := mode
-			if len(mode) > 0 {
-				modeDisplay = strings.ToUpper(mode[:1]) + strings.ToLower(mode[1:])
+		// Special handling for "system" theme - add it directly
+		if theme.Name == "system" {
+			systemOption = &ThemeOption{
+				ThemeName:   "system",
+				DisplayName: "System",
+				IsBuiltIn:   true,
+				IsSelected:  theme.Name == currentThemeName,
+				FilePath:    "", // System theme doesn't use files
 			}
-
-			option := ThemeOption{
-				ThemeName:   theme.Name,
-				Mode:        mode,
-				DisplayName: fmt.Sprintf("%s %s", theme.DisplayName, modeDisplay),
-				IsBuiltIn:   theme.IsBuiltIn,
-				IsSelected:  theme.Name == currentThemeName && mode == currentMode,
-				FilePath:    "", // Will be determined when loading
-			}
-			options = append(options, option)
+			continue
 		}
+
+		// Regular themes
+		option := ThemeOption{
+			ThemeName:   theme.Name,
+			DisplayName: theme.DisplayName,
+			IsBuiltIn:   theme.IsBuiltIn,
+			IsSelected:  theme.Name == currentThemeName,
+			FilePath:    "", // Will be determined when loading
+		}
+		options = append(options, option)
+	}
+
+	// Sort options alphabetically by DisplayName (stable sort)
+	for i := 0; i < len(options)-1; i++ {
+		for j := i + 1; j < len(options); j++ {
+			if options[i].DisplayName > options[j].DisplayName {
+				options[i], options[j] = options[j], options[i]
+			}
+		}
+	}
+
+	// Prepend System option at the beginning
+	if systemOption != nil {
+		options = append([]ThemeOption{*systemOption}, options...)
 	}
 
 	return options, nil
-}
-
-// Helper functions
-
-// mergeModes merges two mode slices, avoiding duplicates
-func mergeModes(modes1, modes2 []string) []string {
-	modeMap := make(map[string]bool)
-	for _, mode := range modes1 {
-		modeMap[mode] = true
-	}
-	for _, mode := range modes2 {
-		modeMap[mode] = true
-	}
-
-	result := make([]string, 0, len(modeMap))
-	// Preserve order: dark first, then light
-	if modeMap["dark"] {
-		result = append(result, "dark")
-	}
-	if modeMap["light"] {
-		result = append(result, "light")
-	}
-
-	return result
-}
-
-// contains checks if a string slice contains a value
-func contains(slice []string, value string) bool {
-	for _, v := range slice {
-		if v == value {
-			return true
-		}
-	}
-	return false
 }

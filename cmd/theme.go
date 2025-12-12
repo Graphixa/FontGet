@@ -16,7 +16,7 @@ import (
 var themeCmd = &cobra.Command{
 	Use:   "theme",
 	Short: "Interactive theme selector",
-	Long:  "Launch an interactive TUI to select and preview themes. Themes can be switched between dark and light modes with live preview.",
+	Long:  "Launch an interactive TUI to select and preview themes with live preview.",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Initialize theme manager if not already done
 		if err := ui.InitThemeManager(); err != nil {
@@ -53,7 +53,6 @@ type themeSelectionModel struct {
 	themes        []ui.ThemeOption
 	selectedIndex int
 	currentTheme  string
-	currentMode   string
 	preview       *components.PreviewModel
 	width         int
 	height        int
@@ -67,18 +66,14 @@ func NewThemeSelectionModel() (*themeSelectionModel, error) {
 	// Get current theme from config
 	appConfig := config.GetUserPreferences()
 	currentTheme := appConfig.Theme.Name
-	currentMode := appConfig.Theme.Mode
 
-	// Default to catppuccin-dark if empty
+	// Default to catppuccin if empty
 	if currentTheme == "" {
 		currentTheme = "catppuccin"
 	}
-	if currentMode == "" || (currentMode != "dark" && currentMode != "light") {
-		currentMode = "dark"
-	}
 
 	// Get theme options
-	options, err := ui.GetThemeOptions(currentTheme, currentMode)
+	options, err := ui.GetThemeOptions(currentTheme)
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover themes: %w", err)
 	}
@@ -96,7 +91,7 @@ func NewThemeSelectionModel() (*themeSelectionModel, error) {
 	preview := components.NewPreviewModel()
 
 	// Load initial theme for preview
-	if err := preview.LoadTheme(options[selectedIndex].ThemeName, options[selectedIndex].Mode); err != nil {
+	if err := preview.LoadTheme(options[selectedIndex].ThemeName); err != nil {
 		// Log error but continue - preview will show default
 	}
 
@@ -117,7 +112,6 @@ func NewThemeSelectionModel() (*themeSelectionModel, error) {
 		themes:        options,
 		selectedIndex: selectedIndex,
 		currentTheme:  currentTheme,
-		currentMode:   currentMode,
 		preview:       preview,
 		buttons:       buttons,
 	}, nil
@@ -154,7 +148,7 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedIndex--
 				m.buttons.Selected = m.selectedIndex
 				// Hot-reload preview
-				if err := m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName, m.themes[m.selectedIndex].Mode); err != nil {
+				if err := m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName); err != nil {
 					m.err = fmt.Sprintf("Failed to load preview: %v", err)
 				} else {
 					m.err = ""
@@ -167,7 +161,7 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selectedIndex++
 				m.buttons.Selected = m.selectedIndex
 				// Hot-reload preview
-				if err := m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName, m.themes[m.selectedIndex].Mode); err != nil {
+				if err := m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName); err != nil {
 					m.err = fmt.Sprintf("Failed to load preview: %v", err)
 				} else {
 					m.err = ""
@@ -178,7 +172,7 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			// Apply selected theme
 			selected := m.themes[m.selectedIndex]
-			if err := m.applyTheme(selected.ThemeName, selected.Mode); err != nil {
+			if err := m.applyTheme(selected.ThemeName); err != nil {
 				m.err = fmt.Sprintf("Failed to apply theme: %v", err)
 				return m, nil
 			}
@@ -205,7 +199,7 @@ func (m themeSelectionModel) View() string {
 	commands = append(commands, ui.RenderKeyWithDescription("Esc", "Cancel"))
 	help := strings.Join(commands, "  ")
 
-	currentInfo := fmt.Sprintf("Current Theme: %s %s", m.currentTheme, m.currentMode)
+	currentInfo := fmt.Sprintf("Current Theme: %s", m.currentTheme)
 	if m.err != "" {
 		currentInfo = currentInfo + "  " + ui.ErrorText.Render(m.err)
 	}
@@ -343,11 +337,10 @@ func (m themeSelectionModel) renderFooter(help, current string, totalWidth int) 
 }
 
 // applyTheme applies the selected theme to the config
-func (m *themeSelectionModel) applyTheme(themeName string, mode string) error {
+func (m *themeSelectionModel) applyTheme(themeName string) error {
 	// Update config
 	appConfig := config.GetUserPreferences()
 	appConfig.Theme.Name = themeName
-	appConfig.Theme.Mode = mode
 
 	// Save config
 	if err := config.SaveUserPreferences(appConfig); err != nil {

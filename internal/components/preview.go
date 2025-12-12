@@ -15,7 +15,6 @@ import (
 // PreviewModel represents the theme preview component
 type PreviewModel struct {
 	theme             *ui.Theme
-	mode              string
 	spinner           spinner.Model
 	progressPercent   float64
 	progressDirection int // 1 for increasing, -1 for decreasing
@@ -28,7 +27,6 @@ func NewPreviewModel() *PreviewModel {
 	spin.Spinner = spinner.Dot
 
 	return &PreviewModel{
-		mode:              "dark",
 		spinner:           spin,
 		progressPercent:   0.0,
 		progressDirection: 1, // Start increasing
@@ -81,20 +79,19 @@ func previewTickCmd() tea.Cmd {
 }
 
 // LoadTheme loads a theme for preview
-func (m *PreviewModel) LoadTheme(themeName string, mode string) error {
+func (m *PreviewModel) LoadTheme(themeName string) error {
 	// Try to load theme
 	tm := ui.GetThemeManager()
-	theme, err := tm.LoadTheme(themeName, mode)
+	theme, err := tm.LoadTheme(themeName)
 	if err != nil {
 		// Try embedded theme
-		theme, err = ui.LoadEmbeddedTheme(themeName, mode)
+		theme, err = ui.LoadEmbeddedTheme(themeName)
 		if err != nil {
 			return fmt.Errorf("failed to load theme: %w", err)
 		}
 	}
 
 	m.theme = theme
-	m.mode = mode
 	return nil
 }
 
@@ -131,10 +128,15 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, fmt.Sprintf("%s Checked  %s Unchecked", checkboxChecked, checkboxUnchecked))
 	lines = append(lines, "") // Spacing
 
-	// Switch
-	switchComp := NewSwitchWithLabels("On", "Off", true)
-	switchComp.Value = true
-	switchRendered := switchComp.Render()
+	// Switch - render manually with preview styles (not global ui styles)
+	leftPadded := "  On  "
+	rightPadded := "  Off  "
+	var leftStyled, rightStyled string
+	// Left is selected (Value = true)
+	leftStyled = previewStyles.ButtonSelected.Render(leftPadded)
+	rightStyled = previewStyles.ButtonNormal.Render(rightPadded)
+	separator := previewStyles.Text.Render("|")
+	switchRendered := fmt.Sprintf("[%s%s%s]", leftStyled, separator, rightStyled)
 	lines = append(lines, switchRendered)
 	lines = append(lines, "") // Spacing
 
@@ -148,8 +150,15 @@ func (m *PreviewModel) View(width int) string {
 
 	// Spinner and Progress bar side-by-side to save space
 	spinnerChar := strings.TrimSpace(m.spinner.View())
-	// Use ui.SpinnerColor which is set from theme's accent color
-	spinnerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(ui.SpinnerColor))
+	// Use preview theme's accent color (not global ui.SpinnerColor which doesn't update)
+	// For system theme (empty color), use NoColor to respect terminal defaults
+	var spinnerColor lipgloss.TerminalColor
+	if colors.Accent == "" {
+		spinnerColor = lipgloss.NoColor{}
+	} else {
+		spinnerColor = lipgloss.Color(colors.Accent)
+	}
+	spinnerStyle := lipgloss.NewStyle().Foreground(spinnerColor)
 	spinnerRendered := spinnerStyle.Render(spinnerChar + " Loading")
 	progressPercent := int(m.progressPercent * 100)
 	progressBar := m.renderStaticProgressBar(progressPercent, colors)
@@ -168,24 +177,13 @@ func (m *PreviewModel) View(width int) string {
 	cardContent.WriteString("\n")
 	cardContent.WriteString(previewStyles.CardLabel.Render("Tags:") + " " + previewStyles.CardContent.Render("modern, clean"))
 
-	card := NewCard("Card Title", cardContent.String())
-	// Card width should fit within the available content width
-	// The 'width' parameter is the content width available (already accounting for panel padding)
-	// The card's Width is used for the content area, and the card adds its own border (2 chars: left + right)
-	// So card.Width should be: available width - card border (2) = width - 2
-	// But we also need to account for the card's horizontal padding (1 on each side = 2 total)
-	// So the actual content width inside the card will be: card.Width - 2 (padding)
-	// To fit properly: card.Width = width - 2 (border) - some margin for safety
-	// Actually, looking at the card renderer, it uses c.Width for the content width constraint
-	// and the border is built separately, so the total card width will be c.Width + 2 (borders)
-	// To fit in 'width', we need: c.Width + 2 <= width, so c.Width <= width - 2
-	card.Width = width - 2
-	if card.Width < 20 {
-		card.Width = 20 // Minimum width for card to render properly
+	// Render card with preview theme's CardTitle style (not global ui.CardTitle)
+	cardWidth := width - 2
+	if cardWidth < 20 {
+		cardWidth = 20 // Minimum width for card to render properly
 	}
-	card.VerticalPadding = 1
-	card.HorizontalPadding = 1
-	lines = append(lines, card.Render())
+	cardRendered := renderCardWithPreviewStyle("Card Title", cardContent.String(), cardWidth, previewStyles, colors)
+	lines = append(lines, cardRendered)
 
 	content := strings.Join(lines, "\n")
 
@@ -212,40 +210,52 @@ type previewStyles struct {
 	ErrorText         lipgloss.Style
 }
 
+// getColorOrNoColor returns a TerminalColor that lipgloss can use
+// If color string is empty, returns lipgloss.NoColor{} to use terminal defaults
+// Otherwise returns lipgloss.Color(color)
+// This is used for the "system" theme which has empty color strings
+func getColorOrNoColor(color string) lipgloss.TerminalColor {
+	if color == "" {
+		return lipgloss.NoColor{}
+	}
+	return lipgloss.Color(color)
+}
+
 // createPreviewStyles creates temporary styles for preview using theme colors
+// For system theme (empty colors), uses getColorOrNoColor() to respect terminal defaults
 func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 	return previewStyles{
 		PageTitle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color(colors.PageTitle)).
-			Background(lipgloss.Color(colors.GreyDark)).
+			Foreground(getColorOrNoColor(colors.PageTitle)).
+			Background(getColorOrNoColor(colors.GreyDark)).
 			Padding(0, 1),
 
 		PageSubtitle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color(colors.PageSubtitle)),
+			Foreground(getColorOrNoColor(colors.PageSubtitle)),
 
 		Text: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.GreyLight)),
+			Foreground(getColorOrNoColor(colors.GreyLight)),
 
 		InfoText: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.Accent)),
+			Foreground(getColorOrNoColor(colors.Accent)),
 
 		CardTitle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.Accent)).
-			Background(lipgloss.Color(colors.GreyDark)).
+			Foreground(getColorOrNoColor(colors.Accent)).
+			Background(getColorOrNoColor(colors.GreyDark)).
 			Bold(true).
 			Padding(0, 1),
 
 		CardLabel: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.Accent2)).
+			Foreground(getColorOrNoColor(colors.Accent2)).
 			Bold(true),
 
 		CardContent: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.GreyLight)),
+			Foreground(getColorOrNoColor(colors.GreyLight)),
 
 		CardBorder: lipgloss.NewStyle().
-			BorderForeground(lipgloss.Color(colors.GreyMid)).
+			BorderForeground(getColorOrNoColor(colors.GreyMid)).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderTop(true).
 			BorderBottom(true).
@@ -254,34 +264,46 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 			Padding(1),
 
 		ButtonNormal: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.GreyLight)).
+			Foreground(getColorOrNoColor(colors.GreyLight)).
 			Bold(true),
 
-		ButtonSelected: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.GreyDark)).
-			Background(lipgloss.Color(colors.GreyLight)).
-			Bold(true),
+		ButtonSelected: func() lipgloss.Style {
+			style := lipgloss.NewStyle().
+				Foreground(getColorOrNoColor(colors.GreyDark)).
+				Background(getColorOrNoColor(colors.GreyLight)).
+				Bold(true)
+			// For system theme, ensure background is visible (use white) and text is readable (use black)
+			if colors.GreyLight == "" {
+				style = style.Background(lipgloss.Color("#ffffff"))
+			}
+			// For system theme, ensure text is dark and readable on white background
+			if colors.GreyDark == "" {
+				style = style.Foreground(lipgloss.Color("#000000"))
+			}
+			return style
+		}(),
 
 		CheckboxChecked: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.Accent2)).
+			Foreground(getColorOrNoColor(colors.Accent2)).
 			Bold(true),
 
 		CheckboxUnchecked: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.GreyMid)),
+			Foreground(getColorOrNoColor(colors.GreyMid)),
 
 		SuccessText: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.Success)),
+			Foreground(getColorOrNoColor(colors.Success)),
 
 		WarningText: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.Warning)),
+			Foreground(getColorOrNoColor(colors.Warning)),
 
 		ErrorText: lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colors.Error)),
+			Foreground(getColorOrNoColor(colors.Error)),
 	}
 }
 
 // renderStaticProgressBar creates a static progress bar for preview
 // Uses a simplified version without duplicating helper functions from progress_bar.go
+// For system theme (empty colors), uses terminal defaults
 func (m *PreviewModel) renderStaticProgressBar(percent int, colors *ui.ModeColors) string {
 	barWidth := 20 // Compact width for preview
 	filled := int(float64(barWidth) * float64(percent) / 100.0)
@@ -311,13 +333,24 @@ func (m *PreviewModel) renderStaticProgressBar(percent int, colors *ui.ModeColor
 		}
 
 		// Interpolate color between start and end
-		gradientColor := interpolateHexColorSimple(startColor, endColor, ratio)
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(gradientColor))
+		// For system theme (empty colors), use terminal default
+		var style lipgloss.Style
+		if startColor == "" || endColor == "" {
+			style = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
+		} else {
+			gradientColor := interpolateHexColorSimple(startColor, endColor, ratio)
+			style = lipgloss.NewStyle().Foreground(lipgloss.Color(gradientColor))
+		}
 		barBuilder.WriteString(style.Render("█"))
 	}
 
-	// Empty portion
-	emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyMid))
+	// Empty portion - for system theme, use terminal default
+	var emptyStyle lipgloss.Style
+	if colors.GreyMid == "" {
+		emptyStyle = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
+	} else {
+		emptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyMid))
+	}
 	for i := 0; i < empty; i++ {
 		barBuilder.WriteString(emptyStyle.Render("░"))
 	}
@@ -378,4 +411,61 @@ func rgbToHexSimple(r, g, b int) string {
 	}
 
 	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
+}
+
+// renderCardWithPreviewStyle renders a card using preview theme styles instead of global ui styles
+// This ensures the card title uses the preview theme's colors
+func renderCardWithPreviewStyle(title, content string, width int, styles previewStyles, colors *ui.ModeColors) string {
+	// Create styled title using preview theme
+	styledTitle := styles.CardTitle.Render(title)
+
+	// Create content with proper padding using preview border style
+	contentStyle := styles.CardBorder.Padding(1, 1)
+	contentRendered := contentStyle.Width(width).Render(content)
+
+	// Split content into lines
+	lines := strings.Split(contentRendered, "\n")
+	if len(lines) < 2 {
+		return contentRendered
+	}
+
+	// Calculate title length (without ANSI codes)
+	plainTitleLength := len(title) + 2 // +2 for CardTitle padding
+
+	// Calculate remaining width for right side
+	rightWidth := width - 1 - 1 - plainTitleLength - 1 - 1
+	if rightWidth < 0 {
+		rightWidth = 0
+	}
+
+	// Get border color from preview theme
+	var borderColor lipgloss.TerminalColor
+	if colors.GreyMid != "" {
+		borderColor = lipgloss.Color(colors.GreyMid)
+	} else {
+		borderColor = lipgloss.NoColor{}
+	}
+
+	// Create top border with integrated title
+	topLeft := "╭"
+	topRight := strings.Repeat("─", rightWidth) + "╮"
+	styledTopLeft := lipgloss.NewStyle().Foreground(borderColor).Render(topLeft)
+	styledTopRight := lipgloss.NewStyle().Foreground(borderColor).Render(topRight)
+	dashStyle := lipgloss.NewStyle().Foreground(borderColor)
+	styledDashes := dashStyle.Render("─")
+	styledTitleSection := styledDashes + " " + styledTitle + " " + styledDashes
+	titleLine := styledTopLeft + styledTitleSection + styledTopRight
+
+	// Build result
+	var result strings.Builder
+	result.WriteString(titleLine)
+	result.WriteString("\n")
+	for i := 1; i < len(lines); i++ {
+		result.WriteString(lines[i])
+		if i < len(lines)-1 {
+			result.WriteString("\n")
+		}
+	}
+
+	return result.String()
 }

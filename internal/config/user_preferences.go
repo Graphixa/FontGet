@@ -61,8 +61,7 @@ type UpdateSection struct {
 
 // ThemeSection represents theme configuration
 type ThemeSection struct {
-	Name string `yaml:"Name"` // Theme name (e.g., "catppuccin", "gruvbox") - empty string uses default
-	Mode string `yaml:"Mode"` // "dark" or "light" - defaults to "dark"
+	Name string `yaml:"Name"` // Theme name (e.g., "catppuccin", "gruvbox", "system") - empty string uses default
 }
 
 // GetAppConfigDir returns the app-specific config directory (~/.fontget)
@@ -122,8 +121,7 @@ func DefaultUserPreferences() *AppConfig {
 			UpdateChannel:       "stable",
 		},
 		Theme: ThemeSection{
-			Name: "",     // Empty string uses embedded default theme (catppuccin)
-			Mode: "dark", // Default to dark mode (no auto-detection)
+			Name: "", // Empty string uses embedded default theme (catppuccin)
 		},
 	}
 }
@@ -206,28 +204,10 @@ func GetUserPreferences() *AppConfig {
 			}
 
 			// Merge Theme section if it exists (optional for backward compatibility)
-			if loadedConfig.Theme.Name != "" || loadedConfig.Theme.Mode != "" {
-				// Start from existing defaults and overlay loaded values
-				if loadedConfig.Theme.Name != "" {
-					config.Theme.Name = loadedConfig.Theme.Name
-				}
-				if loadedConfig.Theme.Mode != "" {
-					config.Theme.Mode = loadedConfig.Theme.Mode
-				}
-
-				// Ensure mode is valid: only "dark" or "light" allowed
-				// Migrate "auto" to "dark" for backward compatibility
-				switch config.Theme.Mode {
-				case "", "auto":
-					// Migrate empty or "auto" to "dark" (no longer supporting auto-detection)
-					config.Theme.Mode = "dark"
-				case "dark", "light":
-					// Valid modes - keep as is
-				default:
-					// Unknown value - default to "dark"
-					config.Theme.Mode = "dark"
-				}
+			if loadedConfig.Theme.Name != "" {
+				config.Theme.Name = loadedConfig.Theme.Name
 			}
+			// Mode field is ignored (backward compatibility - old configs may have it)
 		}
 	}
 
@@ -635,8 +615,7 @@ Update:
   LastUpdateCheck: "" # ISO timestamp of last check (automatically updated)
   UpdateChannel: "stable" # Update channel: stable, beta, or nightly
 Theme:
-  Name: "" # Theme name (e.g., "catppuccin", "gruvbox") - empty string uses embedded default
-  Mode: dark # Theme mode: dark or light
+  Name: "" # Theme name (e.g., "catppuccin", "gruvbox", "system") - empty string uses embedded default
 `
 
 	// Write config file
@@ -677,7 +656,6 @@ func ValidateUserPreferences(config *AppConfig) error {
 		},
 		"Theme": map[string]interface{}{
 			"Name": config.Theme.Name,
-			"Mode": config.Theme.Mode,
 		},
 	}
 

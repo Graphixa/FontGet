@@ -301,8 +301,15 @@ func (m ProgressBarModel) View() string {
 				styledIcon = "○" // Static circle for verbose/debug mode
 			} else {
 				// Get spinner character, trim whitespace, and apply styling using theme color
+				// For system theme (empty color), use NoColor to respect terminal defaults
 				styledIcon = strings.TrimSpace(m.Spinner.View())
-				styledIcon = lipgloss.NewStyle().Foreground(lipgloss.Color(ui.SpinnerColor)).Render(styledIcon)
+				var spinnerColor lipgloss.TerminalColor
+				if ui.SpinnerColor == "" {
+					spinnerColor = lipgloss.NoColor{}
+				} else {
+					spinnerColor = lipgloss.Color(ui.SpinnerColor)
+				}
+				styledIcon = lipgloss.NewStyle().Foreground(spinnerColor).Render(styledIcon)
 			}
 		default:
 			// Other statuses - use a space to maintain alignment

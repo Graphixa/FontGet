@@ -5,23 +5,21 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"fontget/internal/config"
 
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed themes/catppuccin-dark.yaml themes/catppuccin-light.yaml themes/gruvbox-dark.yaml themes/gruvbox-light.yaml
+//go:embed themes/catppuccin.yaml themes/gruvbox.yaml
 var embeddedThemes embed.FS
 
 // Theme represents a color theme loaded from a YAML file
-// New format: Single-mode theme (no dark_mode/light_mode wrapper)
 type Theme struct {
 	FontGetTheme ModeColors `yaml:"fontget_theme"`
 }
 
-// ModeColors defines colors for a specific mode (dark/light)
+// ModeColors defines colors for a theme
 type ModeColors struct {
 	Accent              string `yaml:"accent"`
 	Accent2             string `yaml:"accent2"`
@@ -43,35 +41,16 @@ type ModeColors struct {
 type ThemeManager struct {
 	configDir    string
 	currentTheme *Theme
-	mode         string // "dark" or "light"
 }
 
 // NewThemeManager creates a new theme manager
 func NewThemeManager(configDir string) *ThemeManager {
 	return &ThemeManager{
 		configDir: configDir,
-		mode:      "dark", // Default to dark mode
 	}
-}
-
-// SetMode sets the current mode (dark or light)
-// Only "dark" and "light" are supported - no auto-detection
-func (tm *ThemeManager) SetMode(mode string) {
-	if mode == "light" || mode == "dark" {
-		tm.mode = mode
-	} else {
-		// Default to dark if invalid mode
-		tm.mode = "dark"
-	}
-}
-
-// GetMode returns the current mode
-func (tm *ThemeManager) GetMode() string {
-	return tm.mode
 }
 
 // GetColors returns the colors for the current theme
-// Note: Theme now contains only one mode (loaded based on theme+mode combination)
 func (tm *ThemeManager) GetColors() *ModeColors {
 	if tm.currentTheme == nil {
 		return nil
@@ -80,27 +59,20 @@ func (tm *ThemeManager) GetColors() *ModeColors {
 }
 
 // GetThemePath returns the path to a theme file
-// New format: {themeName}-{mode}.yaml (e.g., "catppuccin-dark.yaml")
-func (tm *ThemeManager) GetThemePath(themeName string, mode string) (string, error) {
+// User themes: {themeName}.yaml (e.g., "catppuccin.yaml")
+func (tm *ThemeManager) GetThemePath(themeName string) (string, error) {
 	themesDir := filepath.Join(tm.configDir, "themes")
 
-	// New format: {themeName}-{mode}.yaml
-	themePath := filepath.Join(themesDir, fmt.Sprintf("%s-%s.yaml", themeName, mode))
+	// Format: {themeName}.yaml
+	themePath := filepath.Join(themesDir, themeName+".yaml")
 	if _, err := os.Stat(themePath); err == nil {
 		return themePath, nil
 	}
 
-	// Fallback: Try old format {themeName}.yaml (for backward compatibility during migration)
-	themePath = filepath.Join(themesDir, themeName+".yaml")
-	if _, err := os.Stat(themePath); err == nil {
-		return themePath, nil
-	}
-
-	return "", fmt.Errorf("theme file not found: %s-%s.yaml", themeName, mode)
+	return "", fmt.Errorf("theme file not found: %s.yaml", themeName)
 }
 
 // ValidateTheme validates that a theme has all required color keys
-// New format: Theme contains only one mode, so validation is simpler
 func ValidateTheme(theme *Theme) error {
 	colors := &theme.FontGetTheme
 
@@ -137,9 +109,15 @@ func ValidateTheme(theme *Theme) error {
 }
 
 // LoadTheme loads a theme from a file
-// New format: Loads {themeName}-{mode}.yaml (e.g., "catppuccin-dark.yaml")
-func (tm *ThemeManager) LoadTheme(themeName string, mode string) (*Theme, error) {
-	themePath, err := tm.GetThemePath(themeName, mode)
+// User themes: Loads {themeName}.yaml (e.g., "catppuccin.yaml")
+// Special case: "system" theme returns LoadSystemTheme() without file loading
+func (tm *ThemeManager) LoadTheme(themeName string) (*Theme, error) {
+	// Special handling for "system" theme - no file needed
+	if themeName == "system" {
+		return LoadSystemTheme(), nil
+	}
+
+	themePath, err := tm.GetThemePath(themeName)
 	if err != nil {
 		return nil, err
 	}
@@ -154,17 +132,27 @@ func (tm *ThemeManager) LoadTheme(themeName string, mode string) (*Theme, error)
 		return nil, fmt.Errorf("failed to parse theme file: %w", err)
 	}
 
-	// Validate theme (single-mode validation)
-	if err := ValidateTheme(&theme); err != nil {
-		return nil, fmt.Errorf("theme validation failed: %w", err)
+	// Validate theme
+	// System theme is exempt from validation
+	if themeName != "system" {
+		if err := ValidateTheme(&theme); err != nil {
+			return nil, fmt.Errorf("theme validation failed: %w", err)
+		}
 	}
 
 	return &theme, nil
 }
 
 // LoadEmbeddedTheme loads a theme from embedded files
-func LoadEmbeddedTheme(themeName string, mode string) (*Theme, error) {
-	themePath := fmt.Sprintf("themes/%s-%s.yaml", themeName, mode)
+// Special case: "system" theme returns LoadSystemTheme() without file loading
+func LoadEmbeddedTheme(themeName string) (*Theme, error) {
+	// Special handling for "system" theme - no file needed
+	if themeName == "system" {
+		return LoadSystemTheme(), nil
+	}
+
+	// Embedded themes use format: themes/{themeName}.yaml
+	themePath := fmt.Sprintf("themes/%s.yaml", themeName)
 	data, err := embeddedThemes.ReadFile(themePath)
 	if err != nil {
 		return nil, fmt.Errorf("embedded theme not found: %s", themePath)
@@ -175,9 +163,11 @@ func LoadEmbeddedTheme(themeName string, mode string) (*Theme, error) {
 		return nil, fmt.Errorf("failed to parse embedded theme: %w", err)
 	}
 
-	// Validate theme
-	if err := ValidateTheme(&theme); err != nil {
-		return nil, fmt.Errorf("embedded theme validation failed: %w", err)
+	// Validate theme (system theme is exempt)
+	if themeName != "system" {
+		if err := ValidateTheme(&theme); err != nil {
+			return nil, fmt.Errorf("embedded theme validation failed: %w", err)
+		}
 	}
 
 	return &theme, nil
@@ -193,14 +183,20 @@ func (tm *ThemeManager) SetTheme(theme *Theme) {
 	tm.currentTheme = theme
 }
 
-// LoadDefaultTheme loads the default Catppuccin theme from embedded files
-// Uses catppuccin-dark.yaml as default fallback
-func LoadDefaultTheme(mode string) (*Theme, error) {
-	// Default to dark if invalid mode
-	if mode != "light" && mode != "dark" {
-		mode = "dark"
+// LoadSystemTheme creates a "system" theme that uses terminal default colors
+// This theme has empty color strings, which InitStyles() will interpret as "no color"
+func LoadSystemTheme() *Theme {
+	return &Theme{
+		FontGetTheme: ModeColors{
+			// All colors are empty - InitStyles() will use lipgloss.NoColor{} for these
+		},
 	}
-	return LoadEmbeddedTheme("catppuccin", mode)
+}
+
+// LoadDefaultTheme loads the default Catppuccin theme from embedded files
+// Uses catppuccin.yaml as default fallback
+func LoadDefaultTheme() (*Theme, error) {
+	return LoadEmbeddedTheme("catppuccin")
 }
 
 // GetThemeManager returns the global theme manager instance
@@ -213,41 +209,29 @@ func InitThemeManager() error {
 
 	globalThemeManager = NewThemeManager(configDir)
 
-	// Get theme and mode from config
+	// Get theme from config
 	appConfig := config.GetUserPreferences()
 	themeName := appConfig.Theme.Name
-	mode := appConfig.Theme.Mode
-
-	// Check environment variable override (FONTGET_THEME_MODE)
-	// Environment variable takes precedence over config file
-	if envMode := os.Getenv("FONTGET_THEME_MODE"); envMode != "" {
-		envMode = strings.ToLower(envMode)
-		if envMode == "dark" || envMode == "light" {
-			mode = envMode
-		}
-		// Ignore invalid env var values, use config instead
-	}
-
-	// Validate mode, default to "dark" if invalid
-	if mode != "light" && mode != "dark" {
-		mode = "dark" // Default fallback
-	}
-
-	globalThemeManager.SetMode(mode)
 
 	// If theme name is empty, use embedded default (catppuccin)
 	if themeName == "" {
 		themeName = "catppuccin"
 	}
 
+	// Special handling for "system" theme - no file loading needed
+	if themeName == "system" {
+		globalThemeManager.SetTheme(LoadSystemTheme())
+		return nil
+	}
+
 	// Try to load user's theme from ~/.fontget/themes/ first
-	userTheme, err := globalThemeManager.LoadTheme(themeName, mode)
+	userTheme, err := globalThemeManager.LoadTheme(themeName)
 	if err != nil {
 		// If user theme fails, try embedded theme
-		embeddedTheme, embedErr := LoadEmbeddedTheme(themeName, mode)
+		embeddedTheme, embedErr := LoadEmbeddedTheme(themeName)
 		if embedErr != nil {
-			// If embedded theme also fails, fallback to catppuccin-dark
-			defaultTheme, defaultErr := LoadDefaultTheme("dark")
+			// If embedded theme also fails, fallback to catppuccin
+			defaultTheme, defaultErr := LoadDefaultTheme()
 			if defaultErr != nil {
 				return fmt.Errorf("failed to load any theme: user=%v, embedded=%v, default=%v", err, embedErr, defaultErr)
 			}
@@ -277,7 +261,7 @@ func GetCurrentTheme() *Theme {
 	return GetThemeManager().GetCurrentTheme()
 }
 
-// GetCurrentColors returns the colors for the current mode
+// GetCurrentColors returns the colors for the current theme
 func GetCurrentColors() *ModeColors {
 	return GetThemeManager().GetColors()
 }

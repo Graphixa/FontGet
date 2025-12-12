@@ -115,17 +115,26 @@ func (c Card) Render() string {
 	}
 
 	// Create the integrated title line with proper border styling
-	// Use the same border color as CardBorder (Overlay 1: #7f849c)
-	borderColor := "#7f849c"
+	// Use the border color from current theme (respects theme, including system theme)
 	topLeft := "╭"
 	topRight := strings.Repeat("─", rightWidth) + "╮"
 
-	// Apply border color to the top border elements
-	styledTopLeft := lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor)).Render(topLeft)
-	styledTopRight := lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor)).Render(topRight)
+	// Get border color from current theme (same as CardBorder uses)
+	colors := ui.GetCurrentColors()
+	var borderColor lipgloss.TerminalColor
+	if colors != nil && colors.GreyMid != "" {
+		borderColor = lipgloss.Color(colors.GreyMid)
+	} else {
+		// System theme or no colors - use terminal default
+		borderColor = lipgloss.NoColor{}
+	}
+
+	// Apply border color to border elements
+	styledTopLeft := lipgloss.NewStyle().Foreground(borderColor).Render(topLeft)
+	styledTopRight := lipgloss.NewStyle().Foreground(borderColor).Render(topRight)
 
 	// Create dashes with border color
-	dashStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(borderColor))
+	dashStyle := lipgloss.NewStyle().Foreground(borderColor)
 	styledDashes := dashStyle.Render("─")
 
 	// Reconstruct the title section with styled dashes

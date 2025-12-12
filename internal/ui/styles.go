@@ -355,11 +355,26 @@ var (
 // RenderSourceTag renders just the source type tag ([Built-in] or [Custom])
 // Usage: Display source type tags separately from source names
 // Example: ui.RenderSourceTag(true) // Returns "[Built-in]"
+// For system theme, uses terminal default colors (no color)
 func RenderSourceTag(isBuiltIn bool) string {
-	if isBuiltIn {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("#9399b2")).Render("[Built-in]") // Subtext 0
+	colors := GetCurrentColors()
+	var tagStyle lipgloss.Style
+	if colors != nil && colors.GreyMid != "" {
+		// Use theme color
+		if isBuiltIn {
+			tagStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyMid))
+		} else {
+			tagStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyLight))
+		}
+	} else {
+		// System theme - use terminal default (no color)
+		tagStyle = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color("#cdd6f4")).Render("[Custom]") // Text
+
+	if isBuiltIn {
+		return tagStyle.Render("[Built-in]")
+	}
+	return tagStyle.Render("[Custom]")
 }
 
 // RenderSourceNameWithTag renders a source name with its type tag using TableSourceName color
@@ -411,8 +426,20 @@ func RenderInfo(message string) string {
 // THEME-AWARE STYLE INITIALIZATION
 // ============================================================================
 
+// getColorOrNoColor returns a TerminalColor that lipgloss can use
+// If color string is empty, returns lipgloss.NoColor{} to use terminal defaults
+// Otherwise returns lipgloss.Color(color)
+// This is used for the "system" theme which has empty color strings
+func getColorOrNoColor(color string) lipgloss.TerminalColor {
+	if color == "" {
+		return lipgloss.NoColor{}
+	}
+	return lipgloss.Color(color)
+}
+
 // InitStyles initializes all styles based on the current theme
 // This should be called after InitThemeManager() during application startup
+// For "system" theme (empty colors), uses lipgloss.NoColor{} to respect terminal defaults
 func InitStyles() error {
 	colors := GetCurrentColors()
 	if colors == nil {
@@ -422,75 +449,85 @@ func InitStyles() error {
 
 	// Update styles that use theme colors
 	// Note: Hardcoded styles (Text, TextBold, TableHeader, FormInput, CommandExample, CardContent, CheckboxUnchecked) are not updated
+	// For "system" theme, empty color strings will use getColorOrNoColor() which returns NoColor{}
 
 	// PAGE STRUCTURE
 	PageTitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(colors.PageTitle)).
-		Background(lipgloss.Color(colors.GreyDark)).
+		Foreground(getColorOrNoColor(colors.PageTitle)).
+		Background(getColorOrNoColor(colors.GreyDark)).
 		Padding(0, 1)
 
 	PageSubtitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color(colors.PageSubtitle))
+		Foreground(getColorOrNoColor(colors.PageSubtitle))
 
 	// MESSAGE STYLES
 	InfoText = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent))
+		Foreground(getColorOrNoColor(colors.Accent))
 
 	SecondaryText = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent2))
+		Foreground(getColorOrNoColor(colors.Accent2))
 
 	WarningText = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Warning))
+		Foreground(getColorOrNoColor(colors.Warning))
 
 	ErrorText = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Error))
+		Foreground(getColorOrNoColor(colors.Error))
 
 	SuccessText = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Success))
+		Foreground(getColorOrNoColor(colors.Success))
 
 	// TABLE COMPONENT
 	TableSourceName = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent2))
+		Foreground(getColorOrNoColor(colors.Accent2))
 
 	TableRowSelected = lipgloss.NewStyle().
-		Background(lipgloss.Color(colors.GreyDark))
+		Background(getColorOrNoColor(colors.GreyDark))
 
 	// FORM COMPONENT
 	FormLabel = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent2)).
+		Foreground(getColorOrNoColor(colors.Accent2)).
 		Bold(true)
 
 	FormPlaceholder = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyMid))
+		Foreground(getColorOrNoColor(colors.GreyMid))
 
 	FormReadOnly = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyMid))
+		Foreground(getColorOrNoColor(colors.GreyMid))
 
 	// COMMAND COMPONENT
 	CommandKey = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyMid)).
-		Background(lipgloss.Color(colors.GreyDark)).
+		Foreground(getColorOrNoColor(colors.GreyMid)).
+		Background(getColorOrNoColor(colors.GreyDark)).
 		Bold(true).
 		Padding(0, 1)
+	// For system theme, ensure background is visible (use white) and text is readable (use black)
+	if colors.GreyDark == "" {
+		// System theme: use white background for visibility
+		CommandKey = CommandKey.Background(lipgloss.Color("#ffffff"))
+	}
+	if colors.GreyMid == "" {
+		// System theme: use black text for readability on white background
+		CommandKey = CommandKey.Foreground(lipgloss.Color("#000000"))
+	}
 
 	CommandLabel = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyMid)).
+		Foreground(lipgloss.NoColor{}). // Always use terminal default (no color)
 		Bold(true)
 
 	// CARD COMPONENT
 	CardTitle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent)).
-		Background(lipgloss.Color(colors.GreyDark)).
+		Foreground(getColorOrNoColor(colors.Accent)).
+		Background(getColorOrNoColor(colors.GreyDark)).
 		Bold(true).
 		Padding(0, 1)
 
 	CardLabel = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent2))
+		Foreground(getColorOrNoColor(colors.Accent2))
 
 	CardBorder = lipgloss.NewStyle().
-		BorderForeground(lipgloss.Color(colors.GreyMid)).
+		BorderForeground(getColorOrNoColor(colors.GreyMid)).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderTop(true).
 		BorderBottom(true).
@@ -500,49 +537,77 @@ func InitStyles() error {
 
 	// BUTTON COMPONENT
 	ButtonNormal = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
+		Foreground(getColorOrNoColor(colors.GreyLight)).
 		Bold(true)
 
 	ButtonSelected = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyDark)).  // Inverted: dark text
-		Background(lipgloss.Color(colors.GreyLight)). // Inverted: light background
+		Foreground(getColorOrNoColor(colors.GreyDark)).  // Inverted: dark text
+		Background(getColorOrNoColor(colors.GreyLight)). // Inverted: light background
 		Bold(true)
+	// For system theme, ensure background is visible (use white) and text is readable (use black)
+	if colors.GreyLight == "" {
+		// System theme: use white background for visibility
+		ButtonSelected = ButtonSelected.Background(lipgloss.Color("#ffffff"))
+	}
+	if colors.GreyDark == "" {
+		// System theme: use black text for readability on white background
+		ButtonSelected = ButtonSelected.Foreground(lipgloss.Color("#000000"))
+	}
 
 	// CHECKBOX COMPONENT
 	CheckboxChecked = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent2)). // Use accent color instead of success
+		Foreground(getColorOrNoColor(colors.Accent2)). // Use accent color instead of success
 		Bold(true)
 
 	CheckboxItemSelected = lipgloss.NewStyle().
-		Background(lipgloss.Color(colors.GreyDark))
+		Background(getColorOrNoColor(colors.GreyDark))
 
 	CheckboxCursor = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Accent2)).
+		Foreground(getColorOrNoColor(colors.Accent2)).
 		Bold(true)
 
 	// SWITCH COMPONENT
 	SwitchLeftNormal = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
+		Foreground(getColorOrNoColor(colors.GreyLight)).
 		Bold(true)
 
 	SwitchLeftSelected = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyDark)).  // Inverted: dark text
-		Background(lipgloss.Color(colors.GreyLight)). // Inverted: light background
+		Foreground(getColorOrNoColor(colors.GreyDark)).  // Inverted: dark text
+		Background(getColorOrNoColor(colors.GreyLight)). // Inverted: light background
 		Bold(true)
+	// For system theme, ensure background is visible (use white) and text is readable (use black)
+	if colors.GreyLight == "" {
+		// System theme: use white background for visibility
+		SwitchLeftSelected = SwitchLeftSelected.Background(lipgloss.Color("#ffffff"))
+	}
+	if colors.GreyDark == "" {
+		// System theme: use black text for readability on white background
+		SwitchLeftSelected = SwitchLeftSelected.Foreground(lipgloss.Color("#000000"))
+	}
 
 	SwitchRightNormal = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyLight)).
+		Foreground(getColorOrNoColor(colors.GreyLight)).
 		Bold(true)
 
 	SwitchRightSelected = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyDark)).  // Inverted: dark text
-		Background(lipgloss.Color(colors.GreyLight)). // Inverted: light background
+		Foreground(getColorOrNoColor(colors.GreyDark)).  // Inverted: dark text
+		Background(getColorOrNoColor(colors.GreyLight)). // Inverted: light background
 		Bold(true)
+	// For system theme, ensure background is visible (use white) and text is readable (use black)
+	if colors.GreyLight == "" {
+		// System theme: use white background for visibility
+		SwitchRightSelected = SwitchRightSelected.Background(lipgloss.Color("#ffffff"))
+	}
+	if colors.GreyDark == "" {
+		// System theme: use black text for readability on white background
+		SwitchRightSelected = SwitchRightSelected.Foreground(lipgloss.Color("#000000"))
+	}
 
 	SwitchSeparator = lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.GreyMid))
+		Foreground(getColorOrNoColor(colors.GreyMid))
 
 	// SPINNER COMPONENT
+	// For system theme, use empty string which will be handled by spinner component
 	SpinnerColor = colors.Accent
 	SpinnerDoneColor = colors.Success
 
