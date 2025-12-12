@@ -1,4 +1,6 @@
-fontget_theme:
+theme_name: "Gruvbox"
+
+colors:
   # Accent colors
   accent: "#fe8019" # Orange - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
   accent2: "#8ec07c" # Aqua - TableSourceName, FormLabel, CardLabel
@@ -11,6 +13,10 @@ fontget_theme:
   # Page-specific colors
   page_title: "#fe8019" # Orange (accent)
   page_subtitle: "#665c54" # bg3 - Grey for subtitles
+
+  # Checkbox colors
+  checkbox_checked: "" # Checked checkbox color (empty = uses accent2)
+  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
 
   # Neutral colors (3 keys only)
   grey_light: "#a89984" # fg4 - All light text (unselected and selected) - Text color

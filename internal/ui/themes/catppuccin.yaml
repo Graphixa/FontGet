@@ -1,7 +1,9 @@
-fontget_theme:
+theme_name: "Catppuccin"
+
+colors:
   # Accent colors
-  accent: "#cba6f7" # Mauve - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
-  accent2: "#94e2d5" # Teal - TableSourceName, FormLabel, CardLabel
+  accent: "#f5c2e7" # Pink - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
+  accent2: "#b4befe" # Lavender - TableSourceName, FormLabel, CardLabel
 
   # Status colors
   warning: "#f9e2af"
@@ -9,8 +11,12 @@ fontget_theme:
   success: "#a6e3a1"
 
   # Page-specific colors
-  page_title: "#cba6f7" # Could reference accent, but separate for flexibility
+  page_title: "#f5c2e7" # Pink (accent)
   page_subtitle: "#7f849c" # References grey_mid
+
+  # Checkbox colors
+  checkbox_checked: "" # Checked checkbox color (empty = uses accent2)
+  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
 
   # Neutral colors (3 keys only)
   grey_light: "#cdd6f4" # All light text (unselected and selected) - Text color
@@ -19,5 +25,5 @@ fontget_theme:
 
   # Progress bar gradient (object structure)
   progress_bar_gradient:
-    color_start: "#cba6f7" # Mauve (accent)
-    color_end: "#eba0ac" # Peach
+    color_start: "#b4befe" # Lavender (accent)
+    color_end: "#f5c2e7" # Pink (accent)

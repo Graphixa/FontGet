@@ -1,0 +1,29 @@
+theme_name: "Cyberpunk"
+
+colors:
+  # Accent colors
+  accent: "#ff2e97" # Magenta - Classic cyberpunk neon cyan - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
+  accent2: "#0ef3ff" # Cyan - Hot pink/magenta - TableSourceName, FormLabel, CardLabel
+
+  # Status colors
+  warning: "#ffd12c" # Orange - High visibility warning
+  error: "#ff2c2c" # Hot red - Bright error color
+  success: "#2cff41" # Neon green - Classic cyberpunk green
+
+  # Page-specific colors
+  page_title: "#ff2e97" # Magenta/Pink
+  page_subtitle: "#808080" # Gray - High contrast subtitle
+
+  # Checkbox colors
+  checkbox_checked: "" # Checked checkbox color (empty = uses accent2)
+  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
+
+  # Neutral colors (3 keys only)
+  grey_light: "#b6b0b8" # Light gray - All light text (unselected and selected)
+  grey_mid: "#5d585e" # Medium gray - Borders, placeholders, subtitles, separators
+  grey_dark: "#232024" # Dark gray - All backgrounds - Deep dark for high contrast
+
+  # Progress bar gradient (object structure)
+  progress_bar_gradient:
+    color_start: "#0ef3ff" # Cyan (accent)
+    color_end: "#ff2e97" # Magenta - Classic cyberpunk cyan to magenta gradient

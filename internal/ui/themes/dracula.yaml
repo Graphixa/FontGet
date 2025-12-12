@@ -1,0 +1,30 @@
+theme_name: "Dracula"
+
+colors:
+  # Accent colors
+  accent: "#bd93f9" # Purple - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
+  accent2: "#ff79c6" # Pink - TableSourceName, FormLabel, CardLabel (signature Dracula pink)
+
+  # Status colors
+  warning: "#f1fa8c" # Yellow
+  error: "#ff5555" # Red
+  success: "#50fa7b" # Green
+
+  # Page-specific colors
+  page_title: "#bd93f9" # Purple (accent)
+  page_subtitle: "#6272a4" # Comment - Grey for subtitles
+
+  # Checkbox colors
+  checkbox_checked: "" # Checked checkbox color (empty = uses accent2)
+  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
+
+  # Neutral colors (3 keys only)
+  grey_light: "#f8f8f2" # Foreground - All light text (unselected and selected) - Text color
+  grey_mid: "#6272a4" # Comment - Borders, placeholders, subtitles, separators
+  grey_dark: "#282a36" # Background - All backgrounds - Base background
+
+  # Progress bar gradient (object structure)
+  progress_bar_gradient:
+    color_start: "#bd93f9" # Purple (accent)
+    color_end: "#8be9fd" # Cyan - vibrant purple to cyan gradient
+

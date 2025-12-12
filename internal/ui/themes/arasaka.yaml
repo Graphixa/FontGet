@@ -1,0 +1,25 @@
+theme_name: "Arasaka"
+
+colors:
+  # Accent colors
+  accent: "#e60940" # Rich-red - Primary Arasaka brand color - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
+  accent2: "#f82a5d" # Pink-red - Secondary accent for functions/classes - TableSourceName, FormLabel, CardLabel
+
+  # Status colors
+  warning: "#fcd98d" # Yellow
+  error: "#e60940" # Pink-red 
+  success: "#aec944" # Bright green
+
+  # Page-specific colors
+  page_title: "#f82a5d" # Pink-red
+  page_subtitle: "#808080" # Gray - High contrast subtitle
+
+  # Neutral colors (3 keys only)
+  grey_light: "#de7c7c" # White - All light text (unselected and selected)
+  grey_mid: "#942e37" # Medium gray - Borders, placeholders, subtitles, separators
+  grey_dark: "#2b1d1d" # All backgrounds - Base background
+
+  # Progress bar gradient (object structure)
+  progress_bar_gradient:
+    color_start: "#e60940" # Rich-red (accent)
+    color_end: "#f82a5d" # Pink-red 
