@@ -22,18 +22,17 @@ import (
 
 // updateModel represents the update progress TUI
 type updateModel struct {
-	sources          []string
-	currentSource    int
-	spinner          spinner.Model
-	status           map[string]string
-	errors           map[string]string
-	completed        int
-	total            int
-	quitting         bool
-	startTime        time.Time
-	manifest         *repo.FontManifest
-	verbose          bool
-	initialFontCount int
+	sources       []string
+	currentSource int
+	spinner       spinner.Model
+	status        map[string]string
+	errors        map[string]string
+	completed     int
+	total         int
+	quitting      bool
+	startTime     time.Time
+	manifest      *repo.FontManifest
+	verbose       bool
 }
 
 // updateProgressMsg represents progress update
@@ -54,8 +53,6 @@ type updateFinishedMsg struct {
 	manifest *repo.FontManifest
 	error    error
 }
-
-// Styles are now centralized in internal/ui/styles.go
 
 // createHTTPClient creates a properly configured HTTP client with timeouts
 func createHTTPClient() *http.Client {
@@ -93,18 +90,14 @@ func NewUpdateModel(verbose bool) (*updateModel, error) {
 	spin.Spinner = spinner.Dot
 	spin.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(ui.SpinnerColor)) // Use theme color (accent)
 
-	// Skip initial font count calculation for faster startup
-	initialFontCount := 0
-
 	return &updateModel{
-		sources:          enabledSources,
-		spinner:          spin,
-		status:           make(map[string]string),
-		errors:           make(map[string]string),
-		total:            len(enabledSources),
-		startTime:        time.Now(),
-		verbose:          verbose,
-		initialFontCount: initialFontCount,
+		sources:   enabledSources,
+		spinner:   spin,
+		status:    make(map[string]string),
+		errors:    make(map[string]string),
+		total:     len(enabledSources),
+		startTime: time.Now(),
+		verbose:   verbose,
 		// No operation-level timeout - individual source downloads use DownloadTimeout
 		// Operation completes when all sources are processed (success or failure)
 	}, nil
@@ -133,7 +126,8 @@ func (m updateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// If already completed, any key quits
 				return m, tea.Quit
 			} else {
-				// If still running, quit immediately
+				// If still running, mark as interrupted and quit immediately
+				// Don't process any more updateCompleteMsg messages
 				m.quitting = true
 				return m, tea.Quit
 			}
@@ -143,6 +137,11 @@ func (m updateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status[msg.source] = msg.status
 
 	case updateCompleteMsg:
+		// Ignore completion messages if we've already quit (interrupted)
+		if m.quitting {
+			return m, nil
+		}
+
 		m.status[msg.source] = msg.status
 		if msg.error != nil {
 			m.errors[msg.source] = msg.error.Error()
@@ -314,9 +313,6 @@ func (m updateModel) updateNextSource() tea.Cmd {
 			m.status[source] = "Successfully downloaded and validated"
 		}
 
-		// Simulate a small delay for the update process
-		time.Sleep(200 * time.Millisecond)
-
 		return updateCompleteMsg{
 			source: source,
 			status: "Completed",
@@ -401,21 +397,47 @@ func (m updateModel) View() string {
 		if i < m.currentSource {
 			indicator = ui.SuccessText.Render("✓")
 		} else if i == m.currentSource {
-			indicator = m.spinner.View()
+			// Spinner - strip any extra whitespace (spinner View() includes ANSI color codes)
+			indicator = strings.TrimSpace(m.spinner.View())
 		} else {
 			indicator = "○"
 		}
 
 		// Error indicator
-		if err, hasError := m.errors[source]; hasError {
+		var sourceErr string
+		var hasError bool
+		if err, ok := m.errors[source]; ok {
 			indicator = ui.ErrorText.Render("✗")
-			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", indicator, m.getDisplayName(source), err))
+			sourceErr = err
+			hasError = true
+		}
+
+		// Normalize spacing: ensure consistent spacing after all indicators
+		// The Dot spinner is 2 columns wide visually, so it doesn't need an extra space
+		// Single-column indicators (✓, ○, ✗) need a space to match the spinner's 2-column width
+		// Remove any trailing space that might be in the indicator string itself
+		indicator = strings.TrimRight(indicator, " \t")
+
+		// Check if this is the spinner (2 columns wide) or a single-column indicator
+		indicatorWidth := lipgloss.Width(indicator)
+		var indicatorWithSpace string
+		if indicatorWidth >= 2 {
+			// Spinner is 2+ columns wide - don't add space (it's already wide enough)
+			indicatorWithSpace = indicator
+		} else {
+			// Single-column indicator - add space to match spinner width
+			indicatorWithSpace = indicator + " "
+		}
+
+		// Render with normalized spacing
+		if hasError {
+			content.WriteString(fmt.Sprintf("   %s%s (%s)\n", indicatorWithSpace, m.getDisplayName(source), sourceErr))
 		} else {
 			// Show verbose status if available
 			if m.verbose && m.status[source] != "" {
-				content.WriteString(fmt.Sprintf("   %s %s - %s\n", indicator, m.getDisplayName(source), m.status[source]))
+				content.WriteString(fmt.Sprintf("   %s%s - %s\n", indicatorWithSpace, m.getDisplayName(source), m.status[source]))
 			} else {
-				content.WriteString(fmt.Sprintf("   %s %s\n", indicator, m.getDisplayName(source)))
+				content.WriteString(fmt.Sprintf("   %s%s\n", indicatorWithSpace, m.getDisplayName(source)))
 			}
 		}
 	}
@@ -460,12 +482,22 @@ func (m updateModel) renderSummary() string {
 	for _, source := range m.sources {
 		if err, hasError := m.errors[source]; hasError {
 			content.WriteString(fmt.Sprintf("   %s %s (%s)\n", ui.ErrorText.Render("✗"), m.getDisplayName(source), err))
-		} else {
-			// Show verbose status if available
+		} else if m.status[source] == "Completed" {
+			// Only show as completed if status is explicitly "Completed"
+			// This ensures interrupted or not-started sources don't show as completed
 			if m.verbose && m.status[source] != "" {
 				content.WriteString(fmt.Sprintf("   %s %s - %s\n", ui.SuccessText.Render("✓"), m.getDisplayName(source), m.status[source]))
 			} else {
 				content.WriteString(fmt.Sprintf("   %s %s\n", ui.SuccessText.Render("✓"), m.getDisplayName(source)))
+			}
+		} else {
+			// Source was interrupted or not started - show as skipped/interrupted
+			if m.status[source] != "" {
+				// Was in progress but interrupted
+				content.WriteString(fmt.Sprintf("   %s %s (interrupted)\n", ui.WarningText.Render("○"), m.getDisplayName(source)))
+			} else {
+				// Never started
+				content.WriteString(fmt.Sprintf("   %s %s (not started)\n", ui.WarningText.Render("○"), m.getDisplayName(source)))
 			}
 		}
 	}

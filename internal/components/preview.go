@@ -159,7 +159,8 @@ func (m *PreviewModel) View(width int) string {
 		spinnerColor = lipgloss.Color(colors.Accent)
 	}
 	spinnerStyle := lipgloss.NewStyle().Foreground(spinnerColor)
-	spinnerRendered := spinnerStyle.Render(spinnerChar + " Loading")
+	// Only color the spinner character, not the "Loading" text
+	spinnerRendered := spinnerStyle.Render(spinnerChar) + " Loading"
 	progressPercent := int(m.progressPercent * 100)
 	progressBar := m.renderStaticProgressBar(progressPercent, colors)
 	lines = append(lines, fmt.Sprintf("%s  %s", spinnerRendered, progressBar))
@@ -167,15 +168,16 @@ func (m *PreviewModel) View(width int) string {
 
 	// Card example using card renderer for consistent title-in-border
 	// Make it look like fontget info with multiple sections
+	// Labels are colored, but content values use terminal default (no color)
 	cardContent := strings.Builder{}
-	cardContent.WriteString(previewStyles.CardLabel.Render("Name:") + " " + previewStyles.CardContent.Render("Example Font"))
+	cardContent.WriteString(previewStyles.CardLabel.Render("Name:") + " " + "Example Font")
 	cardContent.WriteString("\n")
-	cardContent.WriteString(previewStyles.CardLabel.Render("ID:") + " " + previewStyles.CardContent.Render("example.font"))
+	cardContent.WriteString(previewStyles.CardLabel.Render("ID:") + " " + "example.font")
 	cardContent.WriteString("\n")
 	cardContent.WriteString("\n") // Empty line for spacing
-	cardContent.WriteString(previewStyles.CardLabel.Render("Category:") + " " + previewStyles.CardContent.Render("Sans Serif"))
+	cardContent.WriteString(previewStyles.CardLabel.Render("Category:") + " " + "Sans Serif")
 	cardContent.WriteString("\n")
-	cardContent.WriteString(previewStyles.CardLabel.Render("Tags:") + " " + previewStyles.CardContent.Render("modern, clean"))
+	cardContent.WriteString(previewStyles.CardLabel.Render("Tags:") + " " + "modern, clean")
 
 	// Render card with preview theme's CardTitle style (not global ui.CardTitle)
 	cardWidth := width - 2
@@ -252,7 +254,7 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 			Bold(true),
 
 		CardContent: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.GreyLight)),
+			Foreground(lipgloss.NoColor{}), // Card content values use terminal default (no color)
 
 		CardBorder: lipgloss.NewStyle().
 			BorderForeground(getColorOrNoColor(colors.GreyMid)).
