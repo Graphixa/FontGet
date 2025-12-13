@@ -20,7 +20,7 @@ colors:
 
   # Neutral colors
   grey_light: "#ffffff" # Light text color
-  grey_mid: "#262335"    # Borders, placeholders, subtitles, separators
+  grey_mid: "#504975"    # Borders, placeholders, subtitles, separators
   grey_dark: "#241b2f"   # Backgrounds
 
   # Progress bar gradient
