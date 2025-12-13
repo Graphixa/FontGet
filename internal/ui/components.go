@@ -120,11 +120,11 @@ func RunSpinner(msg, doneMsg string, fn func() error) error {
 	}
 	// If doneMsg is empty, clear the spinner line instead of showing a message
 	if doneMsg == "" {
-		// Stop the spinner first (this will clear its output)
-		// Then clear the line using ANSI escape code to ensure it's completely hidden
+		// Stop the spinner first (cancel() is idempotent, so defer will be safe)
+		cancel()
+		// Clear the line using ANSI escape code to ensure it's completely hidden
 		// \r moves to start of line, \033[2K clears the entire line
 		// Add a newline so subsequent output appears on a fresh line
-		cancel() // Stop the spinner
 		fmt.Print("\r\033[2K\n")
 		return nil
 	}
