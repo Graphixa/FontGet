@@ -141,7 +141,7 @@ Flags:
 		var filteredFamilies map[string][]ParsedFont
 
 		// Wrap the main work (collecting, grouping, matching, filtering) in a spinner
-		err = ui.RunSpinner("Listing fonts...", "Fonts listed", func() error {
+		err = ui.RunSpinner("Loading...", "", func() error {
 			var workErr error
 
 			// Collect fonts
@@ -228,9 +228,9 @@ Flags:
 				if typeFilter != "" {
 					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
 				}
-				fmt.Printf("\n%s\n\n", filterInfo)
+				fmt.Printf("%s\n\n", filterInfo)
 			} else {
-				fmt.Printf("\n%s\n\n", ui.Text.Render("Found 0 font families installed"))
+				fmt.Printf("%s\n\n", ui.Text.Render("Found 0 font families installed"))
 			}
 			return nil
 		}
@@ -244,7 +244,7 @@ Flags:
 			if typeFilter != "" {
 				filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
 			}
-			fmt.Printf("\n%s\n\n", filterInfo)
+			fmt.Printf("%s\n\n", filterInfo)
 		} else {
 			info := fmt.Sprintf("Found %d font families installed", len(names))
 			fmt.Printf("%s\n\n", ui.Text.Render(info))

@@ -102,7 +102,7 @@ func (m *PreviewModel) View(width int) string {
 	}
 
 	// Create temporary styles using theme colors
-	colors := &m.theme.FontGetTheme
+	colors := &m.theme.Colors
 	previewStyles := createPreviewStyles(colors)
 
 	var lines []string

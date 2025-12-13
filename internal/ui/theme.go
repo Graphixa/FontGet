@@ -11,12 +11,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed themes/catppuccin.yaml themes/gruvbox.yaml
+//go:embed themes/*
 var embeddedThemes embed.FS
 
 // Theme represents a color theme loaded from a YAML file
 type Theme struct {
-	FontGetTheme ModeColors `yaml:"fontget_theme"`
+	ThemeName string     `yaml:"theme_name"` // Display name for the theme (optional, falls back to filename)
+	Colors    ModeColors `yaml:"colors"`     // Color definitions
 }
 
 // ModeColors defines colors for a theme
@@ -28,6 +29,8 @@ type ModeColors struct {
 	Success             string `yaml:"success"`
 	PageTitle           string `yaml:"page_title"`
 	PageSubtitle        string `yaml:"page_subtitle"`
+	CheckboxChecked     string `yaml:"checkbox_checked"`   // Checked checkbox color (falls back to accent2 if not set)
+	CheckboxUnchecked   string `yaml:"checkbox_unchecked"` // Unchecked checkbox color (empty = no color/terminal default)
 	GreyLight           string `yaml:"grey_light"`
 	GreyMid             string `yaml:"grey_mid"`
 	GreyDark            string `yaml:"grey_dark"`
@@ -55,7 +58,7 @@ func (tm *ThemeManager) GetColors() *ModeColors {
 	if tm.currentTheme == nil {
 		return nil
 	}
-	return &tm.currentTheme.FontGetTheme
+	return &tm.currentTheme.Colors
 }
 
 // GetThemePath returns the path to a theme file
@@ -74,7 +77,7 @@ func (tm *ThemeManager) GetThemePath(themeName string) (string, error) {
 
 // ValidateTheme validates that a theme has all required color keys
 func ValidateTheme(theme *Theme) error {
-	colors := &theme.FontGetTheme
+	colors := &theme.Colors
 
 	requiredKeys := []struct {
 		name  string
@@ -187,7 +190,7 @@ func (tm *ThemeManager) SetTheme(theme *Theme) {
 // This theme has empty color strings, which InitStyles() will interpret as "no color"
 func LoadSystemTheme() *Theme {
 	return &Theme{
-		FontGetTheme: ModeColors{
+		Colors: ModeColors{
 			// All colors are empty - InitStyles() will use lipgloss.NoColor{} for these
 		},
 	}

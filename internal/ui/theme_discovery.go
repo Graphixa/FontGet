@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"fontget/internal/config"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ThemeInfo represents information about an available theme
@@ -98,12 +100,23 @@ func discoverEmbeddedThemes() ([]*ThemeInfo, error) {
 			return nil // Skip empty filenames
 		}
 
+		// Try to load the theme to get theme_name from YAML
+		displayName := formatThemeDisplayName(themeName) // Fallback to filename-based
+		data, err := embeddedThemes.ReadFile(path)
+		if err == nil {
+			// Parse just the theme_name field
+			var theme Theme
+			if err := yaml.Unmarshal(data, &theme); err == nil && theme.ThemeName != "" {
+				displayName = theme.ThemeName
+			}
+		}
+
 		// Get or create theme info
 		if _, ok := themeMap[themeName]; !ok {
 			theme := &ThemeInfo{
 				Name:        themeName,
 				IsBuiltIn:   true,
-				DisplayName: formatThemeDisplayName(themeName),
+				DisplayName: displayName,
 			}
 			themeMap[themeName] = theme
 		}

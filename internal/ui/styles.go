@@ -237,9 +237,8 @@ var (
 	// CheckboxUnchecked - Unchecked checkbox style ([ ])
 	// Usage: Unchecked checkbox indicator
 	// Example: ui.CheckboxUnchecked.Render("[ ]")
-	// Colors: Hardcoded (no color) - not theme-aware
-	CheckboxUnchecked = lipgloss.NewStyle().
-				Foreground(lipgloss.NoColor{})
+	// Colors: Set by InitStyles() from theme (empty = no color/terminal default)
+	CheckboxUnchecked = lipgloss.NewStyle()
 
 	// CheckboxItemSelected - Selected checkbox item row style
 	// Usage: Highlighting selected checkbox items
@@ -337,15 +336,9 @@ var (
 	// Colors: Set by InitStyles() from theme
 	SpinnerDoneColor = "#a6e3a1" // Default, will be set by InitStyles()
 
-	// PinColorMap - Maps hex color strings to pin package color names
-	// Used for converting hex colors to pin.Color constants
-	// The pin package uses its own color constants and doesn't accept hex strings directly
-	PinColorMap = map[string]string{
-		"#a6e3a1": "green",   // Green - matches SuccessText, SpinnerDoneColor
-		"#cba6f7": "magenta", // Mauve - matches PageTitle, InfoText, SpinnerColor
-		"#b4befe": "blue",    // Blue - available for future use
-		"#a6adc8": "cyan",    // Cyan - available for future use
-	}
+	// Note: PinColorMap has been removed in favor of dynamic RGB-based color matching
+	// The hexToPinColor function now automatically finds the closest ANSI color
+	// for any hex color using Euclidean distance calculation
 )
 
 // ============================================================================
@@ -555,9 +548,18 @@ func InitStyles() error {
 	}
 
 	// CHECKBOX COMPONENT
+	// Use checkbox_checked if set, otherwise fall back to accent2
+	checkboxCheckedColor := colors.CheckboxChecked
+	if checkboxCheckedColor == "" {
+		checkboxCheckedColor = colors.Accent2
+	}
 	CheckboxChecked = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent2)). // Use accent color instead of success
+		Foreground(getColorOrNoColor(checkboxCheckedColor)).
 		Bold(true)
+
+	// Use checkbox_unchecked if set, otherwise use no color (terminal default)
+	CheckboxUnchecked = lipgloss.NewStyle().
+		Foreground(getColorOrNoColor(colors.CheckboxUnchecked))
 
 	CheckboxItemSelected = lipgloss.NewStyle().
 		Background(getColorOrNoColor(colors.GreyDark))

@@ -191,7 +191,7 @@ or a full file path.`,
 		// Use pin spinner for normal/verbose mode - wrap all the work
 		var exportedFonts []ExportedFont
 
-		err = ui.RunSpinner("Exporting fonts...", "Exported fonts", func() error {
+		err = ui.RunSpinner("Exporting fonts...", "", func() error {
 			var err error
 			exportedFonts, _, err = performFullExportWithResult(fontManager, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 			return err

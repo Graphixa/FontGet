@@ -100,6 +100,7 @@ func RenderSuccessScreen(title, message string) string {
 
 // RunSpinner runs a pin spinner while the provided function executes
 // Always stops with a green check symbol on success
+// If doneMsg is empty string, the spinner line will be cleared (hidden) after completion
 func RunSpinner(msg, doneMsg string, fn func() error) error {
 	// Configure spinner with colors from styles.go
 	p := pinpkg.New(msg,
@@ -117,9 +118,15 @@ func RunSpinner(msg, doneMsg string, fn func() error) error {
 		p.Fail("✗ " + err.Error())
 		return err
 	}
-	// Use plain text for completion message (no styling)
+	// If doneMsg is empty, clear the spinner line instead of showing a message
 	if doneMsg == "" {
-		doneMsg = msg
+		// Stop the spinner first (this will clear its output)
+		// Then clear the line using ANSI escape code to ensure it's completely hidden
+		// \r moves to start of line, \033[2K clears the entire line
+		// Add a newline so subsequent output appears on a fresh line
+		cancel() // Stop the spinner
+		fmt.Print("\r\033[2K\n")
+		return nil
 	}
 	p.Stop(doneMsg)
 	// Add blank line after spinner completion (per spacing framework)
@@ -127,28 +134,49 @@ func RunSpinner(msg, doneMsg string, fn func() error) error {
 	return nil
 }
 
-// hexToPinColor maps hex color strings to pin package color constants
-// Uses PinColorMap from styles.go for the color mapping
-// The pin package uses its own color constants and doesn't accept hex strings directly
+// hexToPinColor dynamically maps hex color strings to the closest matching pin package color
+// Uses RGB distance calculation to find the nearest ANSI color
+// This approach is dynamic and works with any hex color without requiring a static map
 func hexToPinColor(hex string) pinpkg.Color {
-	hexLower := strings.ToLower(hex)
-	colorName, exists := PinColorMap[hexLower]
-	if !exists {
+	if hex == "" {
 		return pinpkg.ColorDefault
 	}
 
-	switch colorName {
-	case "green":
-		return pinpkg.ColorGreen
-	case "magenta":
-		return pinpkg.ColorMagenta
-	case "blue":
-		return pinpkg.ColorBlue
-	case "cyan":
-		return pinpkg.ColorCyan
-	default:
-		return pinpkg.ColorDefault
+	// Parse hex to RGB
+	r, g, b := parseHexColor(hex)
+
+	// Define standard ANSI colors as RGB values
+	// These represent the typical terminal color palette
+	ansiColors := []struct {
+		color   pinpkg.Color
+		r, g, b int
+	}{
+		{pinpkg.ColorRed, 255, 0, 0},       // Red
+		{pinpkg.ColorGreen, 0, 255, 0},     // Green
+		{pinpkg.ColorYellow, 255, 255, 0},  // Yellow
+		{pinpkg.ColorBlue, 0, 0, 255},      // Blue
+		{pinpkg.ColorMagenta, 255, 0, 255}, // Magenta
+		{pinpkg.ColorCyan, 0, 255, 255},    // Cyan
 	}
+
+	// Find the closest color using Euclidean distance
+	bestColor := pinpkg.ColorDefault
+	minDistance := 999999.0 // Large initial value
+
+	for _, ansi := range ansiColors {
+		// Calculate Euclidean distance in RGB space
+		dr := float64(r - ansi.r)
+		dg := float64(g - ansi.g)
+		db := float64(b - ansi.b)
+		distance := dr*dr + dg*dg + db*db // Squared distance (no need to sqrt for comparison)
+
+		if distance < minDistance {
+			minDistance = distance
+			bestColor = ansi.color
+		}
+	}
+
+	return bestColor
 }
 
 // SimpleProgressBar provides a simple inline progress bar without TUI

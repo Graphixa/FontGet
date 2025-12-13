@@ -379,7 +379,7 @@ Installation scope can be specified with the --scope flag:
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Only handle empty query case
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			fmt.Printf("\n%s\n", ui.RenderError("A font ID is required"))
+			fmt.Printf("%s\n", ui.RenderError("A font ID is required"))
 			fmt.Printf("Use 'fontget add --help' for more information.\n\n")
 			return nil
 		}

@@ -420,7 +420,7 @@ Names with spaces must be quoted. Scope: user (default), machine, or all (admin 
   fontget remove "Roboto" -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			fmt.Printf("\n%s\n", ui.RenderError("A font ID is required"))
+			fmt.Printf("%s\n", ui.RenderError("A font ID is required"))
 			fmt.Printf("Use 'fontget remove --help' for more information.\n\n")
 			return nil
 		}
