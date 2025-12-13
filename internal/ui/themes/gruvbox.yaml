@@ -2,28 +2,28 @@ theme_name: "Gruvbox"
 
 colors:
   # Accent colors
-  accent: "#fe8019" # Orange - InfoText, PageTitle (FG), CardTitle (FG), CheckboxCursor, SpinnerColor
-  accent2: "#8ec07c" # Aqua - TableSourceName, FormLabel, CardLabel
+  accent: "#fe8019"  # Orange - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  accent2: "#8ec07c" # Aqua - Used for TableSourceName, FormLabel, CardLabel
 
   # Status colors
   warning: "#fabd2f" # Yellow
-  error: "#fb4934" # Red
+  error: "#fb4934"  # Red
   success: "#b8bb26" # Green
 
   # Page-specific colors
-  page_title: "#fe8019" # Orange (accent)
-  page_subtitle: "#665c54" # bg3 - Grey for subtitles
+  page_title: "#fe8019"    # Orange (matches accent)
+  page_subtitle: "#665c54" # Grey (matches grey_mid)
 
   # Checkbox colors
-  checkbox_checked: "" # Checked checkbox color (empty = uses accent2)
+  checkbox_checked: ""   # Checked checkbox color (empty = uses accent2)
   checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
 
-  # Neutral colors (3 keys only)
-  grey_light: "#a89984" # fg4 - All light text (unselected and selected) - Text color
-  grey_mid: "#665c54" # bg3 - Borders, placeholders, subtitles, separators
-  grey_dark: "#282828" # bg0 - All backgrounds - Base background
+  # Neutral colors
+  grey_light: "#a89984" # Light text color
+  grey_mid: "#665c54"    # Borders, placeholders, subtitles, separators
+  grey_dark: "#282828"   # Backgrounds
 
-  # Progress bar gradient (object structure)
+  # Progress bar gradient
   progress_bar_gradient:
-    color_start: "#8ec07c" # aqua - accent2
-    color_end: "#d3869b" # purple
+    color_start: "#fe8019" # Orange
+    color_end: "#8ec07c"    # Aqua
