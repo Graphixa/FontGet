@@ -265,7 +265,7 @@ func (m themeSelectionModel) View() string {
 }
 
 // renderLeftPanelContent renders the left panel content (without border)
-func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
+func (m themeSelectionModel) renderLeftPanelContent(width, _ int) string {
 	// Panel structure: │ (border) + content with padding + │ (separator)
 	// Content with padding should be: width - 1 (minus left border)
 	// Content before padding: (width - 1) - 2 = width - 3
@@ -293,7 +293,7 @@ func (m themeSelectionModel) renderLeftPanelContent(width, height int) string {
 }
 
 // renderRightPanelContent renders the right panel content (without border)
-func (m themeSelectionModel) renderRightPanelContent(width, height int) string {
+func (m themeSelectionModel) renderRightPanelContent(width, _ int) string {
 	// Panel structure: │ (separator) + content with padding + │ (border)
 	// Content with padding should be: width - 1 (minus right border)
 	// Content before padding: (width - 1) - 2 = width - 3

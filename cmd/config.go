@@ -20,7 +20,7 @@ import (
 )
 
 // buildConfigCardsFromYAML builds cards dynamically from the YAML config file structure
-func buildConfigCardsFromYAML(configPath string, appConfig *config.AppConfig, actualEditor string) ([]components.Card, error) {
+func buildConfigCardsFromYAML(configPath string, _ *config.AppConfig, actualEditor string) ([]components.Card, error) {
 	// Read the YAML file as raw map to preserve structure
 	data, err := os.ReadFile(configPath)
 	if err != nil {

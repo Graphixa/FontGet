@@ -101,121 +101,8 @@ func trimContent(content string) string {
 	return strings.Join(trimmed, "\n")
 }
 
-// renderBorderedPanel renders a panel with border and proper constraints
-// borderStyle should already have border and padding configured
-func renderBorderedPanel(width, height int, content string, borderStyle lipgloss.Style) string {
-	// Ensure minimums so borders are visible
-	if width < 6 {
-		width = 6
-	}
-	if height < 4 {
-		height = 4
-	}
-
-	// CardBorder has Padding(1) and border, so:
-	// - Border takes 2 chars (left + right border characters)
-	// - Padding takes 2 chars (1 on each side)
-	// Total: 4 chars consumed from width/height
-	contentWidth := width - 4
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
-	contentHeight := height - 4
-	if contentHeight < 0 {
-		contentHeight = 0
-	}
-
-	// Trim content to avoid spacing issues
-	trimmed := trimContent(content)
-
-	// Constrain content dimensions
-	constrained := lipgloss.NewStyle().
-		Width(contentWidth).
-		Height(contentHeight).
-		Render(trimmed)
-
-	// Apply border with explicit dimensions
-	bordered := borderStyle.
-		Width(width).
-		Height(height).
-		Render(constrained)
-
-	// Trim any trailing newlines from the border
-	return strings.TrimRight(bordered, "\n")
-}
-
-// renderPanelWithoutRightBorder renders a panel without the right border (for left panel)
-func renderPanelWithoutRightBorder(width, height int, content string, borderStyle lipgloss.Style) string {
-	// Ensure minimums
-	if width < 6 {
-		width = 6
-	}
-	if height < 4 {
-		height = 4
-	}
-
-	contentWidth := width - 4
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
-	contentHeight := height - 4
-	if contentHeight < 0 {
-		contentHeight = 0
-	}
-
-	trimmed := trimContent(content)
-	constrained := lipgloss.NewStyle().
-		Width(contentWidth).
-		Height(contentHeight).
-		Render(trimmed)
-
-	// Create border style without right border
-	partialBorder := borderStyle.
-		BorderRight(false).
-		Width(width).
-		Height(height).
-		Render(constrained)
-
-	return strings.TrimRight(partialBorder, "\n")
-}
-
-// renderPanelWithoutLeftBorder renders a panel without the left border (for right panel)
-func renderPanelWithoutLeftBorder(width, height int, content string, borderStyle lipgloss.Style) string {
-	// Ensure minimums
-	if width < 6 {
-		width = 6
-	}
-	if height < 4 {
-		height = 4
-	}
-
-	contentWidth := width - 4
-	if contentWidth < 0 {
-		contentWidth = 0
-	}
-	contentHeight := height - 4
-	if contentHeight < 0 {
-		contentHeight = 0
-	}
-
-	trimmed := trimContent(content)
-	constrained := lipgloss.NewStyle().
-		Width(contentWidth).
-		Height(contentHeight).
-		Render(trimmed)
-
-	// Create border style without left border
-	partialBorder := borderStyle.
-		BorderLeft(false).
-		Width(width).
-		Height(height).
-		Render(constrained)
-
-	return strings.TrimRight(partialBorder, "\n")
-}
-
 // renderCombinedPanels renders two panels side-by-side with a shared border
-func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftContent, rightContent string, borderStyle lipgloss.Style, separatorColor, borderColor lipgloss.Color, titleStyle lipgloss.Style) string {
+func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftContent, rightContent string, _ lipgloss.Style, separatorColor, borderColor lipgloss.Color, titleStyle lipgloss.Style) string {
 	// Guard minimums to avoid negative repeat counts
 	if leftWidth < 4 {
 		leftWidth = 4
@@ -427,13 +314,4 @@ func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftC
 	result.WriteString(bottomBorder)
 
 	return result.String()
-}
-
-// countLines counts the number of lines in a string (excluding trailing newline)
-func countLines(s string) int {
-	if s == "" {
-		return 0
-	}
-	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
-	return len(lines)
 }
