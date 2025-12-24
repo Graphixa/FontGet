@@ -1,29 +1,18 @@
 theme_name: "Arasaka"
 
 colors:
-  # Accent colors
-  accent: "#e60940"  # Red - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  accent2: "#f82a5d" # Pink - Used for TableSourceName, FormLabel, CardLabel
+  # Main text colors
+  primary: "#e60940"  # Red - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#f82a5d" # Pink - Used for TableSourceName, FormLabel, CardLabel
+  components: "#de7c7c" # Light text color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#942e37" # Borders, placeholders, subtitles, separators
+  base: "#2b1d1d"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
+  success: "#aec944" # Green
   warning: "#fcd98d" # Yellow
   error: "#e60940"   # Red
-  success: "#aec944" # Green
 
-  # Page-specific colors
-  page_title: "#f82a5d"  # Pink
-  page_subtitle: "#808080" # Grey
-
-  # Checkbox colors
-  checkbox_checked: ""   # Checked checkbox color (empty = uses accent2)
-  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
-
-  # Neutral colors
-  grey_light: "#de7c7c" # Light text color
-  grey_mid: "#942e37"   # Borders, placeholders, subtitles, separators
-  grey_dark: "#2b1d1d"  # Backgrounds
-
-  # Progress bar gradient
-  progress_bar_gradient:
-    color_start: "#e60940" # Red
-    color_end: "#f82a5d"    # Pink
+  overrides:
+    page_title:
+      text: "#f82a5d" # Pink (different from primary)

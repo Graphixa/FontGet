@@ -919,10 +919,10 @@ func (s *CompletionStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	result.WriteString("\n\n")
 	result.WriteString(ui.InfoText.Render("Try these commands to get started:"))
 	result.WriteString("\n")
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.CommandExample.Render("fontget search <name>"), ui.Text.Render("Search for fonts")))
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.CommandExample.Render("fontget list"), ui.Text.Render("List installed fonts")))
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.CommandExample.Render("fontget add <font>"), ui.Text.Render("Install a font")))
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.CommandExample.Render("fontget --help"), ui.Text.Render("See all available commands")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget search <name>"), ui.Text.Render("Search for fonts")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget list"), ui.Text.Render("List installed fonts")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget add <font>"), ui.Text.Render("Install a font")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget --help"), ui.Text.Render("See all available commands")))
 	result.WriteString("\n")
 
 	// Button

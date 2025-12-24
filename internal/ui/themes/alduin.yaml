@@ -1,29 +1,14 @@
 theme_name: "Alduin"
 
 colors:
-  # Accent colors
-  accent: "#dfaf87"  # Soft Orange - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  accent2: "#af8787" # Soft Red - Used for TableSourceName, FormLabel, CardLabel
+  # Main text colors
+  primary: "#dfaf87"  # Soft Orange - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#af8787" # Soft Red - Used for TableSourceName, FormLabel, CardLabel
+  components: "#dfdfaf" # Light text color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#9e9e9e" # Borders, placeholders, subtitles, separators
+  base: "#1c1c1c"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
+  success: "#87875f" # Green
   warning: "#dfdfaf" # Yellow
   error: "#af5f5f"   # Red
-  success: "#87875f" # Green
-
-  # Page-specific colors
-  page_title: "#dfaf87"   # Soft Orange (matches accent)
-  page_subtitle: "#878787" # Grey
-
-  # Checkbox colors
-  checkbox_checked: ""   # Checked checkbox color (empty = uses accent2)
-  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
-
-  # Neutral colors
-  grey_light: "#dfdfaf" # Light text color
-  grey_mid: "#9e9e9e"    # Borders, placeholders, subtitles, separators
-  grey_dark: "#1c1c1c"   # Backgrounds
-
-  # Progress bar gradient
-  progress_bar_gradient:
-    color_start: "#dfaf87" # Soft Orange
-    color_end: "#af8787"    # Soft Red

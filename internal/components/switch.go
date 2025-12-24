@@ -34,12 +34,12 @@ func (s Switch) Render() string {
 	var leftStyled, rightStyled string
 	if s.Value {
 		// Left (Enable) is selected
-		leftStyled = ui.SwitchLeftSelected.Render(leftPadded)
-		rightStyled = ui.SwitchRightNormal.Render(rightPadded)
+		leftStyled = ui.SwitchSelected.Render(leftPadded)
+		rightStyled = ui.SwitchNormal.Render(rightPadded)
 	} else {
 		// Right (Disable) is selected
-		leftStyled = ui.SwitchLeftNormal.Render(leftPadded)
-		rightStyled = ui.SwitchRightSelected.Render(rightPadded)
+		leftStyled = ui.SwitchNormal.Render(leftPadded)
+		rightStyled = ui.SwitchSelected.Render(rightPadded)
 	}
 
 	// Separator

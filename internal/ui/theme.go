@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed themes/*
+//go:embed themes
 var embeddedThemes embed.FS
 
 // Theme represents a color theme loaded from a YAML file
@@ -22,22 +22,71 @@ type Theme struct {
 
 // ModeColors defines colors for a theme
 type ModeColors struct {
-	Accent              string `yaml:"accent"`
-	Accent2             string `yaml:"accent2"`
-	Warning             string `yaml:"warning"`
-	Error               string `yaml:"error"`
-	Success             string `yaml:"success"`
-	PageTitle           string `yaml:"page_title"`
-	PageSubtitle        string `yaml:"page_subtitle"`
-	CheckboxChecked     string `yaml:"checkbox_checked"`   // Checked checkbox color (falls back to accent2 if not set)
-	CheckboxUnchecked   string `yaml:"checkbox_unchecked"` // Unchecked checkbox color (empty = no color/terminal default)
-	GreyLight           string `yaml:"grey_light"`
-	GreyMid             string `yaml:"grey_mid"`
-	GreyDark            string `yaml:"grey_dark"`
-	ProgressBarGradient struct {
-		ColorStart string `yaml:"color_start"`
-		ColorEnd   string `yaml:"color_end"`
-	} `yaml:"progress_bar_gradient"`
+	// Base colors (required)
+	Primary      string `yaml:"primary"`      // Main accent color
+	Secondary    string `yaml:"secondary"`    // Secondary accent color
+	Components   string `yaml:"components"`   // Interactive elements (buttons, switches)
+	Placeholders string `yaml:"placeholders"` // Muted elements (borders, placeholders)
+	Base         string `yaml:"base"`         // Dark backgrounds and inverted text
+
+	// Status colors (required)
+	Warning string `yaml:"warning"`
+	Error   string `yaml:"error"`
+	Success string `yaml:"success"`
+
+	// Component overrides (optional)
+	Overrides ComponentOverrides `yaml:"overrides"`
+}
+
+// ComponentOverrides defines optional component-specific color overrides
+type ComponentOverrides struct {
+	PageTitle struct {
+		Text       string `yaml:"text"`
+		Background string `yaml:"background"`
+	} `yaml:"page_title"`
+
+	Button struct {
+		Foreground string `yaml:"foreground"`
+		Background string `yaml:"background"`
+	} `yaml:"button"`
+
+	Switch struct {
+		Foreground string `yaml:"foreground"`
+		Background string `yaml:"background"`
+	} `yaml:"switch"`
+
+	Checkbox struct {
+		Unchecked string `yaml:"unchecked"`
+		Checked   string `yaml:"checked"`
+	} `yaml:"checkbox"`
+
+	Card struct {
+		TitleText       string `yaml:"title_text"`
+		TitleBackground string `yaml:"title_background"`
+		Label           string `yaml:"label"`
+		Border          string `yaml:"border"`
+	} `yaml:"card"`
+
+	CommandKeys struct {
+		Text       string `yaml:"text"`
+		Background string `yaml:"background"`
+	} `yaml:"command_keys"`
+
+	Table struct {
+		Header   string `yaml:"header"`
+		Row      string `yaml:"row"`
+		Selected string `yaml:"selected"`
+	} `yaml:"table"`
+
+	Spinner struct {
+		Normal string `yaml:"normal"`
+		Done   string `yaml:"done"`
+	} `yaml:"spinner"`
+
+	ProgressBar struct {
+		Start  string `yaml:"start"`
+		Finish string `yaml:"finish"`
+	} `yaml:"progress_bar"`
 }
 
 // ThemeManager handles theme loading and management
@@ -83,18 +132,14 @@ func ValidateTheme(theme *Theme) error {
 		name  string
 		value string
 	}{
-		{"accent", colors.Accent},
-		{"accent2", colors.Accent2},
+		{"primary", colors.Primary},
+		{"secondary", colors.Secondary},
+		{"components", colors.Components},
+		{"placeholders", colors.Placeholders},
+		{"base", colors.Base},
 		{"warning", colors.Warning},
 		{"error", colors.Error},
 		{"success", colors.Success},
-		{"page_title", colors.PageTitle},
-		{"page_subtitle", colors.PageSubtitle},
-		{"grey_light", colors.GreyLight},
-		{"grey_mid", colors.GreyMid},
-		{"grey_dark", colors.GreyDark},
-		{"progress_bar_gradient.color_start", colors.ProgressBarGradient.ColorStart},
-		{"progress_bar_gradient.color_end", colors.ProgressBarGradient.ColorEnd},
 	}
 
 	var missingKeys []string
@@ -154,7 +199,7 @@ func LoadEmbeddedTheme(themeName string) (*Theme, error) {
 		return LoadSystemTheme(), nil
 	}
 
-	// Embedded themes use format: themes/{themeName}.yaml
+	// Embedded themes use format: themes/{themeName}.yaml (relative to internal/themes/)
 	themePath := fmt.Sprintf("themes/%s.yaml", themeName)
 	data, err := embeddedThemes.ReadFile(themePath)
 	if err != nil {

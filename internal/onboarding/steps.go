@@ -188,10 +188,10 @@ func (s *CompletionStep) Execute() (bool, error) {
 	fmt.Println(ui.Text.Render("You're all set to start using FontGet."))
 	fmt.Println()
 	fmt.Println(ui.InfoText.Render("Try these commands to get started:"))
-	fmt.Printf("  %s  %s\n", ui.CommandExample.Render("fontget search <name>"), ui.Text.Render("Search for fonts"))
-	fmt.Printf("  %s  %s\n", ui.CommandExample.Render("fontget list"), ui.Text.Render("List installed fonts"))
-	fmt.Printf("  %s  %s\n", ui.CommandExample.Render("fontget add <font>"), ui.Text.Render("Install a font"))
-	fmt.Printf("  %s  %s\n", ui.CommandExample.Render("fontget --help"), ui.Text.Render("See all available commands"))
+	fmt.Printf("  %s  %s\n", ui.Text.Render("fontget search <name>"), ui.Text.Render("Search for fonts"))
+	fmt.Printf("  %s  %s\n", ui.Text.Render("fontget list"), ui.Text.Render("List installed fonts"))
+	fmt.Printf("  %s  %s\n", ui.Text.Render("fontget add <font>"), ui.Text.Render("Install a font"))
+	fmt.Printf("  %s  %s\n", ui.Text.Render("fontget --help"), ui.Text.Render("See all available commands"))
 	fmt.Println() // Section ends with blank line per spacing guidelines
 
 	// Wait for user to continue (final screen, just to acknowledge)
@@ -301,7 +301,7 @@ func (m LicenseConfirmModel) View() string {
 	// Help text - InfoText (mauve)
 	result.WriteString(ui.InfoText.Render("To review a particular font's license, run:"))
 	result.WriteString("\n")
-	result.WriteString(fmt.Sprintf("  %s\n", ui.CommandExample.Render("fontget info <font-id> --license")))
+	result.WriteString(fmt.Sprintf("  %s\n", ui.Text.Render("fontget info <font-id> --license")))
 	result.WriteString("\n")
 
 	// Acceptance statement - plain text, wrapped
@@ -389,7 +389,7 @@ func renderSourcesInfo(sourcesMap map[string]sources.SourceInfo, width int) stri
 		result.WriteString(line)
 		result.WriteString("\n")
 	}
-	result.WriteString(fmt.Sprintf("  %s\n", ui.CommandExample.Render("fontget sources manage")))
+	result.WriteString(fmt.Sprintf("  %s\n", ui.Text.Render("fontget sources manage")))
 	result.WriteString("\n")
 
 	return result.String()

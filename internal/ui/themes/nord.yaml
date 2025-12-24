@@ -1,29 +1,20 @@
 theme_name: "Nord"
 
 colors:
-  # Accent colors
-  accent: "#8fbcbb"  # nord7 (Frost - teal) - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  accent2: "#88c0d0" # nord8 (Frost - cyan) - Used for TableSourceName, FormLabel, CardLabel
+  # Main text colors
+  primary: "#8fbcbb"  # nord7 (Frost - teal) - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#88c0d0" # nord8 (Frost - cyan) - Used for TableSourceName, FormLabel, CardLabel
+  components: "#d8dee9" # nord4 (Snow Storm) - Light text color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#81a1c1" # nord9 (Frost - blue) - Borders, placeholders, subtitles, separators
+  base: "#2e3440"   # nord0 (Polar Night) - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
+  success: "#a3be8c" # nord14 (Aurora - green)
   warning: "#ebcb8b" # nord13 (Aurora - yellow)
   error: "#bf616a"   # nord11 (Aurora - red)
-  success: "#a3be8c" # nord14 (Aurora - green)
 
-  # Page-specific colors
-  page_title: "#8fbcbb"    # nord7 (Frost - teal, matches accent)
-  page_subtitle: "#d8dee9" # nord4 (Snow Storm)
-
-  # Checkbox colors
-  checkbox_checked: ""   # Checked checkbox color (empty = uses accent2)
-  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
-
-  # Neutral colors
-  grey_light: "#d8dee9" # nord4 (Snow Storm) - Light text color
-  grey_mid: "#81a1c1"   # nord9 (Frost - blue) - Borders, placeholders, subtitles, separators
-  grey_dark: "#2e3440"  # nord0 (Polar Night) - Backgrounds
-
-  # Progress bar gradient
-  progress_bar_gradient:
-    color_start: "#5e81ac" # nord10 (Frost - dark blue)
-    color_end: "#88c0d0"   # nord8 (Frost - cyan)
+  overrides:
+    # Progress bar gradient
+    progress_bar:
+      start: "#5e81ac" # nord10 (Frost - dark blue)
+      finish: "#88c0d0" # nord8 (Frost - cyan)

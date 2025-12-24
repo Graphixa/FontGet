@@ -1,29 +1,20 @@
 theme_name: "Catppuccin"
 
 colors:
-  # Accent colors
-  accent: "#f5c2e7"  # Pink - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  accent2: "#b4befe" # Lavender - Used for TableSourceName, FormLabel, CardLabel
+  # Main text colors
+  primary: "#f5c2e7"  # Pink - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#b4befe" # Lavender - Used for TableSourceName, FormLabel, CardLabel
+  components: "#cdd6f4" # Light text color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#7f849c" # Borders, placeholders, subtitles, separators
+  base: "#313244"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
   warning: "#f9e2af" # Yellow
   error: "#e78284"   # Red
   success: "#a6e3a1" # Green
 
-  # Page-specific colors
-  page_title: "#f5c2e7"    # Pink (matches accent)
-  page_subtitle: "#7f849c"  # Grey (matches grey_mid)
-
-  # Checkbox colors
-  checkbox_checked: ""   # Checked checkbox color (empty = uses accent2)
-  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
-
-  # Neutral colors
-  grey_light: "#cdd6f4" # Light text color
-  grey_mid: "#7f849c"    # Borders, placeholders, subtitles, separators
-  grey_dark: "#313244"   # Backgrounds
-
-  # Progress bar gradient
-  progress_bar_gradient:
-    color_start: "#b4befe" # Lavender
-    color_end: "#f5c2e7"   # Pink
+  overrides:
+    # Progress bar gradient (primary → secondary)
+    progress_bar:
+      start: "#b4befe" # Lavender
+      finish: "#f5c2e7" # Pink

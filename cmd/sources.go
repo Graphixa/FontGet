@@ -126,19 +126,19 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 		var sb strings.Builder
 		sb.WriteString(ui.CardLabel.Render("Manifest File: "))
-		sb.WriteString(ui.CardContent.Render(manifestPath))
+		sb.WriteString(ui.Text.Render(manifestPath))
 		sb.WriteString("\n")
 		if sourcesDir != "" {
 			sb.WriteString(ui.CardLabel.Render("Cache Path: "))
-			sb.WriteString(ui.CardContent.Render(sourcesDir))
+			sb.WriteString(ui.Text.Render(sourcesDir))
 			sb.WriteString("\n\n")
 		}
 		sb.WriteString(ui.CardLabel.Render("Last Updated: "))
-		sb.WriteString(ui.CardContent.Render(lastUpdated + relative))
+		sb.WriteString(ui.Text.Render(lastUpdated + relative))
 		sb.WriteString("\n")
 		if sourcesDir != "" {
 			sb.WriteString(ui.CardLabel.Render("Total Cache Size: "))
-			sb.WriteString(ui.CardContent.Render(formatFileSize(totalCacheSize)))
+			sb.WriteString(ui.Text.Render(formatFileSize(totalCacheSize)))
 			sb.WriteString("\n\n")
 		} else {
 			sb.WriteString("\n")
@@ -146,9 +146,9 @@ var sourcesInfoCmd = &cobra.Command{
 		totalSources := len(configManifest.Sources)
 		label := "Total Sources: "
 		sb.WriteString(ui.CardLabel.Render(label))
-		sb.WriteString(ui.CardContent.Render(fmt.Sprintf("%d", totalSources)))
+		sb.WriteString(ui.Text.Render(fmt.Sprintf("%d", totalSources)))
 		if disabledCount > 0 {
-			sb.WriteString(ui.CardContent.Render(fmt.Sprintf(" (%d disabled)", disabledCount)))
+			sb.WriteString(ui.Text.Render(fmt.Sprintf(" (%d disabled)", disabledCount)))
 		}
 		cards = append(cards, components.CustomCard("Summary", sb.String()))
 
@@ -331,6 +331,7 @@ func runSourcesUpdateVerbose() error {
 
 	successful := 0
 	failed := 0
+	failedSources := make(map[string]bool) // Track which sources failed
 
 	// Process each source with detailed logging
 	for _, sourceName := range enabledSources {
@@ -339,6 +340,7 @@ func runSourcesUpdateVerbose() error {
 			fmt.Printf("Checking for updates for %s\n", sourceName)
 			fmt.Printf("%s\n\n", ui.RenderError("Source not found in configuration"))
 			failed++
+			failedSources[sourceName] = true
 			continue
 		}
 
@@ -367,6 +369,7 @@ func runSourcesUpdateVerbose() error {
 			}
 			fmt.Printf("%s\n\n", ui.RenderError(errorMsg))
 			failed++
+			failedSources[sourceName] = true
 			continue
 		}
 		headResp.Body.Close()
@@ -375,6 +378,7 @@ func runSourcesUpdateVerbose() error {
 		if headResp.StatusCode >= 400 {
 			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Source URL returned status %d", headResp.StatusCode)))
 			failed++
+			failedSources[sourceName] = true
 			continue
 		}
 
@@ -385,6 +389,7 @@ func runSourcesUpdateVerbose() error {
 		if err != nil {
 			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to download source - %v", err)))
 			failed++
+			failedSources[sourceName] = true
 			continue
 		}
 
@@ -394,6 +399,7 @@ func runSourcesUpdateVerbose() error {
 		if err != nil {
 			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to read source content - %v", err)))
 			failed++
+			failedSources[sourceName] = true
 			continue
 		}
 
@@ -410,6 +416,7 @@ func runSourcesUpdateVerbose() error {
 		if err != nil {
 			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to get home directory - %v", err)))
 			failed++
+			failedSources[sourceName] = true
 			continue
 		}
 		// Sanitize source name for filename (same as in repo package)
@@ -420,8 +427,25 @@ func runSourcesUpdateVerbose() error {
 		successful++
 	}
 
+	// Temporarily disable failed sources before refresh to avoid trying to load them again
+	originalEnabledStates := make(map[string]bool)
+	if len(failedSources) > 0 {
+		for sourceName := range failedSources {
+			if source, exists := manifest.Sources[sourceName]; exists {
+				originalEnabledStates[sourceName] = source.Enabled
+				source.Enabled = false
+				manifest.Sources[sourceName] = source // Update the map with the modified struct
+			}
+		}
+		// Save the modified manifest so GetManifestWithRefresh will skip failed sources
+		if err := config.SaveManifest(manifest); err != nil {
+			GetLogger().Error("Failed to save manifest with disabled sources: %v", err)
+			output.GetVerbose().Warning("Failed to temporarily disable failed sources, they may be attempted again")
+		}
+	}
+
 	// Try to load manifest with force refresh
-	fmt.Printf("%s\n", ui.PageSubtitle.Render("Refreshing font data cache..."))
+	fmt.Printf("Refreshing font data cache...\n")
 	progress := func(current, total int, message string) {
 		if current == total {
 			fmt.Printf("%s\n", ui.RenderSuccess("\nFont data cache refreshed successfully\n"))
@@ -431,6 +455,21 @@ func runSourcesUpdateVerbose() error {
 	}
 
 	fontManifest, err := repo.GetManifestWithRefresh(nil, progress, true)
+
+	// Restore original enabled states for failed sources
+	if len(originalEnabledStates) > 0 {
+		for sourceName, wasEnabled := range originalEnabledStates {
+			if source, exists := manifest.Sources[sourceName]; exists {
+				source.Enabled = wasEnabled
+				manifest.Sources[sourceName] = source // Update the map with the modified struct
+			}
+		}
+		// Restore the manifest
+		if err := config.SaveManifest(manifest); err != nil {
+			GetLogger().Error("Failed to restore manifest: %v", err)
+			output.GetVerbose().Warning("Failed to restore original source states")
+		}
+	}
 	if err != nil {
 		fmt.Printf("%s\n", ui.RenderWarning(fmt.Sprintf("Failed to refresh font data cache: %v", err)))
 	} else {

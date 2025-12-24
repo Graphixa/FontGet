@@ -1,29 +1,14 @@
 theme_name: "Gruvbox"
 
 colors:
-  # Accent colors
-  accent: "#fe8019"  # Orange - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  accent2: "#8ec07c" # Aqua - Used for TableSourceName, FormLabel, CardLabel
+  # Main text colors
+  primary: "#fe8019"        # Orange - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#8ec07c"      # Aqua - Used for TableSourceName, FormLabel, CardLabel
+  components: "#a89984"     # Light text color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#665c54"   # Borders, placeholders, subtitles, separators
+  base: "#282828"           # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
-  warning: "#fabd2f" # Yellow
-  error: "#fb4934"  # Red
-  success: "#b8bb26" # Green
-
-  # Page-specific colors
-  page_title: "#fe8019"    # Orange (matches accent)
-  page_subtitle: "#665c54" # Grey (matches grey_mid)
-
-  # Checkbox colors
-  checkbox_checked: ""   # Checked checkbox color (empty = uses accent2)
-  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
-
-  # Neutral colors
-  grey_light: "#a89984" # Light text color
-  grey_mid: "#665c54"    # Borders, placeholders, subtitles, separators
-  grey_dark: "#282828"   # Backgrounds
-
-  # Progress bar gradient
-  progress_bar_gradient:
-    color_start: "#fe8019" # Orange
-    color_end: "#8ec07c"    # Aqua
+  success: "#b8bb26"  # Green
+  warning: "#fabd2f"  # Yellow
+  error: "#fb4934"    # Red

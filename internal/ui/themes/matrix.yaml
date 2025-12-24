@@ -1,29 +1,20 @@
 theme_name: "Matrix"
 
 colors:
-  # Accent colors
-  accent: "#46db6c"  # Green - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  accent2: "#90ee90" # Light Green - Used for TableSourceName, FormLabel, CardLabel
+  # Main text colors
+  primary: "#46db6c"  # Green - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#90ee90" # Light Green - Used for TableSourceName, FormLabel, CardLabel
+  components: "#addbad" # Light text color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#81d16d" # Borders, placeholders, subtitles, separators
+  base: "#1c2e20"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
+  success: "#90ee90" # Green
   warning: "#f2e39d" # Amber
   error: "#f29d9d"   # Red
-  success: "#90ee90" # Green
 
-  # Page-specific colors
-  page_title: "#46db6c"  # Green (matches accent)
-  page_subtitle: "#90ee90" # Light Green
-
-  # Checkbox colors
-  checkbox_checked: ""   # Checked checkbox color (empty = uses accent2)
-  checkbox_unchecked: "" # Unchecked checkbox color (empty = no color/terminal default)
-
-  # Neutral colors
-  grey_light: "#addbad" # Light text color
-  grey_mid: "#81d16d"   # Borders, placeholders, subtitles, separators
-  grey_dark: "#1c2e20"  # Backgrounds
-
-  # Progress bar gradient
-  progress_bar_gradient:
-    color_start: "#46db6c" # Green
-    color_end: "#81d16d"    # Medium Green
+  overrides:
+    # Progress bar gradient
+    progress_bar:
+      start: "#46db6c" # Green
+      finish: "#81d16d" # Medium Green

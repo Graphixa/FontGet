@@ -184,14 +184,14 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 			// No matches found, show general guidance
 			fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
 			fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
-			fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
+			fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
 		}
 	} else {
 		// No suggestions at all, show general guidance
 		fmt.Println()
 		fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
 		fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
-		fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
+		fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
 	}
 }
 
@@ -202,7 +202,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 	if len(similar) == 0 {
 		fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
 		fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
-		fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
+		fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
 		return
 	}
 
@@ -272,9 +272,9 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 		fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' was not able to be downloaded and installed.", fontName)))
 		fmt.Printf("%s\n", ui.Text.Render("It may have been removed from the font source."))
 		fmt.Printf("\n%s\n", ui.Text.Render("Please refresh FontGet sources using:"))
-		fmt.Printf("  %s\n", ui.CommandExample.Render("fontget sources update"))
+		fmt.Printf("  %s\n", ui.Text.Render("fontget sources update"))
 		fmt.Printf("\n%s\n", ui.Text.Render("Try using the search command to find other available fonts:"))
-		fmt.Printf("  %s\n\n", ui.CommandExample.Render("fontget search \"roboto\""))
+		fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
 	}
 }
 

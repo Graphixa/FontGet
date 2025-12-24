@@ -228,8 +228,8 @@ func (m themeSelectionModel) View() string {
 
 	// Render combined panels with shared border and title
 	colors := ui.GetCurrentColors()
-	separatorColor := lipgloss.Color(colors.GreyMid)
-	borderColor := lipgloss.Color(colors.GreyMid)
+	separatorColor := lipgloss.Color(colors.Placeholders)
+	borderColor := lipgloss.Color(colors.Placeholders)
 	combined := renderCombinedPanels(
 		titleText,
 		layout.LeftWidth,

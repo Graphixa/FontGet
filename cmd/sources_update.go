@@ -444,7 +444,7 @@ func (m updateModel) View() string {
 
 	// Help (inline) - add spacing and use command label style
 	content.WriteString("\n")
-	content.WriteString(ui.CommandLabel.Render("Press 'Q' to Quit"))
+	content.WriteString(ui.TextBold.Render("Press 'Q' to Quit"))
 
 	return content.String()
 }

@@ -25,7 +25,7 @@ func PromptForSourceAcceptance(sourceName string) (bool, error) {
 	fmt.Printf("%s %s\n", ui.InfoText.Render("Source:"), ui.TableSourceName.Render(sourceName))
 	fmt.Println()
 	fmt.Println(ui.Text.Render("To review a particular font's license, run:"))
-	fmt.Printf("  %s\n", ui.CommandExample.Render("fontget info <font-id> --license"))
+	fmt.Printf("  %s\n", ui.Text.Render("fontget info <font-id> --license"))
 	fmt.Println()
 
 	// Use confirmation dialog for better UX

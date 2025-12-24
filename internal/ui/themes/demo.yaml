@@ -1,0 +1,58 @@
+theme_name: "Demo"
+
+colors:
+
+  # Main text colors
+  primary: "#f5c2e7"  # Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#b4befe" # Used for TableSourceName, FormLabel, CardLabel
+  components: "#cdd6f4" # Should be a lighter neutral color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#7f849c" # Should be a mid-range neutral color - used for borders, placeholders, subtitles, separators
+  base:  "#313244"   # Should be a dark neutral color - used for backgrounds of page titles, cards, selected items, and inverted text in buttons/switches.
+
+  
+  # Status colors
+  success: "#a6e3a1" # Green
+  warning: "#f9e2af" # Yellow
+  error: "#e78284"   # Red
+   
+  overrides:
+
+    page_title: 
+      text: "#f5c2e7"    # Defaults to 'primary' but setting this option overides that
+      background: "#313244"      # Defaults to 'base' but setting this option overides that.
+    
+    button: # make sure 'foreground' and 'background' have good contrast
+      foreground: "#cdd6f4"      # Defaults to 'components' but setting this option overides that.
+      background: "#313244"      # Defaults to 'base' but setting this option overides that.
+    
+    switch: # make sure 'foreground' and 'background' have good contrast
+      foreground: "#cdd6f4"      # Defaults to 'components' but setting this option overides that.
+      background: "#313244"      # Defaults to 'base' but setting this option overides that.
+
+    checkbox:
+      unchecked: "#7f849c" # Defaults to 'placeholders' but this option overides that
+      checked: "#f5c2e7" # Defaults to 'primary' but this option overides that
+
+    card:
+      title_text: "#f5c2e7" # Defaults to 'primary' but setting this overides that
+      title_background: "#313244" # Defaults to 'base' but setting this overides that
+      label: "#b4befe" # Defaults to 'secondary' but setting this overides that
+      border: "#7f849c" # Defaults to 'placeholders' but setting this overides that
+
+    command_keys:
+      text: "#7f849c" # Defaults to 'placeholders' but setting this overides that
+      background: "#313244" # Defaults to 'base' but setting this overides that
+
+    table: ## coming soon
+      header: "#b4befe" # Defaults to 'components' but setting this overides that
+      row: "#f5c2e7" # Defaults to 'primary' but setting this overides that
+      selected: "#cdd6f4" # Defaults to 'components' but setting this overides that
+
+    spinner:
+      normal: "#b4befe" # Defaults to 'primary' but setting this overides that
+      done: "#a6e3a1" # Defaults to 'success' but setting this overides that
+
+    # Progress bar gradient
+    progress_bar:
+      start: "#f5c2e7"    # Defaults to 'primary' but setting this overides that
+      finish: "#b4befe"   # Defaults to 'secondary' but setting this overides that

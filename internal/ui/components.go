@@ -58,7 +58,7 @@ func RenderStatusReport(title string, items map[string]int) string {
 func RenderCommandHelp(commands []string) string {
 	var helpItems []string
 	for _, cmd := range commands {
-		helpItems = append(helpItems, CommandLabel.Render(cmd))
+		helpItems = append(helpItems, TextBold.Render(cmd))
 	}
 	return strings.Join(helpItems, "  ")
 }
@@ -76,7 +76,7 @@ func RenderLoadingScreen(message string) string {
 	return fmt.Sprintf("\n%s\n\n%s\n\n%s",
 		PageTitle.Render("FontGet"),
 		Text.Render(message),
-		CommandLabel.Render("Please wait..."),
+		TextBold.Render("Please wait..."),
 	)
 }
 
@@ -85,7 +85,7 @@ func RenderErrorScreen(title, message string) string {
 	return fmt.Sprintf("\n%s\n\n%s\n\n%s",
 		PageTitle.Render(title),
 		RenderError(message),
-		CommandLabel.Render("Press 'Q' to quit"),
+		TextBold.Render("Press 'Q' to quit"),
 	)
 }
 
@@ -94,7 +94,7 @@ func RenderSuccessScreen(title, message string) string {
 	return fmt.Sprintf("\n%s\n\n%s\n\n%s",
 		PageTitle.Render(title),
 		RenderSuccess(message),
-		CommandLabel.Render("Press 'Q' to quit"),
+		TextBold.Render("Press 'Q' to quit"),
 	)
 }
 

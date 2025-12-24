@@ -153,10 +153,10 @@ func (m *PreviewModel) View(width int) string {
 	// Use preview theme's accent color (not global ui.SpinnerColor which doesn't update)
 	// For system theme (empty color), use NoColor to respect terminal defaults
 	var spinnerColor lipgloss.TerminalColor
-	if colors.Accent == "" {
+	if colors.Primary == "" {
 		spinnerColor = lipgloss.NoColor{}
 	} else {
-		spinnerColor = lipgloss.Color(colors.Accent)
+		spinnerColor = lipgloss.Color(colors.Primary)
 	}
 	spinnerStyle := lipgloss.NewStyle().Foreground(spinnerColor)
 	// Only color the spinner character, not the "Loading" text
@@ -196,12 +196,10 @@ func (m *PreviewModel) View(width int) string {
 // previewStyles holds temporary styles for preview
 type previewStyles struct {
 	PageTitle         lipgloss.Style
-	PageSubtitle      lipgloss.Style
 	Text              lipgloss.Style
 	InfoText          lipgloss.Style
 	CardTitle         lipgloss.Style
 	CardLabel         lipgloss.Style
-	CardContent       lipgloss.Style
 	CardBorder        lipgloss.Style
 	ButtonNormal      lipgloss.Style
 	ButtonSelected    lipgloss.Style
@@ -226,38 +224,76 @@ func getColorOrNoColor(color string) lipgloss.TerminalColor {
 // createPreviewStyles creates temporary styles for preview using theme colors
 // For system theme (empty colors), uses getColorOrNoColor() to respect terminal defaults
 func createPreviewStyles(colors *ui.ModeColors) previewStyles {
+	// Resolve override colors with defaults
+	pageTitleText := colors.Overrides.PageTitle.Text
+	if pageTitleText == "" {
+		pageTitleText = colors.Primary
+	}
+	pageTitleBg := colors.Overrides.PageTitle.Background
+	if pageTitleBg == "" {
+		pageTitleBg = colors.Base
+	}
+
+	buttonFg := colors.Overrides.Button.Foreground
+	if buttonFg == "" {
+		buttonFg = colors.Components
+	}
+	buttonBg := colors.Overrides.Button.Background
+	if buttonBg == "" {
+		buttonBg = colors.Base
+	}
+
+	cardTitleText := colors.Overrides.Card.TitleText
+	if cardTitleText == "" {
+		cardTitleText = colors.Primary
+	}
+	cardTitleBg := colors.Overrides.Card.TitleBackground
+	if cardTitleBg == "" {
+		cardTitleBg = colors.Base
+	}
+	cardLabel := colors.Overrides.Card.Label
+	if cardLabel == "" {
+		cardLabel = colors.Secondary
+	}
+	cardBorder := colors.Overrides.Card.Border
+	if cardBorder == "" {
+		cardBorder = colors.Placeholders
+	}
+
+	checkboxChecked := colors.Overrides.Checkbox.Checked
+	if checkboxChecked == "" {
+		checkboxChecked = colors.Primary
+	}
+	checkboxUnchecked := colors.Overrides.Checkbox.Unchecked
+	if checkboxUnchecked == "" {
+		checkboxUnchecked = colors.Placeholders
+	}
+
 	return previewStyles{
 		PageTitle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(getColorOrNoColor(colors.PageTitle)).
-			Background(getColorOrNoColor(colors.GreyDark)).
+			Foreground(getColorOrNoColor(pageTitleText)).
+			Background(getColorOrNoColor(pageTitleBg)).
 			Padding(0, 1),
 
-		PageSubtitle: lipgloss.NewStyle().
-			Bold(true).
-			Foreground(getColorOrNoColor(colors.PageSubtitle)),
-
 		Text: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.GreyLight)),
+			Foreground(lipgloss.NoColor{}), // Terminal default
 
 		InfoText: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Accent)),
+			Foreground(getColorOrNoColor(colors.Primary)),
 
 		CardTitle: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Accent)).
-			Background(getColorOrNoColor(colors.GreyDark)).
+			Foreground(getColorOrNoColor(cardTitleText)).
+			Background(getColorOrNoColor(cardTitleBg)).
 			Bold(true).
 			Padding(0, 1),
 
 		CardLabel: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Accent2)).
+			Foreground(getColorOrNoColor(cardLabel)).
 			Bold(true),
 
-		CardContent: lipgloss.NewStyle().
-			Foreground(lipgloss.NoColor{}), // Card content values use terminal default (no color)
-
 		CardBorder: lipgloss.NewStyle().
-			BorderForeground(getColorOrNoColor(colors.GreyMid)).
+			BorderForeground(getColorOrNoColor(cardBorder)).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderTop(true).
 			BorderBottom(true).
@@ -266,31 +302,31 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 			Padding(1),
 
 		ButtonNormal: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.GreyLight)).
+			Foreground(getColorOrNoColor(buttonFg)).
 			Bold(true),
 
 		ButtonSelected: func() lipgloss.Style {
 			style := lipgloss.NewStyle().
-				Foreground(getColorOrNoColor(colors.GreyDark)).
-				Background(getColorOrNoColor(colors.GreyLight)).
+				Foreground(getColorOrNoColor(buttonBg)).
+				Background(getColorOrNoColor(buttonFg)).
 				Bold(true)
 			// For system theme, ensure background is visible (use white) and text is readable (use black)
-			if colors.GreyLight == "" {
+			if buttonFg == "" {
 				style = style.Background(lipgloss.Color("#ffffff"))
 			}
 			// For system theme, ensure text is dark and readable on white background
-			if colors.GreyDark == "" {
+			if buttonBg == "" {
 				style = style.Foreground(lipgloss.Color("#000000"))
 			}
 			return style
 		}(),
 
 		CheckboxChecked: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Accent2)).
+			Foreground(getColorOrNoColor(checkboxChecked)).
 			Bold(true),
 
 		CheckboxUnchecked: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.GreyMid)),
+			Foreground(getColorOrNoColor(checkboxUnchecked)),
 
 		SuccessText: lipgloss.NewStyle().
 			Foreground(getColorOrNoColor(colors.Success)),
@@ -311,9 +347,15 @@ func (m *PreviewModel) renderStaticProgressBar(percent int, colors *ui.ModeColor
 	filled := int(float64(barWidth) * float64(percent) / 100.0)
 	empty := barWidth - filled
 
-	// Get gradient colors
-	startColor := colors.ProgressBarGradient.ColorStart
-	endColor := colors.ProgressBarGradient.ColorEnd
+	// Get gradient colors (use override if set, otherwise defaults)
+	startColor := colors.Overrides.ProgressBar.Start
+	if startColor == "" {
+		startColor = colors.Primary
+	}
+	endColor := colors.Overrides.ProgressBar.Finish
+	if endColor == "" {
+		endColor = colors.Secondary
+	}
 
 	// Build the progress bar manually with gradient colors
 	var barBuilder strings.Builder
@@ -348,10 +390,10 @@ func (m *PreviewModel) renderStaticProgressBar(percent int, colors *ui.ModeColor
 
 	// Empty portion - for system theme, use terminal default
 	var emptyStyle lipgloss.Style
-	if colors.GreyMid == "" {
+	if colors.Placeholders == "" {
 		emptyStyle = lipgloss.NewStyle().Foreground(lipgloss.NoColor{})
 	} else {
-		emptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyMid))
+		emptyStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Placeholders))
 	}
 	for i := 0; i < empty; i++ {
 		barBuilder.WriteString(emptyStyle.Render("░"))
@@ -442,8 +484,8 @@ func renderCardWithPreviewStyle(title, content string, width int, styles preview
 
 	// Get border color from preview theme
 	var borderColor lipgloss.TerminalColor
-	if colors.GreyMid != "" {
-		borderColor = lipgloss.Color(colors.GreyMid)
+	if colors.Placeholders != "" {
+		borderColor = lipgloss.Color(colors.Placeholders)
 	} else {
 		borderColor = lipgloss.NoColor{}
 	}

@@ -20,15 +20,8 @@ var (
 	// Example: ui.PageTitle.Render("Font Search Results")
 	// Colors: Set by InitStyles() from theme
 	PageTitle = lipgloss.NewStyle().
-			Bold(true).
-			Padding(0, 1)
-
-	// PageSubtitle - Section subtitles and secondary headers
-	// Usage: Section subtitles, secondary headers
-	// Example: ui.PageSubtitle.Render("Refreshing font data cache...")
-	// Colors: Set by InitStyles() from theme
-	PageSubtitle = lipgloss.NewStyle().
-			Bold(true)
+		Bold(true).
+		Padding(0, 1)
 )
 
 // ============================================================================
@@ -118,9 +111,8 @@ var (
 	// FormInput - Input field content
 	// Usage: Text input field content
 	// Example: ui.FormInput.Render("user input")
-	// Colors: Hardcoded adaptive (light/dark mode) - not theme-aware
-	FormInput = lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "#4c4f69", Dark: "#cdd6f4"})
+	// Colors: Set by InitStyles() from theme (uses components color)
+	FormInput = lipgloss.NewStyle()
 
 	// FormPlaceholder - Placeholder text
 	// Usage: Placeholder text in input fields
@@ -152,12 +144,7 @@ var (
 	// Example: ui.CardLabel.Render("License:")
 	// Colors: Set by InitStyles() from theme
 	CardLabel = lipgloss.NewStyle()
-
-	// CardContent - Regular content within cards
-	// Usage: Regular content within card components
-	// Example: ui.CardContent.Render("Card content here")
-	CardContent = lipgloss.NewStyle().
-			Foreground(lipgloss.NoColor{}) // Terminal default - matches Text
+	// Note: Card content uses Text instead of a separate style
 
 	// CardBorder - Card border styling
 	// Usage: Card border styling
@@ -181,21 +168,10 @@ var (
 	// Example: ui.CommandKey.Render("Enter")
 	// Colors: Set by InitStyles() from theme
 	CommandKey = lipgloss.NewStyle().
-			Bold(true).
-			Padding(0, 1)
-
-	// CommandLabel - Button-like labels (Move, Submit, Cancel)
-	// Usage: Command labels, button-like text
-	// Example: ui.CommandLabel.Render("Submit")
-	// Colors: Set by InitStyles() from theme
-	CommandLabel = lipgloss.NewStyle().
-			Bold(true)
-
-	// CommandExample - Example commands
-	// Usage: Example command text
-	// Example: ui.CommandExample.Render("fontget add google.roboto")
-	CommandExample = lipgloss.NewStyle().
-			Foreground(lipgloss.NoColor{}) // No color - uses terminal default
+		Bold(true).
+		Padding(0, 1)
+	// Note: Command labels use TextBold instead of a separate style
+	// Note: Command examples use Text instead of a separate style
 )
 
 // ============================================================================
@@ -245,13 +221,7 @@ var (
 	// Example: ui.CheckboxItemSelected.Render("  [x] Item name")
 	// Colors: Set by InitStyles() from theme
 	CheckboxItemSelected = lipgloss.NewStyle()
-
-	// CheckboxItemNormal - Normal checkbox item row style
-	// Usage: Normal checkbox item rows
-	// Example: ui.CheckboxItemNormal.Render("  [ ] Item name")
-	// Colors: Hardcoded (no color) - not theme-aware
-	CheckboxItemNormal = lipgloss.NewStyle().
-				Foreground(lipgloss.NoColor{})
+	// Note: Normal checkbox items use Text instead of a separate style
 
 	// CheckboxCursor - Cursor indicator style (> )
 	// Usage: Cursor indicator for selected checkbox item
@@ -265,39 +235,19 @@ var (
 // SWITCH COMPONENT - Switch/toggle styles (for future TUI components)
 // ============================================================================
 var (
-	// SwitchContainer - Container style for the switch (brackets and separator)
-	// Usage: Container for switch component
-	// Note: This may be used for spacing/alignment
-	SwitchContainer = lipgloss.NewStyle().
-			Foreground(lipgloss.NoColor{}) // No color
-
-	// SwitchLeftSelected - Left option when selected (background + contrasting foreground)
-	// Usage: Left option (e.g., "Enable") when selected
-	// Example: ui.SwitchLeftSelected.Render("  Enable  ")
+	// SwitchNormal - Unselected switch option
+	// Usage: Switch option when not selected
+	// Example: ui.SwitchNormal.Render("  Enable  ")
 	// Colors: Set by InitStyles() from theme
-	SwitchLeftSelected = lipgloss.NewStyle().
-				Bold(true)
+	SwitchNormal = lipgloss.NewStyle().
+			Bold(true)
 
-	// SwitchLeftNormal - Left option when not selected
-	// Usage: Left option (e.g., "Enable") when not selected
-	// Example: ui.SwitchLeftNormal.Render("  Enable  ")
+	// SwitchSelected - Selected switch option (background + contrasting foreground)
+	// Usage: Switch option when selected
+	// Example: ui.SwitchSelected.Render("  Enable  ")
 	// Colors: Set by InitStyles() from theme
-	SwitchLeftNormal = lipgloss.NewStyle().
-				Bold(true)
-
-	// SwitchRightSelected - Right option when selected (background + contrasting foreground)
-	// Usage: Right option (e.g., "Disable") when selected
-	// Example: ui.SwitchRightSelected.Render("  Disable  ")
-	// Colors: Set by InitStyles() from theme
-	SwitchRightSelected = lipgloss.NewStyle().
-				Bold(true)
-
-	// SwitchRightNormal - Right option when not selected
-	// Usage: Right option (e.g., "Disable") when not selected
-	// Example: ui.SwitchRightNormal.Render("  Disable  ")
-	// Colors: Set by InitStyles() from theme
-	SwitchRightNormal = lipgloss.NewStyle().
-				Bold(true)
+	SwitchSelected = lipgloss.NewStyle().
+			Bold(true)
 
 	// SwitchSeparator - Separator style (|)
 	// Usage: Separator between switch options
@@ -312,10 +262,16 @@ var (
 
 // GetProgressBarGradient returns the gradient colors for the progress bar
 // Uses theme colors if available, otherwise returns defaults
+// Default order: primary → secondary (flipped from old secondary → primary)
 func GetProgressBarGradient() (string, string) {
 	colors := GetCurrentColors()
 	if colors != nil {
-		return colors.ProgressBarGradient.ColorStart, colors.ProgressBarGradient.ColorEnd
+		// Check for override first
+		if colors.Overrides.ProgressBar.Start != "" && colors.Overrides.ProgressBar.Finish != "" {
+			return colors.Overrides.ProgressBar.Start, colors.Overrides.ProgressBar.Finish
+		}
+		// Default: primary → secondary
+		return colors.Primary, colors.Secondary
 	}
 	return "#cba6f7", "#eba0ac" // Default: Mauve to Peach
 }
@@ -352,12 +308,12 @@ var (
 func RenderSourceTag(isBuiltIn bool) string {
 	colors := GetCurrentColors()
 	var tagStyle lipgloss.Style
-	if colors != nil && colors.GreyMid != "" {
-		// Use theme color
+	if colors != nil && colors.Placeholders != "" {
+		// Use theme color (placeholders for both, or components for custom)
 		if isBuiltIn {
-			tagStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyMid))
+			tagStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Placeholders))
 		} else {
-			tagStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.GreyLight))
+			tagStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Components))
 		}
 	} else {
 		// System theme - use terminal default (no color)
@@ -384,21 +340,21 @@ func RenderSourceNameWithTag(name string, isBuiltIn bool) string {
 // Usage: Display keyboard shortcuts with descriptions
 // Example: ui.RenderKeyWithDescription("Y", "Yes")
 func RenderKeyWithDescription(key, description string) string {
-	return CommandKey.Render(key) + " " + CommandLabel.Render(description)
+	return CommandKey.Render(key) + " " + TextBold.Render(description)
 }
 
-// RenderError renders an error message
+// RenderError renders an error message with consistent prefix
 // Usage: Display error messages with consistent formatting
-// Example: ui.RenderError("Operation failed")
+// Example: ui.RenderError("Operation failed") // Returns "Error: Operation failed"
 func RenderError(message string) string {
 	return ErrorText.Render("Error: " + message)
 }
 
-// RenderSuccess renders a success message
+// RenderSuccess renders a success message with consistent prefix
 // Usage: Display success messages with consistent formatting
-// Example: ui.RenderSuccess("Operation completed")
+// Example: ui.RenderSuccess("Operation completed") // Returns "Success: Operation completed"
 func RenderSuccess(message string) string {
-	return SuccessText.Render(message)
+	return SuccessText.Render("Success: " + message)
 }
 
 // RenderWarning renders a warning message
@@ -408,11 +364,11 @@ func RenderWarning(message string) string {
 	return WarningText.Render(message)
 }
 
-// RenderInfo renders an info message
+// RenderInfo renders an info message with consistent prefix
 // Usage: Display informational messages with consistent formatting
-// Example: ui.RenderInfo("Multiple fonts found")
+// Example: ui.RenderInfo("Multiple fonts found") // Returns "Info: Multiple fonts found"
 func RenderInfo(message string) string {
-	return InfoText.Render(message)
+	return InfoText.Render("Info: " + message)
 }
 
 // ============================================================================
@@ -430,6 +386,26 @@ func getColorOrNoColor(color string) lipgloss.TerminalColor {
 	return lipgloss.Color(color)
 }
 
+// resolveColor returns the override color if set, otherwise returns the default color
+func resolveColor(override string, defaultColor string) string {
+	if override != "" {
+		return override
+	}
+	return defaultColor
+}
+
+// applySystemThemeFallback applies system theme fallback colors (white bg, black text)
+// when colors are empty (system theme)
+func applySystemThemeFallback(style lipgloss.Style, fg, bg string) lipgloss.Style {
+	if bg == "" {
+		style = style.Background(lipgloss.Color("#ffffff"))
+	}
+	if fg == "" {
+		style = style.Foreground(lipgloss.Color("#000000"))
+	}
+	return style
+}
+
 // InitStyles initializes all styles based on the current theme
 // This should be called after InitThemeManager() during application startup
 // For "system" theme (empty colors), uses lipgloss.NoColor{} to respect terminal defaults
@@ -440,27 +416,43 @@ func InitStyles() error {
 		return nil
 	}
 
-	// Update styles that use theme colors
-	// Note: Hardcoded styles (Text, TextBold, TableHeader, FormInput, CommandExample, CardContent, CheckboxUnchecked) are not updated
-	// For "system" theme, empty color strings will use getColorOrNoColor() which returns NoColor{}
+	// Resolve override colors with defaults
+	pageTitleText := resolveColor(colors.Overrides.PageTitle.Text, colors.Primary)
+	pageTitleBg := resolveColor(colors.Overrides.PageTitle.Background, colors.Base)
+
+	buttonFg := resolveColor(colors.Overrides.Button.Foreground, colors.Components)
+	buttonBg := resolveColor(colors.Overrides.Button.Background, colors.Base)
+
+	switchFg := resolveColor(colors.Overrides.Switch.Foreground, colors.Components)
+	switchBg := resolveColor(colors.Overrides.Switch.Background, colors.Base)
+
+	checkboxChecked := resolveColor(colors.Overrides.Checkbox.Checked, colors.Primary)
+	checkboxUnchecked := resolveColor(colors.Overrides.Checkbox.Unchecked, colors.Placeholders)
+
+	cardTitleText := resolveColor(colors.Overrides.Card.TitleText, colors.Primary)
+	cardTitleBg := resolveColor(colors.Overrides.Card.TitleBackground, colors.Base)
+	cardLabel := resolveColor(colors.Overrides.Card.Label, colors.Secondary)
+	cardBorder := resolveColor(colors.Overrides.Card.Border, colors.Placeholders)
+
+	commandKeyText := resolveColor(colors.Overrides.CommandKeys.Text, colors.Placeholders)
+	commandKeyBg := resolveColor(colors.Overrides.CommandKeys.Background, colors.Base)
+
+	spinnerNormal := resolveColor(colors.Overrides.Spinner.Normal, colors.Primary)
+	spinnerDone := resolveColor(colors.Overrides.Spinner.Done, colors.Success)
 
 	// PAGE STRUCTURE
 	PageTitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(getColorOrNoColor(colors.PageTitle)).
-		Background(getColorOrNoColor(colors.GreyDark)).
+		Foreground(getColorOrNoColor(pageTitleText)).
+		Background(getColorOrNoColor(pageTitleBg)).
 		Padding(0, 1)
-
-	PageSubtitle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(getColorOrNoColor(colors.PageSubtitle))
 
 	// MESSAGE STYLES
 	InfoText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent))
+		Foreground(getColorOrNoColor(colors.Primary))
 
 	SecondaryText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent2))
+		Foreground(getColorOrNoColor(colors.Secondary))
 
 	WarningText = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(colors.Warning))
@@ -473,54 +465,45 @@ func InitStyles() error {
 
 	// TABLE COMPONENT
 	TableSourceName = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent2))
+		Foreground(getColorOrNoColor(colors.Secondary))
 
 	TableRowSelected = lipgloss.NewStyle().
-		Background(getColorOrNoColor(colors.GreyDark))
+		Background(getColorOrNoColor(colors.Base))
 
 	// FORM COMPONENT
 	FormLabel = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent2)).
+		Foreground(getColorOrNoColor(colors.Secondary)).
 		Bold(true)
 
+	FormInput = lipgloss.NewStyle().
+		Foreground(getColorOrNoColor(colors.Components))
+
 	FormPlaceholder = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyMid))
+		Foreground(getColorOrNoColor(colors.Placeholders))
 
 	FormReadOnly = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyMid))
+		Foreground(getColorOrNoColor(colors.Placeholders))
 
 	// COMMAND COMPONENT
 	CommandKey = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyMid)).
-		Background(getColorOrNoColor(colors.GreyDark)).
+		Foreground(getColorOrNoColor(commandKeyText)).
+		Background(getColorOrNoColor(commandKeyBg)).
 		Bold(true).
 		Padding(0, 1)
-	// For system theme, ensure background is visible (use white) and text is readable (use black)
-	if colors.GreyDark == "" {
-		// System theme: use white background for visibility
-		CommandKey = CommandKey.Background(lipgloss.Color("#ffffff"))
-	}
-	if colors.GreyMid == "" {
-		// System theme: use black text for readability on white background
-		CommandKey = CommandKey.Foreground(lipgloss.Color("#000000"))
-	}
-
-	CommandLabel = lipgloss.NewStyle().
-		Foreground(lipgloss.NoColor{}). // Always use terminal default (no color)
-		Bold(true)
+	CommandKey = applySystemThemeFallback(CommandKey, commandKeyText, commandKeyBg)
 
 	// CARD COMPONENT
 	CardTitle = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent)).
-		Background(getColorOrNoColor(colors.GreyDark)).
+		Foreground(getColorOrNoColor(cardTitleText)).
+		Background(getColorOrNoColor(cardTitleBg)).
 		Bold(true).
 		Padding(0, 1)
 
 	CardLabel = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent2))
+		Foreground(getColorOrNoColor(cardLabel))
 
 	CardBorder = lipgloss.NewStyle().
-		BorderForeground(getColorOrNoColor(colors.GreyMid)).
+		BorderForeground(getColorOrNoColor(cardBorder)).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderTop(true).
 		BorderBottom(true).
@@ -530,88 +513,47 @@ func InitStyles() error {
 
 	// BUTTON COMPONENT
 	ButtonNormal = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyLight)).
+		Foreground(getColorOrNoColor(buttonFg)).
 		Bold(true)
 
 	ButtonSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyDark)).  // Inverted: dark text
-		Background(getColorOrNoColor(colors.GreyLight)). // Inverted: light background
+		Foreground(getColorOrNoColor(buttonBg)). // Inverted: base text
+		Background(getColorOrNoColor(buttonFg)). // Inverted: components background
 		Bold(true)
-	// For system theme, ensure background is visible (use white) and text is readable (use black)
-	if colors.GreyLight == "" {
-		// System theme: use white background for visibility
-		ButtonSelected = ButtonSelected.Background(lipgloss.Color("#ffffff"))
-	}
-	if colors.GreyDark == "" {
-		// System theme: use black text for readability on white background
-		ButtonSelected = ButtonSelected.Foreground(lipgloss.Color("#000000"))
-	}
+	ButtonSelected = applySystemThemeFallback(ButtonSelected, buttonBg, buttonFg)
 
 	// CHECKBOX COMPONENT
-	// Use checkbox_checked if set, otherwise fall back to accent2
-	checkboxCheckedColor := colors.CheckboxChecked
-	if checkboxCheckedColor == "" {
-		checkboxCheckedColor = colors.Accent2
-	}
 	CheckboxChecked = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(checkboxCheckedColor)).
+		Foreground(getColorOrNoColor(checkboxChecked)).
 		Bold(true)
 
-	// Use checkbox_unchecked if set, otherwise use no color (terminal default)
 	CheckboxUnchecked = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.CheckboxUnchecked))
+		Foreground(getColorOrNoColor(checkboxUnchecked))
 
 	CheckboxItemSelected = lipgloss.NewStyle().
-		Background(getColorOrNoColor(colors.GreyDark))
+		Background(getColorOrNoColor(colors.Base))
 
 	CheckboxCursor = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Accent2)).
+		Foreground(getColorOrNoColor(colors.Primary)).
 		Bold(true)
 
-	// SWITCH COMPONENT
-	SwitchLeftNormal = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyLight)).
+	// SWITCH COMPONENT (unified - no left/right distinction)
+	SwitchNormal = lipgloss.NewStyle().
+		Foreground(getColorOrNoColor(switchFg)).
 		Bold(true)
 
-	SwitchLeftSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyDark)).  // Inverted: dark text
-		Background(getColorOrNoColor(colors.GreyLight)). // Inverted: light background
+	SwitchSelected = lipgloss.NewStyle().
+		Foreground(getColorOrNoColor(switchBg)). // Inverted: base text
+		Background(getColorOrNoColor(switchFg)). // Inverted: components background
 		Bold(true)
-	// For system theme, ensure background is visible (use white) and text is readable (use black)
-	if colors.GreyLight == "" {
-		// System theme: use white background for visibility
-		SwitchLeftSelected = SwitchLeftSelected.Background(lipgloss.Color("#ffffff"))
-	}
-	if colors.GreyDark == "" {
-		// System theme: use black text for readability on white background
-		SwitchLeftSelected = SwitchLeftSelected.Foreground(lipgloss.Color("#000000"))
-	}
-
-	SwitchRightNormal = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyLight)).
-		Bold(true)
-
-	SwitchRightSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyDark)).  // Inverted: dark text
-		Background(getColorOrNoColor(colors.GreyLight)). // Inverted: light background
-		Bold(true)
-	// For system theme, ensure background is visible (use white) and text is readable (use black)
-	if colors.GreyLight == "" {
-		// System theme: use white background for visibility
-		SwitchRightSelected = SwitchRightSelected.Background(lipgloss.Color("#ffffff"))
-	}
-	if colors.GreyDark == "" {
-		// System theme: use black text for readability on white background
-		SwitchRightSelected = SwitchRightSelected.Foreground(lipgloss.Color("#000000"))
-	}
+	SwitchSelected = applySystemThemeFallback(SwitchSelected, switchBg, switchFg)
 
 	SwitchSeparator = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.GreyMid))
+		Foreground(getColorOrNoColor(switchFg))
 
 	// SPINNER COMPONENT
-	// For system theme, use empty string which will be handled by spinner component
-	SpinnerColor = colors.Accent
-	SpinnerDoneColor = colors.Success
+	SpinnerColor = spinnerNormal
+	SpinnerDoneColor = spinnerDone
 
 	return nil
 }

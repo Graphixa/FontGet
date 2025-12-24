@@ -49,7 +49,7 @@ func NewCardWithSections(title string, sections []CardSection) Card {
 		if section.Label != "" {
 			content.WriteString(ui.CardLabel.Render(section.Label + ": "))
 		}
-		content.WriteString(ui.CardContent.Render(section.Value))
+		content.WriteString(ui.Text.Render(section.Value))
 		if i < len(sections)-1 {
 			content.WriteString("\n")
 		}
@@ -122,8 +122,8 @@ func (c Card) Render() string {
 	// Get border color from current theme (same as CardBorder uses)
 	colors := ui.GetCurrentColors()
 	var borderColor lipgloss.TerminalColor
-	if colors != nil && colors.GreyMid != "" {
-		borderColor = lipgloss.Color(colors.GreyMid)
+	if colors != nil && colors.Placeholders != "" {
+		borderColor = lipgloss.Color(colors.Placeholders)
 	} else {
 		// System theme or no colors - use terminal default
 		borderColor = lipgloss.NoColor{}
