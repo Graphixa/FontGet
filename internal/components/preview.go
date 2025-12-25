@@ -17,7 +17,8 @@ type PreviewModel struct {
 	theme             *ui.Theme
 	spinner           spinner.Model
 	progressPercent   float64
-	progressDirection int // 1 for increasing, -1 for decreasing
+	progressDirection int    // 1 for increasing, -1 for decreasing
+	loadError         string // Error message from theme loading
 }
 
 // NewPreviewModel creates a new preview model
@@ -80,6 +81,9 @@ func previewTickCmd() tea.Cmd {
 
 // LoadTheme loads a theme for preview
 func (m *PreviewModel) LoadTheme(themeName string) error {
+	// Clear previous error
+	m.loadError = ""
+
 	// Try to load theme
 	tm := ui.GetThemeManager()
 	theme, err := tm.LoadTheme(themeName)
@@ -87,6 +91,9 @@ func (m *PreviewModel) LoadTheme(themeName string) error {
 		// Try embedded theme
 		theme, err = ui.LoadEmbeddedTheme(themeName)
 		if err != nil {
+			// Store error for display in preview
+			m.loadError = err.Error()
+			m.theme = nil // Clear theme on error
 			return fmt.Errorf("failed to load theme: %w", err)
 		}
 	}
@@ -95,8 +102,68 @@ func (m *PreviewModel) LoadTheme(themeName string) error {
 	return nil
 }
 
+// SetError sets an error message to display in the preview
+func (m *PreviewModel) SetError(errMsg string) {
+	m.loadError = errMsg
+}
+
 // View renders the preview
 func (m *PreviewModel) View(width int) string {
+	// If there's a load error, display it in the preview area
+	if m.loadError != "" {
+		var errorLines []string
+		errorLines = append(errorLines, ui.ErrorText.Render("Theme Load Error"))
+		errorLines = append(errorLines, "")
+
+		// Split error message by newlines to preserve formatting
+		errorMsg := m.loadError
+		msgLines := strings.Split(errorMsg, "\n")
+
+		for _, line := range msgLines {
+			if strings.TrimSpace(line) == "" {
+				errorLines = append(errorLines, "")
+				continue
+			}
+
+			// Check if line starts with "- " (bullet point)
+			if strings.HasPrefix(line, "- ") {
+				// Bullet point - render with ErrorText but keep the bullet
+				errorLines = append(errorLines, ui.ErrorText.Render(line))
+			} else {
+				// Regular line - wrap if needed
+				if width > 0 && lipgloss.Width(line) > width-4 {
+					// Simple word wrapping
+					words := strings.Fields(line)
+					currentLine := ""
+					for _, word := range words {
+						testLine := currentLine
+						if testLine != "" {
+							testLine += " "
+						}
+						testLine += word
+						if lipgloss.Width(testLine) > width-4 {
+							if currentLine != "" {
+								errorLines = append(errorLines, ui.ErrorText.Render(currentLine))
+								currentLine = word
+							} else {
+								errorLines = append(errorLines, ui.ErrorText.Render(word))
+							}
+						} else {
+							currentLine = testLine
+						}
+					}
+					if currentLine != "" {
+						errorLines = append(errorLines, ui.ErrorText.Render(currentLine))
+					}
+				} else {
+					errorLines = append(errorLines, ui.ErrorText.Render(line))
+				}
+			}
+		}
+
+		return lipgloss.JoinVertical(lipgloss.Left, errorLines...)
+	}
+
 	if m.theme == nil {
 		return ui.Text.Render("Loading preview...")
 	}
@@ -111,9 +178,8 @@ func (m *PreviewModel) View(width int) string {
 	lines = append(lines, previewStyles.PageTitle.Render("Page Title"))
 	lines = append(lines, "") // Spacing
 
-	// Info Text (no emoji), then regular text beneath
-	lines = append(lines, previewStyles.InfoText.Render("Info message"))
-	lines = append(lines, previewStyles.Text.Render("Regular text content"))
+	// Text styles demo - shows what each color is used for
+	lines = append(lines, previewStyles.InfoText.Render("Primary text")+" | "+previewStyles.SecondaryText.Render("Secondary text")+" | "+previewStyles.Text.Render("Regular text"))
 	lines = append(lines, "") // Spacing
 
 	// Buttons - use proper Button and Selected styles
@@ -198,6 +264,7 @@ type previewStyles struct {
 	PageTitle         lipgloss.Style
 	Text              lipgloss.Style
 	InfoText          lipgloss.Style
+	SecondaryText     lipgloss.Style
 	CardTitle         lipgloss.Style
 	CardLabel         lipgloss.Style
 	CardBorder        lipgloss.Style
@@ -281,6 +348,9 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 
 		InfoText: lipgloss.NewStyle().
 			Foreground(getColorOrNoColor(colors.Primary)),
+
+		SecondaryText: lipgloss.NewStyle().
+			Foreground(getColorOrNoColor(colors.Secondary)),
 
 		CardTitle: lipgloss.NewStyle().
 			Foreground(getColorOrNoColor(cardTitleText)).

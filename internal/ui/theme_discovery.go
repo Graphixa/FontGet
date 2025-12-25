@@ -95,10 +95,13 @@ func discoverEmbeddedThemes() ([]*ThemeInfo, error) {
 		}
 
 		// Extract theme name from filename (remove .yaml extension)
-		themeName := strings.TrimSuffix(baseName, ".yaml")
-		if themeName == "" {
+		rawThemeName := strings.TrimSuffix(baseName, ".yaml")
+		if rawThemeName == "" {
 			return nil // Skip empty filenames
 		}
+
+		// Normalize theme name (spaces/underscores -> hyphens) for consistent matching
+		themeName := normalizeThemeName(rawThemeName)
 
 		// Try to load the theme to get theme_name from YAML
 		displayName := formatThemeDisplayName(themeName) // Fallback to filename-based
@@ -167,10 +170,13 @@ func discoverUserThemes() ([]*ThemeInfo, error) {
 		}
 
 		// Extract theme name from filename (remove .yaml extension)
-		themeName := strings.TrimSuffix(baseName, ".yaml")
-		if themeName == "" {
+		rawThemeName := strings.TrimSuffix(baseName, ".yaml")
+		if rawThemeName == "" {
 			return nil // Skip empty filenames
 		}
+
+		// Normalize theme name (spaces/underscores -> hyphens) for consistent matching
+		themeName := normalizeThemeName(rawThemeName)
 
 		// Skip "system" theme (it's built-in)
 		if themeName == "system" {
@@ -230,6 +236,9 @@ func GetThemeOptions(currentThemeName string) ([]ThemeOption, error) {
 		return nil, err
 	}
 
+	// Normalize current theme name for consistent matching
+	normalizedCurrent := normalizeThemeName(currentThemeName)
+
 	var options []ThemeOption
 	var systemOption *ThemeOption
 
@@ -240,18 +249,18 @@ func GetThemeOptions(currentThemeName string) ([]ThemeOption, error) {
 				ThemeName:   "system",
 				DisplayName: "System",
 				IsBuiltIn:   true,
-				IsSelected:  theme.Name == currentThemeName,
+				IsSelected:  normalizedCurrent == "system",
 				FilePath:    "", // System theme doesn't use files
 			}
 			continue
 		}
 
-		// Regular themes
+		// Regular themes - compare normalized names
 		option := ThemeOption{
 			ThemeName:   theme.Name,
 			DisplayName: theme.DisplayName,
 			IsBuiltIn:   theme.IsBuiltIn,
-			IsSelected:  theme.Name == currentThemeName,
+			IsSelected:  theme.Name == normalizedCurrent,
 			FilePath:    "", // Will be determined when loading
 		}
 		options = append(options, option)

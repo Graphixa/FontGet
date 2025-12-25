@@ -2,9 +2,11 @@ package ui
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"fontget/internal/config"
 
@@ -13,6 +15,22 @@ import (
 
 //go:embed themes
 var embeddedThemes embed.FS
+
+// normalizeThemeName normalizes a theme name by replacing spaces with hyphens
+// This ensures consistent handling of theme names regardless of how they're specified
+// Examples: "awesome theme" -> "awesome-theme", "my_theme" -> "my-theme"
+func normalizeThemeName(themeName string) string {
+	// Replace spaces and underscores with hyphens
+	normalized := strings.ReplaceAll(themeName, " ", "-")
+	normalized = strings.ReplaceAll(normalized, "_", "-")
+	// Remove any duplicate hyphens
+	for strings.Contains(normalized, "--") {
+		normalized = strings.ReplaceAll(normalized, "--", "-")
+	}
+	// Trim hyphens from start and end
+	normalized = strings.Trim(normalized, "-")
+	return normalized
+}
 
 // Theme represents a color theme loaded from a YAML file
 type Theme struct {
@@ -112,16 +130,28 @@ func (tm *ThemeManager) GetColors() *ModeColors {
 
 // GetThemePath returns the path to a theme file
 // User themes: {themeName}.yaml (e.g., "catppuccin.yaml")
+// Theme names are normalized (spaces/underscores -> hyphens) for consistent file matching
 func (tm *ThemeManager) GetThemePath(themeName string) (string, error) {
 	themesDir := filepath.Join(tm.configDir, "themes")
 
-	// Format: {themeName}.yaml
-	themePath := filepath.Join(themesDir, themeName+".yaml")
+	// Normalize theme name for consistent file matching
+	normalized := normalizeThemeName(themeName)
+
+	// Try normalized name first (e.g., "broken-theme.yaml")
+	themePath := filepath.Join(themesDir, normalized+".yaml")
 	if _, err := os.Stat(themePath); err == nil {
 		return themePath, nil
 	}
 
-	return "", fmt.Errorf("theme file not found: %s.yaml", themeName)
+	// Fallback: try original name (for backward compatibility with existing files)
+	if normalized != themeName {
+		themePath = filepath.Join(themesDir, themeName+".yaml")
+		if _, err := os.Stat(themePath); err == nil {
+			return themePath, nil
+		}
+	}
+
+	return "", fmt.Errorf("theme file not found: %s.yaml (tried: %s.yaml)", themeName, normalized)
 }
 
 // ValidateTheme validates that a theme has all required color keys
@@ -150,7 +180,15 @@ func ValidateTheme(theme *Theme) error {
 	}
 
 	if len(missingKeys) > 0 {
-		return fmt.Errorf("theme is missing required color keys: %v", missingKeys)
+		// Format error message with bulleted list
+		var msg strings.Builder
+		msg.WriteString("This theme is missing the following required color keys:\n")
+		for _, key := range missingKeys {
+			msg.WriteString(fmt.Sprintf("- %s\n", key))
+		}
+		// Remove trailing newline
+		errorMsg := strings.TrimRight(msg.String(), "\n")
+		return errors.New(errorMsg)
 	}
 
 	return nil
@@ -159,13 +197,16 @@ func ValidateTheme(theme *Theme) error {
 // LoadTheme loads a theme from a file
 // User themes: Loads {themeName}.yaml (e.g., "catppuccin.yaml")
 // Special case: "system" theme returns LoadSystemTheme() without file loading
+// Theme names are normalized (spaces/underscores -> hyphens) for consistent matching
 func (tm *ThemeManager) LoadTheme(themeName string) (*Theme, error) {
 	// Special handling for "system" theme - no file needed
 	if themeName == "system" {
 		return LoadSystemTheme(), nil
 	}
 
-	themePath, err := tm.GetThemePath(themeName)
+	// Normalize theme name for consistent file matching
+	normalized := normalizeThemeName(themeName)
+	themePath, err := tm.GetThemePath(normalized)
 	if err != nil {
 		return nil, err
 	}
@@ -182,9 +223,10 @@ func (tm *ThemeManager) LoadTheme(themeName string) (*Theme, error) {
 
 	// Validate theme
 	// System theme is exempt from validation
-	if themeName != "system" {
+	// Use normalized name for validation check
+	if normalized != "system" {
 		if err := ValidateTheme(&theme); err != nil {
-			return nil, fmt.Errorf("theme validation failed: %w", err)
+			return nil, err // Return validation error directly (already formatted)
 		}
 	}
 
@@ -193,17 +235,33 @@ func (tm *ThemeManager) LoadTheme(themeName string) (*Theme, error) {
 
 // LoadEmbeddedTheme loads a theme from embedded files
 // Special case: "system" theme returns LoadSystemTheme() without file loading
+// Theme names are normalized (spaces/underscores -> hyphens) for consistent matching
 func LoadEmbeddedTheme(themeName string) (*Theme, error) {
 	// Special handling for "system" theme - no file needed
 	if themeName == "system" {
 		return LoadSystemTheme(), nil
 	}
 
+	// Normalize theme name for consistent file matching
+	normalized := normalizeThemeName(themeName)
+
 	// Embedded themes use format: themes/{themeName}.yaml (relative to internal/themes/)
-	themePath := fmt.Sprintf("themes/%s.yaml", themeName)
+	// Try normalized name first
+	themePath := fmt.Sprintf("themes/%s.yaml", normalized)
 	data, err := embeddedThemes.ReadFile(themePath)
 	if err != nil {
-		return nil, fmt.Errorf("embedded theme not found: %s", themePath)
+		// Fallback: try original name (for backward compatibility)
+		if normalized != themeName {
+			themePath = fmt.Sprintf("themes/%s.yaml", themeName)
+			var fallbackErr error
+			data, fallbackErr = embeddedThemes.ReadFile(themePath)
+			if fallbackErr == nil {
+				err = nil // Success with fallback
+			}
+		}
+		if err != nil {
+			return nil, fmt.Errorf("embedded theme not found: %s (tried: themes/%s.yaml)", themeName, normalized)
+		}
 	}
 
 	var theme Theme
@@ -212,9 +270,10 @@ func LoadEmbeddedTheme(themeName string) (*Theme, error) {
 	}
 
 	// Validate theme (system theme is exempt)
-	if themeName != "system" {
+	// Use normalized name for validation check
+	if normalized != "system" {
 		if err := ValidateTheme(&theme); err != nil {
-			return nil, fmt.Errorf("embedded theme validation failed: %w", err)
+			return nil, err // Return validation error directly (already formatted)
 		}
 	}
 
@@ -259,24 +318,28 @@ func InitThemeManager() error {
 
 	// Get theme from config
 	appConfig := config.GetUserPreferences()
-	themeName := appConfig.Theme.Name
+	themeName := appConfig.Theme
 
-	// If theme name is empty, use embedded default (catppuccin)
+	// If theme name is empty, use catppuccin theme (default)
 	if themeName == "" {
 		themeName = "catppuccin"
 	}
 
+	// Normalize theme name for consistent matching
+	normalized := normalizeThemeName(themeName)
+
 	// Special handling for "system" theme - no file loading needed
-	if themeName == "system" {
+	if normalized == "system" {
 		globalThemeManager.SetTheme(LoadSystemTheme())
 		return nil
 	}
 
 	// Try to load user's theme from ~/.fontget/themes/ first
-	userTheme, err := globalThemeManager.LoadTheme(themeName)
+	// LoadTheme will normalize the name internally, but we normalize here for consistency
+	userTheme, err := globalThemeManager.LoadTheme(normalized)
 	if err != nil {
 		// If user theme fails, try embedded theme
-		embeddedTheme, embedErr := LoadEmbeddedTheme(themeName)
+		embeddedTheme, embedErr := LoadEmbeddedTheme(normalized)
 		if embedErr != nil {
 			// If embedded theme also fails, fallback to catppuccin
 			defaultTheme, defaultErr := LoadDefaultTheme()

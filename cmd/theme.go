@@ -58,18 +58,17 @@ type themeSelectionModel struct {
 	height        int
 	buttons       *components.ButtonGroup
 	quitting      bool
-	err           string
 }
 
 // NewThemeSelectionModel creates a new theme selection model
 func NewThemeSelectionModel() (*themeSelectionModel, error) {
 	// Get current theme from config
 	appConfig := config.GetUserPreferences()
-	currentTheme := appConfig.Theme.Name
+	currentTheme := appConfig.Theme
 
-	// Default to catppuccin if empty
+	// Default to system if empty
 	if currentTheme == "" {
-		currentTheme = "catppuccin"
+		currentTheme = "system"
 	}
 
 	// Get theme options
@@ -147,12 +146,8 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selectedIndex > 0 {
 				m.selectedIndex--
 				m.buttons.Selected = m.selectedIndex
-				// Hot-reload preview
-				if err := m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName); err != nil {
-					m.err = fmt.Sprintf("Failed to load preview: %v", err)
-				} else {
-					m.err = ""
-				}
+				// Hot-reload preview (errors will be shown in preview panel)
+				_ = m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName)
 			}
 			return m, nil
 
@@ -160,12 +155,8 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.selectedIndex < len(m.themes)-1 {
 				m.selectedIndex++
 				m.buttons.Selected = m.selectedIndex
-				// Hot-reload preview
-				if err := m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName); err != nil {
-					m.err = fmt.Sprintf("Failed to load preview: %v", err)
-				} else {
-					m.err = ""
-				}
+				// Hot-reload preview (errors will be shown in preview panel)
+				_ = m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName)
 			}
 			return m, nil
 
@@ -173,7 +164,8 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Apply selected theme
 			selected := m.themes[m.selectedIndex]
 			if err := m.applyTheme(selected.ThemeName); err != nil {
-				m.err = fmt.Sprintf("Failed to apply theme: %v", err)
+				// Store error in preview for display
+				m.preview.SetError(fmt.Sprintf("Failed to apply theme: %v", err))
 				return m, nil
 			}
 			m.quitting = true
@@ -200,9 +192,6 @@ func (m themeSelectionModel) View() string {
 	help := strings.Join(commands, "  ")
 
 	currentInfo := fmt.Sprintf("Current Theme: %s", m.currentTheme)
-	if m.err != "" {
-		currentInfo = currentInfo + "  " + ui.ErrorText.Render(m.err)
-	}
 
 	// Footer is a single line; height = 1
 	headerHeight := 0 // title is inside the frame
@@ -340,7 +329,7 @@ func (m themeSelectionModel) renderFooter(help, current string, totalWidth int) 
 func (m *themeSelectionModel) applyTheme(themeName string) error {
 	// Update config
 	appConfig := config.GetUserPreferences()
-	appConfig.Theme.Name = themeName
+	appConfig.Theme = themeName
 
 	// Save config
 	if err := config.SaveUserPreferences(appConfig); err != nil {

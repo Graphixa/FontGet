@@ -83,16 +83,10 @@ func ValidateStrictAppConfig(data map[string]interface{}) error {
 	}
 	// Update section is optional, so we don't require it
 
-	// Validate Theme section (optional for backward compatibility)
+	// Validate Theme (optional for backward compatibility)
+	// Theme can be a string (new format) or a map with Name (old format)
 	if themeSection, exists := data["Theme"]; exists {
-		if themeMap, ok := themeSection.(map[string]interface{}); ok {
-			errors = append(errors, validateThemeSection(themeMap)...)
-		} else {
-			errors = append(errors, ValidationError{
-				Field:   "Theme",
-				Message: "must be an object",
-			})
-		}
+		errors = append(errors, validateThemeSection(themeSection)...)
 	}
 	// Theme section is optional, so we don't require it
 
@@ -382,22 +376,42 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 	return errors
 }
 
-// validateThemeSection validates the Theme section
-func validateThemeSection(theme map[string]interface{}) ValidationErrors {
+// validateThemeSection validates the Theme value
+// Supports both old format (map with Name) and new format (string) for backward compatibility
+func validateThemeSection(theme interface{}) ValidationErrors {
 	var errors ValidationErrors
 
-	// Validate Name (optional string, can be empty to use default)
-	if name, exists := theme["Name"]; exists {
-		if _, ok := name.(string); !ok {
-			errors = append(errors, ValidationError{
-				Field:   "Theme.Name",
-				Message: fmt.Sprintf("must be a string, got %s", getTypeName(name)),
-			})
-		}
+	if theme == nil {
+		return errors
 	}
-	// Name is optional, so empty or missing is fine
 
-	// Mode field is ignored (backward compatibility - old configs may have it)
+	// New format: Theme is a string value
+	if themeStr, ok := theme.(string); ok {
+		// String is valid (can be empty to use system theme)
+		_ = themeStr // No validation needed for string values
+		return errors
+	}
+
+	// Old format: Theme is a map with Name field (backward compatibility)
+	if themeMap, ok := theme.(map[string]interface{}); ok {
+		// Validate Name field if it exists
+		if name, exists := themeMap["Name"]; exists {
+			if _, ok := name.(string); !ok {
+				errors = append(errors, ValidationError{
+					Field:   "Theme.Name",
+					Message: fmt.Sprintf("must be a string, got %s", getTypeName(name)),
+				})
+			}
+		}
+		// Name is optional, so empty or missing is fine
+		return errors
+	}
+
+	// Invalid format
+	errors = append(errors, ValidationError{
+		Field:   "Theme",
+		Message: fmt.Sprintf("must be a string or an object with Name field, got %s", getTypeName(theme)),
+	})
 
 	return errors
 }

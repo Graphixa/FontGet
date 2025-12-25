@@ -22,7 +22,7 @@ type AppConfig struct {
 	Network       NetworkSection       `yaml:"Network"`
 	Limits        LimitsSection        `yaml:"Limits"`
 	Update        UpdateSection        `yaml:"Update"`
-	Theme         ThemeSection         `yaml:"Theme"`
+	Theme         string               `yaml:"Theme"`
 }
 
 // ConfigurationSection represents the main configuration settings
@@ -57,11 +57,6 @@ type UpdateSection struct {
 	UpdateCheckInterval int    `yaml:"UpdateCheckInterval"` // Hours between checks
 	LastUpdateCheck     string `yaml:"LastUpdateCheck"`     // ISO timestamp
 	UpdateChannel       string `yaml:"UpdateChannel"`       // stable/beta/nightly
-}
-
-// ThemeSection represents theme configuration
-type ThemeSection struct {
-	Name string `yaml:"Name"` // Theme name (e.g., "catppuccin", "gruvbox", "system") - empty string uses default
 }
 
 // GetAppConfigDir returns the app-specific config directory (~/.fontget)
@@ -120,9 +115,7 @@ func DefaultUserPreferences() *AppConfig {
 			LastUpdateCheck:     "",    // Never checked
 			UpdateChannel:       "stable",
 		},
-		Theme: ThemeSection{
-			Name: "", // Empty string uses embedded default theme (catppuccin)
-		},
+		Theme: "catppuccin", // Default to catppuccin theme
 	}
 }
 
@@ -203,11 +196,10 @@ func GetUserPreferences() *AppConfig {
 				config.Limits.FileCopyBufferSize = loadedConfig.Limits.FileCopyBufferSize
 			}
 
-			// Merge Theme section if it exists (optional for backward compatibility)
-			if loadedConfig.Theme.Name != "" {
-				config.Theme.Name = loadedConfig.Theme.Name
+			// Merge Theme if it exists (optional for backward compatibility)
+			if loadedConfig.Theme != "" {
+				config.Theme = loadedConfig.Theme
 			}
-			// Mode field is ignored (backward compatibility - old configs may have it)
 		}
 	}
 
@@ -386,6 +378,21 @@ func LoadUserPreferences() (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to parse app config file: %w", err)
 	}
 
+	// Handle backward compatibility: convert old Theme format (map with Name) to new format (string)
+	if themeSection, exists := rawData["Theme"]; exists {
+		if themeMap, ok := themeSection.(map[string]interface{}); ok {
+			// Old format: Theme is a map with Name field
+			if name, exists := themeMap["Name"]; exists {
+				if nameStr, ok := name.(string); ok {
+					config.Theme = nameStr
+				}
+			}
+		} else if themeStr, ok := themeSection.(string); ok {
+			// New format: Theme is already a string
+			config.Theme = themeStr
+		}
+	}
+
 	return &config, nil
 }
 
@@ -485,7 +492,6 @@ func updateNodeWithConfig(node *yaml.Node, config *AppConfig) error {
 		"Network":       config.Network,
 		"Limits":        config.Limits,
 		"Update":        config.Update,
-		"Theme":         config.Theme,
 	}
 
 	// Iterate through root mapping pairs (key, value, key, value, ...)
@@ -498,6 +504,15 @@ func updateNodeWithConfig(node *yaml.Node, config *AppConfig) error {
 		valueNode := root.Content[i+1]
 
 		sectionName := keyNode.Value
+
+		// Special handling for Theme (simple string value, not a struct)
+		if sectionName == "Theme" {
+			if err := updateValueNode(valueNode, config.Theme); err != nil {
+				return fmt.Errorf("failed to update Theme: %w", err)
+			}
+			continue
+		}
+
 		if sectionData, exists := sections[sectionName]; exists {
 			// Update this section's values
 			if err := updateSectionNode(valueNode, sectionData); err != nil {
@@ -596,26 +611,30 @@ func updateValueNode(valueNode *yaml.Node, newValue interface{}) error {
 // saveDefaultAppConfigWithComments saves a default config with a single DefaultEditor line and multiplatform comment
 func saveDefaultAppConfigWithComments(configPath string) error {
 	configContent := `Configuration:
-  DefaultEditor: "" # set your own default editor for fontget (e.g. 'code', 'notepad.exe', 'nano', etc.)
-  EnablePopularitySort: true # Fonts will be returned by their match and popularity first, then by alphabetical order. This may mean that popular fonts appear higher in search results.
+  DefaultEditor: "" 	# Set your own default editor for fontget (e.g. 'code', 'notepad.exe', 'nano', etc.)
+  EnablePopularitySort: true 	# Fonts will be returned by their match and popularity first, then by alphabetical order. This means popular fonts appear higher in search results.
+
 Logging:
   LogPath: "$home/.fontget/logs/fontget.log"
   MaxLogSize: "10MB"
   MaxLogFiles: 5
+
 Network:
-  RequestTimeout: "10s"  # Quick HTTP requests and checks
-  DownloadTimeout: "30s" # Download timeout: cancel if no data transferred for this duration (stall detection)
+  RequestTimeout: "10s" 	# Quick HTTP requests and checks
+  DownloadTimeout: "30s" 	# Download timeout: cancel if no data transferred for this duration
+
 Limits:
-  MaxSourceFileSize: "50MB" # Maximum size for source JSON files
-  FileCopyBufferSize: "32KB" # Buffer size for file operations
+  MaxSourceFileSize: "50MB" 	# Maximum size for source JSON files
+  FileCopyBufferSize: "32KB"	# Buffer size for file operations
+
 Update:
-  AutoCheck: true # Check for updates on startup
-  AutoUpdate: false # Automatically install updates (manual by default for security)
-  UpdateCheckInterval: 24 # Hours between update checks
-  LastUpdateCheck: "" # ISO timestamp of last check (automatically updated)
-  UpdateChannel: "stable" # Update channel: stable, beta, or nightly
-Theme:
-  Name: "" # Theme name (e.g., "catppuccin", "gruvbox", "system") - empty string uses embedded default
+  AutoCheck: true       			# Check for updates on startup
+  AutoUpdate: false 				# Automatically install updates (manual by default for security)
+  UpdateCheckInterval: 24 			# Hours between update checks
+  LastUpdateCheck: "" 	# ISO timestamp of last check (automatically updated)
+  UpdateChannel: "stable" 			# Update channel: stable, beta, or nightly
+
+Theme: "catppuccin" 	# Theme name (e.g., "catppuccin", "gruvbox", "system") - empty string uses catppuccin theme
 `
 
 	// Write config file
@@ -654,9 +673,7 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"LastUpdateCheck":     config.Update.LastUpdateCheck,
 			"UpdateChannel":       config.Update.UpdateChannel,
 		},
-		"Theme": map[string]interface{}{
-			"Name": config.Theme.Name,
-		},
+		"Theme": config.Theme,
 	}
 
 	return ValidateStrictAppConfig(rawData)

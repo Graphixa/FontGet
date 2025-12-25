@@ -2,19 +2,19 @@ theme_name: "Matrix"
 
 colors:
   # Main text colors
-  primary: "#46db6c"  # Green - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  secondary: "#90ee90" # Light Green - Used for TableSourceName, FormLabel, CardLabel
-  components: "#addbad" # Light text color - used for buttons, switches, checkboxes, etc.
-  placeholders: "#81d16d" # Borders, placeholders, subtitles, separators
-  base: "#1c2e20"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  primary: "#46db6c"        # Green - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#90ee90"      # Light Green - Used for TableSourceName, FormLabel, CardLabel
+  components: "#addbad"     # Light text color - used for buttons, switches, checkboxes, etc.
+  placeholders: "#81d16d"   # Borders, placeholders, subtitles, separators
+  base: "#1c2e20"           # Background of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
-  success: "#90ee90" # Green
-  warning: "#f2e39d" # Amber
-  error: "#f29d9d"   # Red
+  success: "#90ee90"      # Green
+  warning: "#f2e39d"      # Amber
+  error: "#f29d9d"        # Red
 
   overrides:
     # Progress bar gradient
     progress_bar:
-      start: "#46db6c" # Green
-      finish: "#81d16d" # Medium Green
+      start: "#46db6c"     # Green
+      finish: "#81d16d"    # Medium Green
