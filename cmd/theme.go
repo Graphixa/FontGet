@@ -291,8 +291,96 @@ func (m themeSelectionModel) calculateThemeLinePositions() (map[int]int, int) {
 	return positions, currentLine
 }
 
+// calculateLinePosition calculates the line position (0-based) for a given theme index
+// accounting for headers that appear before it
+// Returns the line number where this theme's button would appear
+func (m themeSelectionModel) calculateLinePosition(themeIndex int) int {
+	if themeIndex < 0 || themeIndex >= len(m.themes) {
+		return 0
+	}
+
+	linePos := 0
+	darkHeaderShown := false
+	lightHeaderShown := false
+
+	// Count all lines before themeIndex (headers + theme buttons)
+	for i := 0; i < themeIndex; i++ {
+		// Add header before first dark theme (after System)
+		if i > 0 && m.themes[i-1].Style == "" && m.themes[i].Style == "dark" && !darkHeaderShown {
+			linePos += 3 // Blank line + header + separator
+			darkHeaderShown = true
+		}
+
+		// Add header before first light theme (after dark themes)
+		if i > 0 && m.themes[i-1].Style == "dark" && m.themes[i].Style == "light" && !lightHeaderShown {
+			linePos += 3 // Blank line + header + separator
+			lightHeaderShown = true
+		}
+
+		// Add line for theme button
+		linePos++
+	}
+
+	// Check if we need to add a header before themeIndex itself
+	if themeIndex > 0 {
+		if m.themes[themeIndex-1].Style == "" && m.themes[themeIndex].Style == "dark" && !darkHeaderShown {
+			linePos += 3 // Blank line + header + separator
+		}
+		if themeIndex > 0 && m.themes[themeIndex-1].Style == "dark" && m.themes[themeIndex].Style == "light" && !lightHeaderShown {
+			linePos += 3 // Blank line + header + separator
+		}
+	}
+
+	// linePos now represents the line where themeIndex's button appears
+	return linePos
+}
+
+// findScrollOffsetForLinePosition finds the theme index (scrollOffset) that would
+// position the selected item at the target line position (accounting for headers)
+func (m themeSelectionModel) findScrollOffsetForLinePosition(selectedIndex, targetLinePos int) int {
+	if selectedIndex < 0 || selectedIndex >= len(m.themes) {
+		return 0
+	}
+
+	// Calculate the absolute line position of the selected item
+	selectedLinePos := m.calculateLinePosition(selectedIndex)
+
+	// We want: selectedLinePos - scrollOffsetLinePos = targetLinePos
+	// So: scrollOffsetLinePos = selectedLinePos - targetLinePos
+	targetScrollLinePos := selectedLinePos - targetLinePos
+	if targetScrollLinePos < 0 {
+		targetScrollLinePos = 0
+	}
+
+	// Find the theme index whose line position is closest to targetScrollLinePos
+	bestOffset := 0
+	bestDiff := 999999
+
+	// Search from 0 to selectedIndex
+	for offset := 0; offset <= selectedIndex && offset < len(m.themes); offset++ {
+		offsetLinePos := m.calculateLinePosition(offset)
+		diff := offsetLinePos - targetScrollLinePos
+		if diff < 0 {
+			diff = -diff
+		}
+
+		if diff < bestDiff {
+			bestDiff = diff
+			bestOffset = offset
+		}
+
+		// If we've passed the target, we can stop (line positions are monotonic)
+		if offsetLinePos > targetScrollLinePos {
+			break
+		}
+	}
+
+	return bestOffset
+}
+
 // adjustScrollForSelection adjusts scrollOffset to keep selectedIndex visible
 // Returns the modified model with updated scrollOffset
+// Uses incremental adjustment to prevent jumping when headers appear
 func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	if len(m.themes) == 0 || m.height == 0 {
 		return m
@@ -319,18 +407,52 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	// Calculate visible item count from current scrollOffset
 	visibleCount := m.calculateVisibleItemCount(availableHeight)
 
-	// If selected item is beyond visible range, adjust scrollOffset
-	if m.selectedIndex >= m.scrollOffset+visibleCount {
-		// Selected item is below visible range - scroll down
-		// Set scrollOffset so selected item is at the bottom of visible range
-		m.scrollOffset = m.selectedIndex - visibleCount + 1
-		if m.scrollOffset < 0 {
-			m.scrollOffset = 0
+	// Check if selected item is currently visible
+	startIndex, endIndex := m.getVisibleThemeRange(availableHeight)
+	isCurrentlyVisible := m.selectedIndex >= startIndex && m.selectedIndex <= endIndex
+
+	if !isCurrentlyVisible {
+		// Selected item is not visible - adjust scrollOffset incrementally
+		if m.selectedIndex >= m.scrollOffset+visibleCount {
+			// Selected item is below visible range - scroll down incrementally
+			// Only move enough to bring it into view, not to a fixed position
+			m.scrollOffset = m.selectedIndex - visibleCount + 1
+			if m.scrollOffset < 0 {
+				m.scrollOffset = 0
+			}
+		} else if m.selectedIndex < m.scrollOffset {
+			// Selected item is above visible range - scroll up incrementally
+			// Only move enough to bring it into view
+			m.scrollOffset = m.selectedIndex
+			if m.scrollOffset < 0 {
+				m.scrollOffset = 0
+			}
 		}
-	} else if m.selectedIndex < m.scrollOffset {
-		// Selected item is above visible range - scroll up
-		// Set scrollOffset to selected item
-		m.scrollOffset = m.selectedIndex
+	} else {
+		// Selected item is visible - only adjust if it's too close to edges
+		// Use a small buffer (1-2 items) instead of a fixed line position
+		buffer := 2
+		if visibleCount <= 4 {
+			buffer = 1
+		}
+
+		// Check if too close to bottom edge
+		if m.selectedIndex >= m.scrollOffset+visibleCount-buffer {
+			// Move scroll down just enough to keep buffer space
+			m.scrollOffset = m.selectedIndex - visibleCount + buffer + 1
+			if m.scrollOffset < 0 {
+				m.scrollOffset = 0
+			}
+		}
+
+		// Check if too close to top edge
+		if m.selectedIndex < m.scrollOffset+buffer {
+			// Move scroll up just enough to keep buffer space
+			m.scrollOffset = m.selectedIndex - buffer
+			if m.scrollOffset < 0 {
+				m.scrollOffset = 0
+			}
+		}
 	}
 
 	// Ensure scrollOffset doesn't exceed bounds
@@ -347,6 +469,7 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 
 // calculateVisibleItemCount calculates how many theme items can fit in the available height
 // Note: availableHeight already accounts for borders and padding
+// Now counts each header line individually instead of as a 3-line group
 func (m themeSelectionModel) calculateVisibleItemCount(availableHeight int) int {
 	if len(m.themes) == 0 {
 		return 0
@@ -358,43 +481,103 @@ func (m themeSelectionModel) calculateVisibleItemCount(availableHeight int) int 
 		visibleLines = 1
 	}
 
-	// Count lines starting from scrollOffset
+	// Count lines starting from scrollOffset, checking each line individually
 	linesUsed := 0
-	darkHeaderShown := false
-	lightHeaderShown := false
+	darkHeaderBlankShown := false
+	darkHeaderTextShown := false
+	darkHeaderSeparatorShown := false
+	lightHeaderBlankShown := false
+	lightHeaderTextShown := false
+	lightHeaderSeparatorShown := false
 	itemCount := 0
 
-	// Check if we need to show headers before scrollOffset
+	// Check if we need to show header lines before scrollOffset
 	if m.scrollOffset > 0 {
 		if m.themes[m.scrollOffset-1].Style == "" && m.themes[m.scrollOffset].Style == "dark" {
-			linesUsed += 3 // DARK THEMES header
-			darkHeaderShown = true
+			// Check each header line individually
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Blank line
+				darkHeaderBlankShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Header text
+				darkHeaderTextShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Separator
+				darkHeaderSeparatorShown = true
+			}
 		}
 		if m.scrollOffset > 0 && m.themes[m.scrollOffset-1].Style == "dark" && m.themes[m.scrollOffset].Style == "light" {
-			linesUsed += 3 // LIGHT THEMES header
-			lightHeaderShown = true
+			// Check each header line individually
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Blank line
+				lightHeaderBlankShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Header text
+				lightHeaderTextShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Separator
+				lightHeaderSeparatorShown = true
+			}
 		}
 	}
 
-	// Count lines for themes starting from scrollOffset
+	// Count lines for themes starting from scrollOffset, checking each line individually
+	// Continue even if some header lines don't fit - include theme if button can fit
 	for i := m.scrollOffset; i < len(m.themes); i++ {
-		// Check if we need to add header before this theme
-		if i > 0 && m.themes[i-1].Style == "" && m.themes[i].Style == "dark" && !darkHeaderShown {
-			if linesUsed+3 > visibleLines {
-				break
+		// Check if we need to add header lines before this theme (line by line)
+		// Try each line, but don't break if it doesn't fit - continue to check theme button
+		if i > 0 && m.themes[i-1].Style == "" && m.themes[i].Style == "dark" {
+			if !darkHeaderBlankShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Blank line
+					darkHeaderBlankShown = true
+				}
+				// Continue even if this line didn't fit
 			}
-			linesUsed += 3
-			darkHeaderShown = true
+			if !darkHeaderTextShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Header text
+					darkHeaderTextShown = true
+				}
+				// Continue even if this line didn't fit
+			}
+			if !darkHeaderSeparatorShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Separator
+					darkHeaderSeparatorShown = true
+				}
+				// Continue even if this line didn't fit
+			}
 		}
-		if i > 0 && m.themes[i-1].Style == "dark" && m.themes[i].Style == "light" && !lightHeaderShown {
-			if linesUsed+3 > visibleLines {
-				break
+		if i > 0 && m.themes[i-1].Style == "dark" && m.themes[i].Style == "light" {
+			if !lightHeaderBlankShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Blank line
+					lightHeaderBlankShown = true
+				}
+				// Continue even if this line didn't fit
 			}
-			linesUsed += 3
-			lightHeaderShown = true
+			if !lightHeaderTextShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Header text
+					lightHeaderTextShown = true
+				}
+				// Continue even if this line didn't fit
+			}
+			if !lightHeaderSeparatorShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Separator
+					lightHeaderSeparatorShown = true
+				}
+				// Continue even if this line didn't fit
+			}
 		}
 
-		// Add line for theme button
+		// Add line for theme button - only break if button doesn't fit
 		if linesUsed+1 > visibleLines {
 			break
 		}
@@ -431,43 +614,101 @@ func (m themeSelectionModel) getVisibleThemeRange(availableHeight int) (start, e
 		start = len(m.themes) - 1
 	}
 
-	// Find the last visible theme by counting lines
+	// Find the last visible theme by counting lines individually
 	linesUsed := 0
-	darkHeaderShown := false
-	lightHeaderShown := false
+	darkHeaderBlankShown := false
+	darkHeaderTextShown := false
+	darkHeaderSeparatorShown := false
+	lightHeaderBlankShown := false
+	lightHeaderTextShown := false
+	lightHeaderSeparatorShown := false
 
-	// Check if we need to show headers before start index
+	// Check if we need to show header lines before start index (line by line)
 	if start > 0 {
 		if m.themes[start-1].Style == "" && m.themes[start].Style == "dark" {
-			linesUsed += 3 // DARK THEMES header
-			darkHeaderShown = true
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Blank line
+				darkHeaderBlankShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Header text
+				darkHeaderTextShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Separator
+				darkHeaderSeparatorShown = true
+			}
 		}
 		if start > 0 && m.themes[start-1].Style == "dark" && m.themes[start].Style == "light" {
-			linesUsed += 3 // LIGHT THEMES header
-			lightHeaderShown = true
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Blank line
+				lightHeaderBlankShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Header text
+				lightHeaderTextShown = true
+			}
+			if linesUsed+1 <= visibleLines {
+				linesUsed++ // Separator
+				lightHeaderSeparatorShown = true
+			}
 		}
 	}
 
-	// Count lines for visible themes
+	// Count lines for visible themes, checking each header line individually
+	// Continue even if some header lines don't fit - include theme if button can fit
 	end = start
 	for i := start; i < len(m.themes); i++ {
-		// Check if we need to add header before this theme
-		if i > 0 && m.themes[i-1].Style == "" && m.themes[i].Style == "dark" && !darkHeaderShown {
-			if linesUsed+3 > visibleLines {
-				break
+		// Check if we need to add header lines before this theme (line by line)
+		// Try each line, but don't break if it doesn't fit - continue to check theme button
+		if i > 0 && m.themes[i-1].Style == "" && m.themes[i].Style == "dark" {
+			if !darkHeaderBlankShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Blank line
+					darkHeaderBlankShown = true
+				}
+				// Continue even if this line didn't fit
 			}
-			linesUsed += 3
-			darkHeaderShown = true
+			if !darkHeaderTextShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Header text
+					darkHeaderTextShown = true
+				}
+				// Continue even if this line didn't fit
+			}
+			if !darkHeaderSeparatorShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Separator
+					darkHeaderSeparatorShown = true
+				}
+				// Continue even if this line didn't fit
+			}
 		}
-		if i > 0 && m.themes[i-1].Style == "dark" && m.themes[i].Style == "light" && !lightHeaderShown {
-			if linesUsed+3 > visibleLines {
-				break
+		if i > 0 && m.themes[i-1].Style == "dark" && m.themes[i].Style == "light" {
+			if !lightHeaderBlankShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Blank line
+					lightHeaderBlankShown = true
+				}
+				// Continue even if this line didn't fit
 			}
-			linesUsed += 3
-			lightHeaderShown = true
+			if !lightHeaderTextShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Header text
+					lightHeaderTextShown = true
+				}
+				// Continue even if this line didn't fit
+			}
+			if !lightHeaderSeparatorShown {
+				if linesUsed+1 <= visibleLines {
+					linesUsed++ // Separator
+					lightHeaderSeparatorShown = true
+				}
+				// Continue even if this line didn't fit
+			}
 		}
 
-		// Add line for theme button
+		// Add line for theme button - only break if button doesn't fit
 		if linesUsed+1 > visibleLines {
 			break
 		}
@@ -512,53 +753,104 @@ func (m themeSelectionModel) renderLeftPanelContent(width, panelHeight int) stri
 		Bold(true)
 	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Placeholders))
 
-	darkHeaderShown := false
-	lightHeaderShown := false
+	darkHeaderBlankShown := false
+	darkHeaderTextShown := false
+	darkHeaderSeparatorShown := false
+	lightHeaderBlankShown := false
+	lightHeaderTextShown := false
+	lightHeaderSeparatorShown := false
 
-	// Track if we've already shown headers in the visible range
-	// Check if we need to show DARK THEMES header before startIndex
+	// Helper function to add a header line only if there's space
+	addHeaderLine := func(line string) bool {
+		if len(lines) < availableHeight {
+			lines = append(lines, line)
+			return true
+		}
+		return false
+	}
+
+	// Track header lines individually - check if we need to show header lines before startIndex
+	// Add each line only if there's space available
 	if startIndex > 0 && len(m.themes) > 0 {
 		if m.themes[startIndex-1].Style == "" && m.themes[startIndex].Style == "dark" {
-			lines = append(lines, "") // Blank line
-			header := headerStyle.Render("Dark Themes")
-			lines = append(lines, header)
-			separator := strings.Repeat("─", contentWidth)
-			lines = append(lines, separatorStyle.Render(separator))
-			darkHeaderShown = true
+			if addHeaderLine("") {
+				darkHeaderBlankShown = true
+			}
+			if addHeaderLine(headerStyle.Render("DARK THEMES")) {
+				darkHeaderTextShown = true
+			}
+			if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
+				darkHeaderSeparatorShown = true
+			}
 		}
 		// Check if we need to show LIGHT THEMES header before startIndex
 		if startIndex > 0 && m.themes[startIndex-1].Style == "dark" && m.themes[startIndex].Style == "light" {
-			lines = append(lines, "") // Blank line
-			header := headerStyle.Render("Light Themes")
-			lines = append(lines, header)
-			separator := strings.Repeat("─", contentWidth)
-			lines = append(lines, separatorStyle.Render(separator))
-			lightHeaderShown = true
+			if addHeaderLine("") {
+				lightHeaderBlankShown = true
+			}
+			if addHeaderLine(headerStyle.Render("LIGHT THEMES")) {
+				lightHeaderTextShown = true
+			}
+			if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
+				lightHeaderSeparatorShown = true
+			}
 		}
 	}
 
-	// Render only visible themes
+	// Render only visible themes, adding header lines individually as needed
+	// Check available space for each line before adding
 	for i := startIndex; i <= endIndex && i < len(m.themes); i++ {
 		option := m.themes[i]
 
-		// Add "DARK THEMES" header before first dark theme (after System)
-		if i > 0 && m.themes[i-1].Style == "" && option.Style == "dark" && !darkHeaderShown {
-			lines = append(lines, "") // Blank line
-			header := headerStyle.Render("Dark Themes")
-			lines = append(lines, header)
-			separator := strings.Repeat("─", contentWidth)
-			lines = append(lines, separatorStyle.Render(separator))
-			darkHeaderShown = true
+		// Add "DARK THEMES" header lines individually before first dark theme (after System)
+		// Only add each line if there's space - continue even if some lines don't fit
+		if i > 0 && m.themes[i-1].Style == "" && option.Style == "dark" {
+			if !darkHeaderBlankShown {
+				if addHeaderLine("") {
+					darkHeaderBlankShown = true
+				}
+				// Continue even if this line didn't fit - try next line
+			}
+			if !darkHeaderTextShown {
+				if addHeaderLine(headerStyle.Render("DARK THEMES")) {
+					darkHeaderTextShown = true
+				}
+				// Continue even if this line didn't fit - try next line
+			}
+			if !darkHeaderSeparatorShown {
+				if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
+					darkHeaderSeparatorShown = true
+				}
+				// Continue even if this line didn't fit - render theme items
+			}
 		}
 
-		// Add "LIGHT THEMES" header before first light theme (after dark themes)
-		if i > 0 && m.themes[i-1].Style == "dark" && option.Style == "light" && !lightHeaderShown {
-			lines = append(lines, "") // Blank line
-			header := headerStyle.Render("Light Themes")
-			lines = append(lines, header)
-			separator := strings.Repeat("─", contentWidth)
-			lines = append(lines, separatorStyle.Render(separator))
-			lightHeaderShown = true
+		// Add "LIGHT THEMES" header lines individually before first light theme (after dark themes)
+		// Only add each line if there's space - continue even if some lines don't fit
+		if i > 0 && m.themes[i-1].Style == "dark" && option.Style == "light" {
+			if !lightHeaderBlankShown {
+				if addHeaderLine("") {
+					lightHeaderBlankShown = true
+				}
+				// Continue even if this line didn't fit - try next line
+			}
+			if !lightHeaderTextShown {
+				if addHeaderLine(headerStyle.Render("LIGHT THEMES")) {
+					lightHeaderTextShown = true
+				}
+				// Continue even if this line didn't fit - try next line
+			}
+			if !lightHeaderSeparatorShown {
+				if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
+					lightHeaderSeparatorShown = true
+				}
+				// Continue even if this line didn't fit - render theme items
+			}
+		}
+
+		// Add theme button line only if there's space
+		if len(lines) >= availableHeight {
+			break // No space, stop rendering
 		}
 
 		buttonText := option.DisplayName
