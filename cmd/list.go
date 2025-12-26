@@ -224,9 +224,9 @@ Flags:
 
 			// Show filter info in same format as successful results, just with 0 count
 			if familyFilter != "" || typeFilter != "" {
-				filterInfo := fmt.Sprintf("Found 0 font families installed matching '%s'", ui.TableSourceName.Render(familyFilter))
+				filterInfo := fmt.Sprintf("Found 0 font families installed matching '%s'", ui.QueryText.Render(familyFilter))
 				if typeFilter != "" {
-					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
+					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.QueryText.Render(typeFilter))
 				}
 				fmt.Printf("%s\n\n", filterInfo)
 			} else {
@@ -240,9 +240,9 @@ Flags:
 
 		// Show filter info if filtering is applied (count shows families, not individual files)
 		if familyFilter != "" || typeFilter != "" {
-			filterInfo := fmt.Sprintf("Found %d font families installed matching '%s'", len(names), ui.TableSourceName.Render(familyFilter))
+			filterInfo := fmt.Sprintf("Found %d font families installed matching '%s'", len(names), ui.QueryText.Render(familyFilter))
 			if typeFilter != "" {
-				filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.TableSourceName.Render(typeFilter))
+				filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.QueryText.Render(typeFilter))
 			}
 			fmt.Printf("%s\n\n", filterInfo)
 		} else {

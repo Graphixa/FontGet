@@ -322,7 +322,7 @@ func findMatchesInRepository(repository *repo.Repository, fontName string) []rep
 // showMultipleMatchesAndExit displays search results and instructs user to use specific font ID
 func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 
-	fmt.Printf("\n%s\n", ui.InfoText.Render(fmt.Sprintf("Multiple fonts found matching '%s'.", fontName)))
+	fmt.Printf("\n%s\n", ui.InfoText.Render(fmt.Sprintf("Multiple fonts found matching '%s'.", ui.QueryText.Render(fontName))))
 	fmt.Printf("%s\n\n", ui.Text.Render("Please specify the exact font ID to install from a specific source."))
 
 	// Use consistent column widths and apply styling to the entire formatted string

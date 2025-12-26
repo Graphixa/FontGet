@@ -156,13 +156,13 @@ Use -c without a value to list categories.`,
 		// Build the search result message
 		var searchMsg string
 		if query != "" {
-			searchMsg = fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.TableSourceName.Render(query))
+			searchMsg = fmt.Sprintf("Found %d fonts matching: '%s'", len(results), ui.QueryText.Render(query))
 			if category != "" {
-				searchMsg += fmt.Sprintf(" | Filtered by category: '%s'", ui.TableSourceName.Render(category))
+				searchMsg += fmt.Sprintf(" | Filtered by category: '%s'", ui.QueryText.Render(category))
 			}
 		} else if category != "" {
 			// Category-only search
-			searchMsg = fmt.Sprintf("Found %d fonts in category: '%s'", len(results), ui.TableSourceName.Render(category))
+			searchMsg = fmt.Sprintf("Found %d fonts in category: '%s'", len(results), ui.QueryText.Render(category))
 		} else {
 			// This shouldn't happen due to validation, but handle it gracefully
 			searchMsg = fmt.Sprintf("Found %d fonts", len(results))
