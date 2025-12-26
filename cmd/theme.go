@@ -131,10 +131,27 @@ func NewThemeSelectionModel() (*themeSelectionModel, error) {
 		selectedLineIndex = 0
 	}
 
+	// Initialize scrollOffset: always show from top, but scroll just enough to keep selected theme visible
+	// We'll estimate available height (will be recalculated when window size is known)
+	estimatedAvailableHeight := 20
+
+	var initialScrollOffset int
+	// If selected theme is within the first viewport, show from top
+	if selectedLineIndex < estimatedAvailableHeight {
+		initialScrollOffset = 0
+	} else {
+		// Selected theme is beyond first viewport - scroll just enough to show it
+		// Position it near the top (with a small buffer) but still visible
+		initialScrollOffset = selectedLineIndex - estimatedAvailableHeight + 1
+		if initialScrollOffset < 0 {
+			initialScrollOffset = 0
+		}
+	}
+
 	return &themeSelectionModel{
 		themes:        options,
 		selectedIndex: selectedIndex,
-		scrollOffset:  selectedLineIndex, // Initialize to show selected theme (line-based)
+		scrollOffset:  initialScrollOffset, // Initialize: center if in middle, otherwise top/bottom
 		currentTheme:  currentTheme,
 		preview:       preview,
 		buttons:       buttons,
@@ -222,7 +239,19 @@ func (m themeSelectionModel) View() string {
 	commands = append(commands, ui.RenderKeyWithDescription("Esc", "Cancel"))
 	help := strings.Join(commands, "  ")
 
-	currentInfo := fmt.Sprintf("Current Theme: %s", m.currentTheme)
+	// Style "Current Theme: " with the primary color from the current theme
+	colors := ui.GetCurrentColors()
+	primaryColor := colors.Primary
+	// Handle empty color (e.g., system theme) by using NoColor
+	var color lipgloss.TerminalColor
+	if primaryColor == "" {
+		color = lipgloss.NoColor{}
+	} else {
+		color = lipgloss.Color(primaryColor)
+	}
+	themeLabelStyle := lipgloss.NewStyle().Foreground(color)
+	themeLabel := themeLabelStyle.Render("Current Theme: ")
+	currentInfo := themeLabel + m.currentTheme
 
 	// Footer is a single line; height = 1
 	headerHeight := 0 // title is inside the frame
@@ -247,7 +276,6 @@ func (m themeSelectionModel) View() string {
 	rightContent := m.renderRightPanelContent(layout.RightWidth, layout.PanelHeight)
 
 	// Render combined panels with shared border and title
-	colors := ui.GetCurrentColors()
 	separatorColor := lipgloss.Color(colors.Placeholders)
 	borderColor := lipgloss.Color(colors.Placeholders)
 	combined := renderCombinedPanels(
@@ -526,26 +554,21 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	isCurrentlyVisible := selectedLineIndex >= m.scrollOffset && selectedLineIndex < m.scrollOffset+availableHeight
 
 	if !isCurrentlyVisible {
-		// Selected line is not visible - adjust scrollOffset to show it
-		if selectedLineIndex >= m.scrollOffset+availableHeight {
-			// Selected line is below visible range - scroll down
-			// Position it with a small buffer from top (2 lines)
-			buffer := 2
-			m.scrollOffset = selectedLineIndex - buffer
-			if m.scrollOffset < 0 {
-				m.scrollOffset = 0
-			}
-		} else if selectedLineIndex < m.scrollOffset {
-			// Selected line is above visible range - scroll up
-			// Position it with a small buffer from top
-			buffer := 2
-			m.scrollOffset = selectedLineIndex - buffer
+		// Selected line is not visible - scroll just enough to show it, keeping it near the top
+		if selectedLineIndex < availableHeight {
+			// Selected theme is within first viewport - show from top
+			m.scrollOffset = 0
+		} else {
+			// Selected theme is beyond first viewport - scroll just enough to show it
+			// Position it near the top (with a small buffer) but still visible
+			m.scrollOffset = selectedLineIndex - availableHeight + 1
 			if m.scrollOffset < 0 {
 				m.scrollOffset = 0
 			}
 		}
 	} else {
-		// Selected line is visible - only adjust if it's too close to edges
+		// Selected line is visible - only adjust if it's about to go out of view
+		// Use a small buffer to prevent it from going out of view
 		buffer := 2
 		if availableHeight <= 4 {
 			buffer = 1
@@ -558,17 +581,19 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 		if isNearEnd {
 			// At the bottom: don't adjust - prevents climbing bug
 		} else {
-			// Not at the bottom: normal edge detection
-			// Check if too close to bottom edge
+			// Not at the bottom: only adjust if item is about to go out of view
+			// Check if too close to bottom edge (about to scroll out of view)
 			if selectedLineIndex >= m.scrollOffset+availableHeight-buffer {
+				// Scroll down just enough to keep it visible, keeping it near the top
 				m.scrollOffset = selectedLineIndex - availableHeight + buffer + 1
 				if m.scrollOffset < 0 {
 					m.scrollOffset = 0
 				}
 			}
 
-			// Check if too close to top edge
+			// Check if too close to top edge (about to scroll out of view)
 			if selectedLineIndex < m.scrollOffset+buffer {
+				// Scroll up just enough to keep it visible, keeping it near the top
 				m.scrollOffset = selectedLineIndex - buffer
 				if m.scrollOffset < 0 {
 					m.scrollOffset = 0
