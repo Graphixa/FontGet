@@ -52,13 +52,21 @@ func init() {
 type themeSelectionModel struct {
 	themes        []ui.ThemeOption
 	selectedIndex int
-	scrollOffset  int // First visible theme index in the menu
+	scrollOffset  int // First visible line index (line-based scrolling)
 	currentTheme  string
 	preview       *components.PreviewModel
 	width         int
 	height        int
 	buttons       *components.ButtonGroup
 	quitting      bool
+}
+
+// MenuLine represents a single line in the menu (header line or theme button)
+type MenuLine struct {
+	Type       string // "header_blank", "header_text", "header_separator", or "theme"
+	Content    string // The actual content to render
+	ThemeIndex int    // For theme lines, the index in m.themes array (-1 for header lines)
+	IsSelected bool   // Whether this line represents the selected theme
 }
 
 // NewThemeSelectionModel creates a new theme selection model
@@ -108,10 +116,25 @@ func NewThemeSelectionModel() (*themeSelectionModel, error) {
 	buttons := components.NewButtonGroup(buttonTexts, selectedIndex)
 	buttons.SetFocus(true)
 
+	// Create a temporary model to calculate line positions
+	tempModel := &themeSelectionModel{
+		themes:        options,
+		selectedIndex: selectedIndex,
+		buttons:       buttons,
+	}
+
+	// Build all lines to find the line index of the selected theme
+	// Use a reasonable contentWidth for calculation (will be recalculated on render)
+	allLines := tempModel.buildAllMenuLines(30)
+	selectedLineIndex := tempModel.findThemeLineIndex(selectedIndex, allLines)
+	if selectedLineIndex < 0 {
+		selectedLineIndex = 0
+	}
+
 	return &themeSelectionModel{
 		themes:        options,
 		selectedIndex: selectedIndex,
-		scrollOffset:  selectedIndex, // Initialize to show selected theme
+		scrollOffset:  selectedLineIndex, // Initialize to show selected theme (line-based)
 		currentTheme:  currentTheme,
 		preview:       preview,
 		buttons:       buttons,
@@ -152,7 +175,7 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.buttons.Selected = m.selectedIndex
 				// Hot-reload preview (errors will be shown in preview panel)
 				_ = m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName)
-				// Adjust scroll to keep selected item visible
+				// Adjust scroll to keep selected item visible (line-based)
 				m = m.adjustScrollForSelection()
 			}
 			return m, nil
@@ -163,7 +186,7 @@ func (m themeSelectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.buttons.Selected = m.selectedIndex
 				// Hot-reload preview (errors will be shown in preview panel)
 				_ = m.preview.LoadTheme(m.themes[m.selectedIndex].ThemeName)
-				// Adjust scroll to keep selected item visible
+				// Adjust scroll to keep selected item visible (line-based)
 				m = m.adjustScrollForSelection()
 			}
 			return m, nil
@@ -291,6 +314,88 @@ func (m themeSelectionModel) calculateThemeLinePositions() (map[int]int, int) {
 	return positions, currentLine
 }
 
+// buildAllMenuLines builds a complete array of all menu lines (headers + themes)
+// This is the single source of truth for all lines in the menu
+func (m themeSelectionModel) buildAllMenuLines(contentWidth int) []MenuLine {
+	var allLines []MenuLine
+	colors := ui.GetCurrentColors()
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colors.Secondary)).
+		Bold(true)
+	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Placeholders))
+
+	darkHeaderShown := false
+	lightHeaderShown := false
+
+	for i, option := range m.themes {
+		// Add "DARK THEMES" header before first dark theme (after System)
+		if i > 0 && m.themes[i-1].Style == "" && option.Style == "dark" && !darkHeaderShown {
+			allLines = append(allLines, MenuLine{
+				Type:       "header_blank",
+				Content:    "",
+				ThemeIndex: -1,
+			})
+			allLines = append(allLines, MenuLine{
+				Type:       "header_text",
+				Content:    headerStyle.Render("DARK THEMES"),
+				ThemeIndex: -1,
+			})
+			allLines = append(allLines, MenuLine{
+				Type:       "header_separator",
+				Content:    separatorStyle.Render(strings.Repeat("─", contentWidth)),
+				ThemeIndex: -1,
+			})
+			darkHeaderShown = true
+		}
+
+		// Add "LIGHT THEMES" header before first light theme (after dark themes)
+		if i > 0 && m.themes[i-1].Style == "dark" && option.Style == "light" && !lightHeaderShown {
+			allLines = append(allLines, MenuLine{
+				Type:       "header_blank",
+				Content:    "",
+				ThemeIndex: -1,
+			})
+			allLines = append(allLines, MenuLine{
+				Type:       "header_text",
+				Content:    headerStyle.Render("LIGHT THEMES"),
+				ThemeIndex: -1,
+			})
+			allLines = append(allLines, MenuLine{
+				Type:       "header_separator",
+				Content:    separatorStyle.Render(strings.Repeat("─", contentWidth)),
+				ThemeIndex: -1,
+			})
+			lightHeaderShown = true
+		}
+
+		// Add theme button line
+		buttonText := option.DisplayName
+		button := components.Button{
+			Text:     buttonText,
+			Selected: (i == m.selectedIndex && m.buttons.HasFocus),
+		}
+		rendered := button.RenderFullWidth(contentWidth)
+		allLines = append(allLines, MenuLine{
+			Type:       "theme",
+			Content:    rendered,
+			ThemeIndex: i,
+			IsSelected: (i == m.selectedIndex && m.buttons.HasFocus),
+		})
+	}
+
+	return allLines
+}
+
+// findThemeLineIndex finds the line index for a given theme index
+func (m themeSelectionModel) findThemeLineIndex(themeIndex int, allLines []MenuLine) int {
+	for i, line := range allLines {
+		if line.ThemeIndex == themeIndex {
+			return i
+		}
+	}
+	return -1
+}
+
 // calculateLinePosition calculates the line position (0-based) for a given theme index
 // accounting for headers that appear before it
 // Returns the line number where this theme's button would appear
@@ -378,9 +483,8 @@ func (m themeSelectionModel) findScrollOffsetForLinePosition(selectedIndex, targ
 	return bestOffset
 }
 
-// adjustScrollForSelection adjusts scrollOffset to keep selectedIndex visible
+// adjustScrollForSelection adjusts scrollOffset (line-based) to keep selectedIndex visible
 // Returns the modified model with updated scrollOffset
-// Uses incremental adjustment to prevent jumping when headers appear
 func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	if len(m.themes) == 0 || m.height == 0 {
 		return m
@@ -398,41 +502,52 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	layout := CalculatePanelLayout(layoutConfig)
 
 	// Available height = panel height - 2 (borders) - 2 (padding)
-	// This matches the calculation in renderLeftPanelContent
 	availableHeight := layout.PanelHeight - 2 - 2
 	if availableHeight < 1 {
 		availableHeight = 1
 	}
 
-	// Calculate visible item count from current scrollOffset
-	visibleCount := m.calculateVisibleItemCount(availableHeight)
+	// Build all lines to find the selected theme's line index
+	// Use a reasonable contentWidth for calculation
+	contentWidth := 30
+	if m.width > 0 {
+		contentWidth = m.width - 3
+		if contentWidth < 10 {
+			contentWidth = 10
+		}
+	}
+	allLines := m.buildAllMenuLines(contentWidth)
+	selectedLineIndex := m.findThemeLineIndex(m.selectedIndex, allLines)
+	if selectedLineIndex < 0 {
+		selectedLineIndex = 0
+	}
 
-	// Check if selected item is currently visible
-	startIndex, endIndex := m.getVisibleThemeRange(availableHeight)
-	isCurrentlyVisible := m.selectedIndex >= startIndex && m.selectedIndex <= endIndex
+	// Check if selected line is currently visible
+	isCurrentlyVisible := selectedLineIndex >= m.scrollOffset && selectedLineIndex < m.scrollOffset+availableHeight
 
 	if !isCurrentlyVisible {
-		// Selected item is not visible - adjust scrollOffset incrementally
-		if m.selectedIndex >= m.scrollOffset+visibleCount {
-			// Selected item is below visible range - scroll down incrementally
-			// Only move enough to bring it into view, not to a fixed position
-			m.scrollOffset = m.selectedIndex - visibleCount + 1
+		// Selected line is not visible - adjust scrollOffset to show it
+		if selectedLineIndex >= m.scrollOffset+availableHeight {
+			// Selected line is below visible range - scroll down
+			// Position it with a small buffer from top (2 lines)
+			buffer := 2
+			m.scrollOffset = selectedLineIndex - buffer
 			if m.scrollOffset < 0 {
 				m.scrollOffset = 0
 			}
-		} else if m.selectedIndex < m.scrollOffset {
-			// Selected item is above visible range - scroll up incrementally
-			// Only move enough to bring it into view
-			m.scrollOffset = m.selectedIndex
+		} else if selectedLineIndex < m.scrollOffset {
+			// Selected line is above visible range - scroll up
+			// Position it with a small buffer from top
+			buffer := 2
+			m.scrollOffset = selectedLineIndex - buffer
 			if m.scrollOffset < 0 {
 				m.scrollOffset = 0
 			}
 		}
 	} else {
-		// Selected item is visible - only adjust if it's too close to edges
-		// Use a small buffer (1-2 items) instead of a fixed line position
+		// Selected line is visible - only adjust if it's too close to edges
 		buffer := 2
-		if visibleCount <= 4 {
+		if availableHeight <= 4 {
 			buffer = 1
 		}
 
@@ -440,27 +555,21 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 		totalThemes := len(m.themes)
 		isNearEnd := m.selectedIndex >= totalThemes-2 // Within last 2 items
 
-		// When at the bottom of the list, be more conservative with adjustments
-		// Only adjust if item is actually at risk of going out of view
 		if isNearEnd {
-			// At the bottom: only adjust if item would go out of view
-			// Don't adjust for "too close to edge" - this prevents the climbing bug
-			// The item is already visible, so no adjustment needed
+			// At the bottom: don't adjust - prevents climbing bug
 		} else {
 			// Not at the bottom: normal edge detection
 			// Check if too close to bottom edge
-			if m.selectedIndex >= m.scrollOffset+visibleCount-buffer {
-				// Move scroll down just enough to keep buffer space
-				m.scrollOffset = m.selectedIndex - visibleCount + buffer + 1
+			if selectedLineIndex >= m.scrollOffset+availableHeight-buffer {
+				m.scrollOffset = selectedLineIndex - availableHeight + buffer + 1
 				if m.scrollOffset < 0 {
 					m.scrollOffset = 0
 				}
 			}
 
 			// Check if too close to top edge
-			if m.selectedIndex < m.scrollOffset+buffer {
-				// Move scroll up just enough to keep buffer space
-				m.scrollOffset = m.selectedIndex - buffer
+			if selectedLineIndex < m.scrollOffset+buffer {
+				m.scrollOffset = selectedLineIndex - buffer
 				if m.scrollOffset < 0 {
 					m.scrollOffset = 0
 				}
@@ -469,7 +578,7 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	}
 
 	// Ensure scrollOffset doesn't exceed bounds
-	maxScrollOffset := len(m.themes) - 1
+	maxScrollOffset := len(allLines) - 1
 	if m.scrollOffset > maxScrollOffset {
 		m.scrollOffset = maxScrollOffset
 	}
@@ -480,9 +589,8 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	return m
 }
 
-// calculateVisibleItemCount calculates how many theme items can fit in the available height
-// Note: availableHeight already accounts for borders and padding
-// Now counts each header line individually instead of as a 3-line group
+// calculateVisibleItemCount is deprecated - no longer used with line-based scrolling
+// Kept for reference but not called
 func (m themeSelectionModel) calculateVisibleItemCount(availableHeight int) int {
 	if len(m.themes) == 0 {
 		return 0
@@ -601,8 +709,8 @@ func (m themeSelectionModel) calculateVisibleItemCount(availableHeight int) int 
 	return itemCount
 }
 
-// getVisibleThemeRange calculates which theme indices should be visible
-// given the scrollOffset and available height. Returns start and end indices (inclusive).
+// getVisibleThemeRange is deprecated - no longer used with line-based scrolling
+// Kept for reference but not called
 func (m themeSelectionModel) getVisibleThemeRange(availableHeight int) (start, end int) {
 	if len(m.themes) == 0 {
 		return 0, 0
@@ -741,6 +849,7 @@ func (m themeSelectionModel) getVisibleThemeRange(availableHeight int) (start, e
 }
 
 // renderLeftPanelContent renders the left panel content (without border)
+// Uses line-based scrolling: builds all lines first, then renders visible slice
 func (m themeSelectionModel) renderLeftPanelContent(width, panelHeight int) string {
 	// Panel structure: │ (border) + content with padding + │ (separator)
 	// Content with padding should be: width - 1 (minus left border)
@@ -756,127 +865,34 @@ func (m themeSelectionModel) renderLeftPanelContent(width, panelHeight int) stri
 		availableHeight = 1
 	}
 
-	// Get visible theme range based on scrollOffset
-	startIndex, endIndex := m.getVisibleThemeRange(availableHeight)
+	// Build all menu lines (headers + themes) - single source of truth
+	allLines := m.buildAllMenuLines(contentWidth)
 
-	var lines []string
-	colors := ui.GetCurrentColors()
-	headerStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colors.Secondary)).
-		Bold(true)
-	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Placeholders))
-
-	darkHeaderBlankShown := false
-	darkHeaderTextShown := false
-	darkHeaderSeparatorShown := false
-	lightHeaderBlankShown := false
-	lightHeaderTextShown := false
-	lightHeaderSeparatorShown := false
-
-	// Helper function to add a header line only if there's space
-	addHeaderLine := func(line string) bool {
-		if len(lines) < availableHeight {
-			lines = append(lines, line)
-			return true
-		}
-		return false
+	// Ensure scrollOffset is within bounds
+	if m.scrollOffset < 0 {
+		m.scrollOffset = 0
 	}
-
-	// Track header lines individually - check if we need to show header lines before startIndex
-	// Add each line only if there's space available
-	if startIndex > 0 && len(m.themes) > 0 {
-		if m.themes[startIndex-1].Style == "" && m.themes[startIndex].Style == "dark" {
-			if addHeaderLine("") {
-				darkHeaderBlankShown = true
-			}
-			if addHeaderLine(headerStyle.Render("DARK THEMES")) {
-				darkHeaderTextShown = true
-			}
-			if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
-				darkHeaderSeparatorShown = true
-			}
-		}
-		// Check if we need to show LIGHT THEMES header before startIndex
-		if startIndex > 0 && m.themes[startIndex-1].Style == "dark" && m.themes[startIndex].Style == "light" {
-			if addHeaderLine("") {
-				lightHeaderBlankShown = true
-			}
-			if addHeaderLine(headerStyle.Render("LIGHT THEMES")) {
-				lightHeaderTextShown = true
-			}
-			if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
-				lightHeaderSeparatorShown = true
-			}
+	if m.scrollOffset >= len(allLines) {
+		m.scrollOffset = len(allLines) - 1
+		if m.scrollOffset < 0 {
+			m.scrollOffset = 0
 		}
 	}
 
-	// Render only visible themes, adding header lines individually as needed
-	// Check available space for each line before adding
-	for i := startIndex; i <= endIndex && i < len(m.themes); i++ {
-		option := m.themes[i]
-
-		// Add "DARK THEMES" header lines individually before first dark theme (after System)
-		// Only add each line if there's space - continue even if some lines don't fit
-		if i > 0 && m.themes[i-1].Style == "" && option.Style == "dark" {
-			if !darkHeaderBlankShown {
-				if addHeaderLine("") {
-					darkHeaderBlankShown = true
-				}
-				// Continue even if this line didn't fit - try next line
-			}
-			if !darkHeaderTextShown {
-				if addHeaderLine(headerStyle.Render("DARK THEMES")) {
-					darkHeaderTextShown = true
-				}
-				// Continue even if this line didn't fit - try next line
-			}
-			if !darkHeaderSeparatorShown {
-				if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
-					darkHeaderSeparatorShown = true
-				}
-				// Continue even if this line didn't fit - render theme items
-			}
-		}
-
-		// Add "LIGHT THEMES" header lines individually before first light theme (after dark themes)
-		// Only add each line if there's space - continue even if some lines don't fit
-		if i > 0 && m.themes[i-1].Style == "dark" && option.Style == "light" {
-			if !lightHeaderBlankShown {
-				if addHeaderLine("") {
-					lightHeaderBlankShown = true
-				}
-				// Continue even if this line didn't fit - try next line
-			}
-			if !lightHeaderTextShown {
-				if addHeaderLine(headerStyle.Render("LIGHT THEMES")) {
-					lightHeaderTextShown = true
-				}
-				// Continue even if this line didn't fit - try next line
-			}
-			if !lightHeaderSeparatorShown {
-				if addHeaderLine(separatorStyle.Render(strings.Repeat("─", contentWidth))) {
-					lightHeaderSeparatorShown = true
-				}
-				// Continue even if this line didn't fit - render theme items
-			}
-		}
-
-		// Add theme button line only if there's space
-		if len(lines) >= availableHeight {
-			break // No space, stop rendering
-		}
-
-		buttonText := option.DisplayName
-		button := components.Button{
-			Text:     buttonText,
-			Selected: (i == m.selectedIndex && m.buttons.HasFocus),
-		}
-		// Use RenderFullWidth to make button expand to fill the content width
-		rendered := button.RenderFullWidth(contentWidth)
-		lines = append(lines, rendered)
+	// Calculate visible range: slice the array based on scrollOffset
+	startLine := m.scrollOffset
+	endLine := startLine + availableHeight
+	if endLine > len(allLines) {
+		endLine = len(allLines)
 	}
 
-	content := lipgloss.JoinVertical(lipgloss.Left, lines...)
+	// Extract visible lines
+	var visibleLines []string
+	for i := startLine; i < endLine; i++ {
+		visibleLines = append(visibleLines, allLines[i].Content)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, visibleLines...)
 	// Add equal padding on all sides (1 char each)
 	return lipgloss.NewStyle().Padding(1, 1).Render(content)
 }
