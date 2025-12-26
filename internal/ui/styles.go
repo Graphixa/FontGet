@@ -64,6 +64,12 @@ var (
 	// Colors: Set by InitStyles() from theme
 	SuccessText = lipgloss.NewStyle()
 
+	// QueryText - User input values (search queries, filter terms, user-provided values)
+	// Usage: Search queries, filter terms, user-provided input values
+	// Example: ui.QueryText.Render("roboto")
+	// Colors: Set by InitStyles() from theme (uses Primary color)
+	QueryText = lipgloss.NewStyle()
+
 	// TextBold - Bold text with terminal default color
 	// Usage: Bold labels, report titles, emphasized text without color
 	// Example: ui.TextBold.Render("Status Report")
@@ -453,6 +459,11 @@ func InitStyles() error {
 
 	SecondaryText = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(colors.Secondary))
+
+	// QueryText - User input values (search queries, filter terms, user-provided values)
+	// Uses Primary color to distinguish user input from data/content
+	QueryText = lipgloss.NewStyle().
+		Foreground(getColorOrNoColor(colors.Primary))
 
 	WarningText = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(colors.Warning))
