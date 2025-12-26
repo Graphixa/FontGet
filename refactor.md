@@ -204,13 +204,30 @@
   - [ ] **Future**: Code signing verification (library doesn't support, can add later)
 
 #### **Sources Management CLI Flags**
-- [ ] **Add non-TUI flags to `sources manage`**
-  - [ ] `--add <name> --prefix <prefix> --url <url> [--priority <number>]` - Add source without TUI
-  - [ ] `--remove <name>` - Remove source without TUI
-  - [ ] `--enable <name>` - Enable source without TUI
-  - [ ] `--disable <name>` - Disable source without TUI
-  - [ ] `--priority <name> <rank>` - Set source priority without TUI
-  - [ ] Benefits: Automation support, CI/CD compatibility, script-friendly
+**Goal**: Enable automation-friendly, non-interactive source management for scripts and CI/CD
+
+- [ ] **Add `sources add` subcommand** (non-TUI alternative to `sources manage`)
+  - [ ] `fontget sources add --name <name> --url <url> [--prefix <prefix>] [--priority <number>]`
+  - [ ] Auto-generate prefix from name if not provided
+  - [ ] Validate URL format and source accessibility
+  - [ ] Error if source name/prefix already exists
+
+- [ ] **Add `sources remove` subcommand**
+  - [ ] `fontget sources remove --name <name>`
+  - [ ] Prevent removal of built-in sources (error message)
+  - [ ] Confirm removal or add `--force` flag
+
+- [ ] **Add `sources enable/disable` subcommands**
+  - [ ] `fontget sources enable --name <name>`
+  - [ ] `fontget sources disable --name <name>`
+  - [ ] Work with both custom and built-in sources
+
+- [ ] **Add `sources set` subcommand** (update source properties)
+  - [ ] `fontget sources set --name <name> --priority <number>` - Update priority
+  - [ ] `fontget sources set --name <name> --prefix <prefix>` - Update prefix
+  - [ ] `fontget sources set --name <name> --url <url>` - Update URL
+  - [ ] Support multiple properties: `--name <name> --priority <num> --prefix <prefix>`
+  - [ ] Prevent modifying built-in source properties (error message)
 
 ---
 
