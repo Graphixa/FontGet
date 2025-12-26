@@ -29,9 +29,10 @@ type backupResult struct {
 }
 
 var backupCmd = &cobra.Command{
-	Use:          "backup [output-path]",
-	Short:        "Backup installed font files to a zip archive",
-	SilenceUsage: true,
+	Use:           "backup [output-path]",
+	Short:         "Backup installed font files to a zip archive",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `Backup installed font files to a zip archive organized by source and family name.
 
 This command creates a backup zip archive containing all font files installed on your system.
@@ -212,6 +213,21 @@ func validateAndNormalizeOutputPath(outputPath string) (string, error) {
 	return absPath, nil
 }
 
+// formatScopeDisplay formats the scope list for user-friendly display
+func formatScopeDisplay(scopes []platform.InstallationScope) string {
+	if len(scopes) == 0 {
+		return "no scope"
+	}
+	if len(scopes) == 1 {
+		if scopes[0] == platform.UserScope {
+			return "user scope"
+		}
+		return "machine scope"
+	}
+	// Both scopes
+	return "user and machine scope"
+}
+
 // detectAccessibleScopes detects which font scopes are accessible based on elevation
 func detectAccessibleScopes(fm platform.FontManager) ([]platform.InstallationScope, error) {
 	isElevated, err := fm.IsElevated()
@@ -291,6 +307,15 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 		return nil
 	}
 
+	// Format scope display for user-friendly output
+	scopeDisplay := formatScopeDisplay(scopes)
+
+	// Show pre-operation summary - plain text for count, Primary for scope
+	fmt.Printf("Found %d font families to backup %s\n", totalFamilies, ui.QueryText.Render(fmt.Sprintf("(%s)", scopeDisplay)))
+
+	// Create progress bar title with destination path - plain text, Secondary for path
+	progressTitle := fmt.Sprintf("Backing up font files to: %s", ui.SecondaryText.Render(zipPath))
+
 	// Create empty operation items - we just want the progress bar, not individual items
 	// Set TotalItems to 0 to hide the count text
 	operationItems := []components.OperationItem{}
@@ -300,7 +325,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	debug := IsDebug()
 	var backupResult *backupResult
 	progressErr := components.RunProgressBar(
-		"Backing up font files",
+		progressTitle,
 		operationItems,
 		verbose, // Verbose mode: show operational details and file/variant listings
 		debug,   // Debug mode: show technical details
@@ -313,12 +338,17 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	)
 
 	if progressErr != nil {
+		// Print error with proper styling (Cobra won't print it since SilenceErrors is true)
+		fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Error: %v", progressErr)))
+		fmt.Println()
 		return progressErr
 	}
 
-	// Show success message after progress bar completes
+	// Show success message after progress bar completes - simplified
 	if backupResult != nil {
-		fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully backed up %d font families to %s", backupResult.familyCount, zipPath)))
+		// Just show the count - path was already shown in progress bar title
+		successMsg := fmt.Sprintf("Successfully backed up %d font families.", backupResult.familyCount)
+		fmt.Printf("%s\n", ui.SuccessText.Render(successMsg))
 		fmt.Println()
 	}
 
@@ -407,8 +437,7 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 	if dir := filepath.Dir(zipPath); dir != "." && dir != zipPath {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			GetLogger().Error("Failed to create backup directory: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("os.MkdirAll() failed for zip parent directory: %v", err)
+			// Don't print error here - let Cobra handle it when we return
 			return nil, fmt.Errorf("unable to create directory for backup archive: %v", err)
 		}
 	}
@@ -417,8 +446,7 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 	zipFile, err := os.Create(zipPath)
 	if err != nil {
 		GetLogger().Error("Failed to create backup zip file: %v", err)
-		output.GetVerbose().Error("%v", err)
-		output.GetDebug().Error("os.Create() failed for zip file: %v", err)
+		// Don't print error here - let Cobra handle it when we return
 		return nil, fmt.Errorf("unable to create backup archive: %v", err)
 	}
 	defer zipFile.Close()
@@ -513,8 +541,7 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 	// Close zip writer to finalize the archive
 	if err := zipWriter.Close(); err != nil {
 		GetLogger().Error("Failed to close zip writer: %v", err)
-		output.GetVerbose().Error("%v", err)
-		output.GetDebug().Error("zipWriter.Close() failed: %v", err)
+		// Don't print error here - let Cobra handle it when we return
 		return nil, fmt.Errorf("unable to finalize backup archive: %v", err)
 	}
 
