@@ -16,5 +16,5 @@ colors:
   overrides:
     # Progress bar gradient
     progress_bar:
-      start: "#46db6c"     # Green
-      finish: "#81d16d"    # Medium Green
+      start: "#90ee90"     # White
+      finish: "#addbad"    # Medium Green

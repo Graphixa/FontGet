@@ -2,8 +2,8 @@ theme_name: "Arasaka"
 
 colors:
   # Main text colors
-  primary: "#e60940"  # Red - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  secondary: "#f82a5d" # Pink - Used for TableSourceName, FormLabel, CardLabel
+  primary: "#ff355e"  # Red - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#e60940" # Radical Red - Used for TableSourceName, FormLabel, CardLabel
   components: "#de7c7c" # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#942e37" # Borders, placeholders, subtitles, separators
   base: "#2b1d1d"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
@@ -13,6 +13,3 @@ colors:
   warning: "#fcd98d" # Yellow
   error: "#e60940"   # Red
 
-  overrides:
-    page_title:
-      text: "#f82a5d" # Pink (different from primary)

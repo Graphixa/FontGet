@@ -1,0 +1,21 @@
+theme_name: "Tokyo Night"
+
+colors:
+  # Main text colors
+  primary: "#7aa2f7"  # Blue (Function names) - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#bb9af7" # Purple (Control keywords) - Used for TableSourceName, FormLabel, CardLabel
+  components: "#a9b1d6" # Foreground - used for buttons, switches, checkboxes, etc.
+  placeholders: "#565f89" # Comments - Borders, placeholders, subtitles, separators
+  base: "#1a1b26"   # Background - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+
+  # Status colors
+  warning: "#e0af68" # Yellow (Function parameters)
+  error: "#f7768e"   # Red (Keywords)
+  success: "#9ece6a" # Green (Strings)
+
+  overrides:
+    # Progress bar gradient
+    progress_bar:
+      start: "#7aa2f7" # Blue
+      finish: "#bb9af7" # Purple
+

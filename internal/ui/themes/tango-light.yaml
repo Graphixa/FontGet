@@ -1,0 +1,25 @@
+theme_name: "Tango Light"
+
+colors:
+  # Main text colors
+  primary: "#3465a4"  # Blue - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#75507b" # Plum - Used for TableSourceName, FormLabel, CardLabel
+  components: "#2e3436" # Foreground - used for buttons, switches, checkboxes, etc.
+  placeholders: "#555753" # Medium gray - Borders, placeholders, subtitles, separators
+  base: "#ffffff"   # White background - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+
+  # Status colors
+  warning: "#c4a000" # Yellow
+  error: "#cc0000"   # Red
+  success: "#4e9a06" # Green
+
+  overrides:
+    # Progress bar gradient
+    progress_bar:
+      start: "#3465a4" # Blue
+      finish: "#75507b" # Plum
+
+# Colors reference:
+# Tango Desktop Project color palette
+# https://en.wikipedia.org/wiki/Tango_Desktop_Project
+

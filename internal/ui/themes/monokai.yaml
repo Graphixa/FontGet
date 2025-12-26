@@ -1,0 +1,23 @@
+theme_name: "Monokai"
+
+colors:
+  # Main text colors
+  primary: "#FFD866"  # Keyword (Pink) - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#FF6188" # Argument (Green) - Used for TableSourceName, FormLabel, CardLabel
+  components: "#FCFCFA" # Foreground - used for buttons, switches, checkboxes, etc.
+  placeholders: "#5B595C" # Dimmed 1 - Borders, placeholders, subtitles, separators
+  base: "#2D2A2E"   # Background - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+
+  # Status colors
+  success: "#A9DC76" # Function (Green)
+  warning: "#FC9867" # Argument (Orange)
+  error: "#FF6188"   # Keyword (Red)
+
+  overrides:
+    # Progress bar gradient
+    progress_bar:
+      start: "#FF6188" # Keyword (Pink)
+      finish: "#78DCE8" # Function (Cyan)
+
+# Colors reference:
+# https://monokai.pro/contribute

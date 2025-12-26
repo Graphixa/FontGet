@@ -1,0 +1,24 @@
+theme_name: "Eldritch"
+
+colors:
+  # Main text colors
+  primary: "#37f499"  # Great Old One Green - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  secondary: "#04d1f9" # Cthulhu Cyan - Used for TableSourceName, FormLabel, CardLabel
+  components: "#ebfafa" # Lighthouse White - used for buttons, switches, checkboxes, etc.
+  placeholders: "#323449" # Shallow Depths Grey - Borders, placeholders, subtitles, separators
+  base: "#212337"   # Sunken Depths Grey - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+
+  # Status colors
+  warning: "#f1fc79" # Gold of Yuggoth (Yellow)
+  error: "#f16c75"   # R'lyeh' Red
+  success: "#37f499" # Great Old One Green (same as primary)
+
+  overrides:
+    # Progress bar gradient - Green to Cyan for that Lovecraftian feel
+    progress_bar:
+      start: "#37f499" # Great Old One Green
+      finish: "#04d1f9" # Cthulhu Cyan
+
+# Colors reference:
+# https://github.com/eldritch-theme
+
