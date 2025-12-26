@@ -608,7 +608,7 @@ Installation scope can be specified with the --scope flag:
 			operationItems,
 			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
-			func(send func(msg tea.Msg)) error {
+			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
 				// Process each font group (one per font family)
 				for itemIndex, fontGroup := range fontsToInstall {
 					// Start downloading - update status to show we're working on this item

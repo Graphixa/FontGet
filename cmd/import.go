@@ -407,7 +407,7 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 			operationItems,
 			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
-			func(send func(msg tea.Msg)) error {
+			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
 				// Process each font group
 				for itemIndex, fontGroup := range fontsToInstall {
 					send(components.ItemUpdateMsg{

@@ -249,7 +249,7 @@ func validateAndNormalizeExportPath(outputPath string) (string, error) {
 		// File exists - prompt for confirmation before overwriting
 		confirmed, err := components.RunConfirm(
 			"File Already Exists",
-			fmt.Sprintf("File already exists. Overwrite '%s'?", filepath.Base(absPath)),
+			fmt.Sprintf("File already exists. Overwrite '%s'?", ui.SecondaryText.Render(filepath.Base(absPath))),
 		)
 		if err != nil {
 			return "", fmt.Errorf("unable to show confirmation dialog: %v", err)

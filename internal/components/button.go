@@ -112,7 +112,9 @@ func (bg *ButtonGroup) HandleKey(key string) string {
 		}
 		return ""
 	case "enter", " ":
-		if bg.HasFocus && bg.Selected >= 0 && bg.Selected < len(bg.Buttons) {
+		// Allow activation even without focus (for fallback cases)
+		// Focus check is mainly for visual indication
+		if bg.Selected >= 0 && bg.Selected < len(bg.Buttons) {
 			return bg.Buttons[bg.Selected].Action
 		}
 		return ""

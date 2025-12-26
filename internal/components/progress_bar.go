@@ -35,9 +35,11 @@ type ProgressBarModel struct {
 	Spinner       spinner.Model
 	operationFunc func(program *tea.Program) error
 	quitting      bool
+	cancelled     bool // Track if operation was cancelled
 	err           error
 	program       *tea.Program
 	statusReport  *StatusReportData
+	cancelChan    chan struct{} // Channel to signal cancellation
 }
 
 // Message types for communication
@@ -59,6 +61,8 @@ type ProgressUpdateMsg struct {
 type operationCompleteMsg struct {
 	err error
 }
+
+type operationCancelledMsg struct{}
 
 type quitMsg struct{}
 
@@ -100,6 +104,7 @@ func NewProgressBar(title string, items []OperationItem, verboseMode bool, debug
 		DebugMode:   debugMode,
 		ProgressBar: prog,
 		Spinner:     spin,
+		cancelChan:  make(chan struct{}),
 	}
 }
 
@@ -118,6 +123,10 @@ func (m ProgressBarModel) startOperation() tea.Cmd {
 		// Run the operation in a goroutine to avoid blocking
 		go func() {
 			err := m.operationFunc(m.program)
+			// If cancelled, return a cancellation error
+			if m.cancelled {
+				err = fmt.Errorf("operation cancelled")
+			}
 			m.program.Send(operationCompleteMsg{err: err})
 		}()
 		return nil
@@ -128,9 +137,31 @@ func (m ProgressBarModel) startOperation() tea.Cmd {
 func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.String() == "ctrl+c" {
-			m.quitting = true
-			return m, tea.Quit
+		key := msg.String()
+		// Handle cancellation keys (q, esc, ctrl+c, enter, space) - like sources update
+		switch key {
+		case "q", "ctrl+c", "esc", "enter", " ":
+			if m.quitting {
+				// If already completed, any key quits
+				return m, tea.Quit
+			} else {
+				// If still running, mark as interrupted and quit immediately
+				// Don't process any more operationCompleteMsg messages
+				m.quitting = true
+				m.cancelled = true
+				m.err = fmt.Errorf("operation cancelled")
+				// Signal cancellation via channel if it exists
+				if m.cancelChan != nil {
+					select {
+					case <-m.cancelChan:
+						// Already closed
+					default:
+						close(m.cancelChan)
+					}
+				}
+				// Quit immediately - don't wait for operation
+				return m, tea.Quit
+			}
 		}
 		// If operation is complete, any key press should quit
 		if m.quitting {
@@ -182,6 +213,10 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case operationCompleteMsg:
+		// Ignore completion messages if we've already quit (interrupted)
+		if m.quitting {
+			return m, nil
+		}
 		m.quitting = true
 		m.err = msg.err
 		// Ensure progress is at 100% when operation completes
@@ -259,18 +294,36 @@ func (m ProgressBarModel) View() string {
 		titleText := m.Title
 		progressBar := m.renderInlineProgressBar()
 
+		// Check if any items will be displayed (not pending and not empty name)
+		hasDisplayableItems := false
+		for _, item := range m.Items {
+			if item.Status != "pending" && item.Name != "" {
+				hasDisplayableItems = true
+				break
+			}
+		}
+
 		var titleLine string
 		if m.TotalItems == 0 {
 			// No count text - just title and progress bar
-			titleLine = fmt.Sprintf("%s %s\n\n", titleText, progressBar)
+			if hasDisplayableItems {
+				titleLine = fmt.Sprintf("%s %s\n\n", titleText, progressBar)
+			} else {
+				titleLine = fmt.Sprintf("%s %s\n", titleText, progressBar)
+			}
 		} else {
 			// Show count text
 			countText := fmt.Sprintf("(%d of %d)", completed, m.TotalItems)
-			titleLine = fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
+			if hasDisplayableItems {
+				titleLine = fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
+			} else {
+				// No items to display - only one newline to avoid extra blank line
+				titleLine = fmt.Sprintf("%s %s %s\n", titleText, countText, progressBar)
+			}
 		}
 
 		// Combine into single line - no styling on text, only progress bar has gradient
-		// Title ends with \n\n to create blank line before items, and last item ends with \n
+		// Title ends with \n\n to create blank line before items (if items will be shown), otherwise just \n
 		// No leading \n - commands already start with a blank line per spacing framework
 		b.WriteString(titleLine)
 	} else {
@@ -282,6 +335,10 @@ func (m ProgressBarModel) View() string {
 	for _, item := range m.Items {
 		// Skip pending items - only show items that have started or completed
 		if item.Status == "pending" {
+			continue
+		}
+		// Skip items with empty names - these are used for count tracking only
+		if item.Name == "" {
 			continue
 		}
 
@@ -410,9 +467,23 @@ func (m ProgressBarModel) View() string {
 		}
 	}
 
-	// Progress bar output always ends with \n\n (one \n from last item, one \n for blank line)
-	// This ensures consistent spacing between sections per the spacing framework
-	if len(m.Items) > 0 {
+	// Progress bar output ends with \n for spacing before next message
+	// Check if any items were actually displayed (not just empty placeholder items)
+	hasDisplayedItems := false
+	for _, item := range m.Items {
+		if item.Status != "pending" && item.Name != "" {
+			hasDisplayedItems = true
+			break
+		}
+	}
+
+	// Always add a trailing newline to create blank line before next message
+	// (either after items if displayed, or after progress bar if no items)
+	if hasDisplayedItems {
+		b.WriteString("\n")
+	} else {
+		// No items displayed, but we still want a blank line after the progress bar
+		// The titleLine already has one \n, so add another to create blank line
 		b.WriteString("\n")
 	}
 
@@ -537,7 +608,7 @@ func operationTickCmd() tea.Cmd {
 }
 
 // RunProgressBar runs the progress display with the given operation
-func RunProgressBar(title string, items []OperationItem, verboseMode bool, debugMode bool, operation func(send func(msg tea.Msg)) error) error {
+func RunProgressBar(title string, items []OperationItem, verboseMode bool, debugMode bool, operation func(send func(msg tea.Msg), cancelChan <-chan struct{}) error) error {
 	// Initialize the model
 	model := NewProgressBar(title, items, verboseMode, debugMode)
 
@@ -550,9 +621,10 @@ func RunProgressBar(title string, items []OperationItem, verboseMode bool, debug
 	// Wrap the operation to work with the program
 	model.operationFunc = func(program *tea.Program) error {
 		// Call the operation with a send function that uses program.Send
+		// Also pass cancelChan so operation can check for cancellation
 		return operation(func(msg tea.Msg) {
 			program.Send(msg)
-		})
+		}, model.cancelChan)
 	}
 
 	// Run the program
@@ -561,9 +633,14 @@ func RunProgressBar(title string, items []OperationItem, verboseMode bool, debug
 		return err
 	}
 
-	// Check if there was an operation error
-	if m, ok := finalModel.(ProgressBarModel); ok && m.err != nil {
-		return m.err
+	// Check if there was an operation error or cancellation
+	if m, ok := finalModel.(ProgressBarModel); ok {
+		if m.cancelled {
+			return fmt.Errorf("operation cancelled")
+		}
+		if m.err != nil {
+			return m.err
+		}
 	}
 
 	return nil

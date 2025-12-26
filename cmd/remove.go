@@ -1012,7 +1012,7 @@ Names with spaces must be quoted. Scope: user (default), machine, or all (admin 
 			operationItems,
 			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
-			func(send func(msg tea.Msg)) error {
+			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
 				// Process items based on scope mode
 				if len(scopes) > 1 {
 					// "all" scope - process each font+scope combination individually

@@ -57,10 +57,12 @@ func (m *ConfirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch strings.ToLower(action) {
 			case strings.ToLower(m.ConfirmText), "yes", "save", "accept":
 				m.Confirmed = true
-				return m, tea.Quit
+				m.Quit = true
+				return m, nil // Don't quit here - let parent modal handle it
 			case strings.ToLower(m.CancelText), "no", "discard", "cancel":
 				m.Confirmed = false
-				return m, tea.Quit
+				m.Quit = true
+				return m, nil // Don't quit here - let parent modal handle it
 			}
 		}
 
@@ -68,13 +70,16 @@ func (m *ConfirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "y", "Y":
 			m.Confirmed = true
-			return m, tea.Quit
+			m.Quit = true
+			return m, nil // Don't quit here - let parent modal handle it
 		case "n", "N", "esc":
 			m.Confirmed = false
-			return m, tea.Quit
+			m.Quit = true
+			return m, nil // Don't quit here - let parent modal handle it
 		case "ctrl+c":
 			m.Confirmed = false
-			return m, tea.Quit
+			m.Quit = true
+			return m, nil // Don't quit here - let parent modal handle it
 		}
 	case tea.WindowSizeMsg:
 		m.Width = msg.Width
@@ -123,43 +128,56 @@ func (m *ConfirmModel) View() string {
 	return result.String()
 }
 
+// GetResult returns the modal result
+func (m *ConfirmModel) GetResult() ModalResult {
+	return ModalResult{
+		Confirmed: m.Confirmed,
+		Cancelled: !m.Confirmed,
+		Data:      nil,
+	}
+}
+
 // RunConfirm runs a confirmation dialog
 func RunConfirm(title, message string) (bool, error) {
-	model := NewConfirmModel(title, message)
-
-	// Create and run the Bubble Tea program
-	program := tea.NewProgram(model, tea.WithAltScreen())
-
-	finalModel, err := program.Run()
-	if err != nil {
-		return false, fmt.Errorf("failed to run confirmation dialog: %w", err)
-	}
-
-	// Check if the user confirmed
-	if m, ok := finalModel.(*ConfirmModel); ok {
-		return m.Confirmed, nil
-	}
-
-	return false, nil
+	return RunConfirmWithOptions(title, message, "Yes", "No", true, true)
 }
 
 // RunConfirmWithOptions runs a confirmation dialog with custom options
-func RunConfirmWithOptions(title, message, confirmText, cancelText string) (bool, error) {
+func RunConfirmWithOptions(title, message, confirmText, cancelText string, useAltScreen, showBorder bool) (bool, error) {
 	model := NewConfirmModel(title, message)
 	model.ConfirmText = confirmText
 	model.CancelText = cancelText
 
-	// Create and run the Bubble Tea program
-	program := tea.NewProgram(model, tea.WithAltScreen())
+	// Create a simple background (blank screen)
+	background := &BlankBackgroundModel{}
+
+	// Create overlay options
+	options := OverlayOptions{
+		ShowBorder:  showBorder,
+		BorderWidth: 0, // Auto-calculate
+	}
+
+	// Create overlay with centered modal
+	overlay := NewOverlayWithOptions(model, background, Center, Center, 0, 0, options)
+
+	// Create program with optional alt screen
+	var program *tea.Program
+	if useAltScreen {
+		program = tea.NewProgram(overlay, tea.WithAltScreen())
+	} else {
+		program = tea.NewProgram(overlay)
+	}
 
 	finalModel, err := program.Run()
 	if err != nil {
 		return false, fmt.Errorf("failed to run confirmation dialog: %w", err)
 	}
 
-	// Check if the user confirmed
-	if m, ok := finalModel.(*ConfirmModel); ok {
-		return m.Confirmed, nil
+	// Extract the confirm model from the overlay
+	if overlayModel, ok := finalModel.(*OverlayModel); ok {
+		if confirmModel, ok := overlayModel.Foreground.(*ConfirmModel); ok {
+			return confirmModel.Confirmed, nil
+		}
 	}
 
 	return false, nil
@@ -176,7 +194,7 @@ func DeleteConfirm(itemName string) (bool, error) {
 func SaveConfirm() (bool, error) {
 	title := "Save Changes"
 	message := "You have unsaved changes. Do you want to save before exiting?"
-	return RunConfirmWithOptions(title, message, "Save", "Discard")
+	return RunConfirmWithOptions(title, message, "Save", "Discard", true, true)
 }
 
 // WarningConfirm runs a warning confirmation dialog

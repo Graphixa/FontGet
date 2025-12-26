@@ -93,17 +93,32 @@ func ValidateSourceForm(name, url, prefix string, existingSources []SourceItem, 
 
 	// Validate name
 	if err := ValidateRequired(name, "Name"); err != nil {
-		result.AddError("Name", err.Error())
+		// Extract just the message, not the full error string (which includes field name)
+		if validationErr, ok := err.(ValidationError); ok {
+			result.AddError("Name", validationErr.Message)
+		} else {
+			result.AddError("Name", err.Error())
+		}
 	}
 
 	// Validate URL
 	if err := ValidateURL(url); err != nil {
-		result.AddError("URL", err.Error())
+		// Extract just the message, not the full error string (which includes field name)
+		if validationErr, ok := err.(ValidationError); ok {
+			result.AddError("URL", validationErr.Message)
+		} else {
+			result.AddError("URL", err.Error())
+		}
 	}
 
 	// Validate prefix
 	if err := ValidatePrefix(prefix); err != nil {
-		result.AddError("Prefix", err.Error())
+		// Extract just the message, not the full error string (which includes field name)
+		if validationErr, ok := err.(ValidationError); ok {
+			result.AddError("Prefix", validationErr.Message)
+		} else {
+			result.AddError("Prefix", err.Error())
+		}
 	}
 
 	// Check for duplicate names (except when editing the same source)
