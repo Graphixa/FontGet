@@ -1,4 +1,5 @@
 theme_name: "Gruvbox"
+style: dark
 
 colors:
   # Main text colors

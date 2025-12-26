@@ -35,6 +35,7 @@ func normalizeThemeName(themeName string) string {
 // Theme represents a color theme loaded from a YAML file
 type Theme struct {
 	ThemeName string     `yaml:"theme_name"` // Display name for the theme (optional, falls back to filename)
+	Style     string     `yaml:"style"`      // Theme style: "dark" or "light" (optional, defaults to "dark")
 	Colors    ModeColors `yaml:"colors"`     // Color definitions
 }
 

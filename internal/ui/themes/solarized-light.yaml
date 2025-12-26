@@ -1,25 +1,21 @@
 theme_name: "Solarized Light"
+style: light
 
 colors:
   # Main text colors
   primary: "#268bd2"  # Blue - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
   secondary: "#2aa198" # Cyan - Used for TableSourceName, FormLabel, CardLabel
   components: "#073642" # Base02 (foreground) - used for buttons, switches, checkboxes, etc.
-  placeholders: "#839496" # Base0 - Borders, placeholders, subtitles, separators
-  base: "#fdf6e3"   # Base3 (background) - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  placeholders: "#586e75" # Base0 - Borders, placeholders, subtitles, separators
+  base: "#eee8d5"   # Base2 (background) - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
+  success: "#859900" # Green
   warning: "#b58900" # Yellow
   error: "#dc322f"   # Red
-  success: "#859900" # Green
 
   overrides:
     # Progress bar gradient
     progress_bar:
-      start: "#268bd2" # Blue
-      finish: "#2aa198" # Cyan
-
-# Colors reference:
-# https://github.com/sellout/emacs-color-theme-solarized
-# Designed by Ethan Schoonover
-
+      start: "#2aa198" # Blue
+      finish: "#268bd2" # Green

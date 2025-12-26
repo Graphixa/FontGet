@@ -264,8 +264,36 @@ func (m themeSelectionModel) renderLeftPanelContent(width, _ int) string {
 	}
 
 	var lines []string
+	colors := ui.GetCurrentColors()
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colors.Secondary)).
+		Bold(true)
+	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Placeholders))
+
+	darkHeaderShown := false
+	lightHeaderShown := false
 
 	for i, option := range m.themes {
+		// Add "DARK THEMES" header before first dark theme (after System)
+		if i > 0 && m.themes[i-1].Style == "" && option.Style == "dark" && !darkHeaderShown {
+			lines = append(lines, "") // Blank line
+			header := headerStyle.Render("DARK THEMES")
+			lines = append(lines, header)
+			separator := strings.Repeat("─", contentWidth)
+			lines = append(lines, separatorStyle.Render(separator))
+			darkHeaderShown = true
+		}
+
+		// Add "LIGHT THEMES" header before first light theme (after dark themes)
+		if i > 0 && m.themes[i-1].Style == "dark" && option.Style == "light" && !lightHeaderShown {
+			lines = append(lines, "") // Blank line
+			header := headerStyle.Render("LIGHT THEMES")
+			lines = append(lines, header)
+			separator := strings.Repeat("─", contentWidth)
+			lines = append(lines, separatorStyle.Render(separator))
+			lightHeaderShown = true
+		}
+
 		buttonText := option.DisplayName
 		button := components.Button{
 			Text:     buttonText,

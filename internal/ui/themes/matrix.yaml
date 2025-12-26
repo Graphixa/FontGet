@@ -1,4 +1,5 @@
 theme_name: "Matrix"
+style: dark
 
 colors:
   # Main text colors

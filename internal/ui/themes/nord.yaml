@@ -1,4 +1,5 @@
 theme_name: "Nord"
+style: dark
 
 colors:
   # Main text colors

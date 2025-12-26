@@ -1,4 +1,5 @@
 theme_name: "Monokai"
+style: dark
 
 colors:
   # Main text colors

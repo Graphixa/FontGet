@@ -17,6 +17,7 @@ type ThemeInfo struct {
 	Name        string // "catppuccin"
 	IsBuiltIn   bool   // true for embedded themes
 	DisplayName string // "Catppuccin"
+	Style       string // "dark" or "light" (defaults to "dark" if not specified)
 }
 
 // ThemeOption represents a theme for selection
@@ -26,6 +27,7 @@ type ThemeOption struct {
 	IsBuiltIn   bool   // true for embedded themes
 	IsSelected  bool   // true if currently active
 	FilePath    string // Path to theme file (for loading) - empty for embedded
+	Style       string // "dark" or "light" (defaults to "dark" if not specified)
 }
 
 // DiscoverThemes discovers all available themes (both embedded and user themes)
@@ -38,7 +40,7 @@ func DiscoverThemes() ([]ThemeInfo, error) {
 	themeMap["system"] = &ThemeInfo{
 		Name:        "system",
 		IsBuiltIn:   true,
-		DisplayName: "System",
+		DisplayName: "No Theme",
 	}
 
 	// 1. Scan embedded themes
@@ -103,14 +105,20 @@ func discoverEmbeddedThemes() ([]*ThemeInfo, error) {
 		// Normalize theme name (spaces/underscores -> hyphens) for consistent matching
 		themeName := normalizeThemeName(rawThemeName)
 
-		// Try to load the theme to get theme_name from YAML
+		// Try to load the theme to get theme_name and style from YAML
 		displayName := formatThemeDisplayName(themeName) // Fallback to filename-based
+		style := "dark"                                  // Default to dark
 		data, err := embeddedThemes.ReadFile(path)
 		if err == nil {
-			// Parse just the theme_name field
+			// Parse theme_name and style fields
 			var theme Theme
-			if err := yaml.Unmarshal(data, &theme); err == nil && theme.ThemeName != "" {
-				displayName = theme.ThemeName
+			if err := yaml.Unmarshal(data, &theme); err == nil {
+				if theme.ThemeName != "" {
+					displayName = theme.ThemeName
+				}
+				if theme.Style != "" {
+					style = theme.Style
+				}
 			}
 		}
 
@@ -120,6 +128,7 @@ func discoverEmbeddedThemes() ([]*ThemeInfo, error) {
 				Name:        themeName,
 				IsBuiltIn:   true,
 				DisplayName: displayName,
+				Style:       style,
 			}
 			themeMap[themeName] = theme
 		}
@@ -183,12 +192,30 @@ func discoverUserThemes() ([]*ThemeInfo, error) {
 			return nil
 		}
 
+		// Try to load the theme to get theme_name and style from YAML
+		displayName := formatThemeDisplayName(themeName) // Fallback to filename-based
+		style := "dark"                                  // Default to dark
+		data, err := os.ReadFile(path)
+		if err == nil {
+			// Parse theme_name and style fields
+			var theme Theme
+			if err := yaml.Unmarshal(data, &theme); err == nil {
+				if theme.ThemeName != "" {
+					displayName = theme.ThemeName
+				}
+				if theme.Style != "" {
+					style = theme.Style
+				}
+			}
+		}
+
 		// Get or create theme info
 		if _, ok := themeMap[themeName]; !ok {
 			theme := &ThemeInfo{
 				Name:        themeName,
 				IsBuiltIn:   false,
-				DisplayName: formatThemeDisplayName(themeName),
+				DisplayName: displayName,
+				Style:       style,
 			}
 			themeMap[themeName] = theme
 		}
@@ -247,7 +274,7 @@ func GetThemeOptions(currentThemeName string) ([]ThemeOption, error) {
 		if theme.Name == "system" {
 			systemOption = &ThemeOption{
 				ThemeName:   "system",
-				DisplayName: "System",
+				DisplayName: "No Theme",
 				IsBuiltIn:   true,
 				IsSelected:  normalizedCurrent == "system",
 				FilePath:    "", // System theme doesn't use files
@@ -256,19 +283,43 @@ func GetThemeOptions(currentThemeName string) ([]ThemeOption, error) {
 		}
 
 		// Regular themes - compare normalized names
+		style := theme.Style
+		if style == "" {
+			style = "dark" // Default to dark if not specified
+		}
 		option := ThemeOption{
 			ThemeName:   theme.Name,
 			DisplayName: theme.DisplayName,
 			IsBuiltIn:   theme.IsBuiltIn,
 			IsSelected:  theme.Name == normalizedCurrent,
 			FilePath:    "", // Will be determined when loading
+			Style:       style,
 		}
 		options = append(options, option)
 	}
 
-	// Sort options alphabetically by DisplayName (stable sort)
+	// Sort options: first by style (dark before light), then alphabetically by DisplayName
 	for i := 0; i < len(options)-1; i++ {
 		for j := i + 1; j < len(options); j++ {
+			// Compare by style first
+			styleI := options[i].Style
+			styleJ := options[j].Style
+			if styleI == "" {
+				styleI = "dark"
+			}
+			if styleJ == "" {
+				styleJ = "dark"
+			}
+
+			// Dark themes come before light themes
+			if styleI != styleJ {
+				if styleI == "light" && styleJ == "dark" {
+					options[i], options[j] = options[j], options[i]
+				}
+				continue
+			}
+
+			// Within same style, sort alphabetically
 			if options[i].DisplayName > options[j].DisplayName {
 				options[i], options[j] = options[j], options[i]
 			}
@@ -277,6 +328,7 @@ func GetThemeOptions(currentThemeName string) ([]ThemeOption, error) {
 
 	// Prepend System option at the beginning
 	if systemOption != nil {
+		systemOption.Style = "" // System theme has no style
 		options = append([]ThemeOption{*systemOption}, options...)
 	}
 
