@@ -436,21 +436,34 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 			buffer = 1
 		}
 
-		// Check if too close to bottom edge
-		if m.selectedIndex >= m.scrollOffset+visibleCount-buffer {
-			// Move scroll down just enough to keep buffer space
-			m.scrollOffset = m.selectedIndex - visibleCount + buffer + 1
-			if m.scrollOffset < 0 {
-				m.scrollOffset = 0
-			}
-		}
+		// Check if we're at or near the end of the list
+		totalThemes := len(m.themes)
+		isNearEnd := m.selectedIndex >= totalThemes-2 // Within last 2 items
 
-		// Check if too close to top edge
-		if m.selectedIndex < m.scrollOffset+buffer {
-			// Move scroll up just enough to keep buffer space
-			m.scrollOffset = m.selectedIndex - buffer
-			if m.scrollOffset < 0 {
-				m.scrollOffset = 0
+		// When at the bottom of the list, be more conservative with adjustments
+		// Only adjust if item is actually at risk of going out of view
+		if isNearEnd {
+			// At the bottom: only adjust if item would go out of view
+			// Don't adjust for "too close to edge" - this prevents the climbing bug
+			// The item is already visible, so no adjustment needed
+		} else {
+			// Not at the bottom: normal edge detection
+			// Check if too close to bottom edge
+			if m.selectedIndex >= m.scrollOffset+visibleCount-buffer {
+				// Move scroll down just enough to keep buffer space
+				m.scrollOffset = m.selectedIndex - visibleCount + buffer + 1
+				if m.scrollOffset < 0 {
+					m.scrollOffset = 0
+				}
+			}
+
+			// Check if too close to top edge
+			if m.selectedIndex < m.scrollOffset+buffer {
+				// Move scroll up just enough to keep buffer space
+				m.scrollOffset = m.selectedIndex - buffer
+				if m.scrollOffset < 0 {
+					m.scrollOffset = 0
+				}
 			}
 		}
 	}
