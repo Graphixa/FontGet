@@ -4,13 +4,13 @@ style: dark
 colors:
   # Main text colors
   primary: "#ff355e"  # Red - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
-  secondary: "#e60940" # Radical Red - Used for TableSourceName, FormLabel, CardLabel
+  secondary: "#ff7d97" # Gold - Used for TableSourceName, FormLabel, CardLabel
   components: "#de7c7c" # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#942e37" # Borders, placeholders, subtitles, separators
   base: "#2b1d1d"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
-  success: "#c6ff94" # Green
-  warning: "#fcd98d" # Yellow
-  error: "#ff7d97"   # Red
+  success: "#9bff69" # Green
+  warning: "#ffcc5e" # Yellow
+  error: "#ff0026"   # Red
 
