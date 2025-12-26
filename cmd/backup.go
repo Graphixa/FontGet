@@ -804,13 +804,31 @@ func cleanupTempBackupFiles(zipPath string) {
 	}
 
 	// Remove each temp file found
+	// On Windows, file handles may not be released immediately after Close(),
+	// so we wait a bit first, then retry with delays
 	for _, match := range matches {
-		if err := os.Remove(match); err != nil {
-			if !os.IsNotExist(err) {
-				GetLogger().Debug("Could not remove temp backup file %s: %v", match, err)
+		// Give Windows time to release the file handle (defer should have closed it by now)
+		time.Sleep(100 * time.Millisecond)
+
+		// Try to remove the file, with retries for Windows file handle release
+		var removeErr error
+		for i := 0; i < 5; i++ {
+			removeErr = os.Remove(match)
+			if removeErr == nil || os.IsNotExist(removeErr) {
+				// Successfully removed or file doesn't exist
+				if removeErr == nil {
+					GetLogger().Debug("Cleaned up temp backup file: %s", match)
+				}
+				break
 			}
-		} else {
-			GetLogger().Debug("Cleaned up temp backup file: %s", match)
+			// Wait a bit before retrying (Windows file handle release delay)
+			if i < 4 {
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+
+		if removeErr != nil && !os.IsNotExist(removeErr) {
+			GetLogger().Debug("Could not remove temp backup file %s after retries: %v", match, removeErr)
 		}
 	}
 }
