@@ -10,7 +10,7 @@ colors:
   base: "#2b1d1d"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
 
   # Status colors
-  success: "#aec944" # Green
+  success: "#c6ff94" # Green
   warning: "#fcd98d" # Yellow
-  error: "#e60940"   # Red
+  error: "#ff7d97"   # Red
 
