@@ -132,12 +132,8 @@ Use --scope to specify which scopes to backup when providing a path.`,
 				return err
 			}
 			confirmed = true // Scope flag implies confirmation
-		} else if pathProvided && force {
-			// Path provided + force = use all accessible scopes, skip TUI
-			selectedScopes = availableScopes
-			confirmed = true
 		} else if pathProvided {
-			// Path provided but no scope flag = use all accessible scopes, skip TUI
+			// Path provided (with or without force) = use all accessible scopes, skip TUI
 			selectedScopes = availableScopes
 			confirmed = true
 		} else {
@@ -156,9 +152,8 @@ Use --scope to specify which scopes to backup when providing a path.`,
 			return nil
 		}
 
-		// Use selected scopes
-		scopes := selectedScopes
-		if len(scopes) == 0 {
+		// Validate that scopes were selected
+		if len(selectedScopes) == 0 {
 			fmt.Printf("%s\n", ui.WarningText.Render("No scopes selected. Backup cancelled."))
 			fmt.Println()
 			return nil
@@ -181,12 +176,12 @@ Use --scope to specify which scopes to backup when providing a path.`,
 		}
 
 		// Log backup parameters (always log to file)
-		GetLogger().Info("Backup parameters - Output: %s, Scopes: %v", zipPath, scopes)
+		GetLogger().Info("Backup parameters - Output: %s, Scopes: %v", zipPath, selectedScopes)
 
 		// Verbose output
 		output.GetVerbose().Info("Backing up font files")
 		output.GetVerbose().Info("Output: %s", zipPath)
-		output.GetVerbose().Info("Scopes: %v", scopes)
+		output.GetVerbose().Info("Scopes: %v", selectedScopes)
 		output.GetVerbose().Info("System fonts are excluded")
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
 		if IsVerbose() {
@@ -195,11 +190,11 @@ Use --scope to specify which scopes to backup when providing a path.`,
 
 		// For debug mode, do everything without spinner
 		if IsDebug() {
-			return performBackup(fm, scopes, zipPath)
+			return performBackup(fm, selectedScopes, zipPath)
 		}
 
 		// Use progress bar for backup operation
-		return runBackupWithProgressBar(fm, scopes, zipPath)
+		return runBackupWithProgressBar(fm, selectedScopes, zipPath)
 	},
 }
 
@@ -404,7 +399,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 
 	if progressErr != nil {
 		// Check if it was a cancellation
-		if progressErr.Error() == "operation cancelled" {
+		if errors.Is(progressErr, shared.ErrOperationCancelled) {
 			// Clean up any temp backup files that may have been created
 			cleanupTempBackupFiles(zipPath)
 			fmt.Printf("%s\n", ui.WarningText.Render("Backup cancelled."))
@@ -434,13 +429,13 @@ type fontFileInfo struct {
 	scope    string
 }
 
-// organizeFontsBySourceAndFamily organizes fonts by source and family name for zip structure.
-// Returns a map: sourceName -> familyName -> []fontFileInfo
 // organizeFontsBySourceAndFamily organizes fonts by source and family name for backup.
 //
 // It creates a nested map structure: source -> family name -> font files, which is used
 // to organize fonts in the backup zip archive. Fonts are matched to repository entries
 // to determine their source.
+//
+// Returns a map: sourceName -> familyName -> []fontFileInfo
 func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) map[string]map[string][]fontFileInfo {
 	sourceFamilyMap := make(map[string]map[string][]fontFileInfo)
 	dedupeMap := make(map[string]bool)
@@ -488,8 +483,6 @@ func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string]
 	return sourceFamilyMap
 }
 
-// createBackupZipArchive creates a zip archive from organized font structure.
-// If send is not nil, it will be called with progress updates.
 // createBackupZipArchive creates a zip archive from organized font files.
 //
 // It creates a zip archive with fonts organized by source and family name.
@@ -501,12 +494,12 @@ func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string]
 //   - sourceFamilyMap: Nested map of source -> family -> font files
 //   - zipPath: Path to the final output zip file
 //   - familyIndexMap: Map from family name to operation item index for progress tracking
-//   - send: Function to send progress updates (for TUI)
-//   - cancelChan: Channel to check for cancellation requests
+//   - send: Function to send progress updates (for TUI). If nil, no progress updates are sent.
+//   - cancelChan: Channel to check for cancellation requests. If nil, cancellation is not checked.
 //
 // Returns:
 //   - *backupResult: Contains family and file counts
-//   - error: Error if archive creation fails (including cancellation)
+//   - error: Error if archive creation fails (including cancellation via shared.ErrOperationCancelled)
 func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo, zipPath string, familyIndexMap map[string]int, send func(msg tea.Msg), cancelChan <-chan struct{}) (*backupResult, error) {
 	// Ensure parent directory exists
 	if dir := filepath.Dir(zipPath); dir != "." && dir != zipPath {
@@ -634,7 +627,7 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 					select {
 					case <-cancelChan:
 						// Cancellation requested - return error so defer can clean up temp file
-						return nil, fmt.Errorf("operation cancelled")
+						return nil, shared.ErrOperationCancelled
 					default:
 						// Continue processing
 					}
@@ -772,6 +765,8 @@ func copyFile(src, dst string) error {
 	return err
 }
 
+// performBackupWithProgress performs the backup operation with progress updates.
+// The scopes and fonts parameters are unused but kept for interface consistency with other backup functions.
 func performBackupWithProgress(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, _ []ParsedFont, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch, sortedFamilyNames []string, send func(msg tea.Msg), cancelChan <-chan struct{}) (*backupResult, error) {
 	// Organize fonts by source -> family name
 	sourceFamilyMap := organizeFontsBySourceAndFamily(fm, fontMap, matches)
@@ -833,7 +828,8 @@ func cleanupTempBackupFiles(zipPath string) {
 	}
 }
 
-// performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
+// performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode).
+// The scopes parameter is unused but kept for interface consistency with other backup functions.
 func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
 	output.GetDebug().State("Calling performBackupWithCollectedFonts(zipPath=%s, fontCount=%d)", zipPath, len(fonts))
 

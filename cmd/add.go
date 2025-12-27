@@ -731,6 +731,12 @@ Installation scope can be specified with the --scope flag:
 		)
 
 		if progressErr != nil {
+			// Check if it was a cancellation
+			if errors.Is(progressErr, shared.ErrOperationCancelled) {
+				fmt.Printf("%s\n", ui.WarningText.Render("Installation cancelled."))
+				fmt.Println()
+				return nil // Don't return error for cancellation
+			}
 			GetLogger().Error("Failed to install fonts: %v", progressErr)
 			return progressErr
 		}

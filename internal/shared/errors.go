@@ -1,6 +1,7 @@
 package shared
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -63,3 +64,15 @@ type ElevationError struct {
 func (e *ElevationError) Error() string {
 	return fmt.Sprintf("elevation required for operation '%s' on platform '%s'", e.Operation, e.Platform)
 }
+
+// ErrOperationCancelled is a sentinel error used to indicate that an operation was cancelled by the user.
+var ErrOperationCancelled = errors.New("operation cancelled")
+
+// ErrExportCancelled is a sentinel error used to indicate that an export operation was cancelled by the user.
+var ErrExportCancelled = errors.New("export cancelled")
+
+// ErrOnboardingCancelled is a sentinel error used to indicate that onboarding was cancelled by the user.
+var ErrOnboardingCancelled = errors.New("onboarding cancelled - please complete setup to continue")
+
+// ErrOnboardingIncomplete is a sentinel error used to indicate that onboarding was not completed.
+var ErrOnboardingIncomplete = errors.New("onboarding incomplete - please complete setup to continue")

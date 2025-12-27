@@ -476,6 +476,12 @@ Fonts will be installed using their Font IDs, and missing fonts will be skipped 
 		)
 
 		if progressErr != nil {
+			// Check if it was a cancellation
+			if errors.Is(progressErr, shared.ErrOperationCancelled) {
+				fmt.Printf("%s\n", ui.WarningText.Render("Import cancelled."))
+				fmt.Println()
+				return nil // Don't return error for cancellation
+			}
 			GetLogger().Error("Failed to import fonts: %v", progressErr)
 			return progressErr
 		}

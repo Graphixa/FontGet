@@ -1371,6 +1371,12 @@ Names with spaces must be quoted. Scope: user (default), machine, or all (admin 
 		)
 
 		if progressErr != nil {
+			// Check if it was a cancellation
+			if errors.Is(progressErr, shared.ErrOperationCancelled) {
+				fmt.Printf("%s\n", ui.WarningText.Render("Removal cancelled."))
+				fmt.Println()
+				return nil // Don't return error for cancellation
+			}
 			GetLogger().Error("Failed to process font removal: %v", progressErr)
 			return progressErr
 		}

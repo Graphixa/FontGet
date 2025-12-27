@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"fontget/internal/config"
 	"fontget/internal/logging"
@@ -142,8 +143,7 @@ var rootCmd = &cobra.Command{
 				// If onboarding was cancelled or incomplete, exit gracefully
 				// The first run status remains false, so onboarding will restart on next command
 				// Don't show error message for cancellation - it's expected behavior
-				if err.Error() == "onboarding cancelled - please complete setup to continue" ||
-					err.Error() == "onboarding incomplete - please complete setup to continue" {
+				if errors.Is(err, shared.ErrOnboardingCancelled) || errors.Is(err, shared.ErrOnboardingIncomplete) {
 					// Exit silently - user cancelled, will be prompted again next time
 					os.Exit(0)
 				}

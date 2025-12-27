@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,7 +141,7 @@ or a full file path.`,
 		outputFile, err = validateAndNormalizeExportPath(outputFile)
 		if err != nil {
 			// Check if this is a cancellation (user chose not to overwrite)
-			if strings.Contains(err.Error(), "export cancelled") {
+			if errors.Is(err, shared.ErrExportCancelled) {
 				// User cancelled - show friendly message and return nil (no error)
 				fmt.Printf("%s\n", ui.WarningText.Render("Export cancelled - file already exists."))
 				fmt.Println()
@@ -256,7 +257,7 @@ func validateAndNormalizeExportPath(outputPath string) (string, error) {
 		}
 
 		if !confirmed {
-			return "", fmt.Errorf("export cancelled - file already exists: %s", absPath)
+			return "", fmt.Errorf("%w - file already exists: %s", shared.ErrExportCancelled, absPath)
 		}
 	}
 

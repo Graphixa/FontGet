@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"fontget/internal/config"
+	"fontget/internal/shared"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -54,8 +55,8 @@ func (f *OnboardingFlow) Run() error {
 		}
 		if !shouldContinue {
 			// User declined or aborted - this is expected behavior, not an error
-			// Return a user-friendly message
-			return fmt.Errorf("setup was cancelled")
+			// Return a sentinel error for cancellation
+			return shared.ErrOnboardingCancelled
 		}
 	}
 	return nil
@@ -111,16 +112,16 @@ func RunFirstRunOnboarding() error {
 			// Return a specific error that indicates cancellation (not failure)
 			// This allows the command to exit gracefully, and onboarding will restart on next command
 			// since FirstRunCompleted is still false
-			return fmt.Errorf("onboarding cancelled - please complete setup to continue")
+			return shared.ErrOnboardingCancelled
 		}
 		if !m.onboardingCompleted {
 			// User didn't complete the flow - don't mark as completed
 			// Onboarding will restart on next command since FirstRunCompleted is still false
-			return fmt.Errorf("onboarding incomplete - please complete setup to continue")
+			return shared.ErrOnboardingIncomplete
 		}
 	} else {
 		// Couldn't cast to EnhancedOnboardingModel - assume incomplete
-		return fmt.Errorf("onboarding incomplete - please complete setup to continue")
+		return shared.ErrOnboardingIncomplete
 	}
 
 	// Only mark as completed if user successfully finished the entire flow

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/charmbracelet/bubbles/progress"
@@ -125,7 +126,7 @@ func (m ProgressBarModel) startOperation() tea.Cmd {
 			err := m.operationFunc(m.program)
 			// If cancelled, return a cancellation error
 			if m.cancelled {
-				err = fmt.Errorf("operation cancelled")
+				err = shared.ErrOperationCancelled
 			}
 			m.program.Send(operationCompleteMsg{err: err})
 		}()
@@ -149,7 +150,7 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Don't process any more operationCompleteMsg messages
 				m.quitting = true
 				m.cancelled = true
-				m.err = fmt.Errorf("operation cancelled")
+				m.err = shared.ErrOperationCancelled
 				// Signal cancellation via channel if it exists
 				if m.cancelChan != nil {
 					select {
@@ -636,7 +637,7 @@ func RunProgressBar(title string, items []OperationItem, verboseMode bool, debug
 	// Check if there was an operation error or cancellation
 	if m, ok := finalModel.(ProgressBarModel); ok {
 		if m.cancelled {
-			return fmt.Errorf("operation cancelled")
+			return shared.ErrOperationCancelled
 		}
 		if m.err != nil {
 			return m.err

@@ -36,12 +36,17 @@ func NewConfirmModel(title, message string) *ConfirmModel {
 
 // Init initializes the confirmation dialog
 func (m *ConfirmModel) Init() tea.Cmd {
+	// Initialize buttons in Init to avoid duplicate initialization
+	if m.buttons == nil {
+		m.buttons = NewButtonGroup([]string{m.ConfirmText, m.CancelText}, 0)
+		m.buttons.SetFocus(true)
+	}
 	return nil
 }
 
 // Update handles messages and updates the confirmation dialog
 func (m *ConfirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Initialize buttons if needed
+	// Ensure buttons are initialized (defensive check)
 	if m.buttons == nil {
 		m.buttons = NewButtonGroup([]string{m.ConfirmText, m.CancelText}, 0)
 		m.buttons.SetFocus(true)
