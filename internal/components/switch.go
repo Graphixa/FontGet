@@ -12,6 +12,7 @@ type Switch struct {
 	RightLabel string // Default: "Disable"
 	Value      bool   // true = left (Enable), false = right (Disable)
 	Width      int    // Total width of switch
+	HasFocus   bool   // Whether switch currently has focus
 }
 
 // Render renders the switch with appropriate styling
@@ -62,6 +63,11 @@ func (s *Switch) SetValue(value bool) {
 // HandleKey handles keyboard input for switch toggling
 // Returns: true if the key was handled, false otherwise
 func (s *Switch) HandleKey(key string) bool {
+	// When left/right/space/enter is pressed, give focus to switch
+	if key == "left" || key == "right" || key == "h" || key == "l" || key == " " || key == "enter" {
+		s.HasFocus = true
+	}
+
 	switch key {
 	case "left", "h":
 		s.Value = true // Select left
@@ -77,6 +83,11 @@ func (s *Switch) HandleKey(key string) bool {
 	}
 }
 
+// SetFocus sets whether switch has focus
+func (s *Switch) SetFocus(hasFocus bool) {
+	s.HasFocus = hasFocus
+}
+
 // NewSwitch creates a new switch with default labels
 func NewSwitch(value bool) *Switch {
 	return &Switch{
@@ -84,6 +95,7 @@ func NewSwitch(value bool) *Switch {
 		RightLabel: "Disable",
 		Value:      value,
 		Width:      30,
+		HasFocus:   false,
 	}
 }
 
@@ -94,5 +106,6 @@ func NewSwitchWithLabels(leftLabel, rightLabel string, value bool) *Switch {
 		RightLabel: rightLabel,
 		Value:      value,
 		Width:      30,
+		HasFocus:   false,
 	}
 }

@@ -249,3 +249,70 @@ func TestNewSwitchWithLabels(t *testing.T) {
 		t.Errorf("NewSwitchWithLabels() RightLabel = %q, want %q", got.RightLabel, "Off")
 	}
 }
+
+func TestSwitch_SetFocus(t *testing.T) {
+	switch_ := &Switch{
+		HasFocus: false,
+	}
+
+	switch_.SetFocus(true)
+	if !switch_.HasFocus {
+		t.Error("SetFocus(true) did not set HasFocus to true")
+	}
+
+	switch_.SetFocus(false)
+	if switch_.HasFocus {
+		t.Error("SetFocus(false) did not set HasFocus to false")
+	}
+}
+
+func TestSwitch_HandleKey_SetsFocus(t *testing.T) {
+	tests := []struct {
+		name         string
+		switch_      *Switch
+		key          string
+		wantHasFocus bool
+	}{
+		{
+			name: "left arrow sets focus",
+			switch_: &Switch{
+				HasFocus: false,
+			},
+			key:          "left",
+			wantHasFocus: true,
+		},
+		{
+			name: "right arrow sets focus",
+			switch_: &Switch{
+				HasFocus: false,
+			},
+			key:          "right",
+			wantHasFocus: true,
+		},
+		{
+			name: "space sets focus",
+			switch_: &Switch{
+				HasFocus: false,
+			},
+			key:          " ",
+			wantHasFocus: true,
+		},
+		{
+			name: "enter sets focus",
+			switch_: &Switch{
+				HasFocus: false,
+			},
+			key:          "enter",
+			wantHasFocus: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.switch_.HandleKey(tt.key)
+			if tt.switch_.HasFocus != tt.wantHasFocus {
+				t.Errorf("HandleKey() HasFocus = %v, want %v", tt.switch_.HasFocus, tt.wantHasFocus)
+			}
+		})
+	}
+}
