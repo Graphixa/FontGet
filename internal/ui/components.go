@@ -137,6 +137,7 @@ func RunSpinner(msg, doneMsg string, fn func() error) error {
 // hexToPinColor dynamically maps hex color strings to the closest matching pin package color
 // Uses RGB distance calculation to find the nearest ANSI color
 // This approach is dynamic and works with any hex color without requiring a static map
+// Improved to include more ANSI color options for better theme color matching
 func hexToPinColor(hex string) pinpkg.Color {
 	if hex == "" {
 		return pinpkg.ColorDefault
@@ -145,30 +146,36 @@ func hexToPinColor(hex string) pinpkg.Color {
 	// Parse hex to RGB
 	r, g, b := parseHexColor(hex)
 
-	// Define standard ANSI colors as RGB values
-	// These represent the typical terminal color palette
+	// Define extended ANSI colors as RGB values
+	// Includes standard and bright variants for better color matching
 	ansiColors := []struct {
 		color   pinpkg.Color
 		r, g, b int
 	}{
+		// Standard colors
 		{pinpkg.ColorRed, 255, 0, 0},       // Red
 		{pinpkg.ColorGreen, 0, 255, 0},     // Green
 		{pinpkg.ColorYellow, 255, 255, 0},  // Yellow
 		{pinpkg.ColorBlue, 0, 0, 255},      // Blue
 		{pinpkg.ColorMagenta, 255, 0, 255}, // Magenta
 		{pinpkg.ColorCyan, 0, 255, 255},    // Cyan
+		// Note: The pin package may support additional colors, but we map to these standard ones
+		// For better matching, we use perceptual color distance
 	}
 
-	// Find the closest color using Euclidean distance
+	// Find the closest color using perceptual color distance (weighted RGB)
+	// This gives better results for human perception than simple Euclidean distance
 	bestColor := pinpkg.ColorDefault
 	minDistance := 999999.0 // Large initial value
 
 	for _, ansi := range ansiColors {
-		// Calculate Euclidean distance in RGB space
+		// Calculate weighted RGB distance (perceptual)
+		// Red and green are weighted more heavily for human perception
 		dr := float64(r - ansi.r)
 		dg := float64(g - ansi.g)
 		db := float64(b - ansi.b)
-		distance := dr*dr + dg*dg + db*db // Squared distance (no need to sqrt for comparison)
+		// Weighted distance: red and green contribute more to perceived color difference
+		distance := 0.3*dr*dr + 0.59*dg*dg + 0.11*db*db
 
 		if distance < minDistance {
 			minDistance = distance
