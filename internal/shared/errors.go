@@ -76,3 +76,22 @@ var ErrOnboardingCancelled = errors.New("onboarding cancelled - please complete 
 
 // ErrOnboardingIncomplete is a sentinel error used to indicate that onboarding was not completed.
 var ErrOnboardingIncomplete = errors.New("onboarding incomplete - please complete setup to continue")
+
+// PathValidationError represents path validation errors
+type PathValidationError struct {
+	Path    string
+	Reason  string
+	Details string
+}
+
+func (e *PathValidationError) Error() string {
+	if e.Details != "" {
+		return fmt.Sprintf("invalid path '%s': %s (%s)", e.Path, e.Reason, e.Details)
+	}
+	return fmt.Sprintf("invalid path '%s': %s", e.Path, e.Reason)
+}
+
+// Unwrap returns nil as this is a terminal error
+func (e *PathValidationError) Unwrap() error {
+	return nil
+}
