@@ -1,3 +1,9 @@
+// Package shared provides general-purpose, domain-agnostic utilities.
+//
+// This file contains general-purpose file utilities that can be used anywhere.
+// These functions are pure utilities with no CLI dependencies and can be used by
+// commands, tests, or other internal packages.
+
 package shared
 
 import (
