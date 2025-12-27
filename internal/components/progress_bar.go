@@ -59,6 +59,16 @@ type ProgressUpdateMsg struct {
 	Percent float64
 }
 
+// TitleUpdateMsg updates the progress bar title dynamically
+type TitleUpdateMsg struct {
+	Title string
+}
+
+// TotalItemsUpdateMsg updates the total items count dynamically
+type TotalItemsUpdateMsg struct {
+	TotalItems int
+}
+
 type operationCompleteMsg struct {
 	err error
 }
@@ -209,6 +219,26 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.ProgressBar.SetPercent(msg.Percent / 100.0)
 		return m, cmd
 
+	case TitleUpdateMsg:
+		// Update the title dynamically
+		m.Title = msg.Title
+		return m, nil
+
+	case TotalItemsUpdateMsg:
+		// Update the total items count dynamically
+		m.TotalItems = msg.TotalItems
+		// If we're adding items, we may need to expand the Items slice
+		if msg.TotalItems > len(m.Items) {
+			// Expand items slice with pending items
+			for len(m.Items) < msg.TotalItems {
+				m.Items = append(m.Items, OperationItem{
+					Name:   "",
+					Status: "pending",
+				})
+			}
+		}
+		return m, nil
+
 	case StatusReportMsg:
 		m.statusReport = &msg.Report
 		return m, nil
@@ -305,22 +335,14 @@ func (m ProgressBarModel) View() string {
 		}
 
 		var titleLine string
-		if m.TotalItems == 0 {
-			// No count text - just title and progress bar
-			if hasDisplayableItems {
-				titleLine = fmt.Sprintf("%s %s\n\n", titleText, progressBar)
-			} else {
-				titleLine = fmt.Sprintf("%s %s\n", titleText, progressBar)
-			}
+		// Always show count text to prevent layout jumping when count is updated
+		// Show "(0 of 0)" as placeholder when TotalItems is 0
+		countText := fmt.Sprintf("(%d of %d)", completed, m.TotalItems)
+		if hasDisplayableItems {
+			titleLine = fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
 		} else {
-			// Show count text
-			countText := fmt.Sprintf("(%d of %d)", completed, m.TotalItems)
-			if hasDisplayableItems {
-				titleLine = fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
-			} else {
-				// No items to display - only one newline to avoid extra blank line
-				titleLine = fmt.Sprintf("%s %s %s\n", titleText, countText, progressBar)
-			}
+			// No items to display - only one newline to avoid extra blank line
+			titleLine = fmt.Sprintf("%s %s %s\n", titleText, countText, progressBar)
 		}
 
 		// Combine into single line - no styling on text, only progress bar has gradient
