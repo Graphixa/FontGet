@@ -1,3 +1,8 @@
+// Package cmdutils provides CLI-specific utilities for command implementations.
+//
+// This file contains CLI-specific file utility functions.
+// These are simple wrappers used primarily by CLI commands.
+
 package cmdutils
 
 import (
@@ -18,4 +23,3 @@ func CheckFileExists(path string) (bool, error) {
 	// Some other error occurred
 	return false, err
 }
-

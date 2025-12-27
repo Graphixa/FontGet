@@ -1,3 +1,9 @@
+// Package cmdutils provides CLI-specific utilities for command implementations.
+//
+// This file contains CLI initialization utilities.
+// These functions wrap internal packages (config, platform) with CLI-specific
+// error handling, logging, and verbose/debug output integration.
+
 package cmdutils
 
 import (

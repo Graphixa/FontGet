@@ -1,3 +1,9 @@
+// Package cmdutils provides CLI-specific utilities for command implementations.
+//
+// This file contains CLI wrappers for repository operations.
+// These functions wrap internal/repo functions with CLI-specific logging, error formatting,
+// and verbose/debug output integration.
+
 package cmdutils
 
 import (

@@ -1,3 +1,11 @@
+// Package cmdutils provides CLI-specific utilities for command implementations.
+//
+// This file contains CLI-specific path validation for export/backup operations.
+// It handles CLI concerns like overwrite confirmation, default filenames, and directory detection.
+// Uses shared.ValidatePathCharacters() for character validation.
+//
+// This is CLI-specific because it handles user-facing concerns (overwrite prompts, default paths).
+
 package cmdutils
 
 import (
@@ -99,4 +107,3 @@ func ValidateOutputPath(path string, defaultFilename string, requiredExt string,
 
 	return absPath, needsConfirm, nil
 }
-
