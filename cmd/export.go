@@ -18,7 +18,15 @@ import (
 	"fontget/internal/shared"
 	"fontget/internal/ui"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+)
+
+const (
+	// ExportManifestVersion is the version of the export manifest format
+	ExportManifestVersion = "1.0"
+	// ExportManifestExportedBy identifies the tool that created the export
+	ExportManifestExportedBy = "fontget"
 )
 
 // ExportManifest represents the structure of an exported font manifest
@@ -33,7 +41,7 @@ type ExportManifest struct {
 // ExportedFont represents a single font in the export manifest
 type ExportedFont struct {
 	FontID      string   `json:"font_id"`
-	FamilyName  string   `json:"family_name,omitempty"` // Deprecated: use FamilyNames instead
+	FamilyName  string   `json:"family_name,omitempty"` // Deprecated: use FamilyNames instead. This field is maintained for backward compatibility with older export manifests. Planned removal: v2.0.0
 	FamilyNames []string `json:"family_names"`          // Array of family names (handles Nerd Fonts with multiple families per Font ID)
 	Source      string   `json:"source"`
 	License     string   `json:"license"`
@@ -102,60 +110,51 @@ or a full file path.`,
 		sourceFilter, _ := cmd.Flags().GetString("source")
 		exportAll, _ := cmd.Flags().GetBool("all")
 		onlyMatched, _ := cmd.Flags().GetBool("matched")
+		force, _ := cmd.Flags().GetBool("force")
 
-		// Determine output file
-		if outputFile == "" {
-			if len(args) > 0 {
-				outputFile = args[0]
-			} else {
-				outputFile = generateDefaultExportFilename()
-			}
-		} else {
-			// If -o flag is provided, handle directory vs file path (similar to winget)
-			info, err := os.Stat(outputFile)
-			if err == nil {
-				// Path exists
-				if info.IsDir() {
-					// It's an existing directory, use date-based default filename in that directory
-					outputFile = filepath.Join(outputFile, generateDefaultExportFilename())
-				}
-				// If it's an existing file, use it as-is (will check and prompt later)
-			} else if os.IsNotExist(err) {
-				// Path doesn't exist - determine if it should be a directory or file
-				if strings.HasSuffix(outputFile, string(filepath.Separator)) {
-					// Ends with path separator, definitely a directory
-					if err := os.MkdirAll(outputFile, 0755); err == nil {
-						outputFile = filepath.Join(outputFile, generateDefaultExportFilename())
-					}
-				} else if !strings.HasSuffix(strings.ToLower(outputFile), ".json") {
-					// No .json extension, treat as directory
-					if err := os.MkdirAll(outputFile, 0755); err == nil {
-						outputFile = filepath.Join(outputFile, generateDefaultExportFilename())
-					}
-				}
-				// If it has .json extension, treat as file path (will create parent dirs if needed later)
-			}
+		// Determine output file path (use arg if provided, otherwise use flag or default)
+		var outputPath string
+		if len(args) > 0 {
+			outputPath = args[0]
+		} else if outputFile != "" {
+			outputPath = outputFile
 		}
 
-		// Validate and normalize output path (with overwrite confirmation)
-		outputFile, err = validateAndNormalizeExportPath(outputFile)
+		// Validate and normalize output path using shared utility
+		defaultFilename := generateDefaultExportFilename()
+		normalizedPath, needsConfirm, err := cmdutils.ValidateOutputPath(outputPath, defaultFilename, ".json", force)
 		if err != nil {
-			// Check if this is a cancellation (user chose not to overwrite)
-			if errors.Is(err, shared.ErrExportCancelled) {
-				// User cancelled - show friendly message and return nil (no error)
-				fmt.Printf("%s\n", ui.WarningText.Render("Export cancelled - file already exists."))
+			// Check if this is a path validation error
+			var pathErr *shared.PathValidationError
+			if errors.As(err, &pathErr) {
+				cmdutils.PrintError(pathErr.Error())
 				fmt.Println()
 				return nil
 			}
 			return err
 		}
 
+		// Handle file existence confirmation
+		if needsConfirm {
+			// File exists - show error message
+			cmdutils.PrintErrorf("File already exists: %s", normalizedPath)
+			cmdutils.PrintInfo("Use --force to overwrite")
+			fmt.Println()
+			return nil
+		}
+
+		outputFile = normalizedPath
+
 		// Validate flags
 		if exportAll && onlyMatched {
-			return fmt.Errorf("cannot use --all and --matched together")
+			cmdutils.PrintError("Cannot use --all and --matched together")
+			fmt.Println()
+			return nil
 		}
 		if matchFilter != "" && sourceFilter != "" {
-			return fmt.Errorf("cannot use --match and --source together")
+			cmdutils.PrintError("Cannot use --match and --source together")
+			fmt.Println()
+			return nil
 		}
 
 		// Default to only matched fonts if no flags specified
@@ -181,44 +180,25 @@ or a full file path.`,
 			fmt.Println()
 		}
 
-		// Collect fonts from all scopes
-		scopes := []platform.InstallationScope{platform.UserScope, platform.MachineScope}
+		// Auto-detect accessible scopes
+		availableScopes, err := cmdutils.DetectAccessibleScopes(fontManager)
+		if err != nil {
+			GetLogger().Error("Failed to detect accessible scopes: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("cmdutils.DetectAccessibleScopes() failed: %v", err)
+			return fmt.Errorf("unable to detect accessible font scopes: %w", err)
+		}
 
-		// For debug mode, do everything without spinner
+		// Use all accessible scopes
+		scopes := availableScopes
+
+		// For debug mode, do everything without progress bar
 		if IsDebug() {
 			return performFullExport(fontManager, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 		}
 
-		// Use pin spinner for normal/verbose mode - wrap all the work
-		var exportedFonts []ExportedFont
-
-		err = ui.RunSpinner("Exporting fonts...", "", func() error {
-			var err error
-			exportedFonts, _, err = performFullExportWithResult(fontManager, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
-			return err
-		})
-
-		if err != nil {
-			return err
-		}
-
-		// Check if we have fonts to export
-		if len(exportedFonts) == 0 {
-			// Start with a blank line for consistent spacing
-			fmt.Println()
-			fmt.Printf("%s\n", ui.WarningText.Render("No fonts found matching the specified criteria."))
-			fmt.Println()
-			return nil
-		}
-
-		// Log completion
-		GetLogger().Info("Export operation complete - Exported %d font families to %s", len(exportedFonts), outputFile)
-
-		// Show success message
-		fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
-		fmt.Println()
-
-		return nil
+		// Use progress bar for normal/verbose mode
+		return runExportWithProgressBar(fontManager, scopes, outputFile, matchFilter, sourceFilter, exportAll, onlyMatched)
 	},
 }
 
@@ -229,39 +209,265 @@ func generateDefaultExportFilename() string {
 	return fmt.Sprintf("fontget-export-%s.json", dateStr)
 }
 
-// validateAndNormalizeExportPath validates and normalizes the export output path with overwrite confirmation
-func validateAndNormalizeExportPath(outputPath string) (string, error) {
-	// Normalize path separators
-	outputPath = filepath.Clean(outputPath)
+// runExportWithProgressBar runs the export operation with a progress bar
+func runExportWithProgressBar(fontManager platform.FontManager, scopes []platform.InstallationScope, outputFile, matchFilter, sourceFilter string, exportAll, onlyMatched bool) error {
+	// Start progress bar immediately to give visual feedback
+	progressTitle := "Exporting Fonts"
 
-	// Ensure it has .json extension
-	if !strings.HasSuffix(strings.ToLower(outputPath), ".json") {
-		outputPath = outputPath + ".json"
+	// Start with empty items and TotalItems = 0 to show "(0 of 0)" placeholder
+	// This prevents layout jumping when the count is updated later
+	operationItems := make([]components.OperationItem, 0)
+
+	// Run progress bar
+	verbose := IsVerbose()
+	debug := IsDebug()
+	var exportedFonts []ExportedFont
+	var totalFamilies int
+	progressErr := components.RunProgressBar(
+		progressTitle,
+		operationItems,
+		verbose, // Verbose mode: show operational details
+		debug,   // Debug mode: show technical details
+		func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
+			// Check for cancellation
+			select {
+			case <-cancelChan:
+				return shared.ErrOperationCancelled
+			default:
+			}
+
+			// Phase 1: Collect fonts (0-20% progress)
+			send(components.ProgressUpdateMsg{Percent: 5.0})
+			output.GetVerbose().Info("Scanning fonts to determine export scope...")
+			fonts, collectErr := collectFonts(scopes, fontManager, "", true) // Suppress verbose - we have our own high-level message
+			if collectErr != nil {
+				return fmt.Errorf("unable to collect fonts: %w", collectErr)
+			}
+			output.GetDebug().State("Total fonts to export: %d", len(fonts))
+			send(components.ProgressUpdateMsg{Percent: 20.0})
+
+			// Check for cancellation
+			select {
+			case <-cancelChan:
+				return shared.ErrOperationCancelled
+			default:
+			}
+
+			// Phase 2: Group by family (20-30% progress)
+			families := groupByFamily(fonts)
+			output.GetVerbose().Info("Grouped into %d font families", len(families))
+			send(components.ProgressUpdateMsg{Percent: 30.0})
+
+			// Check for cancellation
+			select {
+			case <-cancelChan:
+				return shared.ErrOperationCancelled
+			default:
+			}
+
+			// Phase 3: Match installed fonts to repository (30-50% progress)
+			var names []string
+			for k := range families {
+				names = append(names, k)
+			}
+			sort.Strings(names)
+
+			send(components.ProgressUpdateMsg{Percent: 35.0})
+			matches, matchErr := cmdutils.MatchInstalledFontsToRepository(names, GetLogger(), shared.IsCriticalSystemFont)
+			if matchErr != nil {
+				// Continue without matches if exportAll is true
+				if !exportAll {
+					return fmt.Errorf("unable to match fonts to repository: %w", matchErr)
+				}
+				matches = make(map[string]*repo.InstalledFontMatch)
+			}
+			send(components.ProgressUpdateMsg{Percent: 50.0})
+
+			// Check for cancellation
+			select {
+			case <-cancelChan:
+				return shared.ErrOperationCancelled
+			default:
+			}
+
+			// Phase 4: Populate match data and filter fonts (50-60% progress)
+			populateFontMatchData(families, matches)
+
+			fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter := filterFontsForExport(FilterFontsForExportParams{
+				Families:     families,
+				Names:        names,
+				MatchFilter:  matchFilter,
+				SourceFilter: sourceFilter,
+				ExportAll:    exportAll,
+				OnlyMatched:  onlyMatched,
+			})
+
+			// Count total families to export
+			totalFamilies = len(fontIDGroups)
+			if totalFamilies == 0 {
+				// No fonts found - we'll handle this after the progress bar
+				return nil
+			}
+
+			// Update total items now that we know the count
+			// This will make it show "Exporting Fonts (0 of y)" immediately
+			send(components.TotalItemsUpdateMsg{TotalItems: totalFamilies})
+			send(components.ProgressUpdateMsg{Percent: 60.0})
+
+			// Check for cancellation
+			select {
+			case <-cancelChan:
+				return shared.ErrOperationCancelled
+			default:
+			}
+
+			// Phase 5: Perform the actual export operation (60-100% progress)
+			params := ExportProgressParams{
+				FontManager:      fontManager,
+				Scopes:           scopes,
+				OutputFile:       outputFile,
+				MatchFilter:      matchFilter,
+				SourceFilter:     sourceFilter,
+				ExportAll:        exportAll,
+				OnlyMatched:      onlyMatched,
+				Families:         families,
+				Names:            names,
+				Matches:          matches,
+				FontIDGroups:     fontIDGroups,
+				SkippedSystem:    skippedSystem,
+				SkippedUnmatched: skippedUnmatched,
+				SkippedByFilter:  skippedByFilter,
+				TotalFamilies:    totalFamilies,
+			}
+			var exportErr error
+			exportedFonts, _, exportErr = performExportWithProgress(params, send, cancelChan)
+			return exportErr
+		},
+	)
+
+	if progressErr != nil {
+		// Check if it was a cancellation
+		if errors.Is(progressErr, shared.ErrOperationCancelled) {
+			cmdutils.PrintWarning("Export cancelled.")
+			fmt.Println()
+			return nil // Don't return error for cancellation
+		}
+		// Print error with proper styling (Cobra won't print it since SilenceErrors is true)
+		cmdutils.PrintErrorf("%v", progressErr)
+		fmt.Println()
+		return progressErr
 	}
 
-	// Final validation: ensure it's an absolute or relative path
-	absPath, err := filepath.Abs(outputPath)
+	// Check if no fonts were found (this happens if totalFamilies is 0)
+	if totalFamilies == 0 {
+		cmdutils.PrintWarning("No fonts found matching the specified criteria.")
+		fmt.Println()
+		return nil
+	}
+
+	// Show success message after progress bar completes
+	if len(exportedFonts) > 0 {
+		// Show destination path with checkmark, matching backup command style
+		fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font manifest exported to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", outputFile)))))
+		fmt.Println()
+	}
+
+	return nil
+}
+
+// ExportProgressParams contains parameters for performExportWithProgress
+type ExportProgressParams struct {
+	FontManager      platform.FontManager
+	Scopes           []platform.InstallationScope
+	OutputFile       string
+	MatchFilter      string
+	SourceFilter     string
+	ExportAll        bool
+	OnlyMatched      bool
+	Families         map[string][]ParsedFont
+	Names            []string
+	Matches          map[string]*repo.InstalledFontMatch
+	FontIDGroups     map[string]*fontIDGroup
+	SkippedSystem    int
+	SkippedUnmatched int
+	SkippedByFilter  int
+	TotalFamilies    int
+}
+
+// performExportWithProgress performs the export operation with progress tracking
+func performExportWithProgress(params ExportProgressParams, send func(msg tea.Msg), cancelChan <-chan struct{}) ([]ExportedFont, int, error) {
+	// Check for cancellation
+	if cancelChan != nil {
+		select {
+		case <-cancelChan:
+			return nil, 0, shared.ErrOperationCancelled
+		default:
+			// Continue processing
+		}
+	}
+
+	// Build export manifest
+	manifest, totalVariants := buildExportManifest(
+		params.FontIDGroups, params.MatchFilter, params.SourceFilter, params.OnlyMatched, params.SkippedSystem, params.SkippedUnmatched, params.SkippedByFilter)
+
+	// Update progress
+	if send != nil {
+		send(components.ProgressUpdateMsg{Percent: 50.0})
+	}
+
+	// Check for cancellation before writing
+	if cancelChan != nil {
+		select {
+		case <-cancelChan:
+			return nil, 0, shared.ErrOperationCancelled
+		default:
+			// Continue processing
+		}
+	}
+
+	// Write manifest
+	output.GetVerbose().Info("Writing export file...")
+	jsonData, err := json.MarshalIndent(*manifest, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("invalid output path: %v", err)
+		GetLogger().Error("Failed to marshal export manifest: %v", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("json.MarshalIndent() failed: %v", err)
+		return nil, 0, fmt.Errorf("unable to marshal manifest: %w", err)
 	}
 
-	// Check if the final file path already exists and prompt for confirmation
-	if _, err := os.Stat(absPath); err == nil {
-		// File exists - prompt for confirmation before overwriting
-		confirmed, err := components.RunConfirm(
-			"File Already Exists",
-			fmt.Sprintf("File already exists. Overwrite '%s'?", ui.SecondaryText.Render(filepath.Base(absPath))),
-		)
-		if err != nil {
-			return "", fmt.Errorf("unable to show confirmation dialog: %v", err)
-		}
-
-		if !confirmed {
-			return "", fmt.Errorf("%w - file already exists: %s", shared.ErrExportCancelled, absPath)
+	// Ensure parent directory exists (skip if outputFile is just a filename)
+	if dir := filepath.Dir(params.OutputFile); dir != "." && dir != params.OutputFile {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			GetLogger().Error("Failed to create export directory: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("os.MkdirAll() failed for parent directory: %v", err)
+			return nil, 0, fmt.Errorf("unable to create directory for export file: %w", err)
 		}
 	}
 
-	return absPath, nil
+	if err := os.WriteFile(params.OutputFile, jsonData, 0644); err != nil {
+		GetLogger().Error("Failed to write export file: %v", err)
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("os.WriteFile() failed: %v", err)
+		return nil, 0, fmt.Errorf("unable to write export file: %w", err)
+	}
+	GetLogger().Info("Export file written successfully: %s", params.OutputFile)
+	output.GetVerbose().Info("Export file written successfully")
+
+	// Update progress to 100%
+	if send != nil {
+		send(components.ProgressUpdateMsg{Percent: 100.0})
+		// Mark all items as completed so the count shows correctly
+		// The progress bar component counts items with status "completed", "failed", or "skipped"
+		for i := 0; i < params.TotalFamilies; i++ {
+			send(components.ItemUpdateMsg{
+				Index:  i,
+				Status: "completed",
+			})
+		}
+	}
+
+	return manifest.Fonts, totalVariants, nil
 }
 
 // performFullExport performs the complete export process (for debug mode)
@@ -280,7 +486,7 @@ func performFullExport(fontManager platform.FontManager, scopes []platform.Insta
 	}
 
 	output.GetDebug().State("Export operation complete - Exported: %d font families", len(exportedFonts))
-	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully exported %d font families to %s", len(exportedFonts), outputFile)))
+	fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font manifest exported to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", outputFile)))))
 	fmt.Println()
 	return nil
 }
@@ -322,125 +528,102 @@ type FilterFontsForExportParams struct {
 	OnlyMatched  bool
 }
 
-// filterFontsForExport applies match/source/exportAll filters to font families and groups them by Font ID.
-//
-// It filters font families based on match string, source name, and export flags, then groups
-// them by Font ID (or family name for fonts without Font IDs when exportAll is true).
-// System fonts are always excluded from exports.
-//
-// Parameters:
-//   - params: FilterFontsForExportParams containing families, filters, and export flags
-//
-// Returns:
-//   - fontIDGroups: Map of Font ID (or family name) to font group
-//   - skippedSystem: Count of skipped system fonts
-//   - skippedUnmatched: Count of skipped fonts without Font IDs (when onlyMatched is true)
-//   - skippedByFilter: Count of fonts skipped due to match/source filters
-func filterFontsForExport(params FilterFontsForExportParams) (fontIDGroups map[string]*fontIDGroup, skippedSystem, skippedUnmatched, skippedByFilter int) {
-	fontIDGroups = make(map[string]*fontIDGroup)
+// filterFontsForExport filters fonts based on the provided criteria and groups them by Font ID
+// Returns: (fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter)
+func filterFontsForExport(params FilterFontsForExportParams) (map[string]*fontIDGroup, int, int, int) {
+	fontIDGroups := make(map[string]*fontIDGroup)
+	skippedSystem := 0
+	skippedUnmatched := 0
+	skippedByFilter := 0
 
 	for _, familyName := range params.Names {
-		fontGroup := params.Families[familyName]
-		rep := fontGroup[0]
-
-		// Always exclude system fonts
+		// Skip system fonts
 		if shared.IsCriticalSystemFont(familyName) {
 			skippedSystem++
 			continue
 		}
 
+		fontGroup := params.Families[familyName]
+		if len(fontGroup) == 0 {
+			continue
+		}
+
+		// Get match data from first font in group (all should have same match data)
+		firstFont := fontGroup[0]
+		hasFontID := firstFont.FontID != ""
+
 		// Apply filters
-		if params.MatchFilter != "" && !strings.Contains(strings.ToLower(familyName), strings.ToLower(params.MatchFilter)) {
-			skippedByFilter++
-			continue
-		}
-
-		if params.SourceFilter != "" && rep.Source != params.SourceFilter {
-			skippedByFilter++
-			continue
-		}
-
-		// Only matched fonts
-		if params.OnlyMatched && rep.FontID == "" {
+		if params.OnlyMatched && !hasFontID {
 			skippedUnmatched++
 			continue
 		}
 
-		// Handle fonts without Font ID (when exportAll is true)
-		if rep.FontID == "" {
-			if !params.ExportAll {
-				// Skip fonts without Font ID unless --all is specified
-				skippedUnmatched++
+		if params.MatchFilter != "" {
+			// Check if family name or Font ID matches
+			matched := strings.Contains(strings.ToLower(familyName), strings.ToLower(params.MatchFilter))
+			if !matched && hasFontID {
+				matched = strings.Contains(strings.ToLower(firstFont.FontID), strings.ToLower(params.MatchFilter))
+			}
+			if !matched {
+				skippedByFilter++
 				continue
 			}
-			// For --all mode, group fonts without Font ID by family name
-			// Use family name as the key since there's no Font ID
-			group, exists := fontIDGroups[familyName]
-			if !exists {
-				group = &fontIDGroup{
-					familyNames: make([]string, 0),
-					source:      rep.Source,     // Will be empty for unmatched fonts
-					license:     rep.License,    // Will be empty for unmatched fonts
-					categories:  rep.Categories, // Will be empty for unmatched fonts
-					variants:    make(map[string]bool),
-					scope:       rep.Scope,
-					hasFontID:   false, // This group is keyed by family name, not Font ID
-				}
-				fontIDGroups[familyName] = group
-			}
-			// Add family name to group
-			group.familyNames = append(group.familyNames, familyName)
-
-			// Collect variants from this family
-			for _, font := range fontGroup {
-				group.variants[font.Style] = true
-			}
-			continue
 		}
 
-		// Get or create group for this Font ID
-		group, exists := fontIDGroups[rep.FontID]
+		if params.SourceFilter != "" {
+			if firstFont.Source == "" || !strings.Contains(strings.ToLower(firstFont.Source), strings.ToLower(params.SourceFilter)) {
+				skippedByFilter++
+				continue
+			}
+		}
+
+		// Determine group key (Font ID if available, otherwise family name)
+		groupKey := familyName
+		if hasFontID {
+			groupKey = firstFont.FontID
+		}
+
+		// Get or create group
+		group, exists := fontIDGroups[groupKey]
 		if !exists {
 			group = &fontIDGroup{
-				familyNames: make([]string, 0),
-				source:      rep.Source,
-				license:     rep.License,
-				categories:  rep.Categories,
+				familyNames: []string{},
+				source:      firstFont.Source,
+				license:     firstFont.License,
+				categories:  firstFont.Categories,
 				variants:    make(map[string]bool),
-				scope:       rep.Scope,
-				hasFontID:   true, // This group has a Font ID
+				scope:       string(fontGroup[0].Scope),
+				hasFontID:   hasFontID,
 			}
-			fontIDGroups[rep.FontID] = group
+			fontIDGroups[groupKey] = group
 		}
 
-		// Add family name to group
-		group.familyNames = append(group.familyNames, familyName)
+		// Add family name if not already present
+		familyExists := false
+		for _, existingFamily := range group.familyNames {
+			if existingFamily == familyName {
+				familyExists = true
+				break
+			}
+		}
+		if !familyExists {
+			group.familyNames = append(group.familyNames, familyName)
+		}
 
-		// Collect variants from this family
+		// Add variants
 		for _, font := range fontGroup {
-			group.variants[font.Style] = true
+			if font.Style != "" {
+				group.variants[font.Style] = true
+			}
 		}
 	}
 
 	return fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter
 }
 
-// buildExportManifest builds export manifest from filtered fonts.
-//
-// It converts font ID groups into ExportedFont entries, sorts them for consistent output,
-// and creates a complete ExportManifest with metadata about the export operation.
-//
-// Parameters:
-//   - fontIDGroups: Map of Font ID to font group (from filterFontsForExport)
-//   - matchFilter: Match filter string used (for metadata)
-//   - sourceFilter: Source filter string used (for metadata)
-//   - onlyMatched: Whether only matched fonts were exported (for metadata)
-//   - skippedSystem: Count of skipped system fonts (for metadata)
-//   - skippedUnmatched: Count of skipped unmatched fonts (for metadata)
-//   - skippedByFilter: Count of fonts skipped by filters (for metadata)
-//
+// buildExportManifest builds an ExportManifest from font ID groups
 // Returns:
-//   - *ExportManifest: Complete export manifest ready for JSON serialization
+//   - *ExportManifest: The complete export manifest
 //   - int: Total number of font variants exported
 func buildExportManifest(fontIDGroups map[string]*fontIDGroup, matchFilter, sourceFilter string, onlyMatched bool, skippedSystem, skippedUnmatched, skippedByFilter int) (*ExportManifest, int) {
 	// Convert groups to exported fonts
@@ -510,9 +693,9 @@ func buildExportManifest(fontIDGroups map[string]*fontIDGroup, matchFilter, sour
 	output.GetDebug().State("Export summary: %d exported, %d skipped (system: %d, unmatched: %d, filtered: %d)", len(exportedFonts), skippedSystem+skippedUnmatched+skippedByFilter, skippedSystem, skippedUnmatched, skippedByFilter)
 
 	manifest := &ExportManifest{
-		Version:    "1.0",
+		Version:    ExportManifestVersion,
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-		ExportedBy: "fontget",
+		ExportedBy: ExportManifestExportedBy,
 		Fonts:      exportedFonts,
 		Metadata: ExportMetadata{
 			TotalFonts:     len(exportedFonts),
@@ -536,7 +719,7 @@ func performFullExportWithResult(fontManager platform.FontManager, scopes []plat
 		GetLogger().Error("Failed to collect fonts: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("collectFonts() failed: %v", err)
-		return nil, 0, fmt.Errorf("unable to read installed fonts: %v", err)
+		return nil, 0, fmt.Errorf("unable to read installed fonts: %w", err)
 	}
 
 	output.GetVerbose().Info("Found %d font files", len(fonts))
@@ -557,7 +740,7 @@ func performFullExportWithResult(fontManager platform.FontManager, scopes []plat
 	if err != nil {
 		// Continue without matches if exportAll is true
 		if !exportAll {
-			return nil, 0, fmt.Errorf("unable to match fonts to repository: %v", err)
+			return nil, 0, fmt.Errorf("unable to match fonts to repository: %w", err)
 		}
 		matches = make(map[string]*repo.InstalledFontMatch)
 	}
@@ -586,7 +769,7 @@ func performFullExportWithResult(fontManager platform.FontManager, scopes []plat
 		GetLogger().Error("Failed to marshal export manifest: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("json.MarshalIndent() failed: %v", err)
-		return nil, 0, fmt.Errorf("unable to marshal manifest: %v", err)
+		return nil, 0, fmt.Errorf("unable to marshal manifest: %w", err)
 	}
 
 	// Ensure parent directory exists (skip if outputFile is just a filename)
@@ -595,7 +778,7 @@ func performFullExportWithResult(fontManager platform.FontManager, scopes []plat
 			GetLogger().Error("Failed to create export directory: %v", err)
 			output.GetVerbose().Error("%v", err)
 			output.GetDebug().Error("os.MkdirAll() failed for parent directory: %v", err)
-			return nil, 0, fmt.Errorf("unable to create directory for export file: %v", err)
+			return nil, 0, fmt.Errorf("unable to create directory for export file: %w", err)
 		}
 	}
 
@@ -603,7 +786,7 @@ func performFullExportWithResult(fontManager platform.FontManager, scopes []plat
 		GetLogger().Error("Failed to write export file: %v", err)
 		output.GetVerbose().Error("%v", err)
 		output.GetDebug().Error("os.WriteFile() failed: %v", err)
-		return nil, 0, fmt.Errorf("unable to write export file: %v", err)
+		return nil, 0, fmt.Errorf("unable to write export file: %w", err)
 	}
 	GetLogger().Info("Export file written successfully: %s", outputFile)
 	output.GetVerbose().Info("Export file written successfully")
@@ -618,4 +801,5 @@ func init() {
 	exportCmd.Flags().StringP("source", "s", "", "Filter by font source (e.g., 'Google Fonts')")
 	exportCmd.Flags().BoolP("all", "a", false, "Export all installed fonts (including those without Font IDs)")
 	exportCmd.Flags().Bool("matched", false, "Export only fonts that match repository entries (default, cannot be used with --all)")
+	exportCmd.Flags().BoolP("force", "f", false, "Force overwrite existing file without confirmation")
 }

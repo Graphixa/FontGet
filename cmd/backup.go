@@ -23,6 +23,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const (
+	// DefaultSourceName is used when a font's source cannot be determined
+	DefaultSourceName = "Other"
+)
+
 // backupResult tracks the result of a backup operation
 type backupResult struct {
 	familyCount int
@@ -77,7 +82,7 @@ Use --scope to specify which scopes to backup when providing a path.`,
 			return err
 		}
 
-		fm, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
+		fontManager, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
 		if err != nil {
 			return err
 		}
@@ -88,9 +93,17 @@ Use --scope to specify which scopes to backup when providing a path.`,
 			outputPath = args[0]
 		}
 
-		// Validate output path (without prompting for overwrite yet)
-		zipPath, needsOverwriteConfirm, err := validateOutputPathForBackup(outputPath)
+		// Validate output path using shared utility
+		defaultFilename := generateDefaultBackupFilename()
+		zipPath, needsOverwriteConfirm, err := cmdutils.ValidateOutputPath(outputPath, defaultFilename, ".zip", force)
 		if err != nil {
+			// Check if this is a path validation error
+			var pathErr *shared.PathValidationError
+			if errors.As(err, &pathErr) {
+				cmdutils.PrintError(pathErr.Error())
+				fmt.Println()
+				return nil
+			}
 			return err
 		}
 
@@ -100,18 +113,16 @@ Use --scope to specify which scopes to backup when providing a path.`,
 		}
 
 		// Auto-detect accessible scopes
-		availableScopes, err := detectAccessibleScopes(fm)
+		availableScopes, err := cmdutils.DetectAccessibleScopes(fontManager)
 		if err != nil {
 			GetLogger().Error("Failed to detect accessible scopes: %v", err)
 			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("detectAccessibleScopes() failed: %v", err)
-			return fmt.Errorf("unable to detect accessible font scopes: %v", err)
+			output.GetDebug().Error("cmdutils.DetectAccessibleScopes() failed: %v", err)
+			return fmt.Errorf("unable to detect accessible font scopes: %w", err)
 		}
 
-		// Determine selected scopes based on flags and path
+		// Determine selected scopes based on flags
 		var selectedScopes []platform.InstallationScope
-		var confirmed bool
-		pathProvided := outputPath != ""
 
 		// Parse scope flag if provided
 		if scopeFlag != "" {
@@ -119,7 +130,7 @@ Use --scope to specify which scopes to backup when providing a path.`,
 			scopeFlagLower := strings.ToLower(strings.TrimSpace(scopeFlag))
 			if scopeFlagLower == "machine" || scopeFlagLower == "both" || scopeFlagLower == "all" {
 				// Check elevation for machine scope before parsing
-				if err := cmdutils.CheckElevation(cmd, fm, platform.MachineScope); err != nil {
+				if err := cmdutils.CheckElevation(cmd, fontManager, platform.MachineScope); err != nil {
 					if errors.Is(err, cmdutils.ErrElevationRequired) {
 						return nil // Error already printed
 					}
@@ -131,57 +142,36 @@ Use --scope to specify which scopes to backup when providing a path.`,
 			if err != nil {
 				return err
 			}
-			confirmed = true // Scope flag implies confirmation
-		} else if pathProvided {
-			// Path provided (with or without force) = use all accessible scopes, skip TUI
-			selectedScopes = availableScopes
-			confirmed = true
 		} else {
-			// No path provided = show TUI modal
-			title := "Select Backup Scope"
-			message := "Choose which font scopes to backup:"
-			selectedScopes, confirmed, err = runBackupModal(title, message, availableScopes, zipPath, needsOverwriteConfirm)
-			if err != nil {
-				return fmt.Errorf("unable to show backup modal: %v", err)
-			}
-		}
-
-		if !confirmed {
-			fmt.Printf("%s\n", ui.WarningText.Render("Backup cancelled."))
-			fmt.Println()
-			return nil
+			// No scope flag = use all accessible scopes
+			selectedScopes = availableScopes
 		}
 
 		// Validate that scopes were selected
 		if len(selectedScopes) == 0 {
-			fmt.Printf("%s\n", ui.WarningText.Render("No scopes selected. Backup cancelled."))
+			cmdutils.PrintWarning("No scopes selected. Backup cancelled.")
 			fmt.Println()
 			return nil
 		}
 
-		// Handle overwrite confirmation if needed (and not using TUI)
-		if pathProvided && needsOverwriteConfirm && !force {
-			confirmed, err := components.RunConfirm(
-				"File Already Exists",
-				fmt.Sprintf("File already exists. Overwrite '%s'?", ui.SecondaryText.Render(filepath.Base(zipPath))),
-			)
-			if err != nil {
-				return fmt.Errorf("unable to show confirmation dialog: %v", err)
-			}
-			if !confirmed {
-				fmt.Printf("%s\n", ui.WarningText.Render("Backup cancelled."))
-				fmt.Println()
-				return nil
-			}
+		// Use selected scopes
+		scopes := selectedScopes
+
+		// Handle overwrite - if file exists and no force flag, show error and return
+		if needsOverwriteConfirm && !force {
+			cmdutils.PrintErrorf("File already exists: %s", zipPath)
+			cmdutils.PrintInfo("Use --force to overwrite")
+			fmt.Println()
+			return nil
 		}
 
 		// Log backup parameters (always log to file)
-		GetLogger().Info("Backup parameters - Output: %s, Scopes: %v", zipPath, selectedScopes)
+		GetLogger().Info("Backup parameters - Output: %s, Scopes: %v", zipPath, scopes)
 
 		// Verbose output
 		output.GetVerbose().Info("Backing up font files")
 		output.GetVerbose().Info("Output: %s", zipPath)
-		output.GetVerbose().Info("Scopes: %v", selectedScopes)
+		output.GetVerbose().Info("Scopes: %v", scopes)
 		output.GetVerbose().Info("System fonts are excluded")
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
 		if IsVerbose() {
@@ -190,11 +180,11 @@ Use --scope to specify which scopes to backup when providing a path.`,
 
 		// For debug mode, do everything without spinner
 		if IsDebug() {
-			return performBackup(fm, selectedScopes, zipPath)
+			return performBackup(fontManager, scopes, zipPath)
 		}
 
 		// Use progress bar for backup operation
-		return runBackupWithProgressBar(fm, selectedScopes, zipPath)
+		return runBackupWithProgressBar(fontManager, scopes, zipPath)
 	},
 }
 
@@ -202,130 +192,39 @@ Use --scope to specify which scopes to backup when providing a path.`,
 func generateDefaultBackupFilename() string {
 	now := time.Now()
 	dateStr := now.Format("2006-01-02")
-	return fmt.Sprintf("font-backup-%s.zip", dateStr)
-}
-
-// validateOutputPathForBackup validates and normalizes the output path without prompting
-// Returns: (normalizedPath, needsOverwriteConfirm, error)
-func validateOutputPathForBackup(outputPath string) (string, bool, error) {
-	// If no path provided, use date-based default name in current directory
-	if outputPath == "" {
-		outputPath = generateDefaultBackupFilename()
-	}
-
-	// Normalize path separators
-	outputPath = filepath.Clean(outputPath)
-
-	// Check if it's a directory (ends with separator or exists as directory)
-	info, err := os.Stat(outputPath)
-	if err == nil && info.IsDir() {
-		// It's a directory, use date-based default filename
-		outputPath = filepath.Join(outputPath, generateDefaultBackupFilename())
-	} else if err == nil && !info.IsDir() {
-		// Path exists and is a file - check if it has .zip extension
-		if !strings.HasSuffix(strings.ToLower(outputPath), ".zip") {
-			return "", false, fmt.Errorf("output path exists and is not a zip file: %s", outputPath)
-		}
-		// File exists - will check and prompt later after getting absolute path
-	} else if os.IsNotExist(err) {
-		// Path doesn't exist - check if parent directory exists
-		parentDir := filepath.Dir(outputPath)
-		if parentDir != "." && parentDir != outputPath {
-			parentInfo, err := os.Stat(parentDir)
-			if err != nil {
-				// Parent doesn't exist - check if we can create it
-				// For safety, only allow creating one level deep
-				if !strings.HasSuffix(strings.ToLower(outputPath), ".zip") {
-					return "", false, fmt.Errorf("output path must be a .zip file: %s", outputPath)
-				}
-				// Will create parent directory later
-			} else if !parentInfo.IsDir() {
-				return "", false, fmt.Errorf("parent path exists but is not a directory: %s", parentDir)
-			}
-		}
-
-		// Ensure it has .zip extension
-		if !strings.HasSuffix(strings.ToLower(outputPath), ".zip") {
-			outputPath = outputPath + ".zip"
-		}
-	}
-
-	// Final validation: ensure it's an absolute or relative path (not just a filename in a non-existent deep path)
-	absPath, err := filepath.Abs(outputPath)
-	if err != nil {
-		return "", false, fmt.Errorf("invalid output path: %v", err)
-	}
-
-	// Guard rail: prevent writing to system directories
-	systemDirs := []string{
-		filepath.Join(os.Getenv("SystemRoot"), "Fonts"),
-		"/System/Library/Fonts",
-		"/usr/share/fonts",
-		"/usr/local/share/fonts",
-	}
-	for _, sysDir := range systemDirs {
-		if sysDir != "" && strings.HasPrefix(strings.ToLower(absPath), strings.ToLower(sysDir)) {
-			return "", false, fmt.Errorf("cannot write backup to system font directory: %s", absPath)
-		}
-	}
-
-	// Check if the final file path already exists
-	needsConfirm := false
-	if _, err := os.Stat(absPath); err == nil {
-		needsConfirm = true
-	}
-
-	return absPath, needsConfirm, nil
-}
-
-// detectAccessibleScopes detects which font scopes are accessible based on elevation
-func detectAccessibleScopes(fm platform.FontManager) ([]platform.InstallationScope, error) {
-	isElevated, err := fm.IsElevated()
-	if err != nil {
-		// If we can't detect elevation, default to user scope only (safer)
-		output.GetVerbose().Warning("Unable to detect elevation status: %v. Backing up user scope only.", err)
-		return []platform.InstallationScope{platform.UserScope}, nil
-	}
-
-	if isElevated {
-		// Admin/sudo - can access both scopes
-		return []platform.InstallationScope{platform.UserScope, platform.MachineScope}, nil
-	}
-
-	// Regular user - only user scope
-	return []platform.InstallationScope{platform.UserScope}, nil
+	return fmt.Sprintf("fontget-backup-%s.zip", dateStr)
 }
 
 // performBackup performs the backup operation (for debug mode)
-func performBackup(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
+func performBackup(fontManager platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
 	output.GetDebug().State("Calling performBackup(scopes=%v, zipPath=%s)", scopes, zipPath)
 
-	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose for debug mode
+	fonts, err := collectFonts(scopes, fontManager, "", true) // Suppress verbose for debug mode
 	if err != nil {
 		output.GetDebug().State("Error collecting fonts for backup: %v", err)
 		return err
 	}
 	output.GetDebug().State("Total fonts to backup: %d", len(fonts))
 	output.GetDebug().State("Calling performBackupWithCollectedFonts(scopes=%v, zipPath=%s, fontCount=%d)", scopes, zipPath, len(fonts))
-	result, err := performBackupWithCollectedFonts(fm, scopes, zipPath, fonts)
+	result, err := performBackupWithCollectedFonts(fontManager, scopes, zipPath, fonts)
 	if err != nil {
 		return err
 	}
 
 	GetLogger().Info("Backup operation complete - Backed up %d font families, %d files to %s", result.familyCount, result.fileCount, zipPath)
 	output.GetDebug().State("Backup operation complete - Families: %d, Files: %d", result.familyCount, result.fileCount)
-	fmt.Printf("%s\n", ui.SuccessText.Render(fmt.Sprintf("Successfully backed up %d font families to %s", result.familyCount, zipPath)))
+	fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font files backed up to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", zipPath)))))
 	fmt.Println()
 	return nil
 }
 
 // runBackupWithProgressBar runs the backup operation with a progress bar
-func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
+func runBackupWithProgressBar(fontManager platform.FontManager, scopes []platform.InstallationScope, zipPath string) error {
 	// First, collect fonts to determine how many families we'll be backing up
 	output.GetVerbose().Info("Scanning fonts to determine backup scope...")
-	fonts, err := collectFonts(scopes, fm, "", true) // Suppress verbose - we have our own high-level message
+	fonts, err := collectFonts(scopes, fontManager, "", true) // Suppress verbose - we have our own high-level message
 	if err != nil {
-		return fmt.Errorf("unable to collect fonts: %v", err)
+		return fmt.Errorf("unable to collect fonts: %w", err)
 	}
 	output.GetDebug().State("Total fonts to backup: %d", len(fonts))
 
@@ -352,7 +251,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 	// Count total families to backup
 	totalFamilies := len(fontMap)
 	if totalFamilies == 0 {
-		fmt.Printf("%s\n", ui.WarningText.Render("No fonts found to backup."))
+		cmdutils.PrintWarning("No fonts found to backup.")
 		fmt.Println()
 		return nil
 	}
@@ -392,7 +291,7 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 		func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
 			// Perform the actual backup operation
 			var err error
-			backupResult, err = performBackupWithProgress(fm, scopes, zipPath, fonts, fontMap, matches, sortedFamilyNames, send, cancelChan)
+			backupResult, err = performBackupWithProgress(fontManager, zipPath, fontMap, matches, sortedFamilyNames, send, cancelChan)
 			return err
 		},
 	)
@@ -402,20 +301,20 @@ func runBackupWithProgressBar(fm platform.FontManager, scopes []platform.Install
 		if errors.Is(progressErr, shared.ErrOperationCancelled) {
 			// Clean up any temp backup files that may have been created
 			cleanupTempBackupFiles(zipPath)
-			fmt.Printf("%s\n", ui.WarningText.Render("Backup cancelled."))
+			cmdutils.PrintWarning("Backup cancelled.")
 			fmt.Println()
 			return nil // Don't return error for cancellation
 		}
 		// Print error with proper styling (Cobra won't print it since SilenceErrors is true)
-		fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Error: %v", progressErr)))
+		cmdutils.PrintErrorf("%v", progressErr)
 		fmt.Println()
 		return progressErr
 	}
 
 	// Show success message after progress bar completes
 	if backupResult != nil {
-		// Show destination path with InfoText styling
-		fmt.Printf("Font files backed up to: %s\n", ui.InfoText.Render(fmt.Sprintf("'%s'", zipPath)))
+		// Show destination path with checkmark, matching remove command style
+		fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font files backed up to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", zipPath)))))
 		fmt.Println()
 	}
 
@@ -429,24 +328,24 @@ type fontFileInfo struct {
 	scope    string
 }
 
+// organizeFontsBySourceAndFamily organizes fonts by source and family name for zip structure.
+// Returns a map: sourceName -> familyName -> []fontFileInfo
 // organizeFontsBySourceAndFamily organizes fonts by source and family name for backup.
 //
 // It creates a nested map structure: source -> family name -> font files, which is used
 // to organize fonts in the backup zip archive. Fonts are matched to repository entries
 // to determine their source.
-//
-// Returns a map: sourceName -> familyName -> []fontFileInfo
-func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) map[string]map[string][]fontFileInfo {
+func organizeFontsBySourceAndFamily(fontManager platform.FontManager, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) map[string]map[string][]fontFileInfo {
 	sourceFamilyMap := make(map[string]map[string][]fontFileInfo)
 	dedupeMap := make(map[string]bool)
 
 	// Process fonts and organize by source
 	for familyName, fontGroup := range fontMap {
-		sourceName := "Other"
+		sourceName := DefaultSourceName
 		if match, exists := matches[familyName]; exists && match != nil {
 			sourceName = match.Source
 			if sourceName == "" {
-				sourceName = "Other"
+				sourceName = DefaultSourceName
 			}
 		}
 
@@ -461,7 +360,7 @@ func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string]
 				continue
 			}
 
-			fontDir := fm.GetFontDir(platform.InstallationScope(font.Scope))
+			fontDir := fontManager.GetFontDir(platform.InstallationScope(font.Scope))
 			filePath := filepath.Join(fontDir, font.Name)
 
 			// Verify file exists
@@ -483,6 +382,8 @@ func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string]
 	return sourceFamilyMap
 }
 
+// createBackupZipArchive creates a zip archive from organized font structure.
+// If send is not nil, it will be called with progress updates.
 // createBackupZipArchive creates a zip archive from organized font files.
 //
 // It creates a zip archive with fonts organized by source and family name.
@@ -494,19 +395,19 @@ func organizeFontsBySourceAndFamily(fm platform.FontManager, fontMap map[string]
 //   - sourceFamilyMap: Nested map of source -> family -> font files
 //   - zipPath: Path to the final output zip file
 //   - familyIndexMap: Map from family name to operation item index for progress tracking
-//   - send: Function to send progress updates (for TUI). If nil, no progress updates are sent.
-//   - cancelChan: Channel to check for cancellation requests. If nil, cancellation is not checked.
+//   - send: Function to send progress updates (for TUI)
+//   - cancelChan: Channel to check for cancellation requests
 //
 // Returns:
 //   - *backupResult: Contains family and file counts
-//   - error: Error if archive creation fails (including cancellation via shared.ErrOperationCancelled)
+//   - error: Error if archive creation fails (including cancellation)
 func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo, zipPath string, familyIndexMap map[string]int, send func(msg tea.Msg), cancelChan <-chan struct{}) (*backupResult, error) {
 	// Ensure parent directory exists
 	if dir := filepath.Dir(zipPath); dir != "." && dir != zipPath {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			GetLogger().Error("Failed to create backup directory: %v", err)
 			// Don't print error here - let Cobra handle it when we return
-			return nil, fmt.Errorf("unable to create directory for backup archive: %v", err)
+			return nil, fmt.Errorf("unable to create directory for backup archive: %w", err)
 		}
 	}
 
@@ -519,19 +420,19 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 	tempFile, err := os.CreateTemp(tempDir, "fontget-backup-*.zip.tmp")
 	if err != nil {
 		GetLogger().Error("Failed to create temp backup zip file: %v", err)
-		return nil, fmt.Errorf("unable to create temp backup archive: %v", err)
+		return nil, fmt.Errorf("unable to create temp backup archive: %w", err)
 	}
 	tempPath := tempFile.Name()
 	tempFile.Close() // Close so we can delete it if needed
-	// Note: We no longer track tempFileMoved - defer will always try to clean up
-	// and ignore "file not found" errors (which means the file was successfully moved)
+	// Defer will always try to clean up temp file and ignore "file not found" errors
+	// (which means the file was successfully moved to final location)
 
 	// Create zip file in temp location
 	zipFile, err := os.Create(tempPath)
 	if err != nil {
 		GetLogger().Error("Failed to create backup zip file: %v", err)
 		os.Remove(tempPath) // Clean up temp file
-		return nil, fmt.Errorf("unable to create backup archive: %v", err)
+		return nil, fmt.Errorf("unable to create backup archive: %w", err)
 	}
 
 	// Declare zipWriter here so it's accessible to the defer function
@@ -547,21 +448,11 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 			zipFile.Close()
 		}
 
-		// Attempt to clean up temp file
-		// If deletion fails (e.g., Windows file handle not yet released), that's acceptable:
-		// - Temp files in temp directories are cleaned up by the OS periodically
-		// - We'll attempt cleanup on next run if needed
-		// - Logging the failure is sufficient for debugging
+		// Attempt to clean up temp file with retry logic
+		// Small delay to allow OS to release file handle (Windows file locking)
+		// This helps prevent "file in use" errors on Windows, especially on cancellation
 		if tempPath != "" {
-			if err := os.Remove(tempPath); err != nil {
-				if !os.IsNotExist(err) {
-					// File still exists and couldn't be removed - log for debugging
-					// This is non-fatal; temp files will be cleaned up eventually
-					GetLogger().Debug("Could not remove temp backup file (may be cleaned up later): %s: %v", tempPath, err)
-				}
-			} else {
-				GetLogger().Debug("Cleaned up temp backup file: %s", tempPath)
-			}
+			removeTempFileWithRetry(tempPath)
 		}
 	}()
 
@@ -706,7 +597,7 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 	if err := zipWriter.Close(); err != nil {
 		GetLogger().Error("Failed to close zip writer: %v", err)
 		// Don't print error here - let Cobra handle it when we return
-		return nil, fmt.Errorf("unable to finalize backup archive: %v", err)
+		return nil, fmt.Errorf("unable to finalize backup archive: %w", err)
 	}
 	zipWriter = nil // Mark as closed so defer doesn't try to close it again
 
@@ -724,7 +615,7 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 		}
 		if copyErr := copyFile(tempPath, zipPath); copyErr != nil {
 			// Both rename and copy failed - temp file will be cleaned up by defer
-			return nil, fmt.Errorf("unable to move backup archive to final location: %v (copy also failed: %v)", err, copyErr)
+			return nil, fmt.Errorf("unable to move backup archive to final location: %w (copy also failed: %w)", err, copyErr)
 		}
 		// Copy succeeded - temp file will be cleaned up by defer
 		if IsDebug() {
@@ -765,11 +656,9 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// performBackupWithProgress performs the backup operation with progress updates.
-// The scopes and fonts parameters are unused but kept for interface consistency with other backup functions.
-func performBackupWithProgress(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, _ []ParsedFont, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch, sortedFamilyNames []string, send func(msg tea.Msg), cancelChan <-chan struct{}) (*backupResult, error) {
+func performBackupWithProgress(fontManager platform.FontManager, zipPath string, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch, sortedFamilyNames []string, send func(msg tea.Msg), cancelChan <-chan struct{}) (*backupResult, error) {
 	// Organize fonts by source -> family name
-	sourceFamilyMap := organizeFontsBySourceAndFamily(fm, fontMap, matches)
+	sourceFamilyMap := organizeFontsBySourceAndFamily(fontManager, fontMap, matches)
 
 	// Create a map from family name to index for progress tracking
 	familyIndexMap := make(map[string]int)
@@ -779,6 +668,39 @@ func performBackupWithProgress(fm platform.FontManager, _ []platform.Installatio
 
 	// Create zip archive with progress tracking and cancellation support
 	return createBackupZipArchive(sourceFamilyMap, zipPath, familyIndexMap, send, cancelChan)
+}
+
+// removeTempFileWithRetry attempts to remove a temp file with retry logic
+// This handles Windows file locking issues where files may remain locked briefly after closing
+func removeTempFileWithRetry(tempPath string) {
+	const maxRetries = 5
+	const initialDelay = 100 * time.Millisecond
+
+	for i := 0; i < maxRetries; i++ {
+		// Delay before attempting removal (longer delay on first attempt for active writes)
+		if i > 0 {
+			time.Sleep(initialDelay * time.Duration(i))
+		} else {
+			time.Sleep(initialDelay)
+		}
+
+		err := os.Remove(tempPath)
+		if err == nil {
+			GetLogger().Debug("Cleaned up temp backup file: %s", tempPath)
+			return
+		}
+		if os.IsNotExist(err) {
+			// File already gone - success
+			return
+		}
+		// File still locked - will retry
+		if i < maxRetries-1 {
+			GetLogger().Debug("Temp file still locked, retrying cleanup: %s (attempt %d/%d)", tempPath, i+1, maxRetries)
+		}
+	}
+
+	// All retries failed - log but don't fail (temp files will be cleaned up eventually)
+	GetLogger().Debug("Could not remove temp backup file after %d retries (may be cleaned up later): %s", maxRetries, tempPath)
 }
 
 // cleanupTempBackupFiles removes any temporary backup files that may have been created
@@ -798,39 +720,14 @@ func cleanupTempBackupFiles(zipPath string) {
 		return
 	}
 
-	// Remove each temp file found
-	// On Windows, file handles may not be released immediately after Close(),
-	// so we wait a bit first, then retry with delays
+	// Remove each temp file found with retry logic
 	for _, match := range matches {
-		// Give Windows time to release the file handle (defer should have closed it by now)
-		time.Sleep(100 * time.Millisecond)
-
-		// Try to remove the file, with retries for Windows file handle release
-		var removeErr error
-		for i := 0; i < 5; i++ {
-			removeErr = os.Remove(match)
-			if removeErr == nil || os.IsNotExist(removeErr) {
-				// Successfully removed or file doesn't exist
-				if removeErr == nil {
-					GetLogger().Debug("Cleaned up temp backup file: %s", match)
-				}
-				break
-			}
-			// Wait a bit before retrying (Windows file handle release delay)
-			if i < 4 {
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-
-		if removeErr != nil && !os.IsNotExist(removeErr) {
-			GetLogger().Debug("Could not remove temp backup file %s after retries: %v", match, removeErr)
-		}
+		removeTempFileWithRetry(match)
 	}
 }
 
-// performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode).
-// The scopes parameter is unused but kept for interface consistency with other backup functions.
-func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
+// performBackupWithCollectedFonts performs the backup operation with pre-collected fonts (for debug mode)
+func performBackupWithCollectedFonts(fontManager platform.FontManager, _ []platform.InstallationScope, zipPath string, fonts []ParsedFont) (*backupResult, error) {
 	output.GetDebug().State("Calling performBackupWithCollectedFonts(zipPath=%s, fontCount=%d)", zipPath, len(fonts))
 
 	output.GetVerbose().Info("Found %d font files", len(fonts))
@@ -862,461 +759,13 @@ func performBackupWithCollectedFonts(fm platform.FontManager, _ []platform.Insta
 	}
 
 	// Organize fonts by source -> family name
-	sourceFamilyMap := organizeFontsBySourceAndFamily(fm, fontMap, matches)
+	sourceFamilyMap := organizeFontsBySourceAndFamily(fontManager, fontMap, matches)
 
 	output.GetVerbose().Info("Creating zip archive...")
 	output.GetDebug().State("Organized fonts into %d sources", len(sourceFamilyMap))
 
 	// Create zip archive without progress tracking (debug mode)
 	return createBackupZipArchive(sourceFamilyMap, zipPath, make(map[string]int), nil, nil)
-}
-
-// backupScopeSelectorModel handles scope selection for backup (TUI logic lives in cmd, not components)
-type backupScopeSelectorModel struct {
-	Title           string
-	Message         string
-	AvailableScopes []platform.InstallationScope
-	SelectedScopes  []platform.InstallationScope
-	CheckboxList    *components.CheckboxList
-	Buttons         *components.ButtonGroup
-	Navigation      *components.FormNavigation
-	Quit            bool
-	Confirmed       bool
-	Width           int
-	Height          int
-}
-
-func newBackupScopeSelectorModel(title, message string, availableScopes []platform.InstallationScope) *backupScopeSelectorModel {
-	// Build checkbox items from available scopes
-	items := make([]components.CheckboxItem, len(availableScopes))
-	for i, scope := range availableScopes {
-		var label string
-		switch scope {
-		case platform.UserScope:
-			label = "User Scope"
-		case platform.MachineScope:
-			label = "Machine Scope"
-		default:
-			label = string(scope)
-		}
-		items[i] = components.CheckboxItem{
-			Label:   label,
-			Checked: true, // Default to all checked
-			Enabled: true,
-		}
-	}
-
-	checkboxList := &components.CheckboxList{
-		Items:    items,
-		Cursor:   0,
-		HasFocus: true,
-	}
-
-	buttons := components.NewButtonGroup([]string{"Backup", "Cancel"}, 0)
-	buttons.SetFocus(false)
-
-	// Create FormNavigation
-	nav := components.NewFormNavigation(len(items), buttons)
-	nav.ListHasFocus = func() bool { return checkboxList.HasFocus }
-	nav.ListSetFocus = func(focused bool) { checkboxList.HasFocus = focused }
-	nav.ListGetCursor = func() int { return checkboxList.Cursor }
-	nav.ListSetCursor = func(cursor int) { checkboxList.Cursor = cursor }
-
-	model := &backupScopeSelectorModel{
-		Title:           title,
-		Message:         message,
-		AvailableScopes: availableScopes,
-		SelectedScopes:  availableScopes, // Default to all selected
-		CheckboxList:    checkboxList,
-		Buttons:         buttons,
-		Navigation:      nav,
-		Quit:            false,
-		Confirmed:       false,
-	}
-
-	// Ensure selected scopes are synced with checkbox states
-	model.updateSelectedScopes()
-
-	return model
-}
-
-func (m *backupScopeSelectorModel) Init() tea.Cmd {
-	return nil
-}
-
-func (m *backupScopeSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		key := msg.String()
-
-		// Sync navigation cursor with checkbox list cursor
-		m.Navigation.ListCursor = m.CheckboxList.Cursor
-		m.Navigation.ListFocused = m.CheckboxList.HasFocus
-
-		// Use FormNavigation to handle navigation
-		handled, action, listAction := m.Navigation.HandleKey(key)
-
-		if handled {
-			// Sync back after navigation
-			m.CheckboxList.Cursor = m.Navigation.ListCursor
-			m.CheckboxList.HasFocus = m.Navigation.ListFocused
-
-			// Handle list-specific actions
-			if listAction == "toggle" {
-				if m.CheckboxList.Cursor >= 0 && m.CheckboxList.Cursor < len(m.CheckboxList.Items) {
-					m.CheckboxList.Items[m.CheckboxList.Cursor].Checked = !m.CheckboxList.Items[m.CheckboxList.Cursor].Checked
-					m.updateSelectedScopes()
-				}
-			}
-
-			// Handle button actions (FormNavigation returns the button action)
-			if action != "" {
-				switch strings.ToLower(action) {
-				case "backup":
-					// Update selected scopes before confirming
-					m.updateSelectedScopes()
-					m.Confirmed = true
-					m.Quit = true
-					return m, nil // Don't quit here - let parent modal handle it
-				case "cancel":
-					m.Confirmed = false
-					m.Quit = true
-					return m, nil // Don't quit here - let parent modal handle it
-				}
-			}
-
-			return m, nil
-		}
-
-		// Fallback: handle enter on buttons even if FormNavigation didn't handle it
-		// If buttons are visible and enter is pressed, activate the selected button
-		if key == "enter" && m.Buttons != nil {
-			// Give buttons focus temporarily to get the action
-			hadFocus := m.Buttons.HasFocus
-			m.Buttons.SetFocus(true)
-			buttonAction := m.Buttons.HandleKey(key)
-			if !hadFocus {
-				m.Buttons.SetFocus(false)
-			}
-
-			if buttonAction != "" {
-				switch strings.ToLower(buttonAction) {
-				case "backup":
-					m.updateSelectedScopes()
-					m.Confirmed = true
-					m.Quit = true
-					return m, nil
-				case "cancel":
-					m.Confirmed = false
-					m.Quit = true
-					return m, nil
-				}
-			}
-		}
-
-		// Handle escape to cancel
-		if key == "esc" {
-			m.Confirmed = false
-			m.Quit = true
-			return m, nil // Don't quit here - let parent modal handle it
-		}
-
-	case tea.WindowSizeMsg:
-		m.Width = msg.Width
-		m.Height = msg.Height
-		return m, nil
-	}
-
-	return m, nil
-}
-
-func (m *backupScopeSelectorModel) updateSelectedScopes() {
-	m.SelectedScopes = []platform.InstallationScope{}
-	for i, item := range m.CheckboxList.Items {
-		if item.Checked && i < len(m.AvailableScopes) {
-			m.SelectedScopes = append(m.SelectedScopes, m.AvailableScopes[i])
-		}
-	}
-}
-
-func (m *backupScopeSelectorModel) View() string {
-	var result strings.Builder
-
-	// Title
-	if m.Title != "" {
-		result.WriteString(ui.PageTitle.Render(m.Title))
-		result.WriteString("\n\n")
-	}
-
-	// Message
-	if m.Message != "" {
-		result.WriteString(ui.Text.Render(m.Message))
-		result.WriteString("\n\n")
-	}
-
-	// Render checkbox list
-	if m.CheckboxList != nil {
-		result.WriteString(m.CheckboxList.Render())
-		result.WriteString("\n\n")
-	}
-
-	// Render buttons
-	if m.Buttons != nil {
-		result.WriteString(m.Buttons.Render())
-		result.WriteString("\n")
-	}
-
-	// Keyboard help
-	commands := []string{
-		ui.RenderKeyWithDescription("Tab", "Switch focus"),
-		ui.RenderKeyWithDescription("↑/↓", "Navigate"),
-		ui.RenderKeyWithDescription("Space", "Toggle"),
-		ui.RenderKeyWithDescription("Enter", "Select"),
-		ui.RenderKeyWithDescription("Esc", "Cancel"),
-	}
-	helpText := strings.Join(commands, "  ")
-	result.WriteString("\n")
-	result.WriteString(helpText)
-
-	return result.String()
-}
-
-// backupModalModel manages the backup flow: scope selection + optional overwrite confirmation
-type backupModalModel struct {
-	ScopeSelector    *backupScopeSelectorModel
-	OverwriteConfirm *components.ConfirmModel
-	State            string // "scope_selection", "overwrite_confirm", "done"
-	AvailableScopes  []platform.InstallationScope
-	ZipPath          string
-	NeedsOverwrite   bool
-	SelectedScopes   []platform.InstallationScope
-	Confirmed        bool
-	Cancelled        bool
-	Width            int
-	Height           int
-}
-
-func newBackupModalModel(title, message string, availableScopes []platform.InstallationScope, zipPath string, needsOverwrite bool) *backupModalModel {
-	scopeSelector := newBackupScopeSelectorModel(title, message, availableScopes)
-
-	return &backupModalModel{
-		ScopeSelector:   scopeSelector,
-		State:           "scope_selection",
-		AvailableScopes: availableScopes,
-		ZipPath:         zipPath,
-		NeedsOverwrite:  needsOverwrite,
-	}
-}
-
-func (m *backupModalModel) Init() tea.Cmd {
-	if m.ScopeSelector != nil {
-		return m.ScopeSelector.Init()
-	}
-	return nil
-}
-
-func (m *backupModalModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.Width = msg.Width
-		m.Height = msg.Height
-		// Pass to current modal
-		if m.State == "scope_selection" && m.ScopeSelector != nil {
-			updated, cmd := m.ScopeSelector.Update(msg)
-			m.ScopeSelector = updated.(*backupScopeSelectorModel)
-			return m, cmd
-		} else if m.State == "overwrite_confirm" && m.OverwriteConfirm != nil {
-			updated, cmd := m.OverwriteConfirm.Update(msg)
-			m.OverwriteConfirm = updated.(*components.ConfirmModel)
-			return m, cmd
-		}
-		return m, nil
-
-	case tea.KeyMsg:
-		// Handle escape to cancel
-		if msg.String() == "esc" {
-			if m.State == "overwrite_confirm" {
-				// Cancel overwrite, go back to scope selection
-				m.State = "scope_selection"
-				m.OverwriteConfirm = nil
-				return m, nil
-			} else {
-				// Cancel everything
-				m.Cancelled = true
-				m.Confirmed = false
-				return m, tea.Quit
-			}
-		}
-	}
-
-	// Route messages to current state
-	switch m.State {
-	case "scope_selection":
-		if m.ScopeSelector != nil {
-			updated, cmd := m.ScopeSelector.Update(msg)
-			m.ScopeSelector = updated.(*backupScopeSelectorModel)
-
-			// Check if scope selector wants to proceed (but don't let it quit yet)
-			// This must be checked immediately after update
-			if m.ScopeSelector.Quit {
-				if m.ScopeSelector.Confirmed {
-					// Ensure selected scopes are up to date
-					m.ScopeSelector.updateSelectedScopes()
-
-					// Scope selected - check if we need overwrite confirmation
-					m.SelectedScopes = m.ScopeSelector.SelectedScopes
-
-					// Don't let scope selector quit - keep it visible as background
-					m.ScopeSelector.Quit = false
-
-					if m.NeedsOverwrite {
-						// Show overwrite confirmation as nested overlay
-						m.OverwriteConfirm = components.NewConfirmModel(
-							"File Already Exists",
-							fmt.Sprintf("File already exists. Overwrite '%s'?", ui.SecondaryText.Render(filepath.Base(m.ZipPath))),
-						)
-						m.State = "overwrite_confirm"
-						return m, m.OverwriteConfirm.Init()
-					} else {
-						// No overwrite needed - we're done
-						m.Confirmed = true
-						m.State = "done"
-						return m, tea.Quit
-					}
-				} else {
-					// Scope selection cancelled
-					m.Cancelled = true
-					m.Confirmed = false
-					return m, tea.Quit
-				}
-			}
-			return m, cmd
-		}
-
-	case "overwrite_confirm":
-		if m.OverwriteConfirm != nil {
-			updated, cmd := m.OverwriteConfirm.Update(msg)
-			m.OverwriteConfirm = updated.(*components.ConfirmModel)
-
-			// Check if overwrite confirmation is done
-			if m.OverwriteConfirm.Quit {
-				if m.OverwriteConfirm.Confirmed {
-					// Overwrite confirmed - we're done
-					m.Confirmed = true
-					m.State = "done"
-					return m, tea.Quit
-				} else {
-					// Overwrite cancelled - go back to scope selection
-					m.State = "scope_selection"
-					m.OverwriteConfirm = nil
-					return m, nil
-				}
-			}
-			return m, cmd
-		}
-	}
-
-	return m, nil
-}
-
-func (m *backupModalModel) View() string {
-	switch m.State {
-	case "scope_selection":
-		if m.ScopeSelector != nil {
-			// Render scope selector with overlay
-			background := &components.BlankBackgroundModel{
-				Width:  m.Width,
-				Height: m.Height,
-			}
-			options := components.OverlayOptions{
-				ShowBorder:  true,
-				BorderWidth: 0,
-			}
-			overlay := components.NewOverlayWithOptions(m.ScopeSelector, background, components.Center, components.Center, 0, 0, options)
-			return overlay.View()
-		}
-
-	case "overwrite_confirm":
-		if m.OverwriteConfirm != nil && m.ScopeSelector != nil {
-			// Render overwrite confirmation nested on top of scope selector
-			// First render the scope selector as background
-			scopeBackground := &components.BlankBackgroundModel{
-				Width:  m.Width,
-				Height: m.Height,
-			}
-			scopeOptions := components.OverlayOptions{
-				ShowBorder:  true,
-				BorderWidth: 0,
-			}
-			scopeOverlay := components.NewOverlayWithOptions(m.ScopeSelector, scopeBackground, components.Center, components.Center, 0, 0, scopeOptions)
-			scopeView := scopeOverlay.View()
-
-			// Then overlay the confirmation on top
-			confirmOptions := components.OverlayOptions{
-				ShowBorder:  true,
-				BorderWidth: 0,
-			}
-			// Create a model that renders the scope view as background
-			scopeBackgroundModel := &staticBackgroundModel{content: scopeView}
-			confirmOverlay := components.NewOverlayWithOptions(m.OverwriteConfirm, scopeBackgroundModel, components.Center, components.Center, 0, 0, confirmOptions)
-			return confirmOverlay.View()
-		}
-	}
-
-	return ""
-}
-
-// staticBackgroundModel is a model that renders static content (used for nested overlays)
-type staticBackgroundModel struct {
-	content string
-}
-
-func (m *staticBackgroundModel) Init() tea.Cmd {
-	return nil
-}
-
-func (m *staticBackgroundModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return m, nil
-}
-
-func (m *staticBackgroundModel) View() string {
-	return m.content
-}
-
-// runBackupModal runs the backup modal flow (scope selection + optional overwrite)
-func runBackupModal(title, message string, availableScopes []platform.InstallationScope, zipPath string, needsOverwrite bool) ([]platform.InstallationScope, bool, error) {
-	model := newBackupModalModel(title, message, availableScopes, zipPath, needsOverwrite)
-
-	background := &components.BlankBackgroundModel{}
-	options := components.OverlayOptions{
-		ShowBorder:  false,
-		BorderWidth: 0,
-	}
-
-	overlay := components.NewOverlayWithOptions(model, background, components.Center, components.Center, 0, 0, options)
-
-	program := tea.NewProgram(overlay, tea.WithAltScreen())
-
-	finalModel, err := program.Run()
-	if err != nil {
-		return nil, false, fmt.Errorf("failed to run backup modal: %w", err)
-	}
-
-	// Extract result from overlay
-	if overlayModel, ok := finalModel.(*components.OverlayModel); ok {
-		if backupModel, ok := overlayModel.Foreground.(*backupModalModel); ok {
-			if backupModel.Confirmed && len(backupModel.SelectedScopes) > 0 {
-				return backupModel.SelectedScopes, true, nil
-			}
-			// If confirmed but no scopes, something went wrong
-			if backupModel.Confirmed && len(backupModel.SelectedScopes) == 0 {
-				return nil, false, fmt.Errorf("backup confirmed but no scopes selected")
-			}
-			return nil, false, nil
-		}
-	}
-
-	return nil, false, nil
 }
 
 // parseScopeFlag parses the --scope flag value and returns the corresponding scopes
