@@ -1,6 +1,6 @@
 # Contributing to FontGet
 
-Thank you for your interest in contributing to FontGet! This guide will help you get started.
+If you're interested in contributing to FontGet! This guide will help you get started.
 
 ## Getting Started
 
