@@ -24,6 +24,7 @@ var (
 	verbose bool
 	debug   bool
 	logs    bool
+	wizard  bool
 	logger  *logging.Logger
 )
 
@@ -33,6 +34,18 @@ var rootCmd = &cobra.Command{
 	Long:  `FontGet is a powerful command-line font manager for installing and managing fonts on your system.`,
 	Args:  cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if wizard {
+			// Run the wizard
+			if err := onboarding.RunWizard(); err != nil {
+				// Handle cancellation/incomplete gracefully
+				if errors.Is(err, shared.ErrOnboardingCancelled) || errors.Is(err, shared.ErrOnboardingIncomplete) {
+					os.Exit(0)
+				}
+				return err
+			}
+			return nil
+		}
+
 		if logs {
 			// Open logs directory
 			logDir, err := logging.GetLogDirectory()
@@ -137,7 +150,8 @@ var rootCmd = &cobra.Command{
 			"completion": true,
 		}
 
-		if !skipLicenseCommands[cmd.Name()] {
+		// Skip first-run onboarding if --wizard flag is set (wizard will be run in RunE)
+		if !wizard && !skipLicenseCommands[cmd.Name()] {
 			// Run first-run onboarding (welcome, license, settings)
 			if err := onboarding.RunFirstRunOnboarding(); err != nil {
 				// If onboarding was cancelled or incomplete, exit gracefully
@@ -185,40 +199,45 @@ func init() {
 	// Add logs flag
 	rootCmd.PersistentFlags().BoolVar(&logs, "logs", false, "Open logs directory")
 
+	// Add wizard flag (not persistent - only applies to root command)
+	rootCmd.Flags().BoolVar(&wizard, "wizard", false, "Run the setup wizard to configure FontGet")
+
 	// Inject flag checkers into output package to avoid circular imports
 	output.SetVerboseChecker(IsVerbose)
 	output.SetDebugChecker(IsDebug)
 
 	// Set custom help template
-	rootCmd.SetHelpTemplate(`{{with (or .Long .Short)}}{{. | trimTrailingWhitespaces}}
-
-{{end}}{{if .Runnable}}Usage:
-  {{.UseLine}}
-{{end}}{{if .HasAvailableFlags}}
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
-{{end}}{{if .HasExample}}
-Examples:
-{{.Example}}
+	rootCmd.SetHelpTemplate(`{{if .Runnable}}
+Usage: {{.UseLine}}
+{{end}}{{with (or .Long .Short)}}
+{{. | trimTrailingWhitespaces}}
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
-{{end}}{{end}}{{end}}
+{{end}}{{end}}{{end}}{{if or .HasAvailableLocalFlags .HasAvailableInheritedFlags}}
+Options:
+{{if .HasAvailableLocalFlags}}{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasAvailableInheritedFlags}}{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{end}}{{if .HasExample}}
+Examples:
+{{.Example}}
+{{end}}
 `)
 
 	// Set custom usage template with extra spacing
-	rootCmd.SetUsageTemplate(`{{if .Runnable}}Usage:
-  {{.UseLine}}
-{{end}}{{if .HasAvailableFlags}}
-Flags:
-{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
-{{end}}{{if .HasExample}}
-Examples:
-{{.Example}}
+	rootCmd.SetUsageTemplate(`{{if .Runnable}}
+Usage: {{.UseLine}}
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
 {{end}}{{end}}
+{{end}}{{if or .HasAvailableLocalFlags .HasAvailableInheritedFlags}}
+Options:
+{{if .HasAvailableLocalFlags}}{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasAvailableInheritedFlags}}{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{end}}{{if .HasExample}}
+Examples:
+{{.Example}}
 {{end}}`)
 
 	// Completion command is now in cmd/completion.go
