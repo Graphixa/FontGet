@@ -41,7 +41,7 @@ func (cl CheckboxList) Render() string {
 		var line string
 		if cl.HasFocus && i == cl.Cursor {
 			// Selected row - show cursor and use selected style (only when focused)
-			cursor := ui.CheckboxCursor.Render("> ")
+			cursor := ui.Cursor.Render("> ")
 			line = fmt.Sprintf("%s%s %s", cursor, checkbox, item.Label)
 			line = ui.CheckboxItemSelected.Render(line)
 		} else {

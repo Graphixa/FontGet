@@ -229,12 +229,12 @@ var (
 	CheckboxItemSelected = lipgloss.NewStyle()
 	// Note: Normal checkbox items use Text instead of a separate style
 
-	// CheckboxCursor - Cursor indicator style (> )
-	// Usage: Cursor indicator for selected checkbox item
-	// Example: ui.CheckboxCursor.Render("> ")
+	// Cursor - Generic cursor indicator style (> )
+	// Usage: Cursor indicator for selected items in lists, checkboxes, settings, etc.
+	// Example: ui.Cursor.Render("> ")
 	// Colors: Set by InitStyles() from theme
-	CheckboxCursor = lipgloss.NewStyle().
-			Bold(true)
+	Cursor = lipgloss.NewStyle().
+		Bold(true)
 )
 
 // ============================================================================
@@ -544,7 +544,7 @@ func InitStyles() error {
 	CheckboxItemSelected = lipgloss.NewStyle().
 		Background(getColorOrNoColor(colors.Base))
 
-	CheckboxCursor = lipgloss.NewStyle().
+	Cursor = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(colors.Primary)).
 		Bold(true)
 

@@ -265,7 +265,7 @@ func (s *WelcomeStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	result.WriteString("\n")
 	result.WriteString(ui.PageTitle.Render("Welcome to FontGet!"))
 	result.WriteString("\n\n")
-	result.WriteString(ui.Text.Render("Welcome to FontGet! This is your first time using FontGet."))
+	result.WriteString(ui.Text.Render("Welcome! It looks like this is your first time using FontGet."))
 	result.WriteString("\n\n")
 	aboutText := "FontGet is a powerful command-line font manager that helps you install and manage fonts from various sources."
 	// Wrap plain text first, then apply styling to each line
@@ -418,13 +418,14 @@ func (s *LicenseAgreementStepEnhanced) Update(model *EnhancedOnboardingModel, ms
 
 // WizardChoiceStepEnhanced is the wizard choice step where user chooses to customize or accept defaults
 type WizardChoiceStepEnhanced struct {
-	buttonGroup   *components.ButtonGroup
-	hasBeenViewed bool // Track if step has been viewed to only reset once
+	buttonGroup   *components.ButtonGroup // Buttons: Back, Accept Defaults, Customize
+	hasBeenViewed bool                    // Track if step has been viewed to only reset once
 }
 
 func NewWizardChoiceStepEnhanced() *WizardChoiceStepEnhanced {
-	group := components.NewButtonGroup([]string{"Customize FontGet", "Let it ride"}, 0) // First option selected by default
-	group.SetFocus(true)                                                                // Buttons have focus by default
+	// Buttons: Back (0), Accept Defaults (1), Customize (2) - Customize selected by default
+	group := components.NewButtonGroup([]string{"Back", "Accept Defaults", "Customize"}, 2)
+	group.SetFocus(true) // Buttons have focus by default
 	return &WizardChoiceStepEnhanced{
 		buttonGroup: group,
 	}
@@ -492,12 +493,12 @@ func (s *WizardChoiceStepEnhanced) Update(model *EnhancedOnboardingModel, msg te
 			case "back":
 				model.GoToPreviousStep()
 				return model, nil
-			case "customize fontget":
+			case "customize":
 				// User chose to customize
 				model.customizeChoice = true
 				model.GoToNextStep()
 				return model, nil
-			case "let it ride":
+			case "accept defaults":
 				// User chose to accept defaults - skip to completion
 				model.customizeChoice = false
 				// Set default theme to "catppuccin"
@@ -867,32 +868,45 @@ func (s *SettingsStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	// Add some padding (4 spaces) between name and switch
 	switchColumnStart := maxNameWidth + 4
 
+	// Check if switches have focus (cursor should only show when switches are focused)
+	switchesFocused := !s.buttonGroup.HasFocus
+
 	for i, setting := range settings {
-		// Cursor indicator
-		if i == s.cursor {
-			result.WriteString(ui.CheckboxCursor.Render("> "))
+		// Build the line content
+		var lineContent strings.Builder
+
+		// Cursor indicator - only show when switches have focus
+		if switchesFocused && i == s.cursor {
+			lineContent.WriteString(ui.Cursor.Render("> "))
 		} else {
-			result.WriteString("  ")
+			lineContent.WriteString("  ")
 		}
 
 		// Setting name (using accent2 color)
 		settingName := ui.FormLabel.Render(setting.name)
-		result.WriteString(settingName)
+		lineContent.WriteString(settingName)
 
 		// Calculate padding needed to align switches
 		// Account for ANSI escape codes in styled text by using plain length
 		nameDisplayLen := len(setting.name)
 		paddingNeeded := switchColumnStart - nameDisplayLen
 		if paddingNeeded > 0 {
-			result.WriteString(strings.Repeat(" ", paddingNeeded))
+			lineContent.WriteString(strings.Repeat(" ", paddingNeeded))
 		}
 
 		// Switch aligned in column
-		result.WriteString(s.switches[setting.switchIndex].Render())
+		lineContent.WriteString(s.switches[setting.switchIndex].Render())
+
+		// Apply background highlighting if this is the selected item
+		line := lineContent.String()
+		if switchesFocused && i == s.cursor {
+			line = ui.CheckboxItemSelected.Render(line)
+		}
+
+		result.WriteString(line)
 		result.WriteString("\n")
 
 		// Add blank line between settings (including after last one)
-
 		result.WriteString("\n")
 
 	}
@@ -1503,6 +1517,12 @@ func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg 
 					_ = s.preview.LoadTheme(s.themes[s.selectedIndex].ThemeName)
 					s.adjustScrollForSelection()
 				}
+				return model, nil
+
+			case "enter":
+				// Move focus to navigation buttons when Enter is pressed on a theme
+				s.buttonGroup.SetFocus(false)
+				s.navButtons.SetFocus(true)
 				return model, nil
 			}
 		}
