@@ -14,6 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version prefix constant (could be v, or ver)
+const (
+	VersionPrefix = "v"
+)
+
 var (
 	updateCheckOnly bool
 	updateAutoYes   bool
@@ -336,12 +341,12 @@ func performUpdate(currentVersion, latestVersion string) error {
 func displayVersionInfo(installedVersion, availableVersion, latestVersion string) {
 	// Ensure versions have "v" prefix for display
 	installedDisplay := installedVersion
-	if !strings.HasPrefix(installedVersion, "v") {
-		installedDisplay = "v" + installedVersion
+	if !strings.HasPrefix(installedVersion, VersionPrefix) {
+		installedDisplay = VersionPrefix + installedVersion
 	}
 	availableDisplay := availableVersion
-	if !strings.HasPrefix(availableVersion, "v") {
-		availableDisplay = "v" + availableVersion
+	if !strings.HasPrefix(availableVersion, VersionPrefix) {
+		availableDisplay = VersionPrefix + availableVersion
 	}
 
 	// Style labels with InfoText, version numbers with plain Text

@@ -22,6 +22,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// UI text constants
+const (
+	DisabledTag = " [Disabled]"
+)
+
 var sourcesCmd = &cobra.Command{
 	Use:          "sources",
 	Short:        "Manage FontGet font sources",
@@ -195,7 +200,7 @@ var sourcesInfoCmd = &cobra.Command{
 			var nameStyled string
 			if !source.Enabled {
 				// Keep the red [Disabled] tag within the name column width
-				tag := " [Disabled]"
+				tag := DisabledTag
 				nameWidth := ui.TableColSrcName - len(tag)
 				if nameWidth < 0 {
 					nameWidth = 0

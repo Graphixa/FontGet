@@ -14,6 +14,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Placeholder constants
+const (
+	InfoPlaceholderUnknown = "Unknown"
+)
+
 var infoCmd = &cobra.Command{
 	Use:   "info <font-id> [flags]",
 	Short: "Display detailed information about a font",
@@ -208,7 +213,7 @@ Use the --license flag to show only license information.`,
 
 		// Show font details card only if showing all info
 		if showAll {
-			category := "Unknown"
+			category := InfoPlaceholderUnknown
 			if len(font.Categories) > 0 {
 				category = font.Categories[0]
 			}

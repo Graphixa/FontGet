@@ -13,6 +13,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Theme UI text constants
+const (
+	ThemeSelectionTitle = "Theme Selection"
+	DarkThemesLabel     = "DARK THEMES"
+	LightThemesLabel    = "LIGHT THEMES"
+)
+
 var themeCmd = &cobra.Command{
 	Use:   "theme",
 	Short: "Interactive theme selector",
@@ -365,7 +372,7 @@ func (m themeSelectionModel) buildAllMenuLines(contentWidth int) []MenuLine {
 			})
 			allLines = append(allLines, MenuLine{
 				Type:       "header_text",
-				Content:    headerStyle.Render("DARK THEMES"),
+				Content:    headerStyle.Render(DarkThemesLabel),
 				ThemeIndex: -1,
 			})
 			allLines = append(allLines, MenuLine{
@@ -385,7 +392,7 @@ func (m themeSelectionModel) buildAllMenuLines(contentWidth int) []MenuLine {
 			})
 			allLines = append(allLines, MenuLine{
 				Type:       "header_text",
-				Content:    headerStyle.Render("LIGHT THEMES"),
+				Content:    headerStyle.Render(LightThemesLabel),
 				ThemeIndex: -1,
 			})
 			allLines = append(allLines, MenuLine{

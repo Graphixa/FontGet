@@ -278,7 +278,8 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		}
 
 		// Read the response body with size limit to prevent memory issues
-		maxSize := config.ParseSize(appConfig.Limits.MaxSourceFileSize, 50*1024*1024) // Default 50MB
+		// Hardcoded 50MB limit for security (prevents DoS attacks from huge source files)
+		maxSize := int64(50 * 1024 * 1024) // 50MB hardcoded limit
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
 		if err != nil {
 			return updateCompleteMsg{
