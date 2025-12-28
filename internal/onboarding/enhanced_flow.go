@@ -95,7 +95,7 @@ func (m EnhancedOnboardingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c", "q", "esc":
 			// User quit early - don't mark as completed
 			m.quitting = true
 			m.onboardingCompleted = false
@@ -388,6 +388,12 @@ func (s *LicenseAgreementStepEnhanced) Update(model *EnhancedOnboardingModel, ms
 	case tea.KeyMsg:
 		key := msg.String()
 
+		// Handle backspace for back navigation
+		if key == "backspace" && s.CanGoBack() {
+			model.GoToPreviousStep()
+			return model, nil
+		}
+
 		// License step only has buttons, so buttons always have focus
 		s.buttonGroup.SetFocus(true)
 
@@ -481,6 +487,12 @@ func (s *WizardChoiceStepEnhanced) Update(model *EnhancedOnboardingModel, msg te
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
+
+		// Handle backspace for back navigation
+		if key == "backspace" && s.CanGoBack() {
+			model.GoToPreviousStep()
+			return model, nil
+		}
 
 		// Wizard choice step only has buttons, so buttons always have focus
 		s.buttonGroup.SetFocus(true)
@@ -680,6 +692,12 @@ func (s *SourcesStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
+
+		// Handle backspace for back navigation
+		if key == "backspace" && s.CanGoBack() {
+			model.GoToPreviousStep()
+			return model, nil
+		}
 
 		// Tab key switches focus between list and buttons
 		if key == "tab" {
@@ -950,6 +968,12 @@ func (s *SettingsStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Ms
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
+
+		// Handle backspace for back navigation
+		if key == "backspace" && s.CanGoBack() {
+			model.GoToPreviousStep()
+			return model, nil
+		}
 
 		// Tab key switches focus between switches and buttons
 		if key == "tab" {
@@ -1384,10 +1408,11 @@ func (s *ThemeSelectionStepEnhanced) View(model *EnhancedOnboardingModel) string
 	var commands []string
 	commands = append(commands, ui.RenderKeyWithDescription("↑/↓", "Navigate"))
 	commands = append(commands, ui.RenderKeyWithDescription("Tab", "Switch"))
+	commands = append(commands, ui.RenderKeyWithDescription("Enter", "Select"))
 	help := strings.Join(commands, "  ")
 
 	headerHeight := 0
-	footerHeight := 2 // Commands + navigation buttons
+	footerHeight := 3 // Help text (1) + blank line (1) + navigation buttons (1)
 
 	// Calculate layout
 	layoutConfig := LayoutConfig{
@@ -1432,7 +1457,7 @@ func (s *ThemeSelectionStepEnhanced) View(model *EnhancedOnboardingModel) string
 		PaddingRight(margin).
 		Render(combined)
 
-	// Footer: commands + navigation buttons
+	// Footer: help text + navigation buttons
 	var footer strings.Builder
 	footer.WriteString(help)
 	footer.WriteString("\n\n")
@@ -1467,6 +1492,12 @@ func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg 
 	case tea.KeyMsg:
 		key := msg.String()
 
+		// Handle backspace for back navigation
+		if key == "backspace" && s.CanGoBack() {
+			model.GoToPreviousStep()
+			return model, nil
+		}
+
 		// Tab switches between theme list and navigation buttons
 		if key == "tab" {
 			if s.buttonGroup.HasFocus {
@@ -1479,6 +1510,13 @@ func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg 
 			return model, nil
 		}
 
+		// If navigation buttons have focus and user presses up, move focus back to theme list
+		if s.navButtons.HasFocus && (key == "up" || key == "k") {
+			s.navButtons.SetFocus(false)
+			s.buttonGroup.SetFocus(true)
+			return model, nil
+		}
+
 		// Handle navigation buttons
 		if s.navButtons.HasFocus {
 			action := s.navButtons.HandleKey(key)
@@ -1488,9 +1526,28 @@ func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg 
 					model.GoToPreviousStep()
 					return model, nil
 				case "continue", "enter":
-					// Store selected theme and proceed
+					// Store selected theme and apply it immediately
 					selectedTheme := s.themes[s.selectedIndex].ThemeName
 					model.settingsValues["theme"] = selectedTheme
+
+					// Apply the theme immediately so subsequent steps use it
+					// Save to config temporarily so InitThemeManager() will load it
+					appConfig := config.GetUserPreferences()
+					if appConfig != nil {
+						appConfig.Theme = selectedTheme
+						// Save to config so theme manager can reload it
+						if err := config.SaveUserPreferences(appConfig); err == nil {
+							// Reload theme manager to pick up the new theme from config
+							if err := ui.InitThemeManager(); err == nil {
+								// Re-initialize styles with the new theme
+								// This updates all global style variables (SuccessText, InfoText, etc.)
+								if err := ui.InitStyles(); err != nil {
+									// Log error but continue - theme will be applied on next app start
+								}
+							}
+						}
+					}
+
 					model.GoToNextStep()
 					return model, nil
 				}
@@ -1516,13 +1573,37 @@ func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg 
 					s.buttonGroup.Selected = s.selectedIndex
 					_ = s.preview.LoadTheme(s.themes[s.selectedIndex].ThemeName)
 					s.adjustScrollForSelection()
+				} else {
+					// Already at bottom, pressing down moves to navigation buttons
+					s.buttonGroup.SetFocus(false)
+					s.navButtons.SetFocus(true)
 				}
 				return model, nil
 
 			case "enter":
-				// Move focus to navigation buttons when Enter is pressed on a theme
-				s.buttonGroup.SetFocus(false)
-				s.navButtons.SetFocus(true)
+				// Store selected theme and apply it immediately
+				selectedTheme := s.themes[s.selectedIndex].ThemeName
+				model.settingsValues["theme"] = selectedTheme
+
+				// Apply the theme immediately so subsequent steps use it
+				// Save to config temporarily so InitThemeManager() will load it
+				appConfig := config.GetUserPreferences()
+				if appConfig != nil {
+					appConfig.Theme = selectedTheme
+					// Save to config so theme manager can reload it
+					if err := config.SaveUserPreferences(appConfig); err == nil {
+						// Reload theme manager to pick up the new theme from config
+						if err := ui.InitThemeManager(); err == nil {
+							// Re-initialize styles with the new theme
+							// This updates all global style variables (SuccessText, InfoText, etc.)
+							if err := ui.InitStyles(); err != nil {
+								// Log error but continue - theme will be applied on next app start
+							}
+						}
+					}
+				}
+
+				model.GoToNextStep()
 				return model, nil
 			}
 		}
@@ -1598,7 +1679,7 @@ func (s *ThemeSelectionStepEnhanced) adjustScrollForSelection() *ThemeSelectionS
 		TerminalWidth:  s.width,
 		TerminalHeight: s.height,
 		HeaderHeight:   0,
-		FooterHeight:   2,
+		FooterHeight:   3,
 		MarginWidth:    2,
 		SeparatorWidth: 1,
 	}
@@ -1730,7 +1811,7 @@ func (s *CompletionStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	var result strings.Builder
 
 	result.WriteString("\n")
-	result.WriteString(ui.SuccessText.Render("Setup complete!"))
+	result.WriteString(ui.PageTitle.Render("Setup Complete!"))
 	result.WriteString("\n\n")
 	if !model.customizeChoice {
 		result.WriteString(ui.Text.Render("You're all set. FontGet is now configured with default settings."))
@@ -1738,12 +1819,14 @@ func (s *CompletionStepEnhanced) View(model *EnhancedOnboardingModel) string {
 		result.WriteString(ui.Text.Render("You're all set to start using FontGet."))
 	}
 	result.WriteString("\n\n")
-	result.WriteString(ui.InfoText.Render("Try these commands to get started:"))
+	result.WriteString(ui.FormLabel.Render("Try these commands to get started:"))
 	result.WriteString("\n")
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget search <name>"), ui.Text.Render("Search for fonts")))
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget list"), ui.Text.Render("List installed fonts")))
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget add <font>"), ui.Text.Render("Install a font")))
-	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("fontget --help"), ui.Text.Render("See all available commands")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("- fontget search <font-name>"), ui.InfoText.Render("// Searches for fonts")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("- fontget list"), ui.InfoText.Render("// Lists installed fonts")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("- fontget add <font-id>"), ui.InfoText.Render("// Installs a font")))
+	result.WriteString(fmt.Sprintf("  %s  %s\n", ui.Text.Render("- fontget --help"), ui.InfoText.Render("// Shows all available commands")))
+	result.WriteString("\n")
+	result.WriteString("To run this wizard again, run 'fontget --wizard'\n")
 	result.WriteString("\n")
 
 	// Button
