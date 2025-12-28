@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#ff7edb"  # Magenta - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#ff7edb"  # Magenta - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#36f9f6" # Cyan - Used for TableSourceName, FormLabel, CardLabel
   components: "#ffffff" # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#504975" # Borders, placeholders, subtitles, separators

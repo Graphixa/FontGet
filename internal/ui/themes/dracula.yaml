@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#bd93f9"  # Purple - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#bd93f9"  # Purple - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#ff79c6" # Pink - Used for TableSourceName, FormLabel, CardLabel
   components: "#f8f8f2" # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#6272a4" # Borders, placeholders, subtitles, separators

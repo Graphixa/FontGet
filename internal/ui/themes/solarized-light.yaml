@@ -3,7 +3,7 @@ style: light
 
 colors:
   # Main text colors
-  primary: "#268bd2"  # Blue - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#268bd2"  # Blue - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#2aa198" # Cyan - Used for TableSourceName, FormLabel, CardLabel
   components: "#073642" # Base02 (foreground) - used for buttons, switches, checkboxes, etc.
   placeholders: "#586e75" # Base0 - Borders, placeholders, subtitles, separators

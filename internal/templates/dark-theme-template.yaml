@@ -3,7 +3,7 @@ theme_name: "template"
 colors:
 
   # Main text colors
-  primary: "#f5c2e7"  # Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#f5c2e7"  # Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#b4befe" # Used for TableSourceName, FormLabel, CardLabel
   components: "#cdd6f4" # Should be a lighter neutral color - used for buttons, switches, checkboxes, etc.
   placeholders: "#7f849c" # Should be a mid-range neutral color - used for borders, placeholders, subtitles, separators

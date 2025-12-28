@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#FFD866"  # Keyword (Pink) - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#FFD866"  # Keyword (Pink) - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#FF6188" # Argument (Green) - Used for TableSourceName, FormLabel, CardLabel
   components: "#FCFCFA" # Foreground - used for buttons, switches, checkboxes, etc.
   placeholders: "#5B595C" # Dimmed 1 - Borders, placeholders, subtitles, separators

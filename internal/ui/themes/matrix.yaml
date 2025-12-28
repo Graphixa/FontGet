@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#46db6c"        # Green - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#46db6c"        # Green - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#90ee90"      # Light Green - Used for TableSourceName, FormLabel, CardLabel
   components: "#addbad"     # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#81d16d"   # Borders, placeholders, subtitles, separators

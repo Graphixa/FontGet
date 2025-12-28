@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#ff355e"  # Red - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#ff355e"  # Red - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#ff7d97" # Gold - Used for TableSourceName, FormLabel, CardLabel
   components: "#de7c7c" # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#942e37" # Borders, placeholders, subtitles, separators

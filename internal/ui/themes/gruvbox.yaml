@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#fe8019"        # Orange - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#fe8019"        # Orange - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#8ec07c"      # Aqua - Used for TableSourceName, FormLabel, CardLabel
   components: "#a89984"     # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#665c54"   # Borders, placeholders, subtitles, separators

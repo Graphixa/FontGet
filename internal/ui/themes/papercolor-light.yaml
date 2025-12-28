@@ -3,7 +3,7 @@ style: light
 
 colors:
   # Main text colors
-  primary: "#005f87"  # Blue - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#005f87"  # Blue - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#d70087" # Magenta - Used for TableSourceName, FormLabel, CardLabel
   components: "#444444" # Foreground - used for buttons, switches, checkboxes, etc.
   placeholders: "#878787" # Muted gray - Borders, placeholders, subtitles, separators

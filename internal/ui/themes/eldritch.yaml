@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#37f499"  # Great Old One Green - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#37f499"  # Great Old One Green - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#04d1f9" # Cthulhu Cyan - Used for TableSourceName, FormLabel, CardLabel
   components: "#ebfafa" # Lighthouse White - used for buttons, switches, checkboxes, etc.
   placeholders: "#323449" # Shallow Depths Grey - Borders, placeholders, subtitles, separators

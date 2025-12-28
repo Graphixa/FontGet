@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#7aa2f7"  # Blue (Function names) - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#7aa2f7"  # Blue (Function names) - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#bb9af7" # Purple (Control keywords) - Used for TableSourceName, FormLabel, CardLabel
   components: "#a9b1d6" # Foreground - used for buttons, switches, checkboxes, etc.
   placeholders: "#565f89" # Comments - Borders, placeholders, subtitles, separators

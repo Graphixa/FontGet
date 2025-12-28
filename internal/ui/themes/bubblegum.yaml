@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#ffbcd9"  # Cotton Candy - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#ffbcd9"  # Cotton Candy - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#ffdae9" # Mimi Pink - Used for TableSourceName, FormLabel, CardLabel
   components: "#ffe4e1" # Misty Rose - used for buttons, switches, checkboxes, etc.
   placeholders: "#b48395" # English lavender - Borders, placeholders, subtitles, separators

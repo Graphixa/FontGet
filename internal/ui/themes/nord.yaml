@@ -3,7 +3,7 @@ style: dark
 
 colors:
   # Main text colors
-  primary: "#8fbcbb"  # nord7 (Frost - teal) - Used for InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor
+  primary: "#8fbcbb"  # nord7 (Frost - teal) - Used for InfoText, PageTitle, CardTitle, Cursor, SpinnerColor
   secondary: "#88c0d0" # nord8 (Frost - cyan) - Used for TableSourceName, FormLabel, CardLabel
   components: "#d8dee9" # nord4 (Snow Storm) - Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#81a1c1" # nord9 (Frost - blue) - Borders, placeholders, subtitles, separators
