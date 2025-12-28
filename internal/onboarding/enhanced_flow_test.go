@@ -35,14 +35,16 @@ func TestNewEnhancedOnboardingModel(t *testing.T) {
 	}
 
 	// Check that steps are created
-	if len(model.steps) != 5 {
-		t.Errorf("NewEnhancedOnboardingModel() len(steps) = %d, want 5", len(model.steps))
+	// Expected: Welcome, License Agreement, Wizard Choice, Sources, Settings, Theme Selection, Completion
+	expectedStepCount := 7
+	if len(model.steps) != expectedStepCount {
+		t.Errorf("NewEnhancedOnboardingModel() len(steps) = %d, want %d", len(model.steps), expectedStepCount)
 	}
 
 	// Check step names
-	expectedSteps := []string{"Welcome", "License Agreement", "Sources", "Settings", "Completion"}
+	expectedSteps := []string{"Welcome", "License Agreement", "Wizard Choice", "Sources", "Settings", "Theme Selection", "Completion"}
 	for i, step := range model.steps {
-		if step.Name() != expectedSteps[i] {
+		if i < len(expectedSteps) && step.Name() != expectedSteps[i] {
 			t.Errorf("Step %d name = %q, want %q", i, step.Name(), expectedSteps[i])
 		}
 	}
@@ -326,13 +328,14 @@ func TestEnhancedOnboardingModel_resetStepViewFlag(t *testing.T) {
 	model := NewEnhancedOnboardingModel()
 
 	// Move to Sources step
-	model.GoToNextStep()
-	model.GoToNextStep() // Should be at Sources step (index 2)
+	model.GoToNextStep() // Welcome -> License Agreement
+	model.GoToNextStep() // License Agreement -> Wizard Choice
+	model.GoToNextStep() // Wizard Choice -> Sources (index 3)
 
 	// Get the Sources step
-	sourcesStep, ok := model.steps[2].(*SourcesStepEnhanced)
+	sourcesStep, ok := model.steps[3].(*SourcesStepEnhanced)
 	if !ok {
-		t.Fatal("Step at index 2 should be SourcesStepEnhanced")
+		t.Fatal("Step at index 3 should be SourcesStepEnhanced")
 	}
 
 	// Set hasBeenViewed to true
