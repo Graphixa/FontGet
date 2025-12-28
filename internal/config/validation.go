@@ -36,6 +36,24 @@ func (e ValidationErrors) Error() string {
 func ValidateStrictAppConfig(data map[string]interface{}) error {
 	var errors ValidationErrors
 
+	// Validate ConfigVersion (optional for backward compatibility - old configs may not have it)
+	if configVersion, exists := data["ConfigVersion"]; exists {
+		if versionStr, ok := configVersion.(string); ok {
+			if versionStr != "" && versionStr != "1.0" && versionStr != "2.0" {
+				errors = append(errors, ValidationError{
+					Field:   "ConfigVersion",
+					Message: fmt.Sprintf("unknown config version '%s' (supported: 1.0, 2.0)", versionStr),
+				})
+			}
+		} else {
+			errors = append(errors, ValidationError{
+				Field:   "ConfigVersion",
+				Message: fmt.Sprintf("must be a string, got %s", getTypeName(configVersion)),
+			})
+		}
+	}
+	// ConfigVersion is optional - old configs without it will be migrated
+
 	// Validate Configuration section
 	if configSection, exists := data["Configuration"]; exists {
 		if configMap, ok := configSection.(map[string]interface{}); ok {

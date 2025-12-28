@@ -17,10 +17,11 @@ import (
 
 // AppConfig represents the main application configuration structure
 type AppConfig struct {
+	ConfigVersion string               `yaml:"ConfigVersion"` // Schema version for migration tracking
 	Configuration ConfigurationSection `yaml:"Configuration"`
 	Logging       LoggingSection       `yaml:"Logging"`
 	Network       NetworkSection       `yaml:"Network"`
-	Limits        LimitsSection        `yaml:"Limits"`
+	Search        SearchSection        `yaml:"Search"`
 	Update        UpdateSection        `yaml:"Update"`
 	Theme         string               `yaml:"Theme"`
 }
@@ -44,10 +45,11 @@ type NetworkSection struct {
 	DownloadTimeout string `yaml:"DownloadTimeout"` // Download timeout: max time without data transfer (stall detection) (e.g., "30s")
 }
 
-// LimitsSection represents size limits configuration
-type LimitsSection struct {
-	MaxSourceFileSize  string `yaml:"MaxSourceFileSize"`  // Maximum size for source JSON files (e.g., "50MB")
-	FileCopyBufferSize string `yaml:"FileCopyBufferSize"` // Buffer size for file operations (e.g., "32KB")
+// SearchSection represents search configuration
+type SearchSection struct {
+	ResultLimit int `yaml:"ResultLimit"` // Maximum number of search results to display (0 = unlimited, default: 0)
+	// Note: When Bubble Tea tables are implemented, this limit may be evaluated differently
+	// for interactive browsing vs static output. Leave comments for future evaluation.
 }
 
 // UpdateSection represents update configuration
@@ -91,6 +93,7 @@ func GetAppConfigPath() string {
 // DefaultUserPreferences returns a new default user preferences configuration
 func DefaultUserPreferences() *AppConfig {
 	return &AppConfig{
+		ConfigVersion: "2.0", // Current config schema version
 		Configuration: ConfigurationSection{
 			DefaultEditor:        "",   // Use system default editor
 			EnablePopularitySort: true, // Default to popularity-based sorting
@@ -104,9 +107,8 @@ func DefaultUserPreferences() *AppConfig {
 			RequestTimeout:  "10s", // Quick HTTP requests and checks
 			DownloadTimeout: "30s", // Download timeout: cancel if no data transferred for this duration (stall detection)
 		},
-		Limits: LimitsSection{
-			MaxSourceFileSize:  "50MB",
-			FileCopyBufferSize: "32KB",
+		Search: SearchSection{
+			ResultLimit: 0, // 0 = unlimited (default), set to N to limit results
 		},
 		Update: UpdateSection{
 			AutoCheck:           true,  // Check by default
@@ -120,6 +122,7 @@ func DefaultUserPreferences() *AppConfig {
 }
 
 // GetUserPreferences loads user preferences from config file or returns defaults
+// Automatically migrates config if needed, preserving all user custom values
 func GetUserPreferences() *AppConfig {
 	// Use GetAppConfigPath() to get config.yaml, not GetConfigPath() which returns config.json
 	configPath := GetAppConfigPath()
@@ -131,27 +134,40 @@ func GetUserPreferences() *AppConfig {
 	if data, err := os.ReadFile(configPath); err == nil {
 		var loadedConfig AppConfig
 		if err := yaml.Unmarshal(data, &loadedConfig); err == nil {
-			// Merge loaded config with defaults
-			config.Configuration.DefaultEditor = loadedConfig.Configuration.DefaultEditor
+			// CRITICAL: Copy ALL user values from loaded config to preserve customizations
+			// This ensures migration preserves 100% of user settings
 
-			// For bool, we need to check if the field was explicitly set in YAML
-			// Since Go's zero value for bool is false, we can't distinguish between
-			// "not set" and "explicitly set to false". For now, we'll assume if the
-			// file exists and is valid, use the loaded values.
+			// Copy Configuration section
+			config.Configuration.DefaultEditor = loadedConfig.Configuration.DefaultEditor
 			config.Configuration.EnablePopularitySort = loadedConfig.Configuration.EnablePopularitySort
 
-			// Merge Update section if it exists (optional for backward compatibility)
+			// Copy Logging section (preserve all user values)
+			if loadedConfig.Logging.LogPath != "" {
+				config.Logging.LogPath = loadedConfig.Logging.LogPath
+			}
+			if loadedConfig.Logging.MaxLogSize != "" {
+				config.Logging.MaxLogSize = loadedConfig.Logging.MaxLogSize
+			}
+			if loadedConfig.Logging.MaxLogFiles > 0 {
+				config.Logging.MaxLogFiles = loadedConfig.Logging.MaxLogFiles
+			}
+
+			// Copy Network section (preserve all user values)
+			if loadedConfig.Network.RequestTimeout != "" {
+				config.Network.RequestTimeout = loadedConfig.Network.RequestTimeout
+			}
+			if loadedConfig.Network.DownloadTimeout != "" {
+				config.Network.DownloadTimeout = loadedConfig.Network.DownloadTimeout
+			}
+
+			// Copy Update section (preserve all user values)
+			// Handle both full section and individual fields for backward compatibility
 			if loadedConfig.Update.UpdateCheckInterval > 0 || loadedConfig.Update.LastUpdateCheck != "" {
 				config.Update = loadedConfig.Update
 			} else {
-				// If Update section doesn't exist, merge individual fields if present
-				// This handles partial Update sections in existing configs
-				if loadedConfig.Update.AutoCheck || !loadedConfig.Update.AutoCheck {
-					config.Update.AutoCheck = loadedConfig.Update.AutoCheck
-				}
-				if loadedConfig.Update.AutoUpdate || !loadedConfig.Update.AutoUpdate {
-					config.Update.AutoUpdate = loadedConfig.Update.AutoUpdate
-				}
+				// Merge individual fields if present
+				config.Update.AutoCheck = loadedConfig.Update.AutoCheck
+				config.Update.AutoUpdate = loadedConfig.Update.AutoUpdate
 				if loadedConfig.Update.UpdateCheckInterval > 0 {
 					config.Update.UpdateCheckInterval = loadedConfig.Update.UpdateCheckInterval
 				}
@@ -163,42 +179,41 @@ func GetUserPreferences() *AppConfig {
 				}
 			}
 
-			// Merge Logging section if it exists (optional for backward compatibility)
-			if loadedConfig.Logging.LogPath != "" {
-				config.Logging.LogPath = loadedConfig.Logging.LogPath
-			}
-			if loadedConfig.Logging.MaxLogSize != "" {
-				config.Logging.MaxLogSize = loadedConfig.Logging.MaxLogSize
-			}
-			if loadedConfig.Logging.MaxLogFiles > 0 {
-				config.Logging.MaxLogFiles = loadedConfig.Logging.MaxLogFiles
+			// Copy Search section if it exists (new in v2.0, may not exist in old configs)
+			if loadedConfig.Search.ResultLimit != 0 {
+				config.Search.ResultLimit = loadedConfig.Search.ResultLimit
 			}
 
-			// Merge Network section if it exists (optional for backward compatibility)
-			if loadedConfig.Network.RequestTimeout != "" {
-				config.Network.RequestTimeout = loadedConfig.Network.RequestTimeout
-			}
-			if loadedConfig.Network.DownloadTimeout != "" {
-				config.Network.DownloadTimeout = loadedConfig.Network.DownloadTimeout
-			}
-
-			// Backward compatibility: migrate old timeout names to new ones
-			// Note: We can't directly access old fields that don't exist in the struct anymore,
-			// but YAML unmarshaling will populate them in the raw map if present.
-			// For now, we rely on users to manually update their config files.
-			// The old timeout names are ignored and defaults are used.
-
-			// Merge Limits section if it exists (optional for backward compatibility)
-			if loadedConfig.Limits.MaxSourceFileSize != "" {
-				config.Limits.MaxSourceFileSize = loadedConfig.Limits.MaxSourceFileSize
-			}
-			if loadedConfig.Limits.FileCopyBufferSize != "" {
-				config.Limits.FileCopyBufferSize = loadedConfig.Limits.FileCopyBufferSize
-			}
-
-			// Merge Theme if it exists (optional for backward compatibility)
+			// Copy Theme (preserve user's theme choice)
 			if loadedConfig.Theme != "" {
 				config.Theme = loadedConfig.Theme
+			}
+
+			// Copy ConfigVersion if it exists (for version tracking)
+			if loadedConfig.ConfigVersion != "" {
+				config.ConfigVersion = loadedConfig.ConfigVersion
+			}
+
+			// Check if migration is needed and run it
+			// This preserves all the values we just copied above
+			if needsMigration(config) {
+				migratedConfig, err := RunMigrations(config, configPath)
+				if err != nil {
+					// Migration failed - log error but continue with current config
+					// In production, you might want to use a logger here
+					_ = err
+					// Return config as-is (may be partially migrated, but better than failing)
+					return config
+				}
+
+				// Save migrated config
+				if err := SaveUserPreferences(migratedConfig); err != nil {
+					// Save failed - log error but continue with migrated config in memory
+					// In production, you might want to use a logger here
+					_ = err
+				}
+
+				return migratedConfig
 			}
 		}
 	}
@@ -490,7 +505,7 @@ func updateNodeWithConfig(node *yaml.Node, config *AppConfig) error {
 		"Configuration": config.Configuration,
 		"Logging":       config.Logging,
 		"Network":       config.Network,
-		"Limits":        config.Limits,
+		"Search":        config.Search,
 		"Update":        config.Update,
 	}
 
@@ -610,7 +625,9 @@ func updateValueNode(valueNode *yaml.Node, newValue interface{}) error {
 
 // saveDefaultAppConfigWithComments saves a default config with a single DefaultEditor line and multiplatform comment
 func saveDefaultAppConfigWithComments(configPath string) error {
-	configContent := `Configuration:
+	configContent := `ConfigVersion: "2.0" 	# Config schema version (for migration tracking)
+
+Configuration:
   DefaultEditor: "" 	# Set your own default editor for fontget (e.g. 'code', 'notepad.exe', 'nano', etc.)
   EnablePopularitySort: true 	# Fonts will be returned by their match and popularity first, then by alphabetical order. This means popular fonts appear higher in search results.
 
@@ -623,10 +640,9 @@ Network:
   RequestTimeout: "10s" 	# Quick HTTP requests and checks
   DownloadTimeout: "30s" 	# Download timeout: cancel if no data transferred for this duration
 
-Limits:
-  MaxSourceFileSize: "50MB" 	# Maximum size for source JSON files
-  FileCopyBufferSize: "32KB"	# Buffer size for file operations
-
+Search:
+  ResultLimit: 0 	# Maximum number of search results to display (0 = unlimited, default: 0)
+ 
 Update:
   AutoCheck: true       			# Check for updates on startup
   AutoUpdate: false 				# Automatically install updates (manual by default for security)
@@ -649,6 +665,7 @@ Theme: "catppuccin" 	# Theme name (e.g., "catppuccin", "gruvbox", "system") - em
 func ValidateUserPreferences(config *AppConfig) error {
 	// Convert structured config to map for validation
 	rawData := map[string]interface{}{
+		"ConfigVersion": config.ConfigVersion,
 		"Configuration": map[string]interface{}{
 			"DefaultEditor":        config.Configuration.DefaultEditor,
 			"EnablePopularitySort": config.Configuration.EnablePopularitySort,
@@ -662,9 +679,8 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"RequestTimeout":  config.Network.RequestTimeout,
 			"DownloadTimeout": config.Network.DownloadTimeout,
 		},
-		"Limits": map[string]interface{}{
-			"MaxSourceFileSize":  config.Limits.MaxSourceFileSize,
-			"FileCopyBufferSize": config.Limits.FileCopyBufferSize,
+		"Search": map[string]interface{}{
+			"ResultLimit": config.Search.ResultLimit,
 		},
 		"Update": map[string]interface{}{
 			"AutoCheck":           config.Update.AutoCheck,
