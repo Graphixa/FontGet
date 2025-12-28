@@ -132,3 +132,38 @@ func RunFirstRunOnboarding() error {
 
 	return nil
 }
+
+// RunWizard runs the onboarding wizard regardless of first-run status
+// This is useful for reconfiguring FontGet or testing
+func RunWizard() error {
+	// Use enhanced onboarding flow with interactive TUI
+	model := NewEnhancedOnboardingModel()
+	program := tea.NewProgram(model, tea.WithAltScreen())
+
+	finalModel, err := program.Run()
+	if err != nil {
+		return fmt.Errorf("wizard failed: %w", err)
+	}
+
+	// Check if wizard was actually completed (not just quit early)
+	if m, ok := finalModel.(*EnhancedOnboardingModel); ok {
+		if m.quitting && !m.onboardingCompleted {
+			// User quit early (Ctrl+C, Q, etc.)
+			return shared.ErrOnboardingCancelled
+		}
+		if !m.onboardingCompleted {
+			// User didn't complete the flow
+			return shared.ErrOnboardingIncomplete
+		}
+
+		// Save all selections (this will update config with new settings)
+		if err := m.SaveSelections(); err != nil {
+			return fmt.Errorf("failed to save wizard settings: %w", err)
+		}
+	} else {
+		// Couldn't cast to EnhancedOnboardingModel - assume incomplete
+		return shared.ErrOnboardingIncomplete
+	}
+
+	return nil
+}

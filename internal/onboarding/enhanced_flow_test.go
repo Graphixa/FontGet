@@ -225,25 +225,25 @@ func TestWelcomeStepEnhanced(t *testing.T) {
 }
 
 func TestLicenseStepEnhanced(t *testing.T) {
-	step := NewLicenseStepEnhanced()
+	step := NewLicenseAgreementStepEnhanced()
 	model := NewEnhancedOnboardingModel()
 
 	if step.Name() != "License Agreement" {
-		t.Errorf("LicenseStepEnhanced.Name() = %q, want %q", step.Name(), "License Agreement")
+		t.Errorf("LicenseAgreementStepEnhanced.Name() = %q, want %q", step.Name(), "License Agreement")
 	}
 
 	if !step.CanGoBack() {
-		t.Error("LicenseStepEnhanced.CanGoBack() should return true")
+		t.Error("LicenseAgreementStepEnhanced.CanGoBack() should return true")
 	}
 
-	// Initially, CanGoNext should be false (not confirmed)
-	if step.CanGoNext() {
-		t.Error("LicenseStepEnhanced.CanGoNext() should return false before confirmation")
+	// CanGoNext should always return true (text-based acceptance, no confirmation needed)
+	if !step.CanGoNext() {
+		t.Error("LicenseAgreementStepEnhanced.CanGoNext() should return true (text-based acceptance)")
 	}
 
 	view := step.View(model)
 	if view == "" {
-		t.Error("LicenseStepEnhanced.View() returned empty string")
+		t.Error("LicenseAgreementStepEnhanced.View() returned empty string")
 	}
 }
 

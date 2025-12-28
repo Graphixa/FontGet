@@ -10,6 +10,7 @@ import (
 	"fontget/internal/ui"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // EnhancedOnboardingModel represents the enhanced onboarding flow with navigation
@@ -22,6 +23,7 @@ type EnhancedOnboardingModel struct {
 	height              int
 	quitting            bool
 	onboardingCompleted bool // True only when user successfully completes the entire flow
+	customizeChoice     bool // true = customize, false = let it ride
 }
 
 // OnboardingStepInterface represents a step in the enhanced onboarding flow
@@ -56,16 +58,29 @@ func NewEnhancedOnboardingModel() *EnhancedOnboardingModel {
 		settingsValues:   settingsValues,
 		width:            80,
 		height:           24,
+		customizeChoice:  true, // Default to customize (will be set by wizard choice step)
 	}
 
 	// Create steps
-	model.steps = []OnboardingStepInterface{
+	themeStep, err := NewThemeSelectionStepEnhanced()
+	if err != nil {
+		// If theme step creation fails, we'll skip it (shouldn't happen, but handle gracefully)
+		themeStep = nil
+	}
+
+	steps := []OnboardingStepInterface{
 		NewWelcomeStepEnhanced(),
-		NewLicenseStepEnhanced(),
+		NewLicenseAgreementStepEnhanced(),
+		NewWizardChoiceStepEnhanced(),
 		NewSourcesStepEnhanced(),
 		NewSettingsStepEnhanced(),
-		NewCompletionStepEnhanced(),
 	}
+	if themeStep != nil {
+		steps = append(steps, themeStep)
+	}
+	steps = append(steps, NewCompletionStepEnhanced())
+
+	model.steps = steps
 
 	return model
 }
@@ -147,9 +162,11 @@ func (m *EnhancedOnboardingModel) resetStepViewFlag() {
 		switch step := m.steps[m.currentStep].(type) {
 		case *SourcesStepEnhanced:
 			step.hasBeenViewed = false
-		case *LicenseStepEnhanced:
+		case *LicenseAgreementStepEnhanced:
 			step.hasBeenViewed = false
 		case *SettingsStepEnhanced:
+			step.hasBeenViewed = false
+		case *WizardChoiceStepEnhanced:
 			step.hasBeenViewed = false
 		}
 	}
@@ -196,6 +213,13 @@ func (m *EnhancedOnboardingModel) SaveSelections() error {
 	if usePopularitySort, ok := m.settingsValues["usePopularitySort"].(bool); ok {
 		appConfig.Configuration.EnablePopularitySort = usePopularitySort
 	}
+	// Save theme selection
+	if theme, ok := m.settingsValues["theme"].(string); ok && theme != "" {
+		appConfig.Theme = theme
+	} else {
+		// Default to "catppuccin" if not set
+		appConfig.Theme = "catppuccin"
+	}
 
 	// Save config
 	if err := config.SaveUserPreferences(appConfig); err != nil {
@@ -241,7 +265,7 @@ func (s *WelcomeStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	result.WriteString("\n")
 	result.WriteString(ui.PageTitle.Render("Welcome to FontGet!"))
 	result.WriteString("\n\n")
-	result.WriteString(ui.Text.Render("This is your first time using FontGet. Let's get you set up."))
+	result.WriteString(ui.Text.Render("Welcome to FontGet! This is your first time using FontGet."))
 	result.WriteString("\n\n")
 	aboutText := "FontGet is a powerful command-line font manager that helps you install and manage fonts from various sources."
 	// Wrap plain text first, then apply styling to each line
@@ -274,34 +298,33 @@ func (s *WelcomeStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg
 	return model, nil
 }
 
-// LicenseStepEnhanced is the enhanced license step with navigation buttons
-type LicenseStepEnhanced struct {
+// LicenseAgreementStepEnhanced is the enhanced license step with text-based acceptance
+type LicenseAgreementStepEnhanced struct {
 	buttonGroup   *components.ButtonGroup
-	confirmed     bool
 	hasBeenViewed bool // Track if step has been viewed to only reset once
 }
 
-func NewLicenseStepEnhanced() *LicenseStepEnhanced {
-	group := components.NewButtonGroup([]string{"Back", "Next"}, 1) // Next selected by default
-	group.SetFocus(true)                                            // Buttons have focus by default (button-only screen)
-	return &LicenseStepEnhanced{
+func NewLicenseAgreementStepEnhanced() *LicenseAgreementStepEnhanced {
+	group := components.NewButtonGroup([]string{"Back", "Continue"}, 1) // Continue selected by default
+	group.SetFocus(true)                                                // Buttons have focus by default (button-only screen)
+	return &LicenseAgreementStepEnhanced{
 		buttonGroup: group,
 	}
 }
 
-func (s *LicenseStepEnhanced) Name() string {
+func (s *LicenseAgreementStepEnhanced) Name() string {
 	return "License Agreement"
 }
 
-func (s *LicenseStepEnhanced) CanGoBack() bool {
+func (s *LicenseAgreementStepEnhanced) CanGoBack() bool {
 	return true
 }
 
-func (s *LicenseStepEnhanced) CanGoNext() bool {
-	return s.confirmed
+func (s *LicenseAgreementStepEnhanced) CanGoNext() bool {
+	return true // No validation needed - text-based acceptance
 }
 
-func (s *LicenseStepEnhanced) View(model *EnhancedOnboardingModel) string {
+func (s *LicenseAgreementStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	// Reset button to default selection only on first view of this step
 	if !s.hasBeenViewed {
 		s.buttonGroup.ResetToDefault()
@@ -322,8 +345,6 @@ func (s *LicenseStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	result.WriteString("\n")
 	result.WriteString(ui.PageTitle.Render("License Agreement"))
 	result.WriteString("\n\n")
-	result.WriteString(ui.WarningText.Render("IMPORTANT: By using FontGet, you acknowledge and agree to the following:"))
-	result.WriteString("\n\n")
 
 	// License text
 	introText := "FontGet installs fonts from various sources. These fonts are subject to their respective license agreements. You are responsible for ensuring compliance with each font's license terms."
@@ -343,6 +364,18 @@ func (s *LicenseStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	}
 	result.WriteString("\n")
 
+	// Text-based acceptance message
+	acceptanceText := "By continuing to use FontGet, you agree to all license agreements."
+	acceptanceLines := wrapText(acceptanceText, availableWidth)
+	result.WriteString(ui.InfoText.Render(acceptanceLines[0]))
+	if len(acceptanceLines) > 1 {
+		for i := 1; i < len(acceptanceLines); i++ {
+			result.WriteString("\n")
+			result.WriteString(ui.InfoText.Render(acceptanceLines[i]))
+		}
+	}
+	result.WriteString("\n\n")
+
 	// Buttons
 	result.WriteString(s.buttonGroup.Render())
 	result.WriteString("\n")
@@ -350,7 +383,7 @@ func (s *LicenseStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	return result.String()
 }
 
-func (s *LicenseStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg) (tea.Model, tea.Cmd) {
+func (s *LicenseAgreementStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
@@ -366,8 +399,7 @@ func (s *LicenseStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg
 			case "back":
 				model.GoToPreviousStep()
 				return model, nil
-			case "next", "enter":
-				s.confirmed = true
+			case "continue", "enter":
 				// Accept all default sources
 				for sourceName := range sources.DefaultSources() {
 					if err := config.AcceptSource(sourceName); err != nil {
@@ -375,6 +407,103 @@ func (s *LicenseStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg
 					}
 				}
 				model.GoToNextStep()
+				return model, nil
+			}
+		}
+		// Return even if no action, to allow button navigation (left/right)
+		return model, nil
+	}
+	return model, nil
+}
+
+// WizardChoiceStepEnhanced is the wizard choice step where user chooses to customize or accept defaults
+type WizardChoiceStepEnhanced struct {
+	buttonGroup   *components.ButtonGroup
+	hasBeenViewed bool // Track if step has been viewed to only reset once
+}
+
+func NewWizardChoiceStepEnhanced() *WizardChoiceStepEnhanced {
+	group := components.NewButtonGroup([]string{"Customize FontGet", "Let it ride"}, 0) // First option selected by default
+	group.SetFocus(true)                                                                // Buttons have focus by default
+	return &WizardChoiceStepEnhanced{
+		buttonGroup: group,
+	}
+}
+
+func (s *WizardChoiceStepEnhanced) Name() string {
+	return "Wizard Choice"
+}
+
+func (s *WizardChoiceStepEnhanced) CanGoBack() bool {
+	return true
+}
+
+func (s *WizardChoiceStepEnhanced) CanGoNext() bool {
+	return true // Selection triggers navigation, no separate Next button
+}
+
+func (s *WizardChoiceStepEnhanced) View(model *EnhancedOnboardingModel) string {
+	// Reset button to default selection only on first view of this step
+	if !s.hasBeenViewed {
+		s.buttonGroup.ResetToDefault()
+		s.hasBeenViewed = true
+	}
+
+	var result strings.Builder
+
+	// Calculate available width
+	availableWidth := model.width - 4
+	if availableWidth < 60 {
+		availableWidth = 60
+	}
+
+	result.WriteString("\n")
+	result.WriteString(ui.PageTitle.Render("Customize FontGet"))
+	result.WriteString("\n\n")
+
+	descriptionText := "Would you like to customize FontGet settings, or accept the defaults?"
+	descriptionLines := wrapText(descriptionText, availableWidth)
+	for _, line := range descriptionLines {
+		result.WriteString(ui.Text.Render(line))
+		result.WriteString("\n")
+	}
+	result.WriteString("\n")
+
+	// Buttons
+	result.WriteString(s.buttonGroup.Render())
+	result.WriteString("\n")
+
+	return result.String()
+}
+
+func (s *WizardChoiceStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		key := msg.String()
+
+		// Wizard choice step only has buttons, so buttons always have focus
+		s.buttonGroup.SetFocus(true)
+
+		// Handle button navigation (left/right to switch between buttons)
+		action := s.buttonGroup.HandleKey(key)
+		if action != "" {
+			// Button was activated
+			switch action {
+			case "back":
+				model.GoToPreviousStep()
+				return model, nil
+			case "customize fontget":
+				// User chose to customize
+				model.customizeChoice = true
+				model.GoToNextStep()
+				return model, nil
+			case "let it ride":
+				// User chose to accept defaults - skip to completion
+				model.customizeChoice = false
+				// Set default theme to "catppuccin"
+				model.settingsValues["theme"] = "catppuccin"
+				// Jump to completion step (last step)
+				model.currentStep = len(model.steps) - 1
 				return model, nil
 			}
 		}
@@ -879,6 +1008,674 @@ func (s *SettingsStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Ms
 	return model, nil
 }
 
+// LayoutConfig holds configuration for layout calculations (copied from cmd/theme_layout.go)
+type LayoutConfig struct {
+	TerminalWidth  int
+	TerminalHeight int
+	HeaderHeight   int
+	FooterHeight   int
+	MarginWidth    int
+	SeparatorWidth int
+}
+
+// PanelLayout holds calculated panel dimensions (copied from cmd/theme_layout.go)
+type PanelLayout struct {
+	LeftWidth       int
+	RightWidth      int
+	PanelHeight     int
+	AvailableWidth  int
+	AvailableHeight int
+}
+
+// CalculatePanelLayout calculates panel dimensions based on terminal size and layout config (copied from cmd/theme_layout.go)
+func CalculatePanelLayout(config LayoutConfig) PanelLayout {
+	// Calculate available space
+	marginWidth := config.MarginWidth
+	if marginWidth == 0 {
+		marginWidth = 2 // Default: 1 char on each side
+	}
+
+	separatorWidth := config.SeparatorWidth
+	if separatorWidth == 0 {
+		separatorWidth = 1 // Default separator width
+	}
+
+	availableWidth := config.TerminalWidth - marginWidth
+	availableHeight := config.TerminalHeight - config.HeaderHeight - config.FooterHeight
+
+	// Ensure minimum dimensions
+	if availableWidth < 40 {
+		availableWidth = 40
+	}
+	if availableHeight < 10 {
+		availableHeight = 10
+	}
+
+	// Calculate panel widths (30/70 split accounting for separator)
+	panelAreaWidth := availableWidth - separatorWidth
+	if panelAreaWidth < 0 {
+		panelAreaWidth = 0
+	}
+
+	// 30% for left, 70% for right
+	leftWidth := int(float64(panelAreaWidth) * 0.3)
+	rightWidth := panelAreaWidth - leftWidth
+
+	// Ensure minimum panel widths
+	if leftWidth < 20 {
+		leftWidth = 20
+	}
+	if rightWidth < 20 {
+		rightWidth = 20
+	}
+
+	// Safety check: ensure total doesn't exceed terminal width
+	maxTotalWidth := config.TerminalWidth
+	if leftWidth+rightWidth+separatorWidth > maxTotalWidth {
+		panelAreaWidth = maxTotalWidth - separatorWidth
+		if panelAreaWidth < 0 {
+			panelAreaWidth = 0
+		}
+		leftWidth = panelAreaWidth / 2
+		rightWidth = panelAreaWidth - leftWidth
+	}
+
+	return PanelLayout{
+		LeftWidth:       leftWidth,
+		RightWidth:      rightWidth,
+		PanelHeight:     availableHeight,
+		AvailableWidth:  availableWidth,
+		AvailableHeight: availableHeight,
+	}
+}
+
+// trimContent removes trailing newlines and whitespace from content (copied from cmd/theme_layout.go)
+func trimContent(content string) string {
+	content = strings.TrimRight(content, "\n")
+	lines := strings.Split(content, "\n")
+	trimmed := make([]string, len(lines))
+	for i, line := range lines {
+		trimmed[i] = strings.TrimRight(line, " \t")
+	}
+	return strings.Join(trimmed, "\n")
+}
+
+// renderCombinedPanels renders two panels side-by-side with a shared border (copied from cmd/theme_layout.go)
+func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftContent, rightContent string, _ lipgloss.Style, separatorColor, borderColor lipgloss.Color, titleStyle lipgloss.Style) string {
+	// Guard minimums
+	if leftWidth < 4 {
+		leftWidth = 4
+	}
+	if rightWidth < 4 {
+		rightWidth = 4
+	}
+	if height < 3 {
+		height = 3
+	}
+
+	leftContentWidth := leftWidth - 1
+	if leftContentWidth < 0 {
+		leftContentWidth = 0
+	}
+	rightContentWidth := rightWidth - 1
+	if rightContentWidth < 0 {
+		rightContentWidth = 0
+	}
+	contentHeight := height - 2
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
+	leftTrimmed := trimContent(leftContent)
+	rightTrimmed := trimContent(rightContent)
+
+	leftConstrained := lipgloss.NewStyle().
+		Height(contentHeight).
+		Render(leftTrimmed)
+
+	rightConstrained := lipgloss.NewStyle().
+		Height(contentHeight).
+		Render(rightTrimmed)
+
+	topLeft := "╭"
+	topRight := "╮"
+	bottomLeft := "╰"
+	bottomRight := "╯"
+	topTee := "┬"
+	bottomTee := "┴"
+	vertical := "│"
+	horizontal := "─"
+
+	borderCharStyle := lipgloss.NewStyle().Foreground(borderColor)
+	separatorStyle := lipgloss.NewStyle().Foreground(separatorColor)
+
+	topLeftChar := borderCharStyle.Render(topLeft)
+	topRightChar := borderCharStyle.Render(topRight)
+	bottomLeftChar := borderCharStyle.Render(bottomLeft)
+	bottomRightChar := borderCharStyle.Render(bottomRight)
+	topTeeChar := borderCharStyle.Render(topTee)
+	bottomTeeChar := borderCharStyle.Render(bottomTee)
+	leftBorderChar := borderCharStyle.Render(vertical)
+	rightBorderChar := borderCharStyle.Render(vertical)
+	separatorChar := separatorStyle.Render(vertical)
+	horizontalChar := borderCharStyle.Render(horizontal)
+
+	titleRendered := titleStyle.Render(title)
+	titleWidth := lipgloss.Width(titleRendered)
+
+	totalBorderWidth := leftWidth + 1 + rightWidth
+
+	leftInner := leftWidth - 1
+	if leftInner < 0 {
+		leftInner = 0
+	}
+	rightInner := rightWidth - 1
+	if rightInner < 0 {
+		rightInner = 0
+	}
+
+	titleSectionWidth := 1 + 1 + titleWidth + 1 + 1
+	remainingLeft := leftInner - titleSectionWidth
+	if remainingLeft < 0 {
+		remainingLeft = 0
+	}
+
+	topBorderLeft := topLeftChar + horizontalChar + " " + titleRendered + " " + horizontalChar + strings.Repeat(horizontalChar, remainingLeft)
+
+	leftSegmentWidth := lipgloss.Width(topBorderLeft)
+	if leftSegmentWidth != leftWidth {
+		actualRemaining := leftWidth - lipgloss.Width(topLeftChar+horizontalChar+" "+titleRendered+" "+horizontalChar)
+		if actualRemaining < 0 {
+			actualRemaining = 0
+		}
+		topBorderLeft = topLeftChar + horizontalChar + " " + titleRendered + " " + horizontalChar + strings.Repeat(horizontalChar, actualRemaining)
+	}
+
+	topBorderRight := strings.Repeat(horizontalChar, rightInner) + topRightChar
+	topBorder := topBorderLeft + topTeeChar + topBorderRight
+
+	actualWidth := lipgloss.Width(topBorder)
+	if actualWidth != totalBorderWidth {
+		adjust := totalBorderWidth - actualWidth
+		newRightInner := rightInner + adjust
+		if newRightInner < 0 {
+			newRightInner = 0
+		}
+		topBorderRight = strings.Repeat(horizontalChar, newRightInner) + topRightChar
+		topBorder = topBorderLeft + topTeeChar + topBorderRight
+	}
+
+	bottomBorder := bottomLeftChar + strings.Repeat(horizontalChar, leftWidth-1) + bottomTeeChar + strings.Repeat(horizontalChar, rightWidth-1) + bottomRightChar
+
+	leftLines := strings.Split(strings.TrimRight(leftConstrained, "\n"), "\n")
+	rightLines := strings.Split(strings.TrimRight(rightConstrained, "\n"), "\n")
+
+	maxLines := contentHeight
+	if len(leftLines) < maxLines {
+		leftLines = append(leftLines, make([]string, maxLines-len(leftLines))...)
+	}
+	if len(rightLines) < maxLines {
+		rightLines = append(rightLines, make([]string, maxLines-len(rightLines))...)
+	}
+	if len(leftLines) > maxLines {
+		leftLines = leftLines[:maxLines]
+	}
+	if len(rightLines) > maxLines {
+		rightLines = rightLines[:maxLines]
+	}
+
+	var middleLines []string
+	for i := 0; i < maxLines; i++ {
+		leftLine := leftLines[i]
+		rightLine := rightLines[i]
+
+		leftLineWidth := lipgloss.Width(leftLine)
+		rightLineWidth := lipgloss.Width(rightLine)
+
+		var leftPadded string
+		if leftLineWidth < leftContentWidth {
+			leftPadded = leftLine + strings.Repeat(" ", leftContentWidth-leftLineWidth)
+		} else if leftLineWidth > leftContentWidth {
+			leftPadded = lipgloss.NewStyle().Width(leftContentWidth).MaxWidth(leftContentWidth).Render(leftLine)
+		} else {
+			leftPadded = leftLine
+		}
+
+		var rightPadded string
+		if rightLineWidth < rightContentWidth {
+			rightPadded = rightLine + strings.Repeat(" ", rightContentWidth-rightLineWidth)
+		} else if rightLineWidth > rightContentWidth {
+			rightPadded = lipgloss.NewStyle().Width(rightContentWidth).MaxWidth(rightContentWidth).Render(rightLine)
+		} else {
+			rightPadded = rightLine
+		}
+
+		middleLine := leftBorderChar + leftPadded + separatorChar + rightPadded + rightBorderChar
+		middleLines = append(middleLines, middleLine)
+	}
+
+	var result strings.Builder
+	result.WriteString(topBorder)
+	result.WriteString("\n")
+	result.WriteString(strings.Join(middleLines, "\n"))
+	result.WriteString("\n")
+	result.WriteString(bottomBorder)
+
+	return result.String()
+}
+
+// MenuLine represents a single line in the theme menu (copied from cmd/theme.go)
+type MenuLine struct {
+	Type       string // "header_blank", "header_text", "header_separator", or "theme"
+	Content    string
+	ThemeIndex int
+	IsSelected bool
+}
+
+// ThemeSelectionStepEnhanced is the theme selection step using the full theme picker TUI
+type ThemeSelectionStepEnhanced struct {
+	themes        []ui.ThemeOption
+	selectedIndex int
+	scrollOffset  int
+	preview       *components.PreviewModel
+	buttonGroup   *components.ButtonGroup
+	navButtons    *components.ButtonGroup // Back/Continue buttons
+	hasBeenViewed bool
+	width         int
+	height        int
+}
+
+func NewThemeSelectionStepEnhanced() (*ThemeSelectionStepEnhanced, error) {
+	// Default to "catppuccin" instead of "system"
+	defaultTheme := "catppuccin"
+
+	// Get theme options
+	options, err := ui.GetThemeOptions(defaultTheme)
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover themes: %w", err)
+	}
+
+	// Find catppuccin selection index (or first theme if not found)
+	selectedIndex := 0
+	for i, option := range options {
+		if option.ThemeName == "catppuccin" {
+			selectedIndex = i
+			break
+		}
+		if option.IsSelected {
+			selectedIndex = i
+		}
+	}
+
+	// Create preview model
+	preview := components.NewPreviewModel()
+
+	// Load initial theme for preview
+	if err := preview.LoadTheme(options[selectedIndex].ThemeName); err != nil {
+		// Log error but continue
+	}
+
+	// Create button group for theme options
+	buttonTexts := make([]string, len(options))
+	for i, option := range options {
+		prefix := "  "
+		if i == selectedIndex {
+			prefix = "✔️ "
+		}
+		buttonTexts[i] = fmt.Sprintf("%s %s", prefix, option.DisplayName)
+	}
+
+	buttons := components.NewButtonGroup(buttonTexts, selectedIndex)
+	buttons.SetFocus(true)
+
+	// Create navigation buttons (Back/Continue)
+	navButtons := components.NewButtonGroup([]string{"Back", "Continue"}, 1)
+	navButtons.SetFocus(false)
+
+	return &ThemeSelectionStepEnhanced{
+		themes:        options,
+		selectedIndex: selectedIndex,
+		scrollOffset:  0,
+		preview:       preview,
+		buttonGroup:   buttons,
+		navButtons:    navButtons,
+		width:         80,
+		height:        24,
+	}, nil
+}
+
+func (s *ThemeSelectionStepEnhanced) Name() string {
+	return "Theme Selection"
+}
+
+func (s *ThemeSelectionStepEnhanced) CanGoBack() bool {
+	return true
+}
+
+func (s *ThemeSelectionStepEnhanced) CanGoNext() bool {
+	return true
+}
+
+func (s *ThemeSelectionStepEnhanced) View(model *EnhancedOnboardingModel) string {
+	if !s.hasBeenViewed {
+		s.hasBeenViewed = true
+	}
+
+	// Update width/height from model
+	s.width = model.width
+	s.height = model.height
+
+	// Build title and footer
+	titleText := "Theme Selection"
+	var commands []string
+	commands = append(commands, ui.RenderKeyWithDescription("↑/↓", "Navigate"))
+	commands = append(commands, ui.RenderKeyWithDescription("Tab", "Switch"))
+	help := strings.Join(commands, "  ")
+
+	headerHeight := 0
+	footerHeight := 2 // Commands + navigation buttons
+
+	// Calculate layout
+	layoutConfig := LayoutConfig{
+		TerminalWidth:  model.width,
+		TerminalHeight: model.height,
+		HeaderHeight:   headerHeight,
+		FooterHeight:   footerHeight,
+		MarginWidth:    2,
+		SeparatorWidth: 1,
+	}
+
+	layout := CalculatePanelLayout(layoutConfig)
+
+	// Build left panel content (theme list)
+	leftContent := s.renderLeftPanelContent(layout.LeftWidth, layout.PanelHeight)
+
+	// Build right panel content (preview)
+	rightContent := s.renderRightPanelContent(layout.RightWidth, layout.PanelHeight)
+
+	// Render combined panels
+	colors := ui.GetCurrentColors()
+	separatorColor := lipgloss.Color(colors.Placeholders)
+	borderColor := lipgloss.Color(colors.Placeholders)
+
+	combined := renderCombinedPanels(
+		titleText,
+		layout.LeftWidth,
+		layout.RightWidth,
+		layout.PanelHeight,
+		leftContent,
+		rightContent,
+		ui.CardBorder,
+		separatorColor,
+		borderColor,
+		ui.PageTitle,
+	)
+
+	// Add margins
+	margin := 1
+	marginedCombined := lipgloss.NewStyle().
+		PaddingLeft(margin).
+		PaddingRight(margin).
+		Render(combined)
+
+	// Footer: commands + navigation buttons
+	var footer strings.Builder
+	footer.WriteString(help)
+	footer.WriteString("\n\n")
+	footer.WriteString(s.navButtons.Render())
+
+	var content strings.Builder
+	content.WriteString(marginedCombined)
+	content.WriteString("\n")
+	content.WriteString(footer.String())
+
+	return lipgloss.NewStyle().
+		Width(model.width).
+		MaxWidth(model.width).
+		Render(content.String())
+}
+
+func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Handle preview animation updates
+	if cmd, shouldRedraw := s.preview.Update(msg); shouldRedraw {
+		return model, cmd
+	}
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		model.width = msg.Width
+		model.height = msg.Height
+		s.width = msg.Width
+		s.height = msg.Height
+		s.adjustScrollForSelection()
+		return model, nil
+
+	case tea.KeyMsg:
+		key := msg.String()
+
+		// Tab switches between theme list and navigation buttons
+		if key == "tab" {
+			if s.buttonGroup.HasFocus {
+				s.buttonGroup.SetFocus(false)
+				s.navButtons.SetFocus(true)
+			} else {
+				s.buttonGroup.SetFocus(true)
+				s.navButtons.SetFocus(false)
+			}
+			return model, nil
+		}
+
+		// Handle navigation buttons
+		if s.navButtons.HasFocus {
+			action := s.navButtons.HandleKey(key)
+			if action != "" {
+				switch action {
+				case "back":
+					model.GoToPreviousStep()
+					return model, nil
+				case "continue", "enter":
+					// Store selected theme and proceed
+					selectedTheme := s.themes[s.selectedIndex].ThemeName
+					model.settingsValues["theme"] = selectedTheme
+					model.GoToNextStep()
+					return model, nil
+				}
+			}
+			return model, nil
+		}
+
+		// Handle theme navigation (when theme list has focus)
+		if s.buttonGroup.HasFocus {
+			switch key {
+			case "up", "k":
+				if s.selectedIndex > 0 {
+					s.selectedIndex--
+					s.buttonGroup.Selected = s.selectedIndex
+					_ = s.preview.LoadTheme(s.themes[s.selectedIndex].ThemeName)
+					s.adjustScrollForSelection()
+				}
+				return model, nil
+
+			case "down", "j":
+				if s.selectedIndex < len(s.themes)-1 {
+					s.selectedIndex++
+					s.buttonGroup.Selected = s.selectedIndex
+					_ = s.preview.LoadTheme(s.themes[s.selectedIndex].ThemeName)
+					s.adjustScrollForSelection()
+				}
+				return model, nil
+			}
+		}
+	}
+
+	return model, nil
+}
+
+// buildAllMenuLines builds all menu lines (headers + themes) - copied from cmd/theme.go
+func (s *ThemeSelectionStepEnhanced) buildAllMenuLines(contentWidth int) []MenuLine {
+	var allLines []MenuLine
+	colors := ui.GetCurrentColors()
+	headerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colors.Secondary)).
+		Bold(true)
+	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colors.Placeholders))
+
+	darkHeaderShown := false
+	lightHeaderShown := false
+
+	for i, option := range s.themes {
+		// Add "DARK THEMES" header before first dark theme
+		if i > 0 && s.themes[i-1].Style == "" && option.Style == "dark" && !darkHeaderShown {
+			allLines = append(allLines, MenuLine{Type: "header_blank", Content: "", ThemeIndex: -1})
+			allLines = append(allLines, MenuLine{Type: "header_text", Content: headerStyle.Render("DARK THEMES"), ThemeIndex: -1})
+			allLines = append(allLines, MenuLine{Type: "header_separator", Content: separatorStyle.Render(strings.Repeat("─", contentWidth)), ThemeIndex: -1})
+			darkHeaderShown = true
+		}
+
+		// Add "LIGHT THEMES" header before first light theme
+		if i > 0 && s.themes[i-1].Style == "dark" && option.Style == "light" && !lightHeaderShown {
+			allLines = append(allLines, MenuLine{Type: "header_blank", Content: "", ThemeIndex: -1})
+			allLines = append(allLines, MenuLine{Type: "header_text", Content: headerStyle.Render("LIGHT THEMES"), ThemeIndex: -1})
+			allLines = append(allLines, MenuLine{Type: "header_separator", Content: separatorStyle.Render(strings.Repeat("─", contentWidth)), ThemeIndex: -1})
+			lightHeaderShown = true
+		}
+
+		// Add theme button line
+		buttonText := option.DisplayName
+		button := components.Button{
+			Text:     buttonText,
+			Selected: (i == s.selectedIndex && s.buttonGroup.HasFocus),
+		}
+		rendered := button.RenderFullWidth(contentWidth)
+		allLines = append(allLines, MenuLine{
+			Type:       "theme",
+			Content:    rendered,
+			ThemeIndex: i,
+			IsSelected: (i == s.selectedIndex && s.buttonGroup.HasFocus),
+		})
+	}
+
+	return allLines
+}
+
+// findThemeLineIndex finds the line index for a given theme index
+func (s *ThemeSelectionStepEnhanced) findThemeLineIndex(themeIndex int, allLines []MenuLine) int {
+	for i, line := range allLines {
+		if line.ThemeIndex == themeIndex {
+			return i
+		}
+	}
+	return -1
+}
+
+// adjustScrollForSelection adjusts scrollOffset to keep selectedIndex visible
+func (s *ThemeSelectionStepEnhanced) adjustScrollForSelection() *ThemeSelectionStepEnhanced {
+	if len(s.themes) == 0 || s.height == 0 {
+		return s
+	}
+
+	layoutConfig := LayoutConfig{
+		TerminalWidth:  s.width,
+		TerminalHeight: s.height,
+		HeaderHeight:   0,
+		FooterHeight:   2,
+		MarginWidth:    2,
+		SeparatorWidth: 1,
+	}
+	layout := CalculatePanelLayout(layoutConfig)
+
+	availableHeight := layout.PanelHeight - 2 - 2
+	if availableHeight < 1 {
+		availableHeight = 1
+	}
+
+	contentWidth := 30
+	if s.width > 0 {
+		contentWidth = s.width - 3
+		if contentWidth < 10 {
+			contentWidth = 10
+		}
+	}
+	allLines := s.buildAllMenuLines(contentWidth)
+	selectedLineIndex := s.findThemeLineIndex(s.selectedIndex, allLines)
+	if selectedLineIndex < 0 {
+		selectedLineIndex = 0
+	}
+
+	isCurrentlyVisible := selectedLineIndex >= s.scrollOffset && selectedLineIndex < s.scrollOffset+availableHeight
+
+	if !isCurrentlyVisible {
+		if selectedLineIndex < availableHeight {
+			s.scrollOffset = 0
+		} else {
+			s.scrollOffset = selectedLineIndex - availableHeight + 1
+			if s.scrollOffset < 0 {
+				s.scrollOffset = 0
+			}
+		}
+	}
+
+	maxScrollOffset := len(allLines) - 1
+	if s.scrollOffset > maxScrollOffset {
+		s.scrollOffset = maxScrollOffset
+	}
+	if s.scrollOffset < 0 {
+		s.scrollOffset = 0
+	}
+
+	return s
+}
+
+// renderLeftPanelContent renders the left panel content
+func (s *ThemeSelectionStepEnhanced) renderLeftPanelContent(width, panelHeight int) string {
+	contentWidth := width - 3
+	if contentWidth < 10 {
+		contentWidth = 10
+	}
+
+	availableHeight := panelHeight - 2 - 2
+	if availableHeight < 1 {
+		availableHeight = 1
+	}
+
+	allLines := s.buildAllMenuLines(contentWidth)
+
+	if s.scrollOffset < 0 {
+		s.scrollOffset = 0
+	}
+	if s.scrollOffset >= len(allLines) {
+		s.scrollOffset = len(allLines) - 1
+		if s.scrollOffset < 0 {
+			s.scrollOffset = 0
+		}
+	}
+
+	startLine := s.scrollOffset
+	endLine := startLine + availableHeight
+	if endLine > len(allLines) {
+		endLine = len(allLines)
+	}
+
+	var visibleLines []string
+	for i := startLine; i < endLine; i++ {
+		visibleLines = append(visibleLines, allLines[i].Content)
+	}
+
+	content := lipgloss.JoinVertical(lipgloss.Left, visibleLines...)
+	return lipgloss.NewStyle().Padding(1, 1).Render(content)
+}
+
+// renderRightPanelContent renders the right panel content
+func (s *ThemeSelectionStepEnhanced) renderRightPanelContent(width, _ int) string {
+	contentWidth := width - 3
+	if contentWidth < 0 {
+		contentWidth = 0
+	}
+
+	preview := s.preview.View(contentWidth)
+	return lipgloss.NewStyle().Padding(1, 1).Render(preview)
+}
+
 // CompletionStepEnhanced is the enhanced completion step with OK button
 type CompletionStepEnhanced struct {
 	buttonGroup *components.ButtonGroup
@@ -915,7 +1712,11 @@ func (s *CompletionStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	result.WriteString("\n")
 	result.WriteString(ui.SuccessText.Render("Setup complete!"))
 	result.WriteString("\n\n")
-	result.WriteString(ui.Text.Render("You're all set to start using FontGet."))
+	if !model.customizeChoice {
+		result.WriteString(ui.Text.Render("You're all set. FontGet is now configured with default settings."))
+	} else {
+		result.WriteString(ui.Text.Render("You're all set to start using FontGet."))
+	}
 	result.WriteString("\n\n")
 	result.WriteString(ui.InfoText.Render("Try these commands to get started:"))
 	result.WriteString("\n")
