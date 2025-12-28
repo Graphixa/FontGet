@@ -51,14 +51,17 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Root command definition and global configuration
 **Functionality**:
 - Defines the main `fontget` command
-- Sets up global flags (`--verbose`, `--debug`)
+- Sets up global flags (`--verbose`, `--debug`, `--logs`, `--wizard`)
 - Initializes logging configuration
 - Registers all subcommands
+- **Custom Help Templates**: Custom help and usage templates with controlled section ordering (Usage → Description → Commands → Options → Examples)
+- **Wizard Flag**: `--wizard` flag allows re-running the onboarding wizard for reconfiguration
 
 **Interfaces**:
 - Imports all command packages
 - Uses `internal/logging` for log configuration
 - Uses `internal/output` for verbose/debug functionality
+- Uses `internal/onboarding` for wizard execution
 
 **Status**: ✅ Active - Core command orchestration
 
@@ -98,14 +101,26 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Provides fuzzy matching and filtering
 - Displays search results in formatted tables
 - Supports various search options and filters
+- **Source-Only Search**: Supports searching by source alone (e.g., `fontget search -s google`) to show all fonts from a specific source
+- **Result Limiting**: Configurable result limit via `config.yaml` Search.ResultLimit (0 = unlimited, default)
+- **Source Filtering**: Supports filtering by source ID, full name, or short prefix (e.g., "google", "nerd", "squirrel")
+- **Refactored Code**: Extracted constants, helper functions, and removed code duplication for better maintainability
 
 **Key Functions**:
 - `searchCmd.RunE`: Main search execution
-- `performSearch`: Core search logic
-- `displaySearchResults`: Result formatting
+- `validateSource`: Validates source by ID, name, or prefix
+- `logDebugScoreBreakdown`: Debug output for search scoring details
+- `displaySearchResults`: Result formatting with dynamic table sizing
+
+**Key Features**:
+- **Source Validation**: Checks source ID, full name, and short prefix for flexible filtering
+- **Result Limiting**: Applies configurable limit after source filtering (if enabled)
+- **Debug Scoring**: Detailed score breakdown in debug mode showing base score, match bonus, popularity bonus, and final score
+- **Code Quality**: Extracted constants for magic numbers, shared completion functions, and improved code organization
 
 **Interfaces**:
 - Uses `internal/repo` for font data access
+- Uses `internal/config` for user preferences and result limiting
 - Uses `internal/functions` for search utilities
 - Uses `internal/output` for verbose/debug output
 
@@ -586,10 +601,20 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Configuration management
 **Files**:
 - `user_preferences.go`: User preferences configuration (renamed from `app_config.go`)
-  - **AppConfig structure**: Configuration, Logging, Update, and Theme sections
+  - **AppConfig structure**: Configuration, Logging, Update, Theme, and Search sections
+  - **ConfigVersion**: Tracks config schema version for migration support
+  - **Search section**: Search.ResultLimit for configurable result limiting (0 = unlimited, default)
   - **Theme configuration**: Theme.Name (theme file name) and Theme.Mode (dark/light)
   - Configuration loading, saving, and validation
+  - **Automatic Migration**: Detects config version and triggers migrations if needed
   - **Helper functions**: `ExpandLogPath()` (expands $home in log paths), `ParseMaxSize()` (parses "10MB" format)
+- `migrations.go`: Configuration migration system
+  - **Version Tracking**: Semantic versioning for config schema (CurrentConfigVersion = "2.0")
+  - **Migration Registry**: Centralized migration functions for schema upgrades
+  - **Automatic Backups**: Creates timestamped backups before migration (keeps last 3)
+  - **Backward Compatibility**: Preserves all user custom values during migration
+  - **Migration Functions**: `migrateV1ToV2` removes Limits section, adds Search section
+  - **Error Recovery**: Restores from backup if migration fails
 - `app_state.go`: Core application state types and functions
   - First-run state management
   - Source acceptance tracking
@@ -597,6 +622,12 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `validation.go`: Configuration validation
 
 **Key Features**:
+- **Config Migration System**: Automatic schema migration with version tracking and backups
+  - Detects old config versions and upgrades automatically
+  - Creates backups before migration (format: `config.yaml.backup.YYYYMMDD-HHMMSS`)
+  - Preserves all user customizations during migration
+  - Supports migration chains (e.g., v1.0 → v2.0)
+- **Search Configuration**: Search.ResultLimit allows users to limit search results (0 = unlimited)
 - **Theme Configuration**: Users can set theme name and mode in `config.yaml`
   - Theme files must be placed in `~/.fontget/themes/` directory
   - Empty theme name uses embedded default (Catppuccin)
@@ -608,7 +639,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - LastChecked uses UTC timezone for consistency
   - AutoUpdate automatically installs updates when enabled and available
 
-**Status**: ✅ Active - Core configuration system with theme support and full config connections
+**Status**: ✅ Active - Core configuration system with theme support, migration system, and full config connections
 
 ### `internal/repo/`
 **Purpose**: Font repository management
@@ -824,6 +855,45 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `license.go`: License information
 
 **Status**: ✅ Active - License management
+
+### `internal/onboarding/`
+**Purpose**: First-run onboarding and setup wizard
+**Files**:
+- `onboarding.go`: Core onboarding flow management
+  - `RunFirstRunOnboarding()`: Executes onboarding on first run
+  - `RunWizard()`: Executes onboarding wizard regardless of first-run status (for `--wizard` flag)
+  - `OnboardingFlow`: Step-based execution system
+- `enhanced_flow.go`: Enhanced interactive TUI onboarding flow
+  - **EnhancedOnboardingModel**: Bubble Tea model for interactive onboarding
+  - **Step System**: Modular step interface for easy extension
+  - **Steps**: Welcome → License Agreement → Wizard Choice → Sources → Settings → Theme Selection → Completion
+  - **Theme Integration**: Full theme picker TUI integrated into onboarding flow
+  - **Conditional Navigation**: Skips customization steps if user chooses "Let it ride"
+
+**Key Features**:
+- **Interactive TUI**: Full-screen interactive terminal UI using Bubble Tea
+- **Welcome Screen**: First-time user welcome message
+- **License Agreement**: Text-based license acceptance (continuing implies agreement)
+- **Wizard Choice**: User can choose to customize settings or accept defaults ("Let it ride")
+- **Source Selection**: Interactive source enable/disable with checkbox list
+- **Settings Configuration**: Update settings (auto-check, auto-update, popularity sort)
+- **Theme Selection**: Full theme picker TUI with preview (only shown if user chose to customize)
+- **Completion Screen**: Summary of selections and next steps
+- **State Management**: Tracks selections and saves to config on completion
+- **Re-runnable**: Can be re-run via `--wizard` flag for reconfiguration
+
+**Key Functions**:
+- `NewEnhancedOnboardingModel()`: Creates new onboarding model with all steps
+- `SaveSelections()`: Saves user selections to config file
+- Step-specific functions: `NewWelcomeStepEnhanced()`, `NewLicenseAgreementStepEnhanced()`, `NewWizardChoiceStepEnhanced()`, etc.
+
+**Interfaces**:
+- Uses `internal/config` for configuration management
+- Uses `internal/ui` for TUI components and styling
+- Uses `internal/components` for reusable UI components (CheckboxList, ButtonGroup)
+- Uses Bubble Tea for TUI framework
+
+**Status**: ✅ Active - Enhanced onboarding system with interactive TUI
 
 
 ---
@@ -1107,3 +1177,84 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Improved developer experience with comprehensive documentation
   - Consistent code structure across all command files
   - Self-documenting code with clear function purposes
+
+#### **Config Migration System (2025-01-XX)**
+- **Version Tracking**: Added `ConfigVersion` field to `AppConfig` structure for schema versioning
+  - Current version: "2.0"
+  - Backward compatibility: Old configs without version default to "1.0"
+- **Migration System**: Created `internal/config/migrations.go` with migration infrastructure
+  - **Migration Registry**: Centralized registry of migration functions
+  - **Automatic Detection**: Detects config version and triggers migrations if needed
+  - **Migration Chain**: Supports migration chains (e.g., v1.0 → v2.0)
+  - **Backup System**: Creates timestamped backups before migration (format: `config.yaml.backup.YYYYMMDD-HHMMSS`)
+  - **Backup Rotation**: Keeps last 3 backups, removes older ones
+  - **Error Recovery**: Restores from backup if migration fails
+- **V1 to V2 Migration**: Removed `Limits` section, added `Search` section
+  - **Search Section**: Added `Search.ResultLimit` for configurable search result limiting (0 = unlimited)
+  - **Preservation**: All user custom values are preserved during migration
+- **Integration**: Migration runs automatically during `GetUserPreferences()` if version mismatch detected
+- **Benefits**:
+  - Graceful schema upgrades without breaking user configs
+  - Automatic backup system prevents data loss
+  - Clean separation of migration logic from config loading
+  - Easy to add new migrations as schema evolves
+
+#### **Enhanced Onboarding Flow (2025-01-XX)**
+- **Redesigned Flow**: Complete redesign of first-run onboarding experience
+  - **Welcome Screen**: First-time user welcome message
+  - **License Agreement**: Text-based license acceptance (continuing implies agreement)
+  - **Wizard Choice**: User can choose to customize settings or accept defaults ("Let it ride")
+  - **Conditional Navigation**: Skips customization steps if user chooses "Let it ride"
+  - **Theme Integration**: Full theme picker TUI integrated into onboarding flow (only shown if customizing)
+- **Interactive TUI**: Enhanced onboarding uses full-screen interactive terminal UI
+  - Uses Bubble Tea framework for consistent TUI experience
+  - Step-based navigation with back/forward support
+  - Modular step interface for easy extension
+- **Wizard Flag**: Added `--wizard` flag to root command for re-running onboarding
+  - Useful for reconfiguration and testing
+  - Runs regardless of first-run status
+- **Step System**: Modular step interface (`OnboardingStepInterface`)
+  - Each step implements `Name()`, `View()`, `Update()`, `CanGoBack()`, `CanGoNext()`
+  - Easy to add new steps or modify existing ones
+- **State Management**: Tracks all user selections and saves to config on completion
+  - Source selections, settings values, and theme selection are preserved
+- **Benefits**:
+  - Better first-run experience with clear welcome and guidance
+  - Flexible customization path (customize or accept defaults)
+  - Integrated theme selection for immediate personalization
+  - Re-runnable wizard for easy reconfiguration
+
+#### **Search Command Enhancements (2025-01-XX)**
+- **Source-Only Search**: Added support for searching by source alone
+  - Example: `fontget search -s google` shows all fonts from Google Fonts
+  - Fetches all fonts and filters by source when only `--source` flag is provided
+- **Result Limiting**: Added configurable result limiting via `config.yaml`
+  - `Search.ResultLimit` field (0 = unlimited, default)
+  - Applied after source filtering for accurate limiting
+- **Source Filtering Enhancement**: Improved source validation and filtering
+  - Supports source ID, full name, and short prefix (e.g., "google", "nerd", "squirrel")
+  - `validateSource()` checks all three formats for flexible filtering
+- **Code Refactoring**: Improved code quality and maintainability
+  - Extracted constants for magic numbers (`SearchTableColumnSpacing`, `SearchPopularityDivisor`, etc.)
+  - Extracted `logDebugScoreBreakdown()` helper function for debug output
+  - Extracted shared completion functions for category and source flags
+  - Removed code duplication and improved code organization
+- **Debug Scoring**: Enhanced debug output with detailed score breakdown
+  - Shows base score, match bonus, popularity bonus, and final score
+  - Displays position in results and match type
+- **Benefits**:
+  - More flexible search options (source-only search)
+  - Better performance with configurable result limiting
+  - Improved code maintainability and readability
+  - Enhanced debugging capabilities with detailed scoring
+
+#### **Help Template Customization (2025-01-XX)**
+- **Custom Help Templates**: Added custom help and usage templates in `cmd/root.go`
+  - **Section Ordering**: Controlled section order (Usage → Description → Commands → Options → Examples)
+  - **Title Changes**: Changed "Flags:" to "Options:" for better clarity
+  - **Spacing Control**: Careful spacing management to prevent double newlines
+  - **Consistent Formatting**: Applied to both root command and subcommands
+- **Benefits**:
+  - Better help output organization and readability
+  - Consistent formatting across all commands
+  - Professional appearance with proper spacing
