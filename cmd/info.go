@@ -20,17 +20,12 @@ const (
 )
 
 var infoCmd = &cobra.Command{
-	Use:   "info <font-id> [flags]",
+	Use:   "info <font-id>",
 	Short: "Display detailed information about a font",
 	Long: `Display detailed information about a font.
 
-Shows font metadata including:
-  - Font name, ID, and source
-  - Available variants
-  - License information
-  - Categories and tags
-
-Use the --license flag to show only license information.`,
+Shows font metadata including name, ID, source, variants, license, and categories.
+Use --license to show only license information.`,
 	Example: `  fontget info "Noto Sans"
   fontget info "Roboto" -l`,
 	Args: func(cmd *cobra.Command, args []string) error {

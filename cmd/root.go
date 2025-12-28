@@ -13,6 +13,7 @@ import (
 	"fontget/internal/update"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -29,7 +30,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fontget <command> [flags]",
+	Use:   "fontget <command> [options]",
 	Short: "A command-line tool for managing fonts",
 	Long:  `FontGet is a powerful command-line font manager for installing and managing fonts on your system.`,
 	Args:  cobra.NoArgs,
@@ -206,9 +207,14 @@ func init() {
 	output.SetVerboseChecker(IsVerbose)
 	output.SetDebugChecker(IsDebug)
 
+	// Register custom template function to replace "[flags]" with "options"
+	cobra.AddTemplateFunc("replaceFlags", func(s string) string {
+		return strings.ReplaceAll(s, "[flags]", "[options]")
+	})
+
 	// Set custom help template
 	rootCmd.SetHelpTemplate(`{{if .Runnable}}
-Usage: {{.UseLine}}
+Usage: {{replaceFlags .UseLine}}
 {{end}}{{with (or .Long .Short)}}
 {{. | trimTrailingWhitespaces}}
 {{end}}{{if .HasAvailableSubCommands}}
@@ -226,7 +232,7 @@ Examples:
 
 	// Set custom usage template with extra spacing
 	rootCmd.SetUsageTemplate(`{{if .Runnable}}
-Usage: {{.UseLine}}
+Usage: {{replaceFlags .UseLine}}
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}

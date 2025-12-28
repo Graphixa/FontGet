@@ -183,8 +183,8 @@ var configCmd = &cobra.Command{
 	SilenceUsage: true,
 	Long: `Manage FontGet application configuration settings.
 
-The config command allows you to view and edit the FontGet application configuration file (config.yaml).
-This includes settings for the default editor, logging preferences, and other application behavior.`,
+View and edit the configuration file (config.yaml), including editor preferences,
+logging settings, and other application behavior.`,
 	Example: `  fontget config info              # Show configuration information
   fontget config edit              # Open config.yaml in default editor
   fontget config validate          # Validate configuration file`,
@@ -198,7 +198,7 @@ var configInfoCmd = &cobra.Command{
 	Use:          "info",
 	Short:        "Show configuration information",
 	SilenceUsage: true,
-	Long:         `Display detailed information about the current FontGet configuration.`,
+	Long:         `Display current FontGet configuration settings.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
 		logger := GetLogger()
@@ -264,7 +264,7 @@ var configEditCmd = &cobra.Command{
 	Use:          "edit",
 	Short:        "Open configuration file in default editor",
 	SilenceUsage: true,
-	Long:         `Open the FontGet configuration file (config.yaml) in your default editor.`,
+	Long:         `Open the configuration file (config.yaml) in your default editor.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
 		logger := GetLogger()
@@ -442,8 +442,7 @@ var configValidateCmd = &cobra.Command{
 	SilenceUsage: true,
 	Long: `Validate the configuration file and report any issues.
 
-If validation fails, use 'fontget config edit' to open and fix the configuration file.
-If all else fails, use 'fontget config reset' to restore to default settings.`,
+Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore defaults.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration validation operation")
 
@@ -532,6 +531,7 @@ var configResetCmd = &cobra.Command{
 	Short:        "Reset configuration to defaults",
 	SilenceUsage: true,
 	Long: `Reset the configuration file to default values.
+
 Replaces the config with defaults while preserving log files.
 Useful when the file is corrupted or you want to start fresh.`,
 	RunE: func(cmd *cobra.Command, args []string) error {

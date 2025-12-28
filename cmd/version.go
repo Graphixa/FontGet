@@ -16,9 +16,12 @@ var versionCmd = &cobra.Command{
 	Use:          "version",
 	Short:        "Show FontGet version information",
 	SilenceUsage: true,
-	Long:         `Display version and build information.`,
-	Example:      `  fontget version`,
-	Args:         cobra.NoArgs,
+	Long: `Display FontGet version and build information.
+
+Shows the current version number. Use --debug to see commit hash and build date.
+Use --release-notes to get a link to the release notes for this version.`,
+	Example: `  fontget version`,
+	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		v := version.GetVersion()
 		display := v

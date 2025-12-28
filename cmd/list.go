@@ -43,14 +43,7 @@ var listCmd = &cobra.Command{
 By default, shows fonts from both user and system-wide installations.
 Results can be filtered by font family name, Font ID, type, or scope.
 
-The query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto").
-
-Flags:
-  --scope, -s    Filter by installation scope (user, machine)
-  --type, -t     Filter by font type (TTF, OTF, etc.)
-  --expand, -x   Show all font variants in hierarchical view
-
-`,
+The query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto").`,
 	Example: `  fontget list
   fontget list "jet"
   fontget list roboto -t ttf

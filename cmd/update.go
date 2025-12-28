@@ -29,8 +29,11 @@ var updateCmd = &cobra.Command{
 	Use:          "update",
 	Short:        "Update FontGet to the latest version",
 	SilenceUsage: true,
-	Long: `Check for updates and optionally install them.
-Verifies checksums, handles binary replacement safely, and rolls back on failure.`,
+	Long: `Check for FontGet updates and optionally install them.
+
+By default, checks for updates and prompts for confirmation before installing.
+Use --check to only check without installing, or -y to auto-confirm updates.
+Verifies checksums and handles binary replacement safely.`,
 	Example: `  fontget update              # Check and prompt for update
   fontget update --check      # Only check, don't install
   fontget update -y            # Auto-confirm update

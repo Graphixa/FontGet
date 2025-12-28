@@ -41,20 +41,10 @@ var backupCmd = &cobra.Command{
 	SilenceErrors: true,
 	Long: `Backup installed font files to a zip archive organized by source and family name.
 
-This command creates a backup zip archive containing all font files installed on your system.
-Fonts are organized by source (e.g., Google Fonts, Nerd Fonts) and then by family name.
+Automatically detects accessible scopes (user-only for regular users, both scopes for administrators).
+Fonts are deduplicated across scopes. System fonts are always excluded.
 
-The command automatically detects which scopes are accessible:
-  - If running as regular user: backs up user-scope fonts only
-  - If running as administrator/sudo: backs up both user and machine-scope fonts
-
-Fonts are deduplicated across scopes - if the same font exists in both scopes,
-only one copy is included in the backup.
-
-System fonts are always excluded from backups.
-
-When an output path is provided, the TUI is bypassed and all accessible scopes are used.
-Use --scope to specify which scopes to backup when providing a path.`,
+Use --scope to specify which scopes to backup when providing an output path.`,
 	Example: `  fontget backup
   fontget backup fonts-backup.zip
   fontget backup D:\Backups\my-fonts.zip --force

@@ -63,18 +63,15 @@ var exportCmd = &cobra.Command{
 	Use:          "export [output-file]",
 	Short:        "Export installed fonts to a manifest file",
 	SilenceUsage: true,
-	Long: `Export installed fonts to a JSON manifest file that can be used to restore fonts on another system.
+	Long: `Export installed fonts to a JSON manifest file for restoring fonts on another system.
 
-By default, exports all fonts that match repository entries (Font IDs available).
+By default, exports fonts that match repository entries (Font IDs available).
+Use --all to export all installed fonts, including those without Font IDs.
+
 System fonts are always excluded from exports.
 
 Use flags to filter by match string, source, or include all installed fonts.
-
-The export file can be used with the 'import' command to install the same fonts on another system.
-
-The output file can be specified as a positional argument or using the -o flag.
-When using -o, you can specify either a directory (creates fonts-export.json in that directory)
-or a full file path.`,
+The output file can be specified as a positional argument or using the -o flag.`,
 	Example: `  fontget export fonts.json
   fontget export -o D:\Exports
   fontget export -o D:\Exports\my-fonts.json

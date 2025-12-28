@@ -997,13 +997,8 @@ var sourcesManageCmd = &cobra.Command{
 	Short: "Interactive source management with TUI",
 	Long: `Launch an interactive TUI for managing font sources.
 
-Navigation:
-  ↑/↓ or j/k  - Move cursor
-  Space/Enter - Toggle source enabled state
-  a           - Add new source
-  e           - Edit selected source (view built-in details)
-  d           - Delete selected source (non-built-in only)
-  esc         - Quit (prompts to save if changes made)`,
+Enable or disable sources, add custom sources, edit source details, and delete custom sources.
+Built-in sources can be viewed but not deleted.`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {

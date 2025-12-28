@@ -445,7 +445,7 @@ var importCmd = &cobra.Command{
 	Long: `Import fonts from a FontGet export manifest file.
 
 The manifest file should be a JSON file created by the 'export' command.
-Fonts will be installed using their Font IDs, and missing fonts will be skipped with a warning.`,
+Fonts are installed using their Font IDs. Missing fonts are skipped with a warning.`,
 	Example: `  fontget import fonts.json
   fontget import fonts.json --scope user
   fontget import fonts.json --force`,
