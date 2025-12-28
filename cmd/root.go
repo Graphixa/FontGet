@@ -196,8 +196,8 @@ func init() {
 	// Add debug flag - shows full diagnostic logs with timestamps (for developers)
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show debug logs with timestamps (for troubleshooting)")
 
-	// Add logs flag
-	rootCmd.PersistentFlags().BoolVar(&logs, "logs", false, "Open logs directory")
+	// Add logs flag (non-persistent - only available on root command)
+	rootCmd.Flags().BoolVar(&logs, "logs", false, "Open logs directory")
 
 	// Add wizard flag (not persistent - only applies to root command)
 	rootCmd.Flags().BoolVar(&wizard, "wizard", false, "Run the setup wizard to configure FontGet")
