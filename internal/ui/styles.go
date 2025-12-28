@@ -34,6 +34,13 @@ var (
 	Text = lipgloss.NewStyle().
 		Foreground(lipgloss.NoColor{}) // No color
 
+	// TextBold - Bold text with terminal default color
+	// Usage: Bold labels, report titles, emphasized text without color
+	// Example: ui.TextBold.Render("Status Report")
+	TextBold = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.NoColor{}) // No color - uses terminal default
+
 	// InfoText - Informational messages (like "Multiple fonts found")
 	// Usage: Informational messages, tips, hints
 	// Example: ui.InfoText.Render("Multiple fonts found")
@@ -69,14 +76,6 @@ var (
 	// Example: ui.QueryText.Render("roboto")
 	// Colors: Set by InitStyles() from theme (uses Primary color)
 	QueryText = lipgloss.NewStyle()
-
-	// TextBold - Bold text with terminal default color
-	// Usage: Bold labels, report titles, emphasized text without color
-	// Example: ui.TextBold.Render("Status Report")
-	TextBold = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.NoColor{}) // No color - uses terminal default
-
 )
 
 // ============================================================================
