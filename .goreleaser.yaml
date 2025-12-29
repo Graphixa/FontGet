@@ -100,7 +100,7 @@ homebrew_casks:
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://github.com/Graphixa/FontGet"
-    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line"
+    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line. Search for fonts, list installed fonts, install or remove fonts all from the CLI."
     license: "MIT"
     # Use the default archive (darwin builds only)
     # GoReleaser will automatically filter to darwin archives
@@ -127,5 +127,23 @@ scoops:
       branch: main
       token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
     homepage: "https://github.com/Graphixa/FontGet"
-    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line"
+    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line. Search for fonts, list installed fonts, install or remove fonts all from the CLI."
     license: "MIT"
+
+# Chocolatey (Windows)
+chocolateys:
+  - name: fontget
+    api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
+    title: "FontGet"
+    owners: "Graphixa"
+    authors: "Graphixa"
+    project_url: "https://github.com/Graphixa/FontGet"
+    project_source_url: "https://github.com/Graphixa/FontGet"
+    package_source_url: "https://github.com/Graphixa/FontGet"
+    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line. Search for fonts, list installed fonts, install or remove fonts all from the CLI."
+    summary: "Install and manage fonts from the command line"
+    tags: "fonts,font-manager,cli,cross-platform"
+    license_url: "https://github.com/Graphixa/FontGet/blob/main/LICENSE"
+    release_notes: "https://github.com/Graphixa/FontGet/releases/tag/v{{ .Version }}"
+    bug_tracker_url: "https://github.com/Graphixa/FontGet/issues"
+    docs_url: "https://github.com/Graphixa/FontGet/blob/main/README.md"
