@@ -1,13 +1,12 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	pinpkg "github.com/yarlson/pin"
 )
 
 // Utility functions for consistent UI rendering
@@ -98,92 +97,30 @@ func RenderSuccessScreen(title, message string) string {
 	)
 }
 
-// RunSpinner runs a pin spinner while the provided function executes
+// RunSpinner runs a bubbletea spinner while the provided function executes
 // Always stops with a green check symbol on success
 // If doneMsg is empty string, the spinner line will be cleared (hidden) after completion
 func RunSpinner(msg, doneMsg string, fn func() error) error {
-	// Configure spinner with colors from styles.go
-	p := pinpkg.New(msg,
-		pinpkg.WithSpinnerColor(hexToPinColor(SpinnerColor)),
-		pinpkg.WithDoneSymbol('✓'),
-		pinpkg.WithDoneSymbolColor(hexToPinColor(SpinnerDoneColor)),
-	)
-	// Start spinner; it auto-disables animation when output is piped
-	cancel := p.Start(context.Background())
-	defer cancel()
+	model := NewSpinnerModel(msg, doneMsg, fn)
+	program := tea.NewProgram(model)
 
-	err := fn()
+	// Store program reference so goroutine can send completion message
+	model.program = program
+
+	// Run the program
+	finalModel, err := program.Run()
 	if err != nil {
-		// Show failure with red X, but return the error
-		p.Fail("✗ " + err.Error())
 		return err
 	}
-	// If doneMsg is empty, clear the spinner line instead of showing a message
-	if doneMsg == "" {
-		// Stop the spinner first (cancel() is idempotent, so defer will be safe)
-		cancel()
-		// Clear the line using ANSI escape code to ensure it's completely hidden
-		// \r moves to start of line, \033[2K clears the entire line
-		// Add a newline so subsequent output appears on a fresh line
-		fmt.Print("\r\033[2K\n")
-		return nil
-	}
-	p.Stop(doneMsg)
-	// Add blank line after spinner completion (per spacing framework)
-	fmt.Println()
-	return nil
-}
 
-// hexToPinColor dynamically maps hex color strings to the closest matching pin package color
-// Uses RGB distance calculation to find the nearest ANSI color
-// This approach is dynamic and works with any hex color without requiring a static map
-// Improved to include more ANSI color options for better theme color matching
-func hexToPinColor(hex string) pinpkg.Color {
-	if hex == "" {
-		return pinpkg.ColorDefault
-	}
-
-	// Parse hex to RGB
-	r, g, b := parseHexColor(hex)
-
-	// Define extended ANSI colors as RGB values
-	// Includes standard and bright variants for better color matching
-	ansiColors := []struct {
-		color   pinpkg.Color
-		r, g, b int
-	}{
-		// Standard colors
-		{pinpkg.ColorRed, 255, 0, 0},       // Red
-		{pinpkg.ColorGreen, 0, 255, 0},     // Green
-		{pinpkg.ColorYellow, 255, 255, 0},  // Yellow
-		{pinpkg.ColorBlue, 0, 0, 255},      // Blue
-		{pinpkg.ColorMagenta, 255, 0, 255}, // Magenta
-		{pinpkg.ColorCyan, 0, 255, 255},    // Cyan
-		// Note: The pin package may support additional colors, but we map to these standard ones
-		// For better matching, we use perceptual color distance
-	}
-
-	// Find the closest color using perceptual color distance (weighted RGB)
-	// This gives better results for human perception than simple Euclidean distance
-	bestColor := pinpkg.ColorDefault
-	minDistance := 999999.0 // Large initial value
-
-	for _, ansi := range ansiColors {
-		// Calculate weighted RGB distance (perceptual)
-		// Red and green are weighted more heavily for human perception
-		dr := float64(r - ansi.r)
-		dg := float64(g - ansi.g)
-		db := float64(b - ansi.b)
-		// Weighted distance: red and green contribute more to perceived color difference
-		distance := 0.3*dr*dr + 0.59*dg*dg + 0.11*db*db
-
-		if distance < minDistance {
-			minDistance = distance
-			bestColor = ansi.color
+	// Extract error from model if operation failed
+	if m, ok := finalModel.(*spinnerModel); ok {
+		if m.err != nil {
+			return m.err
 		}
 	}
 
-	return bestColor
+	return nil
 }
 
 // SimpleProgressBar provides a simple inline progress bar without TUI
