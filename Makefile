@@ -35,22 +35,12 @@ build: ## Build with auto-detected version (from git tag)
 	@echo "  Date:    $(DATE)"
 	@go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 
-build-dev: ## Build as development version (latest release + commit hash)
-	@if [ "$(VERSION)" = "dev" ]; then \
-		DEV_VERSION="dev+$(COMMIT)"; \
-		echo "Building FontGet (dev build: $$DEV_VERSION - no release tag found)..."; \
-		echo "  Version: $$DEV_VERSION"; \
-		echo "  Commit:  $(COMMIT)"; \
-		echo "  Date:    $(DATE)"; \
-		go build -ldflags "-s -w -X fontget/internal/version.Version=$$DEV_VERSION -X fontget/internal/version.GitCommit=$(COMMIT) -X fontget/internal/version.BuildDate=$(DATE)" -o $(BINARY_NAME) .; \
-	else \
-		DEV_VERSION="$(VERSION)-dev+$(COMMIT)"; \
-		echo "Building FontGet (dev build: $$DEV_VERSION)..."; \
-		echo "  Version: $$DEV_VERSION"; \
-		echo "  Commit:  $(COMMIT)"; \
-		echo "  Date:    $(DATE)"; \
-		go build -ldflags "-s -w -X fontget/internal/version.Version=$$DEV_VERSION -X fontget/internal/version.GitCommit=$(COMMIT) -X fontget/internal/version.BuildDate=$(DATE)" -o $(BINARY_NAME) .; \
-	fi
+build-dev: ## Build for local testing (simple dev version)
+	@echo "Building FontGet (local dev build)..."
+	@echo "  Version: dev"
+	@echo "  Commit:  $(COMMIT)"
+	@echo "  Date:    $(DATE)"
+	@go build -ldflags "-s -w -X fontget/internal/version.Version=dev -X fontget/internal/version.GitCommit=$(COMMIT) -X fontget/internal/version.BuildDate=$(DATE)" -o $(BINARY_NAME) .
 
 build-release: ## Build with specific version (use VERSION=v2.1.0 make build-release)
 	@if [ "$(VERSION)" = "dev" ]; then \

@@ -1,9 +1,9 @@
 # FontGet Build Script for Windows
-# Automatically detects version from git tags
+# Simple build script for local testing
+# Note: Release builds are handled automatically by GitHub Actions on tag push
 
 param(
     [string]$Version = "",
-    [switch]$Dev,
     [switch]$Help
 )
 
@@ -13,14 +13,14 @@ function Show-Help {
     Write-Host "Usage: .\scripts\build.ps1 [options]"
     Write-Host ""
     Write-Host "Options:"
-    Write-Host "  -Version <version>  Build with specific version (e.g., 2.0.0)"
-    Write-Host "  -Dev                Build as development version (latest release + commit hash)"
+    Write-Host "  -Version <version>  Build with specific version (for testing release builds locally)"
     Write-Host "  -Help               Show this help message"
     Write-Host ""
     Write-Host "Examples:"
-    Write-Host "  .\scripts\build.ps1              # Auto-detect version from git tag"
-    Write-Host "  .\scripts\build.ps1 -Dev         # Build as 'dev' version"
-    Write-Host "  .\scripts\build.ps1 -Version 2.1.0  # Build with specific version"
+    Write-Host "  .\scripts\build.ps1              # Build for local testing (uses 'dev' version)"
+    Write-Host "  .\scripts\build.ps1 -Version 2.1.0  # Test a specific version locally"
+    Write-Host ""
+    Write-Host "Note: For releases, just create and push a git tag. GitHub Actions will build automatically."
     Write-Host ""
 }
 
@@ -29,38 +29,21 @@ if ($Help) {
     exit 0
 }
 
-# Get git info
+# Get git info (for build metadata)
 $commit = git rev-parse --short HEAD 2>$null
 if (-not $commit) { $commit = "unknown" }
 
 $date = [System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 
 # Determine version
-if ($Dev) {
-    # For dev builds: get latest release version + commit hash
-    $tag = git describe --tags --abbrev=0 2>$null
-    if ($tag) {
-        $baseVersion = $tag -replace '^v', ''
-        $version = "$baseVersion-dev+$commit"
-        Write-Host "Building FontGet (dev build: $version)..." -ForegroundColor Yellow
-    } else {
-        # No tag found, use plain dev+commit
-        $version = "dev+$commit"
-        Write-Host "Building FontGet (dev build: $version - no release tag found)..." -ForegroundColor Yellow
-    }
-} elseif ($Version) {
+if ($Version) {
+    # User specified a version (for testing release builds locally)
     $version = $Version
-    Write-Host "Building FontGet v$version (release)..." -ForegroundColor Green
+    Write-Host "Building FontGet v$version (local test build)..." -ForegroundColor Cyan
 } else {
-    # Auto-detect from git tag
-    $tag = git describe --tags --abbrev=0 2>$null
-    if ($tag) {
-        $version = $tag -replace '^v', ''
-        Write-Host "Building FontGet v$version (auto-detected from git tag)..." -ForegroundColor Cyan
-    } else {
-        $version = "dev"
-        Write-Host "Building FontGet (dev build - no git tag found)..." -ForegroundColor Yellow
-    }
+    # Default: simple dev build for local testing
+    $version = "dev"
+    Write-Host "Building FontGet (local dev build)..." -ForegroundColor Yellow
 }
 
 Write-Host "  Version: $version" -ForegroundColor Gray

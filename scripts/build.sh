@@ -1,11 +1,11 @@
 #!/bin/bash
 # FontGet Build Script for Linux/macOS
-# Automatically detects version from git tags
+# Simple build script for local testing
+# Note: Release builds are handled automatically by GitHub Actions on tag push
 
 set -e
 
 VERSION=""
-DEV=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -14,24 +14,21 @@ while [[ $# -gt 0 ]]; do
             VERSION="$2"
             shift 2
             ;;
-        --dev)
-            DEV=true
-            shift
-            ;;
         -h|--help)
             echo "FontGet Build Script"
             echo ""
             echo "Usage: ./scripts/build.sh [options]"
             echo ""
             echo "Options:"
-            echo "  -v, --version <version>  Build with specific version (e.g., 2.0.0)"
-            echo "  --dev                    Build as development version (latest release + commit hash)"
+            echo "  -v, --version <version>  Build with specific version (for testing release builds locally)"
             echo "  -h, --help               Show this help message"
             echo ""
             echo "Examples:"
-            echo "  ./scripts/build.sh              # Auto-detect version from git tag"
-            echo "  ./scripts/build.sh --dev         # Build as 'dev' version"
-            echo "  ./scripts/build.sh -v 2.1.0      # Build with specific version"
+            echo "  ./scripts/build.sh              # Build for local testing (uses 'dev' version)"
+            echo "  ./scripts/build.sh -v 2.1.0      # Test a specific version locally"
+            echo ""
+            echo "Note: For releases, just create and push a git tag. GitHub Actions will build automatically."
+            echo ""
             exit 0
             ;;
         *)
@@ -42,35 +39,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Get git info
+# Get git info (for build metadata)
 COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
 # Determine version
-if [ "$DEV" = true ]; then
-    # For dev builds: get latest release version + commit hash
-    TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-    if [ -n "$TAG" ]; then
-        BASE_VERSION=$(echo "$TAG" | sed 's/^v//')
-        VERSION="$BASE_VERSION-dev+$COMMIT"
-        echo "Building FontGet (dev build: $VERSION)..."
-    else
-        # No tag found, use plain dev+commit
-        VERSION="dev+$COMMIT"
-        echo "Building FontGet (dev build: $VERSION - no release tag found)..."
-    fi
-elif [ -n "$VERSION" ]; then
-    echo "Building FontGet v$VERSION (release)..."
+if [ -n "$VERSION" ]; then
+    # User specified a version (for testing release builds locally)
+    echo "Building FontGet v$VERSION (local test build)..."
 else
-    # Auto-detect from git tag
-    TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
-    if [ -n "$TAG" ]; then
-        VERSION=$(echo "$TAG" | sed 's/^v//')
-        echo "Building FontGet v$VERSION (auto-detected from git tag)..."
-    else
-        VERSION="dev"
-        echo "Building FontGet (dev build - no git tag found)..."
-    fi
+    # Default: simple dev build for local testing
+    VERSION="dev"
+    echo "Building FontGet (local dev build)..."
 fi
 
 echo "  Version: $VERSION"
