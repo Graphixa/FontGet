@@ -251,23 +251,48 @@ FontGet dev+124d611
 - ✅ Self-update system recognizes "dev" builds and will always suggest updates
 - ✅ Standard practice in Go projects
 
-**Optional: Build-time Injection (for distribution)**
+**Recommended: Use Build Scripts or Makefile**
 
-If you want to bake the commit hash into the binary (useful for distributing local builds):
+For easier development, use the provided build tools that automatically detect version from git tags:
+
+```bash
+# Using Makefile (cross-platform, requires make)
+make build              # Auto-detect version from git tag
+make build-dev          # Force dev build
+make version            # Show version info
+
+# Using build scripts
+# Windows (PowerShell)
+.\scripts\build.ps1              # Auto-detect version
+.\scripts\build.ps1 -Dev         # Dev build
+.\scripts\build.ps1 -Version 2.1.0  # Specific version
+
+# Linux/macOS
+./scripts/build.sh                # Auto-detect version
+./scripts/build.sh --dev          # Dev build
+./scripts/build.sh -v 2.1.0       # Specific version
+```
+
+**Manual Build (if needed)**
+
+If you want to build manually with specific version:
 
 ```bash
 # Linux/macOS
 COMMIT=$(git rev-parse --short HEAD)
 DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-go build -ldflags "-X fontget/internal/version.GitCommit=$COMMIT -X fontget/internal/version.BuildDate=$DATE" -o fontget
+VERSION=$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "dev")
+go build -ldflags "-X fontget/internal/version.Version=$VERSION -X fontget/internal/version.GitCommit=$COMMIT -X fontget/internal/version.BuildDate=$DATE" -o fontget
 
 # Windows (PowerShell)
 $commit = git rev-parse --short HEAD
-$date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ" -AsUTC)
-go build -ldflags "-X fontget/internal/version.GitCommit=$commit -X fontget/internal/version.BuildDate=$date" -o fontget.exe
+$date = [System.DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
+$version = (git describe --tags --abbrev=0 2>$null) -replace '^v', ''
+if (-not $version) { $version = "dev" }
+go build -ldflags "-X fontget/internal/version.Version=$version -X fontget/internal/version.GitCommit=$commit -X fontget/internal/version.BuildDate=$date" -o fontget.exe
 ```
 
-**Note:** The version will remain `"dev"` or `"dev+{hash}"` unless you explicitly set it via `-X fontget/internal/version.Version=<version>`. This is intentional—local builds should use "dev" to distinguish them from releases.
+**Note:** The build scripts automatically detect the latest git tag and use it as the version. If no tag exists, it defaults to `"dev"`. This makes development builds easy while ensuring release builds use the correct version.
 
 ### **Pre-Release Checklist**
 
