@@ -34,9 +34,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Custom tokens for package manager repositories
-          # GoReleaser uses these to automatically push to:
-          # - Graphixa/homebrew-tap (Homebrew Cask)
-          # - Graphixa/scoop-bucket (Scoop manifest)
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
 
