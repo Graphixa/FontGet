@@ -60,7 +60,7 @@ func TestNewEnhancedOnboardingModel(t *testing.T) {
 	}
 
 	// Check required settings keys
-	requiredKeys := []string{"autoCheck", "autoUpdate", "usePopularitySort"}
+	requiredKeys := []string{"autoCheck", "checkForUpdates", "usePopularitySort"}
 	for _, key := range requiredKeys {
 		if _, exists := model.settingsValues[key]; !exists {
 			t.Errorf("NewEnhancedOnboardingModel() settingsValues missing key: %q", key)
