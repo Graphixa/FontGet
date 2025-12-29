@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/logging"
 	"fontget/internal/onboarding"
@@ -22,11 +23,12 @@ import (
 // Version is now managed centrally in internal/version package
 
 var (
-	verbose bool
-	debug   bool
-	logs    bool
-	wizard  bool
-	logger  *logging.Logger
+	verbose       bool
+	debug         bool
+	logs          bool
+	wizard        bool
+	logger        *logging.Logger
+	pendingUpdate *update.CheckResult // Stores update check result for post-command prompt
 )
 
 var rootCmd = &cobra.Command{
@@ -183,6 +185,103 @@ var rootCmd = &cobra.Command{
 		return nil
 	},
 	PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+		// Handle pending update prompt after command completes
+		if pendingUpdate != nil && pendingUpdate.UpdateAvailable {
+			// Load config to check grace period
+			appConfig := config.GetUserPreferences()
+			if appConfig == nil {
+				// If we can't load config, clear pending update and continue
+				pendingUpdate = nil
+				if logger != nil {
+					return logger.Close()
+				}
+				return nil
+			}
+
+			// Check if we should show the prompt based on grace period
+			if !update.ShouldShowUpdatePrompt(appConfig.Update.NextUpdateCheck) {
+				// Still in grace period - don't show prompt
+				if logger != nil {
+					logger.Info("Update prompt skipped - still in grace period")
+				}
+				// Clear pending update
+				pendingUpdate = nil
+				if logger != nil {
+					return logger.Close()
+				}
+				return nil
+			}
+
+			// Show confirmation prompt
+			confirmed, err := components.RunConfirm(
+				"Update Available",
+				fmt.Sprintf("FontGet v%s is available (you have v%s).\nUpdate now?",
+					pendingUpdate.LatestVersion, pendingUpdate.CurrentVersion),
+			)
+			if err != nil {
+				if logger != nil {
+					logger.Error("Confirmation dialog failed: %v", err)
+				}
+				// Clear pending update and continue
+				pendingUpdate = nil
+				if logger != nil {
+					return logger.Close()
+				}
+				return nil
+			}
+
+			if confirmed {
+				// User confirmed - perform update
+				if logger != nil {
+					logger.Info("User confirmed update from %s to %s", pendingUpdate.CurrentVersion, pendingUpdate.LatestVersion)
+				}
+
+				// Clear the grace period since user accepted
+				appConfig.Update.NextUpdateCheck = ""
+				if err := config.SaveUserPreferences(appConfig); err != nil {
+					if logger != nil {
+						logger.Warn("Failed to clear NextUpdateCheck: %v", err)
+					}
+				}
+
+				// Show spinner while updating
+				err := ui.RunSpinner(
+					fmt.Sprintf("Updating FontGet from v%s to v%s...", pendingUpdate.CurrentVersion, pendingUpdate.LatestVersion),
+					fmt.Sprintf("Successfully updated to FontGet v%s", pendingUpdate.LatestVersion),
+					func() error {
+						return update.UpdateToLatest()
+					},
+				)
+				if err != nil {
+					if logger != nil {
+						logger.Error("Update failed: %v", err)
+					}
+					fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Update failed: %v. Run 'fontget update' manually.", err)))
+				} else {
+					if logger != nil {
+						logger.Info("Update successful - updated to %s", pendingUpdate.LatestVersion)
+					}
+
+					// Config migration is handled automatically by update.UpdateToLatest() after binary update
+					// No explicit migration call needed here - it happens as part of the update process
+				}
+			} else {
+				// User declined - set grace period
+				if logger != nil {
+					logger.Info("User declined update - setting grace period")
+				}
+				appConfig.Update.NextUpdateCheck = update.GetUpdateDeclinedUntilTimestamp()
+				if err := config.SaveUserPreferences(appConfig); err != nil {
+					if logger != nil {
+						logger.Warn("Failed to save NextUpdateCheck: %v", err)
+					}
+				}
+			}
+
+			// Clear pending update
+			pendingUpdate = nil
+		}
+
 		if logger != nil {
 			return logger.Close()
 		}
@@ -299,45 +398,42 @@ func performStartupUpdateCheck() {
 
 	// Perform check in background
 	update.PerformStartupCheck(
-		appConfig.Update.AutoCheck,
+		appConfig.Update.CheckForUpdates,
 		appConfig.Update.UpdateCheckInterval,
 		appConfig.Update.LastUpdateCheck,
 		func(result *update.CheckResult) {
-			// Update LastUpdateCheck timestamp in config (UTC)
+			// Always update LastUpdateCheck timestamp (even on errors)
+			// This prevents repeated failed checks
 			appConfig.Update.LastUpdateCheck = update.GetLastCheckedTimestamp()
 			if err := config.SaveUserPreferences(appConfig); err != nil {
-				// Silently fail - don't interrupt user experience
+				// Log error but don't interrupt user experience
 				if logger != nil {
 					logger.Error("Failed to save LastUpdateCheck timestamp: %v", err)
 				}
 			}
 
-			// Show notification if update is available
+			// Log errors if any
+			if result.Error != nil {
+				if logger != nil {
+					logger.Warn("Update check failed: %v", result.Error)
+				}
+				// Don't show error to user during startup - will be visible in logs
+				// Timestamp is updated so we won't keep retrying
+				return
+			}
+
+			// If update is available, check grace period before storing result
 			if result.UpdateAvailable {
-				// Check if AutoUpdate is enabled
-				if appConfig.Update.AutoUpdate {
-					// Auto-install update
-					if logger != nil {
-						logger.Info("AutoUpdate enabled - automatically installing update from %s to %s", result.CurrentVersion, result.LatestVersion)
-					}
-					// Perform update in background (non-blocking)
-					go func() {
-						err := update.UpdateToLatest()
-						if err != nil {
-							if logger != nil {
-								logger.Error("Auto-update failed: %v", err)
-							}
-							fmt.Printf("\n%s\n", ui.ErrorText.Render(fmt.Sprintf("Auto-update failed: %v. Run 'fontget update' manually.", err)))
-						} else {
-							if logger != nil {
-								logger.Info("Auto-update successful - updated to %s", result.LatestVersion)
-							}
-							fmt.Printf("\n%s\n", ui.SuccessText.Render(fmt.Sprintf("FontGet has been automatically updated to v%s", result.LatestVersion)))
-						}
-					}()
+				// Check if we should show the prompt based on grace period
+				if update.ShouldShowUpdatePrompt(appConfig.Update.NextUpdateCheck) {
+					pendingUpdate = result
+					// Don't show prompt here - defer to PersistentPostRunE
+					// This ensures prompt appears after command output
 				} else {
-					// Just notify user
-					fmt.Printf("\n%s\n", ui.InfoText.Render(update.FormatUpdateNotification(result.CurrentVersion, result.LatestVersion)))
+					// Still in grace period - don't set pending update
+					if logger != nil {
+						logger.Info("Update available but grace period active - skipping prompt")
+					}
 				}
 			}
 		},

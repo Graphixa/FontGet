@@ -299,6 +299,9 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 	output.GetDebug().State("Update successful")
 	// Spinner already shows success message, no need to duplicate
 
+	// Config migration is handled automatically by update.UpdateToVersion() after binary update
+	// No explicit migration call needed here - it happens as part of the update process
+
 	return nil
 }
 
@@ -333,6 +336,9 @@ func performUpdate(currentVersion, latestVersion string) error {
 	output.GetVerbose().Info("Update complete")
 	output.GetDebug().State("Update successful")
 	// Spinner already shows success message, no need to duplicate
+
+	// Config migration is handled automatically by update.UpdateToLatest() after binary update
+	// No explicit migration call needed here - it happens as part of the update process
 
 	return nil
 }

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"fontget/internal/logging"
 	"fontget/internal/platform"
 
 	"gopkg.in/yaml.v3"
@@ -17,7 +18,7 @@ import (
 
 // AppConfig represents the main application configuration structure
 type AppConfig struct {
-	ConfigVersion string               `yaml:"ConfigVersion"` // Schema version for migration tracking
+	ConfigVersion string               `yaml:"version"` // Schema version for migration tracking
 	Configuration ConfigurationSection `yaml:"Configuration"`
 	Logging       LoggingSection       `yaml:"Logging"`
 	Network       NetworkSection       `yaml:"Network"`
@@ -28,8 +29,7 @@ type AppConfig struct {
 
 // ConfigurationSection represents the main configuration settings
 type ConfigurationSection struct {
-	DefaultEditor        string `yaml:"DefaultEditor"`
-	EnablePopularitySort bool   `yaml:"EnablePopularitySort"` // Enable/disable popularity scoring
+	DefaultEditor string `yaml:"DefaultEditor"`
 }
 
 // LoggingSection represents logging configuration
@@ -47,18 +47,18 @@ type NetworkSection struct {
 
 // SearchSection represents search configuration
 type SearchSection struct {
-	ResultLimit int `yaml:"ResultLimit"` // Maximum number of search results to display (0 = unlimited, default: 0)
+	ResultLimit          int  `yaml:"ResultLimit"`          // Maximum number of search results to display (0 = unlimited, default: 0)
+	EnablePopularitySort bool `yaml:"EnablePopularitySort"` // Enable/disable popularity scoring in search results
 	// Note: When Bubble Tea tables are implemented, this limit may be evaluated differently
 	// for interactive browsing vs static output. Leave comments for future evaluation.
 }
 
 // UpdateSection represents update configuration
 type UpdateSection struct {
-	AutoCheck           bool   `yaml:"AutoCheck"`           // Check on startup
-	AutoUpdate          bool   `yaml:"AutoUpdate"`          // Auto-install (default: false)
+	CheckForUpdates     bool   `yaml:"CheckForUpdates"`     // Check for updates on startup
 	UpdateCheckInterval int    `yaml:"UpdateCheckInterval"` // Hours between checks
 	LastUpdateCheck     string `yaml:"LastUpdateCheck"`     // ISO timestamp
-	UpdateChannel       string `yaml:"UpdateChannel"`       // stable/beta/nightly
+	NextUpdateCheck     string `yaml:"NextUpdateCheck"`     // ISO timestamp - don't prompt until after this time
 }
 
 // GetAppConfigDir returns the app-specific config directory (~/.fontget)
@@ -90,13 +90,28 @@ func GetAppConfigPath() string {
 	return filepath.Join(configDir, "config.yaml")
 }
 
+// CurrentConfigVersion is the current config schema version.
+//
+// IMPORTANT: v2.0 is the baseline config schema. All schema changes (AutoCheck rename,
+// EnablePopularitySort move, etc.) are consolidated into v2.0 as the starting point.
+//
+// The version format is "X.Y" where:
+//   - X = major version (increment for breaking changes)
+//   - Y = minor version (increment for non-breaking changes that need migration)
+//
+// When updating for future breaking changes:
+// 1. Increment the version (e.g., "2.0" → "2.1")
+// 2. Add field renames/moves to fieldRenameMap and fieldMoveMap
+// 3. Update struct definitions in this file
+// 4. Update validation in validation.go
+const CurrentConfigVersion = "2.0"
+
 // DefaultUserPreferences returns a new default user preferences configuration
 func DefaultUserPreferences() *AppConfig {
 	return &AppConfig{
-		ConfigVersion: "2.0", // Current config schema version
+		ConfigVersion: CurrentConfigVersion, // Current config schema version
 		Configuration: ConfigurationSection{
-			DefaultEditor:        "",   // Use system default editor
-			EnablePopularitySort: true, // Default to popularity-based sorting
+			DefaultEditor: "", // Use system default editor
 		},
 		Logging: LoggingSection{
 			LogPath:     "$home/.fontget/logs/fontget.log",
@@ -108,17 +123,228 @@ func DefaultUserPreferences() *AppConfig {
 			DownloadTimeout: "30s", // Download timeout: cancel if no data transferred for this duration (stall detection)
 		},
 		Search: SearchSection{
-			ResultLimit: 0, // 0 = unlimited (default), set to N to limit results
+			ResultLimit:          0,    // 0 = unlimited (default), set to N to limit results
+			EnablePopularitySort: true, // Default to popularity-based sorting
 		},
 		Update: UpdateSection{
-			AutoCheck:           true,  // Check by default
-			AutoUpdate:          false, // Manual install by default
-			UpdateCheckInterval: 24,    // Check daily
-			LastUpdateCheck:     "",    // Never checked
-			UpdateChannel:       "stable",
+			CheckForUpdates:     true, // Check by default
+			UpdateCheckInterval: 24,   // Check daily
+			LastUpdateCheck:     "",   // Never checked
+			NextUpdateCheck:     "",   // No grace period set
 		},
 		Theme: "catppuccin", // Default to catppuccin theme
 	}
+}
+
+// mergeConfigValues merges user values from loaded config into default config using reflection
+// This automatically preserves all user customizations without manual field copying
+func mergeConfigValues(defaultConfig, loadedConfig *AppConfig) {
+	// Use reflection to merge all fields from loadedConfig into defaultConfig
+	// This preserves user values while keeping defaults for missing fields
+
+	defer func() {
+		// Recover from any panic during reflection merge
+		if r := recover(); r != nil {
+			// If logger is available, log the error
+			// Otherwise, just silently continue with defaults
+			// This prevents crashes when dealing with malformed or old config files
+			_ = r
+		}
+	}()
+
+	defaultVal := reflect.ValueOf(defaultConfig).Elem()
+	loadedVal := reflect.ValueOf(loadedConfig).Elem()
+
+	if !defaultVal.IsValid() || !loadedVal.IsValid() {
+		return // Invalid values, skip merge
+	}
+
+	// Iterate through all fields in AppConfig
+	for i := 0; i < defaultVal.NumField(); i++ {
+		defaultField := defaultVal.Field(i)
+		loadedField := loadedVal.Field(i)
+
+		if !defaultField.IsValid() || !loadedField.IsValid() {
+			continue
+		}
+
+		if !defaultField.CanSet() {
+			continue
+		}
+
+		// Handle different field types
+		switch defaultField.Kind() {
+		case reflect.String:
+			// For strings, only overwrite if loaded value is non-empty
+			if loadedField.String() != "" {
+				defaultField.SetString(loadedField.String())
+			}
+
+		case reflect.Int:
+			// For ints, only overwrite if loaded value is non-zero
+			if loadedField.Int() != 0 {
+				defaultField.SetInt(loadedField.Int())
+			}
+
+		case reflect.Bool:
+			// For bools, always use loaded value (bool defaults are meaningful)
+			defaultField.SetBool(loadedField.Bool())
+
+		case reflect.Struct:
+			// For struct fields (sections), merge recursively
+			mergeStructFields(defaultField, loadedField)
+		}
+	}
+}
+
+// fieldRenameMap maps old field names to new field names for backward compatibility
+// Format: "Section.OldField" -> "Section.NewField"
+var fieldRenameMap = map[string]string{
+	"Update.AutoCheck": "Update.CheckForUpdates",
+	// Add more renames here as needed
+}
+
+// fieldMoveMap maps old field locations to new locations for backward compatibility
+// Format: "OldSection.OldField" -> "NewSection.NewField"
+var fieldMoveMap = map[string]string{
+	"Configuration.EnablePopularitySort": "Search.EnablePopularitySort",
+	// Add more moves here as needed
+}
+
+// mergeStructFields merges fields within a struct section
+func mergeStructFields(defaultStruct, loadedStruct reflect.Value) {
+	if !defaultStruct.IsValid() || !loadedStruct.IsValid() {
+		return
+	}
+
+	for i := 0; i < defaultStruct.NumField(); i++ {
+		defaultField := defaultStruct.Field(i)
+		loadedField := loadedStruct.Field(i)
+
+		if !defaultField.IsValid() || !loadedField.IsValid() {
+			continue
+		}
+
+		if !defaultField.CanSet() {
+			continue
+		}
+
+		switch defaultField.Kind() {
+		case reflect.String:
+			// For strings, only overwrite if loaded value is non-empty
+			if loadedField.String() != "" {
+				defaultField.SetString(loadedField.String())
+			}
+
+		case reflect.Int:
+			// For ints, only overwrite if loaded value is non-zero
+			if loadedField.Int() != 0 {
+				defaultField.SetInt(loadedField.Int())
+			}
+
+		case reflect.Bool:
+			// For bools, always use loaded value
+			defaultField.SetBool(loadedField.Bool())
+		}
+	}
+}
+
+// handleLegacyFieldMapping handles old field names and moves in YAML before unmarshaling.
+//
+// This function is called automatically by GetUserPreferences() before unmarshaling the config
+// into the struct. It:
+//   - Parses the YAML into a map
+//   - Detects the config version (defaults to "1.0" if not set)
+//   - Applies all declarative migration rules (field moves and renames)
+//   - Re-marshals the migrated config
+//   - Returns the migrated YAML bytes
+//
+// This ensures that old config files are automatically transformed to the current schema
+// before being unmarshaled into the struct, preventing unmarshaling errors from missing
+// or misplaced fields.
+//
+// The migration rules are defined in migrations.go in the migrationRules variable.
+func handleLegacyFieldMapping(data []byte) []byte {
+	var configMap map[string]interface{}
+	if err := yaml.Unmarshal(data, &configMap); err != nil {
+		return data // Return original if unmarshaling fails
+	}
+
+	// Handle ConfigVersion → version rename
+	if version, ok := configMap["ConfigVersion"].(string); ok && version != "" {
+		// Migrate to new field name
+		configMap["version"] = version
+		delete(configMap, "ConfigVersion")
+	}
+
+	// Apply field renames (within same section)
+	for oldPath, newPath := range fieldRenameMap {
+		oldParts := strings.Split(oldPath, ".")
+		newParts := strings.Split(newPath, ".")
+		if len(oldParts) != 2 || len(newParts) != 2 {
+			continue // Invalid format, skip
+		}
+
+		oldSection := oldParts[0]
+		oldField := oldParts[1]
+		newSection := newParts[0]
+		newField := newParts[1]
+
+		// Only rename if sections match (field renames stay in same section)
+		if oldSection == newSection {
+			if section, ok := configMap[oldSection].(map[string]interface{}); ok {
+				if value, hasOldField := section[oldField]; hasOldField {
+					// Only rename if new field doesn't already exist
+					if _, exists := section[newField]; !exists {
+						section[newField] = value
+						delete(section, oldField)
+					}
+				}
+			}
+		}
+	}
+
+	// Apply field moves (between sections)
+	for oldPath, newPath := range fieldMoveMap {
+		oldParts := strings.Split(oldPath, ".")
+		newParts := strings.Split(newPath, ".")
+		if len(oldParts) != 2 || len(newParts) != 2 {
+			continue // Invalid format, skip
+		}
+
+		oldSection := oldParts[0]
+		oldField := oldParts[1]
+		newSection := newParts[0]
+		newField := newParts[1]
+
+		// Check if old location exists
+		if oldSectionMap, ok := configMap[oldSection].(map[string]interface{}); ok {
+			if value, hasField := oldSectionMap[oldField]; hasField {
+				// Ensure new section exists
+				newSectionMap, ok := configMap[newSection].(map[string]interface{})
+				if !ok {
+					newSectionMap = make(map[string]interface{})
+					configMap[newSection] = newSectionMap
+				}
+
+				// Only move if new location doesn't already have the value
+				if _, exists := newSectionMap[newField]; !exists {
+					newSectionMap[newField] = value
+				}
+
+				// Remove from old location
+				delete(oldSectionMap, oldField)
+			}
+		}
+	}
+
+	// Re-marshal with migrated fields
+	if newData, err := yaml.Marshal(configMap); err == nil {
+		return newData
+	}
+
+	// Return original if re-marshaling fails
+	return data
 }
 
 // GetUserPreferences loads user preferences from config file or returns defaults
@@ -132,90 +358,25 @@ func GetUserPreferences() *AppConfig {
 
 	// Try to load existing config and merge with defaults
 	if data, err := os.ReadFile(configPath); err == nil {
+		// Handle legacy field mapping (AutoCheck → CheckForUpdates) before unmarshaling
+		data = handleLegacyFieldMapping(data)
+
 		var loadedConfig AppConfig
 		if err := yaml.Unmarshal(data, &loadedConfig); err == nil {
-			// CRITICAL: Copy ALL user values from loaded config to preserve customizations
-			// This ensures migration preserves 100% of user settings
+			// Use reflection-based merge to preserve all user values automatically
+			// This is wrapped in panic recovery to handle old/malformed configs gracefully
+			mergeConfigValues(config, &loadedConfig)
 
-			// Copy Configuration section
-			config.Configuration.DefaultEditor = loadedConfig.Configuration.DefaultEditor
-			config.Configuration.EnablePopularitySort = loadedConfig.Configuration.EnablePopularitySort
-
-			// Copy Logging section (preserve all user values)
-			if loadedConfig.Logging.LogPath != "" {
-				config.Logging.LogPath = loadedConfig.Logging.LogPath
-			}
-			if loadedConfig.Logging.MaxLogSize != "" {
-				config.Logging.MaxLogSize = loadedConfig.Logging.MaxLogSize
-			}
-			if loadedConfig.Logging.MaxLogFiles > 0 {
-				config.Logging.MaxLogFiles = loadedConfig.Logging.MaxLogFiles
-			}
-
-			// Copy Network section (preserve all user values)
-			if loadedConfig.Network.RequestTimeout != "" {
-				config.Network.RequestTimeout = loadedConfig.Network.RequestTimeout
-			}
-			if loadedConfig.Network.DownloadTimeout != "" {
-				config.Network.DownloadTimeout = loadedConfig.Network.DownloadTimeout
-			}
-
-			// Copy Update section (preserve all user values)
-			// Handle both full section and individual fields for backward compatibility
-			if loadedConfig.Update.UpdateCheckInterval > 0 || loadedConfig.Update.LastUpdateCheck != "" {
-				config.Update = loadedConfig.Update
-			} else {
-				// Merge individual fields if present
-				config.Update.AutoCheck = loadedConfig.Update.AutoCheck
-				config.Update.AutoUpdate = loadedConfig.Update.AutoUpdate
-				if loadedConfig.Update.UpdateCheckInterval > 0 {
-					config.Update.UpdateCheckInterval = loadedConfig.Update.UpdateCheckInterval
-				}
-				if loadedConfig.Update.LastUpdateCheck != "" {
-					config.Update.LastUpdateCheck = loadedConfig.Update.LastUpdateCheck
-				}
-				if loadedConfig.Update.UpdateChannel != "" {
-					config.Update.UpdateChannel = loadedConfig.Update.UpdateChannel
-				}
-			}
-
-			// Copy Search section if it exists (new in v2.0, may not exist in old configs)
-			if loadedConfig.Search.ResultLimit != 0 {
-				config.Search.ResultLimit = loadedConfig.Search.ResultLimit
-			}
-
-			// Copy Theme (preserve user's theme choice)
-			if loadedConfig.Theme != "" {
-				config.Theme = loadedConfig.Theme
-			}
-
-			// Copy ConfigVersion if it exists (for version tracking)
+			// Preserve version field (for validation, but not used for migration logic)
 			if loadedConfig.ConfigVersion != "" {
 				config.ConfigVersion = loadedConfig.ConfigVersion
-			}
-
-			// Check if migration is needed and run it
-			// This preserves all the values we just copied above
-			if needsMigration(config) {
-				migratedConfig, err := RunMigrations(config, configPath)
-				if err != nil {
-					// Migration failed - log error but continue with current config
-					// In production, you might want to use a logger here
-					_ = err
-					// Return config as-is (may be partially migrated, but better than failing)
-					return config
-				}
-
-				// Save migrated config
-				if err := SaveUserPreferences(migratedConfig); err != nil {
-					// Save failed - log error but continue with migrated config in memory
-					// In production, you might want to use a logger here
-					_ = err
-				}
-
-				return migratedConfig
+			} else {
+				// Set to current version if not present
+				config.ConfigVersion = CurrentConfigVersion
 			}
 		}
+		// If unmarshaling fails, we just continue with defaults
+		// This handles old/malformed config files gracefully
 	}
 
 	return config
@@ -623,35 +784,33 @@ func updateValueNode(valueNode *yaml.Node, newValue interface{}) error {
 	return nil
 }
 
-// saveDefaultAppConfigWithComments saves a default config with a single DefaultEditor line and multiplatform comment
+// saveDefaultAppConfigWithComments saves a default config with helpful comments and proper formatting
 func saveDefaultAppConfigWithComments(configPath string) error {
-	configContent := `ConfigVersion: "2.0" 	# Config schema version (for migration tracking)
+	configContent := fmt.Sprintf(`version: "%s"  # Schema version for migration tracking
 
 Configuration:
-  DefaultEditor: "" 	# Set your own default editor for fontget (e.g. 'code', 'notepad.exe', 'nano', etc.)
-  EnablePopularitySort: true 	# Fonts will be returned by their match and popularity first, then by alphabetical order. This means popular fonts appear higher in search results.
+  DefaultEditor: ""  # Default editor command (e.g., 'code', 'notepad.exe', 'nano')
 
 Logging:
-  LogPath: "$home/.fontget/logs/fontget.log"
-  MaxLogSize: "10MB"
-  MaxLogFiles: 5
+  LogPath: "$home/.fontget/logs/fontget.log"  # Path to log file
+  MaxLogSize: "10MB"  # Maximum size per log file before rotation
+  MaxLogFiles: 5  # Number of rotated log files to keep
 
 Network:
-  RequestTimeout: "10s" 	# Quick HTTP requests and checks
-  DownloadTimeout: "30s" 	# Download timeout: cancel if no data transferred for this duration
+  RequestTimeout: "10s"  # Timeout for HTTP requests
+  DownloadTimeout: "30s"  # Timeout for font downloads
 
 Search:
-  ResultLimit: 0 	# Maximum number of search results to display (0 = unlimited, default: 0)
- 
-Update:
-  AutoCheck: true       			# Check for updates on startup
-  AutoUpdate: false 				# Automatically install updates (manual by default for security)
-  UpdateCheckInterval: 24 			# Hours between update checks
-  LastUpdateCheck: "" 	# ISO timestamp of last check (automatically updated)
-  UpdateChannel: "stable" 			# Update channel: stable, beta, or nightly
+  ResultLimit: 0  # Maximum search results to display (0 = unlimited)
+  EnablePopularitySort: true  # Sort results by popularity, then alphabetically
 
-Theme: "catppuccin" 	# Theme name (e.g., "catppuccin", "gruvbox", "system") - empty string uses catppuccin theme
-`
+Update:
+  CheckForUpdates: true  # Check for updates on startup
+  UpdateCheckInterval: 24  # Hours between update checks
+  LastUpdateCheck: ""  # Last check timestamp (auto-updated)
+
+Theme: "catppuccin"  # UI theme name (e.g., "catppuccin", "gruvbox", "system")
+`, CurrentConfigVersion)
 
 	// Write config file
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -665,10 +824,9 @@ Theme: "catppuccin" 	# Theme name (e.g., "catppuccin", "gruvbox", "system") - em
 func ValidateUserPreferences(config *AppConfig) error {
 	// Convert structured config to map for validation
 	rawData := map[string]interface{}{
-		"ConfigVersion": config.ConfigVersion,
+		"version": config.ConfigVersion,
 		"Configuration": map[string]interface{}{
-			"DefaultEditor":        config.Configuration.DefaultEditor,
-			"EnablePopularitySort": config.Configuration.EnablePopularitySort,
+			"DefaultEditor": config.Configuration.DefaultEditor,
 		},
 		"Logging": map[string]interface{}{
 			"LogPath":     config.Logging.LogPath,
@@ -680,17 +838,47 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"DownloadTimeout": config.Network.DownloadTimeout,
 		},
 		"Search": map[string]interface{}{
-			"ResultLimit": config.Search.ResultLimit,
+			"ResultLimit":          config.Search.ResultLimit,
+			"EnablePopularitySort": config.Search.EnablePopularitySort,
 		},
 		"Update": map[string]interface{}{
-			"AutoCheck":           config.Update.AutoCheck,
-			"AutoUpdate":          config.Update.AutoUpdate,
+			"CheckForUpdates":     config.Update.CheckForUpdates,
 			"UpdateCheckInterval": config.Update.UpdateCheckInterval,
 			"LastUpdateCheck":     config.Update.LastUpdateCheck,
-			"UpdateChannel":       config.Update.UpdateChannel,
 		},
 		"Theme": config.Theme,
 	}
 
 	return ValidateStrictAppConfig(rawData)
+}
+
+// MigrateConfigAfterUpdate merges old config with new defaults after an update.
+// This preserves all user customizations while applying new defaults.
+// Called by the update command after a successful binary update.
+func MigrateConfigAfterUpdate() error {
+	configPath := GetAppConfigPath()
+
+	// Check if config file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		// No config file - nothing to migrate, will use defaults
+		return nil
+	}
+
+	// Load old config (this already handles field renames/moves via handleLegacyFieldMapping)
+	oldConfig := GetUserPreferences()
+	if oldConfig == nil {
+		return fmt.Errorf("failed to load config for migration")
+	}
+
+	// Merge: preserve user values, use new defaults for everything else
+	// This is already done by GetUserPreferences(), but we want to ensure version is updated
+	oldConfig.ConfigVersion = CurrentConfigVersion
+
+	// Save merged config
+	if err := SaveUserPreferences(oldConfig); err != nil {
+		return fmt.Errorf("failed to save migrated config: %w", err)
+	}
+
+	logging.GetLogger().Info("Config migrated after update - user values preserved, new defaults applied")
+	return nil
 }

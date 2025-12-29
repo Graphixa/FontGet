@@ -35,8 +35,13 @@ func buildConfigCardsFromYAML(configPath string, _ *config.AppConfig, actualEdit
 
 	var cards []components.Card
 
-	// Define section order for consistent display
-	sectionOrder := []string{"Configuration", "Logging", "Network", "Limits", "Update", "Theme"}
+	// Discover sections dynamically from YAML (no hardcoded list)
+	// Get all top-level keys from YAML and sort for consistent display
+	sectionOrder := make([]string, 0, len(rawData))
+	for key := range rawData {
+		sectionOrder = append(sectionOrder, key)
+	}
+	sort.Strings(sectionOrder)
 
 	// Build cards for each section in order
 	for _, sectionName := range sectionOrder {
@@ -138,36 +143,18 @@ func formatConfigValue(value interface{}) string {
 	}
 }
 
-// formatConfigLabel converts camelCase to Title Case
+// formatConfigLabel converts camelCase to Title Case dynamically
+// No hardcoded replacements needed - handles all field names automatically
 func formatConfigLabel(key string) string {
-	// Handle common abbreviations and special cases
-	replacements := map[string]string{
-		"DefaultEditor":        "Default Editor",
-		"EnablePopularitySort": "Enable Popularity Sort",
-		"LogPath":              "Log Path",
-		"MaxLogSize":           "Max Log Size",
-		"MaxLogFiles":          "Max Log Files",
-		"RequestTimeout":       "Request Timeout",
-		"DownloadTimeout":      "Download Timeout",
-		"ResultLimit":          "Search Result Limit",
-		"AutoCheck":            "Auto Check",
-		"AutoUpdate":           "Auto Update",
-		"UpdateCheckInterval":  "Update Check Interval",
-		"LastUpdateCheck":      "Last Update Check",
-		"UpdateChannel":        "Update Channel",
-	}
-
-	if replacement, exists := replacements[key]; exists {
-		return replacement
-	}
-
-	// Convert camelCase to Title Case
+	// Smart camelCase to Title Case conversion
+	// Handles all field names automatically without manual mapping
 	var result strings.Builder
 	for i, r := range key {
+		// Add space before uppercase letters (except the first character)
 		if i > 0 && r >= 'A' && r <= 'Z' {
 			result.WriteString(" ")
 		}
-		// Capitalize first letter, keep rest as-is
+		// Capitalize first letter if it's lowercase
 		if i == 0 && r >= 'a' && r <= 'z' {
 			result.WriteRune(r - 32) // Convert to uppercase
 		} else {
@@ -573,7 +560,20 @@ Useful when the file is corrupted or you want to start fresh.`,
 		output.GetVerbose().Info("User confirmed configuration reset")
 		output.GetDebug().State("Proceeding with configuration reset")
 
+		// Create backup of existing config if it exists and is readable
+		if _, err := os.Stat(configPath); err == nil {
+			// Config file exists - try to create backup
+			backupPath := configPath + ".backup"
+			if data, err := os.ReadFile(configPath); err == nil {
+				if err := os.WriteFile(backupPath, data, 0644); err == nil {
+					output.GetVerbose().Info("Created backup of existing config: %s", backupPath)
+					output.GetDebug().State("Config backup created: %s", backupPath)
+				}
+			}
+		}
+
 		// Generate default configuration
+		// This will overwrite the existing config file with defaults
 		output.GetVerbose().Info("Generating default configuration")
 		output.GetDebug().State("Calling config.GenerateInitialUserPreferences()")
 		if err := config.GenerateInitialUserPreferences(); err != nil {
@@ -582,7 +582,7 @@ Useful when the file is corrupted or you want to start fresh.`,
 			output.GetDebug().Error("config.GenerateInitialUserPreferences() failed: %v", err)
 			fmt.Printf("%s\n", ui.ErrorText.Render("Configuration reset failed"))
 			fmt.Printf("Failed to generate default configuration: %v\n", err)
-			return nil
+			return fmt.Errorf("failed to generate default configuration: %w", err)
 		}
 
 		// Reset first-run state to trigger onboarding on next run

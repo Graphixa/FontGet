@@ -47,9 +47,10 @@ func NewEnhancedOnboardingModel() *EnhancedOnboardingModel {
 	// Initialize settings values from defaults
 	defaults := config.DefaultUserPreferences()
 	settingsValues := map[string]interface{}{
-		"autoCheck":         defaults.Update.AutoCheck,
-		"autoUpdate":        defaults.Update.AutoUpdate,
-		"usePopularitySort": defaults.Configuration.EnablePopularitySort,
+		"checkForUpdates":   defaults.Update.CheckForUpdates,
+		"usePopularitySort": defaults.Search.EnablePopularitySort,
+		// Legacy key for backward compatibility (used by settings step)
+		"autoCheck": defaults.Update.CheckForUpdates,
 	}
 
 	model := &EnhancedOnboardingModel{
@@ -204,14 +205,20 @@ func (m *EnhancedOnboardingModel) SaveSelections() error {
 	}
 
 	// Update settings
-	if autoCheck, ok := m.settingsValues["autoCheck"].(bool); ok {
-		appConfig.Update.AutoCheck = autoCheck
+	// Check for checkForUpdates first, fallback to autoCheck for backward compatibility
+	var checkForUpdates bool
+	if val, ok := m.settingsValues["checkForUpdates"].(bool); ok {
+		checkForUpdates = val
+	} else if val, ok := m.settingsValues["autoCheck"].(bool); ok {
+		checkForUpdates = val
+	} else {
+		// Use default if neither exists
+		defaults := config.DefaultUserPreferences()
+		checkForUpdates = defaults.Update.CheckForUpdates
 	}
-	if autoUpdate, ok := m.settingsValues["autoUpdate"].(bool); ok {
-		appConfig.Update.AutoUpdate = autoUpdate
-	}
+	appConfig.Update.CheckForUpdates = checkForUpdates
 	if usePopularitySort, ok := m.settingsValues["usePopularitySort"].(bool); ok {
-		appConfig.Configuration.EnablePopularitySort = usePopularitySort
+		appConfig.Search.EnablePopularitySort = usePopularitySort
 	}
 	// Save theme selection
 	if theme, ok := m.settingsValues["theme"].(string); ok && theme != "" {
@@ -654,9 +661,9 @@ func (s *SourcesStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	// Keyboard help
 	commands := []string{
 		ui.RenderKeyWithDescription("↑/↓", "Navigate"),
-		ui.RenderKeyWithDescription("Space/Enter", "Toggle"),
+		ui.RenderKeyWithDescription("Space", "Toggle"),
 		ui.RenderKeyWithDescription("Tab", "Switch"),
-		ui.RenderKeyWithDescription("←/→", "Buttons"),
+		ui.RenderKeyWithDescription("Enter", "Select"),
 	}
 	helpText := strings.Join(commands, "  ")
 	result.WriteString(helpText)
@@ -836,12 +843,10 @@ func (s *SettingsStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	// Initialize switches if not already done
 	if s.switches == nil {
 		autoCheck := model.settingsValues["autoCheck"].(bool)
-		autoUpdate := model.settingsValues["autoUpdate"].(bool)
 		usePopularitySort := model.settingsValues["usePopularitySort"].(bool)
 
 		s.switches = []*components.Switch{
 			components.NewSwitch(autoCheck),
-			components.NewSwitch(autoUpdate),
 			components.NewSwitchWithLabels("Popularity", "Alphabetical", usePopularitySort),
 		}
 	}
@@ -864,14 +869,9 @@ func (s *SettingsStepEnhanced) View(model *EnhancedOnboardingModel) string {
 			switchIndex: 0,
 		},
 		{
-			name:        "Auto-install updates",
-			description: "When updates are available, FontGet will notify you but require manual installation.",
-			switchIndex: 1,
-		},
-		{
 			name:        "Sorting method",
 			description: "When searching for fonts, results will be sorted by popularity first, then alphabetically.",
-			switchIndex: 2,
+			switchIndex: 1,
 		},
 	}
 
@@ -932,10 +932,9 @@ func (s *SettingsStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	// Keyboard help
 	commands := []string{
 		ui.RenderKeyWithDescription("↑/↓", "Navigate"),
-		ui.RenderKeyWithDescription("←/→", "Toggle"),
 		ui.RenderKeyWithDescription("Space", "Toggle"),
 		ui.RenderKeyWithDescription("Tab", "Switch"),
-		ui.RenderKeyWithDescription("i", "Info"),
+		ui.RenderKeyWithDescription("Enter", "Select"),
 	}
 	helpText := strings.Join(commands, "  ")
 	result.WriteString(helpText)
@@ -952,12 +951,10 @@ func (s *SettingsStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Ms
 	// Initialize switches if needed
 	if s.switches == nil {
 		autoCheck := model.settingsValues["autoCheck"].(bool)
-		autoUpdate := model.settingsValues["autoUpdate"].(bool)
 		usePopularitySort := model.settingsValues["usePopularitySort"].(bool)
 
 		s.switches = []*components.Switch{
 			components.NewSwitch(autoCheck),
-			components.NewSwitch(autoUpdate),
 			components.NewSwitchWithLabels("Popularity", "Alphabetical", usePopularitySort),
 		}
 	}
@@ -1033,8 +1030,8 @@ func (s *SettingsStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Ms
 				case "continue", "enter":
 					// Save settings values
 					model.settingsValues["autoCheck"] = s.switches[0].Value
-					model.settingsValues["autoUpdate"] = s.switches[1].Value
-					model.settingsValues["usePopularitySort"] = s.switches[2].Value
+					model.settingsValues["checkForUpdates"] = s.switches[0].Value // Also save to checkForUpdates key
+					model.settingsValues["usePopularitySort"] = s.switches[1].Value
 					model.GoToNextStep()
 					return model, nil
 				}

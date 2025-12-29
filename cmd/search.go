@@ -122,7 +122,8 @@ var searchCmd = &cobra.Command{
 
 Use --category to filter by category (e.g., "Sans Serif", "Serif", "Monospace").
 Use --source to filter by source (short ID like "google", "nerd", or full name like "Google Fonts").
-Use -c without a value to list categories.`,
+Use -c without a value to list categories.
+Use -s without a value to list sources.`,
 	Example: `  fontget search fira
   fontget search "Fira Sans"
   fontget search -c "Sans Serif"
@@ -130,7 +131,8 @@ Use -c without a value to list categories.`,
   fontget search "fira" -s google
   fontget search "fira" -s "Google Fonts"
   fontget search -s google
-  fontget search -c`,
+  fontget search -c
+  fontget search -s`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Get flags
 		category, _ := cmd.Flags().GetString("category")
@@ -152,7 +154,8 @@ Use -c without a value to list categories.`,
 		}
 
 		// Validate source if provided (check both source ID and source name)
-		if source != "" && !validateSource(source) {
+		// Skip validation if source is "list" (NoOptDefVal for listing all sources)
+		if source != "" && source != "list" && !validateSource(source) {
 			fmt.Printf("\n%s\n", ui.RenderError(fmt.Sprintf("Source '%s' not found. Use 'fontget sources info' to see available sources.", source)))
 			fmt.Printf("Use 'fontget search --help' for more information.\n\n")
 			return nil
@@ -218,12 +221,33 @@ Use -c without a value to list categories.`,
 			return showAllCategories()
 		}
 
+		// Handle source-only mode (show all sources) - early return
+		// Check if source flag was provided but no value was given (NoOptDefVal = "list")
+		// AND no arguments were provided (meaning user just used -s without a value)
+		if (cmd.Flags().Changed("source") || cmd.Flags().Changed("s")) && source == "list" && len(args) == 0 {
+			// Show all available sources
+			return showAllSources()
+		}
+
 		// If category is "list" but we have arguments, it means the user provided a category value
 		// but NoOptDefVal is overriding it. We need to extract the actual category from args
 		if category == "list" && len(args) > 0 {
 			// The first argument is actually the category value
 			category = args[0]
 			// Remove the first argument from args since it's the category, not a query
+			if len(args) > 1 {
+				query = args[1]
+			} else {
+				query = ""
+			}
+		}
+
+		// If source is "list" but we have arguments, it means the user provided a source value
+		// but NoOptDefVal is overriding it. We need to extract the actual source from args
+		if source == "list" && len(args) > 0 {
+			// The first argument is actually the source value
+			source = args[0]
+			// Remove the first argument from args since it's the source, not a query
 			if len(args) > 1 {
 				query = args[1]
 			} else {
@@ -481,7 +505,7 @@ Use -c without a value to list categories.`,
 				if IsDebug() {
 					baseScore := SearchBaseScore
 					userPrefs := config.GetUserPreferences()
-					usePopularity := userPrefs.Configuration.EnablePopularitySort
+					usePopularity := userPrefs.Search.EnablePopularitySort
 					logDebugScoreBreakdown(results[i], query, i, len(results), baseScore, usePopularity)
 				}
 			}
@@ -506,7 +530,7 @@ Use -c without a value to list categories.`,
 				if IsDebug() {
 					baseScore := SearchBaseScore
 					userPrefs := config.GetUserPreferences()
-					usePopularity := userPrefs.Configuration.EnablePopularitySort
+					usePopularity := userPrefs.Search.EnablePopularitySort
 					logDebugScoreBreakdown(results[i], query, i, len(results), baseScore, usePopularity)
 				}
 			}
@@ -527,6 +551,7 @@ func init() {
 	searchCmd.Flags().StringP("category", "c", "", "Filter by font category (use without value to see all available categories)")
 	searchCmd.Flags().Lookup("category").NoOptDefVal = "list"
 	searchCmd.Flags().StringP("source", "s", "", "Filter by source (short ID like \"google\", \"nerd\", \"squirrel\" or full name like \"Google Fonts\")")
+	searchCmd.Flags().Lookup("source").NoOptDefVal = "list"
 
 	// Hidden flag for development/testing only
 	searchCmd.Flags().Bool("refresh", false, "Force refresh of font manifest before search")
@@ -650,6 +675,122 @@ func showAllCategories() error {
 	// Show usage example
 	fmt.Printf("\n%s\n", ui.Text.Render("Usage: fontget search -c \"Category Name\""))
 	fmt.Printf("Example: fontget search -c \"Sans Serif\"\n\n")
+
+	return nil
+}
+
+// showAllSources displays all available sources in a table format
+func showAllSources() error {
+	// Ensure manifest system is initialized
+	if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
+		return err
+	}
+
+	// Get repository
+	r, err := repo.GetRepository()
+	if err != nil {
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("repo.GetRepository() failed: %v", err)
+		return fmt.Errorf("unable to load font repository: %v", err)
+	}
+
+	// Get font manifest to access source names
+	manifest, err := r.GetManifest()
+	if err != nil {
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("r.GetManifest() failed: %v", err)
+		return fmt.Errorf("unable to get font manifest: %v", err)
+	}
+
+	// Get config manifest to access source prefixes
+	configManifest, err := config.LoadManifest()
+	if err != nil {
+		output.GetVerbose().Error("%v", err)
+		output.GetDebug().Error("config.LoadManifest() failed: %v", err)
+		return fmt.Errorf("unable to load config manifest: %v", err)
+	}
+
+	// Collect all sources with their prefixes and names
+	type sourceInfo struct {
+		prefix string
+		name   string
+	}
+	var sources []sourceInfo
+	seen := make(map[string]bool)
+
+	// Iterate through all sources in the font manifest
+	for sourceID, sourceData := range manifest.Sources {
+		// Get prefix from config manifest
+		prefix := ""
+		if configSource, exists := configManifest.Sources[sourceID]; exists {
+			prefix = configSource.Prefix
+		}
+		// If no prefix found, use sourceID as fallback
+		if prefix == "" {
+			prefix = sourceID
+		}
+
+		// Get source name (use Name from sourceData, fallback to sourceID)
+		sourceName := sourceData.Name
+		if sourceName == "" {
+			sourceName = sourceID
+		}
+
+		// Only add if we haven't seen this source yet
+		key := strings.ToLower(prefix + "|" + sourceName)
+		if !seen[key] {
+			sources = append(sources, sourceInfo{
+				prefix: prefix,
+				name:   sourceName,
+			})
+			seen[key] = true
+		}
+	}
+
+	if len(sources) == 0 {
+		fmt.Printf("\n%s\n\n", ui.RenderError("No sources found"))
+		return nil
+	}
+
+	// Calculate dynamic column widths with minimums
+	const (
+		minPrefixWidth = 12
+		minNameWidth   = 20
+		columnSpacing  = 2
+	)
+
+	maxPrefixWidth := minPrefixWidth
+	maxNameWidth := minNameWidth
+
+	for _, source := range sources {
+		if len(source.prefix) > maxPrefixWidth {
+			maxPrefixWidth = len(source.prefix)
+		}
+		if len(source.name) > maxNameWidth {
+			maxNameWidth = len(source.name)
+		}
+	}
+
+	// Start with a blank line for consistent spacing
+	fmt.Println()
+	fmt.Printf("Found %d sources:\n\n", len(sources))
+
+	// Print table header
+	headerPrefix := "Prefix"
+	headerName := "Source Name"
+	fmt.Printf("  %-*s  %s\n", maxPrefixWidth, headerPrefix, headerName)
+	fmt.Printf("  %s  %s\n", strings.Repeat("─", maxPrefixWidth), strings.Repeat("─", maxNameWidth))
+
+	// Print source rows with truncation if needed
+	for _, source := range sources {
+		prefixDisplay := shared.TruncateString(source.prefix, maxPrefixWidth)
+		nameDisplay := shared.TruncateString(source.name, maxNameWidth)
+		fmt.Printf("  %-*s  %s\n", maxPrefixWidth, prefixDisplay, nameDisplay)
+	}
+
+	// Show usage example
+	fmt.Printf("\n%s\n", ui.Text.Render("Usage: fontget search -s \"source\""))
+	fmt.Printf("Example: fontget search -s google\n\n")
 
 	return nil
 }

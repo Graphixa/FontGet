@@ -36,23 +36,40 @@ func (e ValidationErrors) Error() string {
 func ValidateStrictAppConfig(data map[string]interface{}) error {
 	var errors ValidationErrors
 
-	// Validate ConfigVersion (optional for backward compatibility - old configs may not have it)
-	if configVersion, exists := data["ConfigVersion"]; exists {
-		if versionStr, ok := configVersion.(string); ok {
-			if versionStr != "" && versionStr != "1.0" && versionStr != "2.0" {
-				errors = append(errors, ValidationError{
-					Field:   "ConfigVersion",
-					Message: fmt.Sprintf("unknown config version '%s' (supported: 1.0, 2.0)", versionStr),
-				})
+	// Validate version field (optional for backward compatibility - old configs may not have it)
+	// Handle both "version" (new) and "ConfigVersion" (old) field names
+	var versionValue interface{}
+	var versionExists bool
+	if val, exists := data["version"]; exists {
+		versionValue = val
+		versionExists = true
+	} else if val, exists := data["ConfigVersion"]; exists {
+		// Backward compatibility: handle old "ConfigVersion" field name
+		versionValue = val
+		versionExists = true
+	}
+
+	if versionExists {
+		if versionStr, ok := versionValue.(string); ok {
+			// v2.0 is the baseline - only support v2.0 and future versions
+			if versionStr != "" && versionStr != "2.0" {
+				// Check if it's a future version (2.1, 2.2, etc.) or invalid
+				if !strings.HasPrefix(versionStr, "2.") || len(versionStr) < 3 {
+					errors = append(errors, ValidationError{
+						Field:   "version",
+						Message: fmt.Sprintf("unknown config version '%s' (supported: 2.0+)", versionStr),
+					})
+				}
+				// Future versions (2.1+) are allowed but may need migration
 			}
 		} else {
 			errors = append(errors, ValidationError{
-				Field:   "ConfigVersion",
-				Message: fmt.Sprintf("must be a string, got %s", getTypeName(configVersion)),
+				Field:   "version",
+				Message: fmt.Sprintf("must be a string, got %s", getTypeName(versionValue)),
 			})
 		}
 	}
-	// ConfigVersion is optional - old configs without it will be migrated
+	// version is optional - old configs without it will be migrated to v2.0
 
 	// Validate Configuration section
 	if configSection, exists := data["Configuration"]; exists {
@@ -87,6 +104,19 @@ func ValidateStrictAppConfig(data map[string]interface{}) error {
 			Message: "section is required",
 		})
 	}
+
+	// Validate Search section (optional for backward compatibility)
+	if searchSection, exists := data["Search"]; exists {
+		if searchMap, ok := searchSection.(map[string]interface{}); ok {
+			errors = append(errors, validateSearchSection(searchMap)...)
+		} else {
+			errors = append(errors, ValidationError{
+				Field:   "Search",
+				Message: "must be an object",
+			})
+		}
+	}
+	// Search section is optional, so we don't require it
 
 	// Validate Update section (optional for backward compatibility)
 	if updateSection, exists := data["Update"]; exists {
@@ -131,9 +161,57 @@ func validateConfigurationSection(config map[string]interface{}) ValidationError
 		}
 	}
 	// If DefaultEditor doesn't exist, that's fine - it's optional
+	// Note: EnablePopularitySort was moved to Search section in v2.2
 
-	// Validate EnablePopularitySort (required boolean)
-	if usePopularitySort, exists := config["EnablePopularitySort"]; exists {
+	return errors
+}
+
+// validateSearchSection validates the Search section
+func validateSearchSection(search map[string]interface{}) ValidationErrors {
+	var errors ValidationErrors
+
+	// Validate ResultLimit (optional integer, defaults to 0 = unlimited)
+	if resultLimit, exists := search["ResultLimit"]; exists {
+		switch v := resultLimit.(type) {
+		case int:
+			if v < 0 {
+				errors = append(errors, ValidationError{
+					Field:   "Search.ResultLimit",
+					Message: "must be greater than or equal to 0",
+				})
+			}
+		case float64:
+			// YAML numbers are often parsed as float64
+			if v < 0 {
+				errors = append(errors, ValidationError{
+					Field:   "Search.ResultLimit",
+					Message: "must be greater than or equal to 0",
+				})
+			}
+		case string:
+			// Try to convert string to int
+			if intVal, err := strconv.Atoi(v); err != nil {
+				errors = append(errors, ValidationError{
+					Field:   "Search.ResultLimit",
+					Message: fmt.Sprintf("must be an integer, got string '%s'", v),
+				})
+			} else if intVal < 0 {
+				errors = append(errors, ValidationError{
+					Field:   "Search.ResultLimit",
+					Message: "must be greater than or equal to 0",
+				})
+			}
+		default:
+			errors = append(errors, ValidationError{
+				Field:   "Search.ResultLimit",
+				Message: fmt.Sprintf("must be an integer, got %s", getTypeName(resultLimit)),
+			})
+		}
+	}
+	// ResultLimit is optional, defaults to 0
+
+	// Validate EnablePopularitySort (optional boolean, defaults to true)
+	if usePopularitySort, exists := search["EnablePopularitySort"]; exists {
 		switch v := usePopularitySort.(type) {
 		case bool:
 			// Valid boolean value
@@ -146,22 +224,18 @@ func validateConfigurationSection(config map[string]interface{}) ValidationError
 				// Valid boolean string
 			default:
 				errors = append(errors, ValidationError{
-					Field:   "Configuration.EnablePopularitySort",
+					Field:   "Search.EnablePopularitySort",
 					Message: fmt.Sprintf("must be a boolean, got string '%s'", v),
 				})
 			}
 		default:
 			errors = append(errors, ValidationError{
-				Field:   "Configuration.EnablePopularitySort",
+				Field:   "Search.EnablePopularitySort",
 				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(usePopularitySort)),
 			})
 		}
-	} else {
-		errors = append(errors, ValidationError{
-			Field:   "Configuration.EnablePopularitySort",
-			Message: "field is required",
-		})
 	}
+	// EnablePopularitySort is optional, defaults to true
 
 	return errors
 }
@@ -265,9 +339,9 @@ func validateLoggingSection(logging map[string]interface{}) ValidationErrors {
 func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 	var errors ValidationErrors
 
-	// Validate AutoCheck (optional boolean, defaults to true)
-	if autoCheck, exists := update["AutoCheck"]; exists {
-		switch v := autoCheck.(type) {
+	// Validate CheckForUpdates (optional boolean, defaults to true)
+	if checkForUpdates, exists := update["CheckForUpdates"]; exists {
+		switch v := checkForUpdates.(type) {
 		case bool:
 			// Valid boolean value
 		case string:
@@ -279,40 +353,14 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 				// Valid boolean string
 			default:
 				errors = append(errors, ValidationError{
-					Field:   "Update.AutoCheck",
+					Field:   "Update.CheckForUpdates",
 					Message: fmt.Sprintf("must be a boolean, got string '%s'", v),
 				})
 			}
 		default:
 			errors = append(errors, ValidationError{
-				Field:   "Update.AutoCheck",
-				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(autoCheck)),
-			})
-		}
-	}
-
-	// Validate AutoUpdate (optional boolean, defaults to false)
-	if autoUpdate, exists := update["AutoUpdate"]; exists {
-		switch v := autoUpdate.(type) {
-		case bool:
-			// Valid boolean value
-		case string:
-			// Try to convert string to bool
-			switch strings.ToLower(v) {
-			case "true", "1", "yes":
-				// Valid boolean string
-			case "false", "0", "no":
-				// Valid boolean string
-			default:
-				errors = append(errors, ValidationError{
-					Field:   "Update.AutoUpdate",
-					Message: fmt.Sprintf("must be a boolean, got string '%s'", v),
-				})
-			}
-		default:
-			errors = append(errors, ValidationError{
-				Field:   "Update.AutoUpdate",
-				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(autoUpdate)),
+				Field:   "Update.CheckForUpdates",
+				Message: fmt.Sprintf("must be a boolean, got %s", getTypeName(checkForUpdates)),
 			})
 		}
 	}
@@ -362,31 +410,6 @@ func validateUpdateSection(update map[string]interface{}) ValidationErrors {
 			errors = append(errors, ValidationError{
 				Field:   "Update.LastUpdateCheck",
 				Message: fmt.Sprintf("must be a string, got %s", getTypeName(lastChecked)),
-			})
-		}
-	}
-
-	// Validate UpdateChannel (optional string, should be one of: stable, beta, nightly)
-	if updateChannel, exists := update["UpdateChannel"]; exists {
-		if channelStr, ok := updateChannel.(string); ok {
-			validChannels := []string{"stable", "beta", "nightly"}
-			valid := false
-			for _, validChannel := range validChannels {
-				if channelStr == validChannel {
-					valid = true
-					break
-				}
-			}
-			if !valid {
-				errors = append(errors, ValidationError{
-					Field:   "Update.UpdateChannel",
-					Message: fmt.Sprintf("must be one of: %s, got '%s'", strings.Join(validChannels, ", "), channelStr),
-				})
-			}
-		} else {
-			errors = append(errors, ValidationError{
-				Field:   "Update.UpdateChannel",
-				Message: fmt.Sprintf("must be a string, got %s", getTypeName(updateChannel)),
 			})
 		}
 	}

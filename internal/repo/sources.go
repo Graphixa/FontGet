@@ -22,7 +22,7 @@ var usePopularityScoring = true
 // SetPopularityScoring sets the popularity scoring preference from user config
 func SetPopularityScoring() {
 	userPrefs := config.GetUserPreferences()
-	usePopularityScoring = userPrefs.Configuration.EnablePopularitySort
+	usePopularityScoring = userPrefs.Search.EnablePopularitySort
 }
 
 // SearchConfig contains all tunable parameters for the search algorithm

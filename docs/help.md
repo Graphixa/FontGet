@@ -234,7 +234,6 @@ Update:
   AutoUpdate: false      # Automatically install updates (manual by default)
   CheckInterval: 24      # Hours between update checks
   LastChecked: ""         # ISO timestamp (automatically updated)
-  UpdateChannel: "stable" # Update channel: stable, beta, or nightly
 ```
 
 ## `export`

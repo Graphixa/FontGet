@@ -507,18 +507,13 @@ func (m SettingsConfirmModel) View() string {
 		description string
 	}{
 		{
-			name:        "Auto-check for updates",
-			value:       formatBool(m.defaults.Update.AutoCheck),
-			description: "FontGet will automatically check for new versions when you start the application. This helps you stay up-to-date with the latest features and fixes.",
-		},
-		{
-			name:        "Auto-install updates",
-			value:       formatBool(m.defaults.Update.AutoUpdate),
-			description: "When updates are available, FontGet will notify you but require manual installation. This gives you control over when updates are installed (recommended for security).",
+			name:        "Check for updates",
+			value:       formatBool(m.defaults.Update.CheckForUpdates),
+			description: "FontGet will automatically check for new versions when you start the application. When an update is available, you'll be prompted to confirm before installing.",
 		},
 		{
 			name:        "Sorting method",
-			value:       formatSorting(m.defaults.Configuration.EnablePopularitySort),
+			value:       formatSorting(m.defaults.Search.EnablePopularitySort),
 			description: "When searching for fonts, results will be sorted by popularity first (most commonly used fonts appear first), then alphabetically. This helps you find popular fonts more easily.",
 		},
 	}

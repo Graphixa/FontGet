@@ -31,10 +31,14 @@ var (
 // GetVersion returns the current FontGet version in normalized form.
 // Normalization rules:
 // - Strip leading 'v' prefix (v1.2.3 -> 1.2.3)
-// - Strip build metadata (+dirty, +meta)
+// - Strip build metadata (+dirty, +meta) EXCEPT for dev builds with commit hash
 // - Fallback to "dev" when no version info is available
 func GetVersion() string {
 	if Version != "dev" {
+		// For dev builds with commit hash (e.g., "2.0.0-dev+ae04b20"), preserve the full string
+		if strings.Contains(Version, "-dev+") || strings.HasPrefix(Version, "dev+") {
+			return strings.TrimPrefix(Version, "v") // Only strip 'v' prefix, keep rest
+		}
 		return normalizeVersionString(Version)
 	}
 

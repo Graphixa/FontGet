@@ -602,19 +602,16 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Files**:
 - `user_preferences.go`: User preferences configuration (renamed from `app_config.go`)
   - **AppConfig structure**: Configuration, Logging, Update, Theme, and Search sections
-  - **ConfigVersion**: Tracks config schema version for migration support
+  - **ConfigVersion**: Tracks config schema version for migration support (CurrentConfigVersion = "2.0")
   - **Search section**: Search.ResultLimit for configurable result limiting (0 = unlimited, default)
   - **Theme configuration**: Theme.Name (theme file name) and Theme.Mode (dark/light)
   - Configuration loading, saving, and validation
-  - **Automatic Migration**: Detects config version and triggers migrations if needed
+  - **Simplified Migration System**: Merge-based migration that preserves user values while applying new defaults
+    - Field renames handled via `fieldRenameMap` (e.g., "Update.AutoCheck" → "Update.CheckForUpdates")
+    - Field moves handled via `fieldMoveMap` (e.g., "Configuration.EnablePopularitySort" → "Search.EnablePopularitySort")
+    - Automatic field mapping via `handleLegacyFieldMapping()` before unmarshaling
+    - `MigrateConfigAfterUpdate()` merges old config with new defaults after binary updates
   - **Helper functions**: `ExpandLogPath()` (expands $home in log paths), `ParseMaxSize()` (parses "10MB" format)
-- `migrations.go`: Configuration migration system
-  - **Version Tracking**: Semantic versioning for config schema (CurrentConfigVersion = "2.0")
-  - **Migration Registry**: Centralized migration functions for schema upgrades
-  - **Automatic Backups**: Creates timestamped backups before migration (keeps last 3)
-  - **Backward Compatibility**: Preserves all user custom values during migration
-  - **Migration Functions**: `migrateV1ToV2` removes Limits section, adds Search section
-  - **Error Recovery**: Restores from backup if migration fails
 - `app_state.go`: Core application state types and functions
   - First-run state management
   - Source acceptance tracking
@@ -622,11 +619,12 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `validation.go`: Configuration validation
 
 **Key Features**:
-- **Config Migration System**: Automatic schema migration with version tracking and backups
-  - Detects old config versions and upgrades automatically
-  - Creates backups before migration (format: `config.yaml.backup.YYYYMMDD-HHMMSS`)
-  - Preserves all user customizations during migration
-  - Supports migration chains (e.g., v1.0 → v2.0)
+- **Simplified Config Migration System**: Merge-based migration that preserves user values
+  - Field renames and moves handled automatically via simple maps
+  - Old config merged with new defaults during `GetUserPreferences()` load
+  - Migration happens automatically during config loading and after binary updates
+  - No complex migration rules - just simple field mapping and merge logic
+  - Preserves all user customizations while applying new defaults
 - **Search Configuration**: Search.ResultLimit allows users to limit search results (0 = unlimited)
 - **Theme Configuration**: Users can set theme name and mode in `config.yaml`
   - Theme files must be placed in `~/.fontget/themes/` directory
@@ -1178,26 +1176,25 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Consistent code structure across all command files
   - Self-documenting code with clear function purposes
 
-#### **Config Migration System (2025-01-XX)**
+#### **Config Migration System Simplification (2025-01-XX)**
 - **Version Tracking**: Added `ConfigVersion` field to `AppConfig` structure for schema versioning
-  - Current version: "2.0"
+  - Current version: "2.0" (baseline schema)
   - Backward compatibility: Old configs without version default to "1.0"
-- **Migration System**: Created `internal/config/migrations.go` with migration infrastructure
-  - **Migration Registry**: Centralized registry of migration functions
-  - **Automatic Detection**: Detects config version and triggers migrations if needed
-  - **Migration Chain**: Supports migration chains (e.g., v1.0 → v2.0)
-  - **Backup System**: Creates timestamped backups before migration (format: `config.yaml.backup.YYYYMMDD-HHMMSS`)
-  - **Backup Rotation**: Keeps last 3 backups, removes older ones
-  - **Error Recovery**: Restores from backup if migration fails
-- **V1 to V2 Migration**: Removed `Limits` section, added `Search` section
-  - **Search Section**: Added `Search.ResultLimit` for configurable search result limiting (0 = unlimited)
-  - **Preservation**: All user custom values are preserved during migration
-- **Integration**: Migration runs automatically during `GetUserPreferences()` if version mismatch detected
+- **Simplified Migration System**: Replaced complex rule-based system with simple merge-based approach
+  - **Field Mapping**: Simple maps for field renames (`fieldRenameMap`) and field moves (`fieldMoveMap`)
+  - **Automatic Handling**: `handleLegacyFieldMapping()` transforms old configs before unmarshaling
+  - **Merge Logic**: Old config merged with new defaults via `mergeConfigValues()` reflection-based merge
+  - **Update Integration**: `MigrateConfigAfterUpdate()` called automatically after binary updates
+  - **Consolidation**: Migration logic consolidated into `user_preferences.go` (removed `migrations.go`)
+- **Migration Process**: 
+  - Field renames/moves applied automatically during config loading
+  - User values preserved, new defaults applied for missing fields
+  - Version updated to current after successful merge
 - **Benefits**:
-  - Graceful schema upgrades without breaking user configs
-  - Automatic backup system prevents data loss
-  - Clean separation of migration logic from config loading
-  - Easy to add new migrations as schema evolves
+  - Simpler, more maintainable codebase
+  - No complex migration rules - just add entries to maps
+  - Automatic migration during normal operations and after updates
+  - All config logic in one place for easier maintenance
 
 #### **Enhanced Onboarding Flow (2025-01-XX)**
 - **Redesigned Flow**: Complete redesign of first-run onboarding experience

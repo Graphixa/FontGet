@@ -37,9 +37,9 @@ func DefaultSources() map[string]SourceInfo {
 		"Font Squirrel": {
 			URL:      FontSquirrelURL,
 			Prefix:   "squirrel",
-			Enabled:  false,
+			Enabled:  true,
 			Filename: "font-squirrel.json",
-			Priority: 3, // Third priority - disabled by default
+			Priority: 3, // Third priority
 		},
 	}
 }

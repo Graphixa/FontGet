@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 
+	"fontget/internal/config"
+	"fontget/internal/logging"
 	"fontget/internal/version"
 
 	"github.com/blang/semver"
@@ -103,6 +105,14 @@ func UpdateToLatest() error {
 	// The library may create a .old file on Windows during the update process
 	cleanupOldBinary(cmdPath)
 
+	// Migrate config after successful update
+	// This merges old config with new defaults, preserving user customizations
+	if err := config.MigrateConfigAfterUpdate(); err != nil {
+		// Log error but don't fail the update - config migration will happen on next command
+		// This is non-fatal since GetUserPreferences() handles migration automatically
+		logging.GetLogger().Warn("Config migration after update failed: %v (will migrate on next command)", err)
+	}
+
 	return nil
 }
 
@@ -166,6 +176,14 @@ func UpdateToVersion(targetVersion string) error {
 	// Clean up old binary backup file after successful update
 	// The library may create a .old file on Windows during the update process
 	cleanupOldBinary(cmdPath)
+
+	// Migrate config after successful update
+	// This merges old config with new defaults, preserving user customizations
+	if err := config.MigrateConfigAfterUpdate(); err != nil {
+		// Log error but don't fail the update - config migration will happen on next command
+		// This is non-fatal since GetUserPreferences() handles migration automatically
+		logging.GetLogger().Warn("Config migration after update failed: %v (will migrate on next command)", err)
+	}
 
 	return nil
 }

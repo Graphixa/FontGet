@@ -25,15 +25,18 @@ Use --release-notes to get a link to the release notes for this version.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		v := version.GetVersion()
 		display := v
-		// Handle dev+hash format (build metadata)
+		// Handle dev+hash format (build metadata) - preserve commit hash
 		if strings.HasPrefix(v, "dev+") {
 			display = v // Keep as "dev+abc123"
+		} else if strings.Contains(v, "-dev+") {
+			// Handle release-dev+hash format (e.g., "2.0.0-dev+ae04b20")
+			display = "v" + v // Keep full version with commit hash
 		} else if v != "dev" {
 			display = "v" + v
 		}
 
 		// Primary version line - styled with main info color
-		versionLine := ui.RenderInfo("FontGet " + display)
+		versionLine := ui.InfoText.Render("FontGet " + display)
 		fmt.Println(versionLine)
 
 		// When debug is enabled, show detailed build information
