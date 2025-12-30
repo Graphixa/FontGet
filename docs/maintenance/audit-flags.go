@@ -287,10 +287,57 @@ func checkDocumentationSync(commands map[string]*CommandInfo) {
 	missingFlags := []string{}
 
 	for _, cmd := range commands {
+		// Find the command section in documentation
+		// Look for "## `commandname`" or "## `command-name`" pattern
+		cmdSectionStart := -1
+		cmdSectionEnd := -1
+
+		// Try different command name formats
+		cmdPatterns := []string{
+			fmt.Sprintf("## `%s`", cmd.Name),
+			fmt.Sprintf("## `%s`", strings.ToLower(cmd.Name)),
+		}
+
+		// Handle special case for "global" command (root flags)
+		if cmd.Name == "global" {
+			cmdPatterns = []string{"## Global Flags"}
+		}
+
+		for _, pattern := range cmdPatterns {
+			idx := strings.Index(docContent, pattern)
+			if idx != -1 {
+				cmdSectionStart = idx
+				break
+			}
+		}
+
+		// If we found the section, find where it ends (next ## or end of file)
+		if cmdSectionStart != -1 {
+			// Find the next section header (##) after this one
+			remaining := docContent[cmdSectionStart+10:] // Skip past "## `cmd`\n"
+			nextSection := strings.Index(remaining, "\n## ")
+			if nextSection != -1 {
+				cmdSectionEnd = cmdSectionStart + 10 + nextSection
+			} else {
+				cmdSectionEnd = len(docContent)
+			}
+		}
+
+		// Check each flag for this command
 		for _, flag := range cmd.Flags {
-			// Look for flag in documentation
 			flagPattern := fmt.Sprintf("--%s", flag.Flag)
-			if !strings.Contains(docContent, flagPattern) {
+			found := false
+
+			if cmdSectionStart != -1 && cmdSectionEnd != -1 {
+				// Check only within the command's section
+				sectionContent := docContent[cmdSectionStart:cmdSectionEnd]
+				found = strings.Contains(sectionContent, flagPattern)
+			} else {
+				// Fallback: check entire document (original behavior)
+				found = strings.Contains(docContent, flagPattern)
+			}
+
+			if !found {
 				missingFlags = append(missingFlags, fmt.Sprintf("%s: --%s", cmd.Name, flag.Flag))
 			}
 		}
