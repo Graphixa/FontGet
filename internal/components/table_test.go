@@ -258,7 +258,7 @@ func TestFormatCell(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := formatCell(tt.value, tt.width, tt.align)
+			got, _ := formatCell(tt.value, tt.width, tt.align)
 			if got != tt.want {
 				t.Errorf("formatCell(%q, %d, %q) = %q, want %q", tt.value, tt.width, tt.align, got, tt.want)
 			}
