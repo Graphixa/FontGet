@@ -477,8 +477,13 @@ func InitStyles() error {
 	TableSourceName = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(colors.Secondary))
 
+	// TableRowSelected uses ButtonSelected pattern: invert colors for contrast
+	// Reuse buttonFg and buttonBg already declared above
 	TableRowSelected = lipgloss.NewStyle().
-		Background(getColorOrNoColor(colors.Base))
+		Foreground(getColorOrNoColor(buttonBg)). // Inverted: base text color as foreground
+		Background(getColorOrNoColor(buttonFg)). // Inverted: components color as background
+		Bold(true)
+	TableRowSelected = applySystemThemeFallback(TableRowSelected, buttonBg, buttonFg)
 
 	// FORM COMPONENT
 	FormLabel = lipgloss.NewStyle().
