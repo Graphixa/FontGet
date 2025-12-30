@@ -34,6 +34,7 @@ Search for available fonts.
 
 ### Flags
 - `--category, -c` - Filter by category (e.g., Sans Serif, Serif, Monospace). Use `-c` alone to list categories.
+- `--source, -s` - Filter by source (short ID like "google", "nerd", "squirrel" or full name like "Google Fonts")
 
 ### Examples
 ```bash
@@ -45,6 +46,10 @@ fontget search "roboto"
 
 # Find fonts by category
 fontget search "robo" --category "Monospace"
+
+# Find fonts from a specific source
+fontget search "roboto" --source "google"
+fontget search "roboto" --source "Google Fonts"
 
 # List possible search categories
 fontget search -c
@@ -58,6 +63,7 @@ List installed fonts.
 ### Flags
 - `--scope, -s` - Filter by installation scope (`user`, `machine`, or `all` default)
 - `--type, -t` - Filter by font type (e.g., TTF, OTF)
+- `--expand, -x` - Show font styles in hierarchical view
 - `--full, -f` - Show all variants in hierarchical view
 - `--family, -a` - Filter by family name
 
@@ -77,6 +83,9 @@ fontget list --type TTF
 
 # Show font and variants in a hierarchical view
 fontget list --full
+
+# Show font styles in hierarchical view
+fontget list --expand
 ```
 
 ## `remove`
@@ -199,7 +208,7 @@ Update FontGet to the latest version
 
 ### Flags
 - `--check, -c` - Only check for updates, don't install
-- `-y` - Skip confirmation prompt and auto-confirm update
+- `--yes, -y` - Skip confirmation prompt and auto-confirm update
 - `--version <version>` - Update or downgrade to specific version (e.g., 1.2.1)
 
 ### Notes
@@ -218,7 +227,7 @@ fontget update
 fontget update --check
 
 # Auto-confirm update (skip confirmation)
-fontget update -y
+fontget update --yes
 
 # Update to specific version
 fontget update --version 1.2.3
@@ -246,6 +255,7 @@ Export installed fonts to a JSON manifest file that can be used to restore fonts
 - `--match, -m` - Export fonts that match the specified string
 - `--source, -s` - Filter by font source (e.g., "Google Fonts")
 - `--all, -a` - Export all installed fonts (including those without Font IDs)
+- `--force, -f` - Force overwrite existing file without confirmation
 - `--matched` - Export only fonts that match repository entries (default behavior, cannot be used with --all)
 
 ### Examples
@@ -270,6 +280,9 @@ fontget export "google-fonts.json" --source "Google Fonts"
 
 # Export all installed fonts (including unmatched)
 fontget export "fonts.json" --all
+
+# Force overwrite existing export file
+fontget export "fonts.json" --force
 ```
 
 ## `import`
@@ -305,11 +318,15 @@ fontget import "fonts.json" --scope machine
 ### Purpose
 Backup installed font files to a zip archive organized by source and family name
 
+### Flags
+- `--force, -f` - Force overwrite existing archive without confirmation
+- `--scope, -s` - Scope to backup: `user`, `machine`, or `both` (default: all accessible)
+
 ### Notes
 - Automatically detects accessible scopes (user vs machine) based on elevation
 - Fonts are deduplicated across scopes
 - System fonts are always excluded
-- Prompts before overwriting existing backup files
+- Prompts before overwriting existing backup files (unless `--force` is used)
 
 ### Usage Example
 ```bash
@@ -324,6 +341,18 @@ fontget backup "D:\Backups"
 
 # Backup to full file path
 fontget backup "D:\Backups\my-fonts.zip"
+
+# Backup only user scope fonts
+fontget backup "fonts-backup.zip" --scope user
+
+# Backup only machine scope fonts
+fontget backup "fonts-backup.zip" --scope machine
+
+# Backup both scopes explicitly
+fontget backup "fonts-backup.zip" --scope both
+
+# Force overwrite existing backup without confirmation
+fontget backup "fonts-backup.zip" --force
 ```
 
 
@@ -385,8 +414,8 @@ fontget completion powershell --install
 | Command / Subcommand | Purpose | Flags |
 |---------------------|---------|-------|
 | `add` | Install fonts | `--scope, -s`, `--force, -f` |
-| `search` | Find fonts | `--category, -c` |
-| `list` | Show installed fonts | `--scope, -s`, `--family, -a`, `--type, -t`, `--full, -f` |
+| `search` | Find fonts | `--category, -c`, `--source, -s` |
+| `list` | Show installed fonts | `--scope, -s`, `--family, -a`, `--type, -t`, `--expand, -x`, `--full, -f` |
 | `remove` | Uninstall fonts | `--scope, -s`, `--force, -f` |
 | `info` | Show font details | `--license, -l`, `--metadata, -m` |
 | `sources` | Manage font sources |  |
@@ -399,13 +428,14 @@ fontget completion powershell --install
 | &nbsp;&nbsp;&nbsp;- `edit` | Open config file in editor |  |
 | &nbsp;&nbsp;&nbsp;- `validate` | Validate configuration |  |
 | &nbsp;&nbsp;&nbsp;- `reset` | Reset to defaults |  |
-| `export` | Export fonts to manifest | `--output, -o`, `--match, -m`, `--source, -s`, `--all, -a`, `--matched` |
+| `export` | Export fonts to manifest | `--output, -o`, `--match, -m`, `--source, -s`, `--all, -a`, `--force, -f`, `--matched` |
+| `backup` | Backup font files to zip | `--force, -f`, `--scope, -s` |
 | `import` | Import fonts from manifest | `--scope, -s`, `--force, -f` |
 | `backup` | Backup font files to zip |  |
 | `version` | Display version and build information | `--release-notes` |
 | `completion` | Generate completion script | `--install` |
-| `update` | Update FontGet | `--check, -c`, `-y`, `--version` |
-| _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs` |
+| `update` | Update FontGet | `--check, -c`, `--yes, -y`, `--version` |
+| _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs`, `--wizard` |
 
 ---
 
@@ -416,6 +446,7 @@ These flags are available on all commands:
 - `--verbose, -v` - Show detailed operation information (user-friendly)
 - `--debug` - Show debug logs with timestamps (for troubleshooting)
 - `--logs` - Open the logs directory in your file manager
+- `--wizard` - Run the setup wizard to configure FontGet
 
 ### Flag Combinations
 - Use `--verbose` alone for user-friendly detailed output
