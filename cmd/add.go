@@ -182,9 +182,8 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 
 		// Display matches in table format
 		if len(uniqueMatches) > 0 {
-			fmt.Printf("%s\n", ui.GetSearchTableHeader())
-			fmt.Printf("%s\n", ui.GetTableSeparator())
-
+			// Build table rows
+			var tableRows [][]string
 			for _, match := range uniqueMatches {
 				categories := PlaceholderNA
 				if len(match.FontInfo.Categories) > 0 {
@@ -196,13 +195,31 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 					license = PlaceholderNA
 				}
 
-				fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-					ui.TableSourceName.Render(fmt.Sprintf("%-*s", ui.TableColName, shared.TruncateString(match.Name, ui.TableColName))),
-					ui.TableColID, shared.TruncateString(match.ID, ui.TableColID),
-					ui.TableColLicense, shared.TruncateString(license, ui.TableColLicense),
-					ui.TableColCategories, shared.TruncateString(categories, ui.TableColCategories),
-					ui.TableColSource, shared.TruncateString(match.Source, ui.TableColSource))
+				row := []string{
+					match.Name,
+					match.ID,
+					license,
+					categories,
+					match.Source,
+				}
+				tableRows = append(tableRows, row)
 			}
+
+			// Render table with priority configuration
+			tableConfig := components.TableConfig{
+				Columns: []components.ColumnConfig{
+					{Header: "Font Name", MinWidth: 30, MaxWidth: 34, PercentWidth: 26.0},
+					{Header: "Font ID", MinWidth: 40, MaxWidth: 41, PercentWidth: 26.0}, // Highest priority, don't trim
+					{Header: "License", MaxWidth: 9, PercentWidth: 8.0},                 // Lowest priority
+					{Header: "Categories", MaxWidth: 14, PercentWidth: 16.0},
+					{Header: "Source", PercentWidth: 20.0},
+				},
+				Rows:  tableRows,
+				Width: 0, // Auto-detect terminal width
+				Mode:  components.TableModeStatic,
+			}
+
+			fmt.Println(components.RenderStaticTable(tableConfig))
 			fmt.Println()
 		} else {
 			// No matches found, show general guidance
@@ -263,11 +280,9 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 	// If we found matches, display them in table format
 	if len(uniqueMatches) > 0 {
 		fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these fonts?"))
-		// Use consistent column widths and apply styling to the entire formatted string
-		fmt.Printf("%s\n", ui.GetSearchTableHeader())
-		fmt.Printf("%s\n", ui.GetTableSeparator())
 
-		// Display each unique match as a table row
+		// Build table rows
+		var tableRows [][]string
 		for _, match := range uniqueMatches {
 			// Get categories (first one if available)
 			categories := PlaceholderNA
@@ -281,14 +296,31 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 				license = PlaceholderNA
 			}
 
-			// Format the data line consistently with yellow font name
-			fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-				ui.TableSourceName.Render(fmt.Sprintf("%-*s", ui.TableColName, shared.TruncateString(match.Name, ui.TableColName))),
-				ui.TableColID, shared.TruncateString(match.ID, ui.TableColID),
-				ui.TableColLicense, shared.TruncateString(license, ui.TableColLicense),
-				ui.TableColCategories, shared.TruncateString(categories, ui.TableColCategories),
-				ui.TableColSource, shared.TruncateString(match.Source, ui.TableColSource))
+			row := []string{
+				match.Name,
+				match.ID,
+				license,
+				categories,
+				match.Source,
+			}
+			tableRows = append(tableRows, row)
 		}
+
+		// Render table with priority configuration
+		tableConfig := components.TableConfig{
+			Columns: []components.ColumnConfig{
+				{Header: "Font Name", MinWidth: 30, MaxWidth: 34, PercentWidth: 26.0},
+				{Header: "Font ID", MinWidth: 40, MaxWidth: 41, PercentWidth: 26.0}, // Highest priority, don't trim
+				{Header: "License", MaxWidth: 9, PercentWidth: 8.0},                 // Lowest priority
+				{Header: "Categories", MaxWidth: 14, PercentWidth: 16.0},
+				{Header: "Source", PercentWidth: 20.0},
+			},
+			Rows:  tableRows,
+			Width: 0, // Auto-detect terminal width
+			Mode:  components.TableModeStatic,
+		}
+
+		fmt.Println(components.RenderStaticTable(tableConfig))
 		fmt.Println()
 	} else {
 		// Fallback: if similar font names were found but couldn't be resolved to matches
@@ -434,10 +466,8 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 	fmt.Printf("\n%s\n", ui.InfoText.Render(fmt.Sprintf("Multiple fonts found matching '%s'.", ui.QueryText.Render(fontName))))
 	fmt.Printf("%s\n\n", ui.Text.Render("Please specify the exact font ID to install from a specific source."))
 
-	// Use consistent column widths and apply styling to the entire formatted string
-	fmt.Printf("%s\n", ui.GetSearchTableHeader())
-	fmt.Printf("%s\n", ui.GetTableSeparator())
-
+	// Build table rows
+	var tableRows [][]string
 	for _, match := range matches {
 		// Get categories (first one if available)
 		categories := PlaceholderNA
@@ -451,15 +481,31 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 			license = PlaceholderNA
 		}
 
-		// Format the data line consistently with yellow font name
-		fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-			ui.TableSourceName.Render(fmt.Sprintf("%-*s", ui.TableColName, shared.TruncateString(match.Name, ui.TableColName))),
-			ui.TableColID, shared.TruncateString(match.ID, ui.TableColID),
-			ui.TableColLicense, shared.TruncateString(license, ui.TableColLicense),
-			ui.TableColCategories, shared.TruncateString(categories, ui.TableColCategories),
-			ui.TableColSource, shared.TruncateString(match.Source, ui.TableColSource))
+		row := []string{
+			match.Name,
+			match.ID,
+			license,
+			categories,
+			match.Source,
+		}
+		tableRows = append(tableRows, row)
 	}
 
+	// Render table with priority configuration
+	tableConfig := components.TableConfig{
+		Columns: []components.ColumnConfig{
+			{Header: "Font Name", MinWidth: 30, MaxWidth: 34, PercentWidth: 26.0},
+			{Header: "Font ID", MinWidth: 40, MaxWidth: 41, PercentWidth: 26.0}, // Highest priority, don't trim
+			{Header: "License", MaxWidth: 9, PercentWidth: 8.0},                 // Lowest priority
+			{Header: "Categories", MaxWidth: 14, PercentWidth: 16.0},
+			{Header: "Source", PercentWidth: 20.0},
+		},
+		Rows:  tableRows,
+		Width: 0, // Auto-detect terminal width
+		Mode:  components.TableModeStatic,
+	}
+
+	fmt.Println(components.RenderStaticTable(tableConfig))
 	fmt.Printf("\n")
 }
 

@@ -16,7 +16,6 @@ import (
 	"fontget/internal/functions"
 	"fontget/internal/output"
 	"fontget/internal/repo"
-	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -167,8 +166,7 @@ var sourcesInfoCmd = &cobra.Command{
 
 		// Unified Sources table without headings, includes Status
 		fmt.Println()
-		fmt.Println(ui.GetSourcesInfoTableHeader())
-		fmt.Println(ui.GetTableSeparator())
+
 		// Build rows and sort: built-in first, then enabled, then name
 		type row struct {
 			name  string
@@ -195,34 +193,24 @@ var sourcesInfoCmd = &cobra.Command{
 			}
 			return strings.ToLower(rows[i].name) < strings.ToLower(rows[j].name)
 		})
+
+		// Build table rows
+		var tableRows [][]string
 		for _, r := range rows {
 			sourceName := r.name
 			source := r.src
-			// Name column with proper styling and width control
-			var nameStyled string
+
+			// Format source name with [Disabled] tag if needed
+			displayName := sourceName
 			if !source.Enabled {
-				// Keep the red [Disabled] tag within the name column width
-				tag := DisabledTag
-				nameWidth := ui.TableColSrcName - len(tag)
-				if nameWidth < 0 {
-					nameWidth = 0
-				}
-				nameText := shared.TruncateString(sourceName, nameWidth)
-				visible := nameText + tag
-				pad := 0
-				if len(visible) < ui.TableColSrcName {
-					pad = ui.TableColSrcName - len(visible)
-				}
-				nameStyled = ui.FormReadOnly.Render(nameText) + ui.ErrorText.Render(tag) + strings.Repeat(" ", pad)
-			} else {
-				nameText := shared.TruncateString(sourceName, ui.TableColSrcName)
-				paddedName := fmt.Sprintf("%-*s", ui.TableColSrcName, nameText)
-				nameStyled = ui.TableSourceName.Render(paddedName)
+				displayName = sourceName + DisabledTag
 			}
+
 			last := "Unknown"
 			if manifest != nil {
 				last = lastUpdated
 			}
+
 			// Determine Type
 			typ := "Custom"
 			if def, _ := config.GetDefaultManifest(); def != nil {
@@ -231,16 +219,29 @@ var sourcesInfoCmd = &cobra.Command{
 				}
 			}
 
-			// Name already includes disabled tag within the column width
-			displayName := nameStyled
-
-			fmt.Printf("%s %-*s %-*s %-*s\n",
+			row := []string{
 				displayName,
-				ui.TableColSrcPrefix, shared.TruncateString(source.Prefix, ui.TableColSrcPrefix),
-				ui.TableColSrcUpdated, shared.TruncateString(last, ui.TableColSrcUpdated),
-				ui.TableColSrcType, typ,
-			)
+				source.Prefix,
+				last,
+				typ,
+			}
+			tableRows = append(tableRows, row)
 		}
+
+		// Render table
+		tableConfig := components.TableConfig{
+			Columns: []components.ColumnConfig{
+				{Header: "Source Name", MinWidth: 20, PercentWidth: 40.0},
+				{Header: "Prefix", MinWidth: 8, MaxWidth: 15, PercentWidth: 12.0},
+				{Header: "Last Updated", MinWidth: 20, PercentWidth: 30.0},
+				{Header: "Type", MinWidth: 8, MaxWidth: 12, PercentWidth: 10.0},
+			},
+			Rows:  tableRows,
+			Width: 0, // Auto-detect terminal width
+			Mode:  components.TableModeStatic,
+		}
+
+		fmt.Println(components.RenderStaticTable(tableConfig))
 
 		fmt.Println()
 		output.GetDebug().State("Sources operation complete")

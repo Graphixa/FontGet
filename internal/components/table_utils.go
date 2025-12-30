@@ -236,6 +236,114 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 				columnWidths[i] = 1
 			}
 		}
+		// Recalculate total after scaling
+		totalWidth = 0
+		for _, w := range columnWidths {
+			totalWidth += w
+		}
+	}
+
+	// Step 9: Distribute any remaining width to columns without MaxWidth constraints
+	// This ensures we fully utilize the terminal width when some columns have MaxWidth limits
+	remainingWidth = availableWidth - totalWidth
+	for remainingWidth > 0 {
+		// Find columns that can receive additional width (no MaxWidth or haven't hit it)
+		expandableColumns := make([]int, 0)
+		totalExpandPercent := 0.0
+		for i, col := range config.Columns {
+			// Column is expandable if it has no MaxWidth or hasn't reached it
+			if col.MaxWidth == 0 || columnWidths[i] < col.MaxWidth {
+				expandableColumns = append(expandableColumns, i)
+				if col.PercentWidth > 0 {
+					totalExpandPercent += col.PercentWidth
+				}
+			}
+		}
+
+		// If no columns can expand, we're done
+		if len(expandableColumns) == 0 {
+			break
+		}
+
+		// Distribute remaining width
+		if totalExpandPercent > 0 {
+			// Distribute proportionally based on PercentWidth
+			distributed := 0
+			for _, idx := range expandableColumns {
+				col := config.Columns[idx]
+				if col.PercentWidth > 0 {
+					proportionalWidth := int(float64(remainingWidth) * col.PercentWidth / totalExpandPercent)
+					// Don't exceed MaxWidth if one is set
+					if col.MaxWidth > 0 && columnWidths[idx]+proportionalWidth > col.MaxWidth {
+						proportionalWidth = col.MaxWidth - columnWidths[idx]
+					}
+					if proportionalWidth > 0 {
+						columnWidths[idx] += proportionalWidth
+						distributed += proportionalWidth
+					}
+				}
+			}
+			remainingWidth -= distributed
+
+			// If still have remaining width, distribute equally to all expandable columns
+			if remainingWidth > 0 {
+				// Re-check which columns can still expand
+				stillExpandable := make([]int, 0)
+				for _, idx := range expandableColumns {
+					col := config.Columns[idx]
+					if col.MaxWidth == 0 || columnWidths[idx] < col.MaxWidth {
+						stillExpandable = append(stillExpandable, idx)
+					}
+				}
+				if len(stillExpandable) > 0 {
+					extraPerColumn := remainingWidth / len(stillExpandable)
+					extraRemainder := remainingWidth % len(stillExpandable)
+					distributed := 0
+					for i, idx := range stillExpandable {
+						col := config.Columns[idx]
+						extra := extraPerColumn
+						if i < extraRemainder {
+							extra++
+						}
+						// Respect MaxWidth if set
+						if col.MaxWidth > 0 && columnWidths[idx]+extra > col.MaxWidth {
+							extra = col.MaxWidth - columnWidths[idx]
+						}
+						if extra > 0 {
+							columnWidths[idx] += extra
+							distributed += extra
+						}
+					}
+					remainingWidth -= distributed
+				}
+			}
+		} else {
+			// No PercentWidth specified, distribute equally to expandable columns
+			extraPerColumn := remainingWidth / len(expandableColumns)
+			extraRemainder := remainingWidth % len(expandableColumns)
+			distributed := 0
+			for i, idx := range expandableColumns {
+				col := config.Columns[idx]
+				extra := extraPerColumn
+				if i < extraRemainder {
+					extra++
+				}
+				// Respect MaxWidth if set
+				if col.MaxWidth > 0 && columnWidths[idx]+extra > col.MaxWidth {
+					extra = col.MaxWidth - columnWidths[idx]
+				}
+				if extra > 0 {
+					columnWidths[idx] += extra
+					distributed += extra
+				}
+			}
+			remainingWidth -= distributed
+		}
+
+		// If we didn't distribute anything, break to avoid infinite loop
+		if remainingWidth == availableWidth-totalWidth {
+			break
+		}
 	}
 
 	return columnWidths

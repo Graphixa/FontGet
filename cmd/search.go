@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"fontget/internal/cmdutils"
+	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
 	"fontget/internal/repo"
@@ -431,9 +432,9 @@ Use -s without a value to list sources.`,
 		}
 		fmt.Printf("\n%s\n\n", searchMsg)
 
-		// Collect data for dynamic table sizing
-		var names, ids, licenses, categories, sources []string
-		for _, result := range results {
+		// Build table rows with priority: Font ID > Font Name > Source > Categories > License
+		var tableRows [][]string
+		for i, result := range results {
 			// Format categories
 			categoriesStr := SearchPlaceholderNA
 			if len(result.Categories) > 0 {
@@ -446,95 +447,40 @@ Use -s without a value to list sources.`,
 				license = result.License
 			}
 
-			names = append(names, result.Name)
-			ids = append(ids, result.ID)
-			licenses = append(licenses, license)
-			categories = append(categories, categoriesStr)
-			sources = append(sources, result.SourceName)
-		}
+			// Build row: Font Name, Font ID, License, Categories, Source
+			row := []string{
+				result.Name,
+				result.ID,
+				license,
+				categoriesStr,
+				result.SourceName,
+			}
+			tableRows = append(tableRows, row)
 
-		// Calculate dynamic column widths
-		maxName := ui.TableColName
-		maxID := ui.TableColID
-		maxLicense := ui.TableColLicense
-		maxCategories := ui.TableColCategories
-		maxSource := ui.TableColSource
-
-		for _, name := range names {
-			if len(name) > maxName {
-				maxName = len(name)
-			}
-		}
-		for _, id := range ids {
-			if len(id) > maxID {
-				maxID = len(id)
-			}
-		}
-		for _, license := range licenses {
-			if len(license) > maxLicense {
-				maxLicense = len(license)
-			}
-		}
-		for _, category := range categories {
-			if len(category) > maxCategories {
-				maxCategories = len(category)
-			}
-		}
-		for _, source := range sources {
-			if len(source) > maxSource {
-				maxSource = len(source)
+			// Add detailed score breakdown for debugging (only when --debug flag is enabled)
+			if IsDebug() {
+				baseScore := SearchBaseScore
+				userPrefs := config.GetUserPreferences()
+				usePopularity := userPrefs.Search.EnablePopularitySort
+				logDebugScoreBreakdown(results[i], query, i, len(results), baseScore, usePopularity)
 			}
 		}
 
-		// Calculate total width needed
-		totalWidth := maxName + maxID + maxLicense + maxCategories + maxSource + SearchTableColumnSpacing
-
-		// If total width exceeds reasonable maximum, use fixed widths
-		if totalWidth > SearchMaxWidth {
-			fmt.Println(ui.GetSearchTableHeader())
-			fmt.Println(ui.GetTableSeparator())
-
-			for i := range results {
-				fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-					ui.TableSourceName.Render(fmt.Sprintf("%-*s", ui.TableColName, shared.TruncateString(names[i], ui.TableColName))),
-					ui.TableColID, shared.TruncateString(ids[i], ui.TableColID),
-					ui.TableColLicense, shared.TruncateString(licenses[i], ui.TableColLicense),
-					ui.TableColCategories, shared.TruncateString(categories[i], ui.TableColCategories),
-					ui.TableColSource, shared.TruncateString(sources[i], ui.TableColSource))
-				// Add detailed score breakdown for debugging (only when --debug flag is enabled)
-				if IsDebug() {
-					baseScore := SearchBaseScore
-					userPrefs := config.GetUserPreferences()
-					usePopularity := userPrefs.Search.EnablePopularitySort
-					logDebugScoreBreakdown(results[i], query, i, len(results), baseScore, usePopularity)
-				}
-			}
-		} else {
-			// Use dynamic widths
-			fmt.Println(ui.TableHeader.Render(fmt.Sprintf("%-*s %-*s %-*s %-*s %-*s",
-				maxName, "Name",
-				maxID, "ID",
-				maxLicense, "License",
-				maxCategories, "Categories",
-				maxSource, "Source")))
-			fmt.Println(strings.Repeat("-", totalWidth))
-
-			for i := range results {
-				fmt.Printf("%s %-*s %-*s %-*s %-*s\n",
-					ui.TableSourceName.Render(fmt.Sprintf("%-*s", maxName, names[i])),
-					maxID, ids[i],
-					maxLicense, licenses[i],
-					maxCategories, categories[i],
-					maxSource, sources[i])
-				// Add detailed score breakdown for debugging (only when --debug flag is enabled)
-				if IsDebug() {
-					baseScore := SearchBaseScore
-					userPrefs := config.GetUserPreferences()
-					usePopularity := userPrefs.Search.EnablePopularitySort
-					logDebugScoreBreakdown(results[i], query, i, len(results), baseScore, usePopularity)
-				}
-			}
+		// Render table with priority configuration
+		tableConfig := components.TableConfig{
+			Columns: []components.ColumnConfig{
+				{Header: "Font Name", MinWidth: 32, PercentWidth: 22.0},
+				{Header: "Font ID", MinWidth: 39, PercentWidth: 24.0}, // Highest priority, don't trim
+				{Header: "License", MinWidth: 3, PercentWidth: 8.0},   // Lowest priority
+				{Header: "Categories", PercentWidth: 22.0},
+				{Header: "Source", MaxWidth: 14, PercentWidth: 24.0},
+			},
+			Rows:  tableRows,
+			Width: 0, // Auto-detect terminal width
+			Mode:  components.TableModeStatic,
 		}
+
+		fmt.Println(components.RenderStaticTable(tableConfig))
 
 		// Show when FontGet last updated sources
 		if lastUpdated, err := config.GetSourcesLastUpdated(); err == nil && !lastUpdated.IsZero() {

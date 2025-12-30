@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"fontget/internal/cmdutils"
+	"fontget/internal/components"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
@@ -243,10 +244,9 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			fmt.Printf("%s\n\n", ui.Text.Render(info))
 		}
 
-		fmt.Println(ui.GetListTableHeader())
-		fmt.Println(ui.GetTableSeparator())
-
-		for i, fam := range names {
+		// Build table rows with priority: Font ID > Font Name > Source > Categories > License
+		var tableRows [][]string
+		for _, fam := range names {
 			group := filteredFamilies[fam]
 			sort.Slice(group, func(i, j int) bool { return group[i].Style < group[j].Style })
 			rep := group[0]
@@ -266,16 +266,19 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			// Format Source
 			source := rep.Source
 
-			fmt.Printf("%s %-*s %-*s %-*s %-*s %-*s %-*s\n",
-				ui.TableSourceName.Render(fmt.Sprintf("%-*s", ui.TableColListName, shared.TruncateString(fam, ui.TableColListName))),
-				ui.TableColListID, shared.TruncateString(fontID, ui.TableColListID),
-				ui.TableColListLicense, shared.TruncateString(license, ui.TableColListLicense),
-				ui.TableColListCategory, shared.TruncateString(categories, ui.TableColListCategory),
-				ui.TableColType, rep.Type,
-				ui.TableColScope, rep.Scope,
-				ui.TableColListSource, shared.TruncateString(source, ui.TableColListSource),
-			)
+			// Build row: Font Name, Font ID, License, Categories, Type, Scope, Source
+			row := []string{
+				fam,
+				fontID,
+				license,
+				categories,
+				rep.Type,
+				rep.Scope,
+				source,
+			}
+			tableRows = append(tableRows, row)
 
+			// Add variant rows if requested
 			if showVariants {
 				uniq := map[string]bool{}
 				var styles []string
@@ -287,22 +290,44 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 				}
 				sort.Strings(styles)
 				for _, s := range styles {
-					row := fmt.Sprintf("  ↳ %s", s)
-					fmt.Printf("%s %-*s %-*s %-*s %-*s %-*s %-*s\n",
-						fmt.Sprintf("%-*s", ui.TableColListName, row),
-						ui.TableColListID, "",
-						ui.TableColListLicense, "",
-						ui.TableColListCategory, "",
-						ui.TableColType, "",
-						ui.TableColScope, "",
-						ui.TableColListSource, "",
-					)
-				}
-				if i < len(names)-1 {
-					fmt.Println()
+					variantRow := []string{
+						fmt.Sprintf("  ↳ %s", s),
+						"",
+						"",
+						"",
+						"",
+						"",
+						"",
+					}
+					tableRows = append(tableRows, variantRow)
 				}
 			}
 		}
+
+		// Render table with priority configuration
+		tableConfig := components.TableConfig{
+			Columns: []components.ColumnConfig{
+				{Header: "Font Name", MinWidth: 32, PercentWidth: 20.0},
+				{Header: "Font ID", MinWidth: 39, PercentWidth: 22.0}, // Highest priority, don't trim
+				{Header: "License", PercentWidth: 6.0},                // Lowest priority
+				{Header: "Categories", PercentWidth: 16.0},
+				{Header: "Type", MinWidth: 0, PercentWidth: 6.0},
+				{Header: "Scope", MinWidth: 8, PercentWidth: 14.0},
+				{Header: "Source", MinWidth: 10, MaxWidth: 10, PercentWidth: 16.0}, // Expandable column
+			},
+
+			// REFERENCE FROM SEARCH.GO
+			// 	{Header: "Font Name", MinWidth: 32, PercentWidth: 22.0},
+			//  {Header: "Font ID", MinWidth: 39, PercentWidth: 24.0}, // Highest priority, don't trim
+			//  {Header: "License", MinWidth: 3, PercentWidth: 8.0},   // Lowest priority
+			//	{Header: "Categories", PercentWidth: 22.0},
+			//  {Header: "Source", MaxWidth: 14, PercentWidth: 24.0},
+			Rows:  tableRows,
+			Width: 0, // Auto-detect terminal width
+			Mode:  components.TableModeStatic,
+		}
+
+		fmt.Println(components.RenderStaticTable(tableConfig))
 
 		fmt.Println()
 		return nil
