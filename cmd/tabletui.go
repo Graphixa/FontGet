@@ -28,13 +28,15 @@ func (m tableTuiModel) Init() tea.Cmd {
 
 // calculateAvailableHeight calculates the available height for the table
 // Accounts for title, instructions, help text, and margins
+// Includes a small buffer to ensure selected row stays visible with some "lead" space
 func (m tableTuiModel) calculateAvailableHeight() int {
 	titleHeight := 2        // Title + blank line
 	instructionsHeight := 2 // Instructions (2 lines)
 	helpHeight := 4         // Help text (4 lines)
 	margins := 2            // Top/bottom margins
+	buffer := 1             // Small buffer to keep selected row visible with lead space
 
-	availableHeight := m.height - titleHeight - instructionsHeight - helpHeight - margins
+	availableHeight := m.height - titleHeight - instructionsHeight - helpHeight - margins - buffer
 	if availableHeight < 3 {
 		availableHeight = 3 // Minimum height for table
 	}
@@ -88,27 +90,16 @@ func (m tableTuiModel) View() string {
 		return ""
 	}
 
-	// Calculate available height for table
-	availableHeight := m.calculateAvailableHeight()
-
 	// Build title and instructions (fixed at top)
 	header := ui.PageTitle.Render("Dynamic TUI Table Test") + "\n\n" +
 		ui.Text.Render("This is a dynamic TUI table that resizes with the terminal window.") + "\n" +
 		ui.Text.Render("Try resizing your terminal to see the table adjust automatically.") + "\n\n"
 
-	// Table (constrained to available height and width)
+	// Table (constrained to width only - height is handled by bubbles/table component)
 	var tableOutput string
 	if m.tableModel != nil {
 		tableOutput = m.tableModel.View()
-		// Constrain table height if needed
-		if m.height > 0 {
-			tableLines := strings.Split(tableOutput, "\n")
-			if len(tableLines) > availableHeight {
-				tableLines = tableLines[:availableHeight]
-			}
-			tableOutput = strings.Join(tableLines, "\n")
-		}
-		// Constrain table width
+		// Constrain table width only - let bubbles/table handle height/scrolling
 		if m.width > 0 {
 			tableOutput = lipgloss.NewStyle().
 				Width(m.width).
