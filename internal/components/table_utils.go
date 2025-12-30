@@ -131,17 +131,26 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 
 	if totalPercent > 0 && remainingWidth > 0 {
 		// Distribute remaining width proportionally based on percentages
+		distributed := 0
 		for _, idx := range percentColumns {
 			col := config.Columns[idx]
 			proportionalWidth := int(float64(remainingWidth) * col.PercentWidth / totalPercent)
 			columnWidths[idx] += proportionalWidth
+			distributed += proportionalWidth
 		}
-		// Recalculate remaining width after percentage distribution
-		usedWidth := 0
-		for _, idx := range percentColumns {
-			usedWidth += (columnWidths[idx] - config.Columns[idx].MinWidth)
+		// Handle rounding: distribute any remaining width proportionally
+		remainingWidth -= distributed
+		if remainingWidth > 0 && len(percentColumns) > 0 {
+			// Distribute remaining (from rounding) proportionally
+			for _, idx := range percentColumns {
+				if remainingWidth > 0 {
+					columnWidths[idx]++
+					remainingWidth--
+				} else {
+					break
+				}
+			}
 		}
-		remainingWidth -= usedWidth
 	}
 
 	// Step 6: Distribute remaining width equally to columns without fixed/percent widths
@@ -163,18 +172,50 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 		}
 	}
 
-	// Step 7: Apply MaxWidth constraints
+	// Step 7: Apply MaxWidth constraints and redistribute excess proportionally
 	for i, col := range config.Columns {
 		if col.MaxWidth > 0 && columnWidths[i] > col.MaxWidth {
 			excess := columnWidths[i] - col.MaxWidth
 			columnWidths[i] = col.MaxWidth
-			// Redistribute excess to other columns that haven't hit their max
+
+			// Find columns that can receive excess (haven't hit their max and have percentages)
+			redistributeColumns := make([]int, 0)
+			totalRedistPercent := 0.0
 			for j := range columnWidths {
 				if j != i && (config.Columns[j].MaxWidth == 0 || columnWidths[j] < config.Columns[j].MaxWidth) {
-					columnWidths[j] += excess / (len(columnWidths) - 1)
-					excess = excess % (len(columnWidths) - 1)
-					if excess == 0 {
-						break
+					if config.Columns[j].PercentWidth > 0 {
+						redistributeColumns = append(redistributeColumns, j)
+						totalRedistPercent += config.Columns[j].PercentWidth
+					}
+				}
+			}
+
+			// Redistribute proportionally based on percentages
+			if totalRedistPercent > 0 && len(redistributeColumns) > 0 {
+				for _, idx := range redistributeColumns {
+					proportionalExcess := int(float64(excess) * config.Columns[idx].PercentWidth / totalRedistPercent)
+					columnWidths[idx] += proportionalExcess
+					excess -= proportionalExcess
+				}
+				// Distribute any remaining excess equally (rounding errors)
+				if excess > 0 && len(redistributeColumns) > 0 {
+					perColumn := excess / len(redistributeColumns)
+					remainder := excess % len(redistributeColumns)
+					for k, idx := range redistributeColumns {
+						columnWidths[idx] += perColumn
+						if k < remainder {
+							columnWidths[idx]++
+						}
+					}
+				}
+			} else if len(redistributeColumns) > 0 {
+				// No percentages available, distribute equally as fallback
+				perColumn := excess / len(redistributeColumns)
+				remainder := excess % len(redistributeColumns)
+				for k, idx := range redistributeColumns {
+					columnWidths[idx] += perColumn
+					if k < remainder {
+						columnWidths[idx]++
 					}
 				}
 			}
