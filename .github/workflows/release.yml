@@ -26,6 +26,12 @@ jobs:
       - name: Run tests
         run: go test ./...
 
+      - name: Validate GoReleaser config
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: check
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
