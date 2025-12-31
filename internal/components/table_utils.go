@@ -196,6 +196,7 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 	// Non-truncatable columns already have their widths set in Step 0.5
 	// (they use the larger of percentage target or content width)
 	// For truncatable columns, use the percentage-based target calculated in Step 0
+	// But ensure MinWidth is respected
 	for _, i := range truncatableColumns {
 		col := config.Columns[i]
 		if col.Width > 0 {
@@ -204,6 +205,10 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 		} else {
 			// Use the target width calculated in Step 0 (based on percentage of total width)
 			columnWidths[i] = targetWidths[i]
+		}
+		// Ensure MinWidth is respected for truncatable columns too
+		if col.MinWidth > 0 && columnWidths[i] < col.MinWidth {
+			columnWidths[i] = col.MinWidth
 		}
 	}
 
