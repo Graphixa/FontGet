@@ -71,6 +71,9 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 	// Get the font directory
 	fontDir := fontManager.GetFontDir(scope)
 
+	// Normalize the query font name for comparison
+	normalizedQuery := normalizeFontName(fontFamily)
+
 	// Get all installed fonts
 	var matchingFonts []string
 	filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
@@ -78,14 +81,26 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 			return err
 		}
 		if !info.IsDir() {
-			// Extract family name from the font file
-			family, _ := parseFontName(info.Name())
+			// Try to extract family name from font metadata first (most accurate)
+			var familyName string
+			if metadata, err := platform.ExtractFontMetadata(path); err == nil {
+				// Prefer TypographicFamily over FamilyName for accuracy
+				if metadata.TypographicFamily != "" {
+					familyName = metadata.TypographicFamily
+				} else if metadata.FamilyName != "" {
+					familyName = metadata.FamilyName
+				}
+			}
 
-			// Normalize both names for comparison
-			normalizedFamily := normalizeFontName(family)
-			normalizedQuery := normalizeFontName(fontFamily)
+			// Fallback to filename parsing if metadata extraction failed
+			if familyName == "" {
+				familyName, _ = parseFontName(info.Name())
+			}
 
-			// Only match if the normalized names are exactly equal
+			// Normalize the extracted family name for comparison
+			normalizedFamily := normalizeFontName(familyName)
+
+			// Match if the normalized names are exactly equal
 			if normalizedFamily == normalizedQuery {
 				matchingFonts = append(matchingFonts, info.Name())
 			}
@@ -482,8 +497,26 @@ func preEvaluateFontsForRemoval(
 			}
 
 			if oppositeScope != "" {
-				// Always add to notFoundFonts - the message handler will check the opposite scope
-				// and show the helpful message about using --scope if the font is found there
+				// Check opposite scope for the font
+				oppositeMatchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+				if len(oppositeMatchingFonts) > 0 {
+					// Font found in opposite scope - check if it's a protected system font first
+					oppositeFontDir := fontManager.GetFontDir(oppositeScope)
+					oppositeFontPath := filepath.Join(oppositeFontDir, oppositeMatchingFonts[0])
+					oppositeProperName := extractFontFamilyNameFromPath(oppositeFontPath)
+
+					// If it's a protected system font, show the protection error instead of scope message
+					if shared.IsPlatformSystemFont(oppositeProperName) || shared.IsPlatformSystemFont(searchName) {
+						// Add to foundFonts so it gets caught by the protection check later
+						foundFonts = append(foundFonts, FontInfo{
+							SearchName: fontName,
+							ProperName: oppositeProperName,
+						})
+						fontNameMap[fontName] = oppositeProperName
+						continue
+					}
+				}
+				// Not a protected font, show scope message as usual
 				notFoundFonts = append(notFoundFonts, fontName)
 				continue // Skip adding to foundFonts
 			}
@@ -743,6 +776,39 @@ Use --scope to set removal location:
 		// This ensures we only show found fonts in the progress bar
 		foundFonts, notFoundFonts, _ := preEvaluateFontsForRemoval(fontNames, scopes, fontManager, r)
 
+		// Filter out protected system fonts before removal
+		// This prevents users from accidentally removing critical system fonts on their platform
+		protectedFonts := []FontInfo{}
+		removableFonts := []FontInfo{}
+		for _, font := range foundFonts {
+			// Check both the proper name and search name to catch variations
+			isProtected := shared.IsPlatformSystemFont(font.ProperName) || shared.IsPlatformSystemFont(font.SearchName)
+			if isProtected {
+				protectedFonts = append(protectedFonts, font)
+				output.GetDebug().State("Protected system font detected: ProperName='%s', SearchName='%s'", font.ProperName, font.SearchName)
+			} else {
+				removableFonts = append(removableFonts, font)
+			}
+		}
+		// If any protected fonts were found, show error and exit
+		if len(protectedFonts) > 0 {
+
+			fmt.Printf("%s\n", ui.ErrorText.Render("Cannot remove protected system fonts"))
+			for _, font := range protectedFonts {
+				fmt.Printf("  - %s (Protected)\n", font.ProperName)
+			}
+			if len(removableFonts) > 0 {
+				fmt.Println()
+				fmt.Printf("%s\n", ui.Text.Render("The following fonts can still be removed:"))
+				for _, font := range removableFonts {
+					fmt.Printf("  - %s\n", font.ProperName)
+				}
+			}
+			fmt.Println()
+			return nil // Already printed user-friendly message
+		}
+		foundFonts = removableFonts
+
 		// If no fonts to remove, show not found message and exit (don't show progress bar)
 		if len(foundFonts) == 0 {
 			if len(notFoundFonts) > 0 {
@@ -831,21 +897,41 @@ Use --scope to set removal location:
 
 					// Display truly not found fonts with suggestions (only if there are any)
 					if len(trulyNotFound) > 0 {
-						// Get installed font family names for suggestions
+						// Get installed font family names for suggestions using the same method as list command
+						// Always collect from ALL scopes for suggestions (both user and machine), regardless of removal scope
+						// This matches the list command behavior which shows fonts from all scopes by default
 						var installedFontNames []string
-						for _, scopeType := range scopes {
-							fontDir := fontManager.GetFontDir(scopeType)
-							fontFiles, err := platform.ListInstalledFonts(fontDir)
-							if err == nil {
-								// Extract unique family names from installed fonts
-								seenFamilies := make(map[string]bool)
-								for _, fontFile := range fontFiles {
-									fontPath := filepath.Join(fontDir, fontFile)
-									familyName := extractFontFamilyNameFromPath(fontPath)
-									normalized := normalizeFontName(familyName)
-									if !seenFamilies[normalized] && familyName != "" {
-										seenFamilies[normalized] = true
-										installedFontNames = append(installedFontNames, familyName)
+						allScopesForSuggestions := []platform.InstallationScope{platform.UserScope, platform.MachineScope}
+						// Use collectFonts from list.go to get all fonts (same logic as list command)
+						parsedFonts, err := collectFonts(allScopesForSuggestions, fontManager, "", true) // suppressVerbose = true
+						if err == nil {
+							// Group by family (same as list command)
+							families := groupByFamily(parsedFonts)
+							seenFamilies := make(map[string]bool)
+							for familyName := range families {
+								normalized := normalizeFontName(familyName)
+								if !seenFamilies[normalized] && familyName != "" {
+									seenFamilies[normalized] = true
+									installedFontNames = append(installedFontNames, familyName)
+								}
+							}
+						} else {
+							// Fallback to manual collection if collectFonts fails
+							// Always collect from ALL scopes for suggestions
+							for _, scopeType := range allScopesForSuggestions {
+								fontDir := fontManager.GetFontDir(scopeType)
+								fontFiles, err := platform.ListInstalledFonts(fontDir)
+								if err == nil {
+									// Extract unique family names from installed fonts
+									seenFamilies := make(map[string]bool)
+									for _, fontFile := range fontFiles {
+										fontPath := filepath.Join(fontDir, fontFile)
+										familyName := extractFontFamilyNameFromPath(fontPath)
+										normalized := normalizeFontName(familyName)
+										if !seenFamilies[normalized] && familyName != "" {
+											seenFamilies[normalized] = true
+											installedFontNames = append(installedFontNames, familyName)
+										}
 									}
 								}
 							}
@@ -866,16 +952,45 @@ Use --scope to set removal location:
 						}
 						installedFontNames = filteredInstalledFontNames
 
-						// Show header first
-						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
-
 						// Show all not-found fonts grouped together
 						if len(trulyNotFound) == 1 {
-							// Single font - show with suggestions
+							// Single font - show with suggestions (no header needed)
 							fontName := trulyNotFound[0]
 							var similar []string
 							if len(installedFontNames) > 0 {
 								similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+
+								// Build a set of already found fonts for deduplication
+								similarSet := make(map[string]bool)
+								for _, s := range similar {
+									similarSet[strings.ToLower(s)] = true
+								}
+
+								// Always run fallback substring search to catch partial matches
+								// This ensures we show suggestions even for very short queries or when
+								// FindSimilarFonts doesn't catch all matches
+								queryLower := strings.ToLower(fontName)
+								for _, installedFont := range installedFontNames {
+									if len(similar) >= 5 {
+										break
+									}
+									installedLower := strings.ToLower(installedFont)
+									// Skip if already in similar list
+									if similarSet[installedLower] {
+										continue
+									}
+									// Check if query is a substring of installed font or vice versa
+									if strings.Contains(installedLower, queryLower) || strings.Contains(queryLower, installedLower) {
+										// Skip exact matches
+										if installedLower != queryLower {
+											normalizedInstalled := normalizeFontName(installedFont)
+											if !notFoundNormalized[normalizedInstalled] {
+												similar = append(similar, installedFont)
+												similarSet[installedLower] = true
+											}
+										}
+									}
+								}
 							}
 
 							// Filter out any suggestions that are also in the not found list
@@ -887,17 +1002,92 @@ Use --scope to set removal location:
 							}
 							similar = filteredSimilar
 
+							var hasSuggestions bool
 							if len(similar) > 0 {
 								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
-								fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
-								for _, similarFont := range similar {
-									fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+
+								// Match installed font names to repository entries (like list command)
+								// Try to match, but always show table even if matching fails
+								matches, err := repo.MatchAllInstalledFonts(similar, nil)
+								if err != nil {
+									// If matching fails, create empty matches map - we'll still show table
+									matches = make(map[string]*repo.InstalledFontMatch)
+								}
+
+								// Build table from ALL suggested fonts (matched or not)
+								var tableRows [][]string
+								for _, fontName := range similar {
+									if match, exists := matches[fontName]; exists && match != nil {
+										// Font matched to repository - show full info
+										categories := shared.PlaceholderNA
+										if len(match.Categories) > 0 {
+											categories = match.Categories[0]
+										}
+
+										license := match.License
+										if license == "" {
+											license = shared.PlaceholderNA
+										}
+
+										row := []string{
+											fontName,
+											match.FontID,
+											categories,
+											license,
+											match.Source,
+										}
+										tableRows = append(tableRows, row)
+									} else {
+										// Font not matched to repository - show with font name only
+										row := []string{
+											fontName,
+											"",
+											shared.PlaceholderNA,
+											shared.PlaceholderNA,
+											"",
+										}
+										tableRows = append(tableRows, row)
+									}
+								}
+
+								// Always display table if we have suggestions
+								if len(tableRows) > 0 {
+									fmt.Printf("%s\n\n", ui.Text.Render("Did you mean any of these installed fonts?"))
+
+									// Render table with priority configuration
+									tableConfig := components.TableConfig{
+										Columns: []components.ColumnConfig{
+											{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+											{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+											{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+											{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+											{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
+										},
+										Rows:     tableRows,
+										Width:    0,   // Auto-detect terminal width
+										MaxWidth: 120, // Maximum width
+										Mode:     components.TableModeStatic,
+										Padding:  1, // Default padding
+									}
+
+									fmt.Println(components.RenderStaticTable(tableConfig))
+									fmt.Println()
+									hasSuggestions = true
 								}
 							} else {
-								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf(" - %s", fontName)))
+								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+								hasSuggestions = false
 							}
+
+							// Add blank line before "Try using..." only if we didn't show suggestions
+							if !hasSuggestions {
+								fmt.Println()
+							}
+							fmt.Printf("Try using 'fontget list' to show currently installed fonts.")
+							fmt.Println()
 						} else {
-							// Multiple fonts - show grouped format
+							// Multiple fonts - show grouped format with header
+							fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
 							for _, fontName := range trulyNotFound {
 								fmt.Printf(" - %s\n", fontName)
 							}
@@ -914,6 +1104,38 @@ Use --scope to set removal location:
 								var similar []string
 								if len(installedFontNames) > 0 {
 									similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+
+									// Build a set of already found fonts for deduplication
+									similarSet := make(map[string]bool)
+									for _, s := range similar {
+										similarSet[strings.ToLower(s)] = true
+									}
+
+									// Always run fallback substring search to catch partial matches
+									// This ensures we show suggestions even for very short queries or when
+									// FindSimilarFonts doesn't catch all matches
+									queryLower := strings.ToLower(fontName)
+									for _, installedFont := range installedFontNames {
+										if len(similar) >= 5 {
+											break
+										}
+										installedLower := strings.ToLower(installedFont)
+										// Skip if already in similar list
+										if similarSet[installedLower] {
+											continue
+										}
+										// Check if query is a substring of installed font or vice versa
+										if strings.Contains(installedLower, queryLower) || strings.Contains(queryLower, installedLower) {
+											// Skip exact matches
+											if installedLower != queryLower {
+												normalizedInstalled := normalizeFontName(installedFont)
+												if !notFoundNormalized[normalizedInstalled] {
+													similar = append(similar, installedFont)
+													similarSet[installedLower] = true
+												}
+											}
+										}
+									}
 								}
 								// Deduplicate suggestions and filter out not-found fonts
 								for _, suggestion := range similar {
@@ -929,21 +1151,97 @@ Use --scope to set removal location:
 							}
 
 							// Show consolidated suggestions if any
+							var hasSuggestions bool
 							if len(allSimilar) > 0 {
-								fmt.Println()
-								fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
-								for _, similarFont := range allSimilar {
-									fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+								// Match installed font names to repository entries (like list command)
+								// Limit to maxSuggestions before matching
+								fontsToMatch := allSimilar
+								if len(fontsToMatch) > maxSuggestions {
+									fontsToMatch = fontsToMatch[:maxSuggestions]
 								}
+								// Try to match, but always show table even if matching fails
+								matches, err := repo.MatchAllInstalledFonts(fontsToMatch, nil)
+								if err != nil {
+									// If matching fails, create empty matches map - we'll still show table
+									matches = make(map[string]*repo.InstalledFontMatch)
+								}
+
+								// Build table from ALL suggested fonts (matched or not)
+								var tableRows [][]string
+								for _, fontName := range fontsToMatch {
+									if match, exists := matches[fontName]; exists && match != nil {
+										// Font matched to repository - show full info
+										categories := shared.PlaceholderNA
+										if len(match.Categories) > 0 {
+											categories = match.Categories[0]
+										}
+
+										license := match.License
+										if license == "" {
+											license = shared.PlaceholderNA
+										}
+
+										row := []string{
+											fontName,
+											match.FontID,
+											categories,
+											license,
+											match.Source,
+										}
+										tableRows = append(tableRows, row)
+									} else {
+										// Font not matched to repository - show with font name only
+										row := []string{
+											fontName,
+											"",
+											shared.PlaceholderNA,
+											shared.PlaceholderNA,
+											"",
+										}
+										tableRows = append(tableRows, row)
+									}
+								}
+
+								// Always display table if we have suggestions
+								if len(tableRows) > 0 {
+									fmt.Println()
+									fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
+
+									// Render table with priority configuration
+									tableConfig := components.TableConfig{
+										Columns: []components.ColumnConfig{
+											{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+											{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+											{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+											{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+											{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
+										},
+										Rows:     tableRows,
+										Width:    0,   // Auto-detect terminal width
+										MaxWidth: 120, // Maximum width
+										Mode:     components.TableModeStatic,
+										Padding:  1, // Default padding
+									}
+
+									fmt.Println(components.RenderStaticTable(tableConfig))
+									fmt.Println()
+									hasSuggestions = true
+								}
+							} else {
+								hasSuggestions = false
 							}
+
+							// Add blank line before "Try using..." only if we didn't show suggestions
+							if !hasSuggestions {
+								fmt.Println()
+							}
+							fmt.Printf("Try using 'fontget list' to show currently installed fonts.")
+							fmt.Println()
 						}
 
-						// Add blank line before hint or next section
+						// Add blank line before next section if needed
 						if len(fontsInOppositeScope) > 0 {
 							fmt.Println()
-						} else if len(trulyNotFound) > 0 {
-							fmt.Println()
-							fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
 						}
 					}
 
@@ -1482,21 +1780,41 @@ Use --scope to set removal location:
 					scopeDisplay = "user"
 				}
 
-				// Get installed font family names for suggestions
+				// Get installed font family names for suggestions using the same method as list command
+				// Always collect from ALL scopes for suggestions (both user and machine), regardless of removal scope
+				// This matches the list command behavior which shows fonts from all scopes by default
 				var installedFontNames []string
-				for _, scopeType := range scopes {
-					fontDir := fontManager.GetFontDir(scopeType)
-					fontFiles, err := platform.ListInstalledFonts(fontDir)
-					if err == nil {
-						// Extract unique family names from installed fonts
-						seenFamilies := make(map[string]bool)
-						for _, fontFile := range fontFiles {
-							fontPath := filepath.Join(fontDir, fontFile)
-							familyName := extractFontFamilyNameFromPath(fontPath)
-							normalized := normalizeFontName(familyName)
-							if !seenFamilies[normalized] && familyName != "" {
-								seenFamilies[normalized] = true
-								installedFontNames = append(installedFontNames, familyName)
+				allScopesForSuggestions := []platform.InstallationScope{platform.UserScope, platform.MachineScope}
+				// Use collectFonts from list.go to get all fonts (same logic as list command)
+				parsedFonts, err := collectFonts(allScopesForSuggestions, fontManager, "", true) // suppressVerbose = true
+				if err == nil {
+					// Group by family (same as list command)
+					families := groupByFamily(parsedFonts)
+					seenFamilies := make(map[string]bool)
+					for familyName := range families {
+						normalized := normalizeFontName(familyName)
+						if !seenFamilies[normalized] && familyName != "" {
+							seenFamilies[normalized] = true
+							installedFontNames = append(installedFontNames, familyName)
+						}
+					}
+				} else {
+					// Fallback to manual collection if collectFonts fails
+					// Always collect from ALL scopes for suggestions
+					for _, scopeType := range allScopesForSuggestions {
+						fontDir := fontManager.GetFontDir(scopeType)
+						fontFiles, err := platform.ListInstalledFonts(fontDir)
+						if err == nil {
+							// Extract unique family names from installed fonts
+							seenFamilies := make(map[string]bool)
+							for _, fontFile := range fontFiles {
+								fontPath := filepath.Join(fontDir, fontFile)
+								familyName := extractFontFamilyNameFromPath(fontPath)
+								normalized := normalizeFontName(familyName)
+								if !seenFamilies[normalized] && familyName != "" {
+									seenFamilies[normalized] = true
+									installedFontNames = append(installedFontNames, familyName)
+								}
 							}
 						}
 					}
@@ -1515,16 +1833,45 @@ Use --scope to set removal location:
 				}
 				installedFontNames = filteredInstalledFontNames
 
-				// Show header first
-				fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
-
 				// Show all not-found fonts grouped together
 				if len(notFoundFonts) == 1 {
-					// Single font - show with suggestions
+					// Single font - show with suggestions (no header needed)
 					fontName := notFoundFonts[0]
 					var similar []string
 					if len(installedFontNames) > 0 {
 						similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+
+						// Build a set of already found fonts for deduplication
+						similarSet := make(map[string]bool)
+						for _, s := range similar {
+							similarSet[strings.ToLower(s)] = true
+						}
+
+						// Always run fallback substring search to catch partial matches
+						// This ensures we show suggestions even for very short queries or when
+						// FindSimilarFonts doesn't catch all matches
+						queryLower := strings.ToLower(fontName)
+						for _, installedFont := range installedFontNames {
+							if len(similar) >= 5 {
+								break
+							}
+							installedLower := strings.ToLower(installedFont)
+							// Skip if already in similar list
+							if similarSet[installedLower] {
+								continue
+							}
+							// Check if query is a substring of installed font or vice versa
+							if strings.Contains(installedLower, queryLower) || strings.Contains(queryLower, installedLower) {
+								// Skip exact matches
+								if installedLower != queryLower {
+									normalizedInstalled := normalizeFontName(installedFont)
+									if !notFoundNormalized[normalizedInstalled] {
+										similar = append(similar, installedFont)
+										similarSet[installedLower] = true
+									}
+								}
+							}
+						}
 					}
 
 					// Filter out any suggestions that are also in the not found list
@@ -1536,17 +1883,92 @@ Use --scope to set removal location:
 					}
 					similar = filteredSimilar
 
+					var hasSuggestions bool
 					if len(similar) > 0 {
 						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
-						fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
-						for _, similarFont := range similar {
-							fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+
+						// Match installed font names to repository entries (like list command)
+						// Try to match, but always show table even if matching fails
+						matches, err := repo.MatchAllInstalledFonts(similar, nil)
+						if err != nil {
+							// If matching fails, create empty matches map - we'll still show table
+							matches = make(map[string]*repo.InstalledFontMatch)
+						}
+
+						// Build table from ALL suggested fonts (matched or not)
+						var tableRows [][]string
+						for _, fontName := range similar {
+							if match, exists := matches[fontName]; exists && match != nil {
+								// Font matched to repository - show full info
+								categories := shared.PlaceholderNA
+								if len(match.Categories) > 0 {
+									categories = match.Categories[0]
+								}
+
+								license := match.License
+								if license == "" {
+									license = shared.PlaceholderNA
+								}
+
+								row := []string{
+									fontName,
+									match.FontID,
+									categories,
+									license,
+									match.Source,
+								}
+								tableRows = append(tableRows, row)
+							} else {
+								// Font not matched to repository - show with font name only
+								row := []string{
+									fontName,
+									"",
+									shared.PlaceholderNA,
+									shared.PlaceholderNA,
+									"",
+								}
+								tableRows = append(tableRows, row)
+							}
+						}
+
+						// Always display table if we have suggestions
+						if len(tableRows) > 0 {
+							fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
+
+							// Render table with priority configuration
+							tableConfig := components.TableConfig{
+								Columns: []components.ColumnConfig{
+									{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+									{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+									{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+									{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+									{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
+								},
+								Rows:     tableRows,
+								Width:    0,   // Auto-detect terminal width
+								MaxWidth: 120, // Maximum width
+								Mode:     components.TableModeStatic,
+								Padding:  1, // Default padding
+							}
+
+							fmt.Println(components.RenderStaticTable(tableConfig))
+							fmt.Println()
+							hasSuggestions = true
 						}
 					} else {
-						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf(" - %s", fontName)))
+						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+						hasSuggestions = false
 					}
+
+					// Add blank line before "Try using..." only if we didn't show suggestions
+					if !hasSuggestions {
+						fmt.Println()
+					}
+					fmt.Printf("Try using 'fontget list' to show currently installed fonts.")
+					fmt.Println()
 				} else {
-					// Multiple fonts - show grouped format
+					// Multiple fonts - show grouped format with header
+					fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
 					for _, fontName := range notFoundFonts {
 						fmt.Printf(" - %s\n", fontName)
 					}
@@ -1563,6 +1985,38 @@ Use --scope to set removal location:
 						var similar []string
 						if len(installedFontNames) > 0 {
 							similar = shared.FindSimilarFonts(fontName, installedFontNames, true) // true = installed fonts
+
+							// Build a set of already found fonts for deduplication
+							similarSet := make(map[string]bool)
+							for _, s := range similar {
+								similarSet[strings.ToLower(s)] = true
+							}
+
+							// Always run fallback substring search to catch partial matches
+							// This ensures we show suggestions even for very short queries or when
+							// FindSimilarFonts doesn't catch all matches
+							queryLower := strings.ToLower(fontName)
+							for _, installedFont := range installedFontNames {
+								if len(similar) >= 5 {
+									break
+								}
+								installedLower := strings.ToLower(installedFont)
+								// Skip if already in similar list
+								if similarSet[installedLower] {
+									continue
+								}
+								// Check if query is a substring of installed font or vice versa
+								if strings.Contains(installedLower, queryLower) || strings.Contains(queryLower, installedLower) {
+									// Skip exact matches
+									if installedLower != queryLower {
+										normalizedInstalled := normalizeFontName(installedFont)
+										if !notFoundNormalized[normalizedInstalled] {
+											similar = append(similar, installedFont)
+											similarSet[installedLower] = true
+										}
+									}
+								}
+							}
 						}
 						// Deduplicate suggestions and filter out not-found fonts
 						for _, suggestion := range similar {
@@ -1578,20 +2032,93 @@ Use --scope to set removal location:
 					}
 
 					// Show consolidated suggestions if any
+					var hasSuggestions bool
 					if len(allSimilar) > 0 {
-						fmt.Println()
-						fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
-						for _, similarFont := range allSimilar {
-							fmt.Printf(" - %s\n", ui.TableSourceName.Render(similarFont))
+						// Match installed font names to repository entries (like list command)
+						// Limit to maxSuggestions before matching
+						fontsToMatch := allSimilar
+						if len(fontsToMatch) > maxSuggestions {
+							fontsToMatch = fontsToMatch[:maxSuggestions]
 						}
-					}
-				}
+						// Try to match, but always show table even if matching fails
+						matches, err := repo.MatchAllInstalledFonts(fontsToMatch, nil)
+						if err != nil {
+							// If matching fails, create empty matches map - we'll still show table
+							matches = make(map[string]*repo.InstalledFontMatch)
+						}
 
-				// Add blank line before "Try using..." message (within section)
-				fmt.Println()
-				fmt.Printf("Try using 'fontget list' to show currently installed fonts.\n")
-				// Section ends with blank line per spacing framework
-				fmt.Println()
+						// Build table from ALL suggested fonts (matched or not)
+						var tableRows [][]string
+						for _, fontName := range fontsToMatch {
+							if match, exists := matches[fontName]; exists && match != nil {
+								// Font matched to repository - show full info
+								categories := shared.PlaceholderNA
+								if len(match.Categories) > 0 {
+									categories = match.Categories[0]
+								}
+
+								license := match.License
+								if license == "" {
+									license = shared.PlaceholderNA
+								}
+
+								row := []string{
+									fontName,
+									match.FontID,
+									categories,
+									license,
+									match.Source,
+								}
+								tableRows = append(tableRows, row)
+							} else {
+								// Font not matched to repository - show with font name only
+								row := []string{
+									fontName,
+									"",
+									shared.PlaceholderNA,
+									shared.PlaceholderNA,
+									"",
+								}
+								tableRows = append(tableRows, row)
+							}
+						}
+
+						// Always display table if we have suggestions
+						if len(tableRows) > 0 {
+							fmt.Println()
+							fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these installed fonts?"))
+
+							// Render table with priority configuration
+							tableConfig := components.TableConfig{
+								Columns: []components.ColumnConfig{
+									{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+									{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+									{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+									{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+									{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
+								},
+								Rows:     tableRows,
+								Width:    0,   // Auto-detect terminal width
+								MaxWidth: 120, // Maximum width
+								Mode:     components.TableModeStatic,
+								Padding:  1, // Default padding
+							}
+
+							fmt.Println(components.RenderStaticTable(tableConfig))
+							fmt.Println()
+							hasSuggestions = true
+						}
+					} else {
+						hasSuggestions = false
+					}
+
+					// Add blank line before "Try using..." only if we didn't show suggestions
+					if !hasSuggestions {
+						fmt.Println()
+					}
+					fmt.Printf("Try using 'fontget list' to show currently installed fonts.")
+					fmt.Println()
+				}
 			}
 		}
 
