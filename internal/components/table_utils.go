@@ -46,10 +46,23 @@ type ColumnConfig struct {
 	Align        string  // "left", "right", "center" (default: "left")
 }
 
-// DefaultMaxTableWidth is the default maximum width for tables
-// This prevents tables from becoming too wide on ultrawide screens
-// Set to 0 to disable maximum width constraint
-const DefaultMaxTableWidth = 120
+const (
+	// DefaultMaxTableWidth is the default maximum width for tables
+	// This prevents tables from becoming too wide on ultrawide screens
+	// Set to 0 to disable maximum width constraint
+	DefaultMaxTableWidth = 120
+
+	// Minimum column width before hiding (in characters)
+	minColumnWidthBeforeHide = 4
+
+	// Priority weight calculation constants
+	priorityWeightStep     = 0.1 // Weight decreases by this amount per priority level
+	minPriorityWeight      = 0.1 // Minimum weight to avoid zero/negative weights
+	maxReductionAdjustment = 0.5 // Maximum 50% adjustment for priority-based reduction
+
+	// Distribution iteration safety limit
+	maxDistributionIterations = 100
+)
 
 // TableConfig holds table configuration
 type TableConfig struct {
@@ -127,19 +140,9 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 	// Step 0.5: For non-truncatable columns, check if content is wider than target
 	// If so, use content width; otherwise use target width (to respect percentage distribution)
 	nonTruncatableWidth := 0
-	nonTruncatableCount := 0
 	for i, col := range config.Columns {
 		if !col.Truncatable {
-			// Find the widest content in this column (header + all cells)
-			contentWidth := len(col.Header)
-			for _, row := range config.Rows {
-				if i < len(row) {
-					cellWidth := len(row[i])
-					if cellWidth > contentWidth {
-						contentWidth = cellWidth
-					}
-				}
-			}
+			contentWidth := calculateColumnContentWidth(config, i)
 			// Use the wider of: content width, target width (from percentage), or MinWidth
 			finalWidth := targetWidths[i] // Start with percentage-based target
 			if contentWidth > finalWidth {
@@ -151,7 +154,6 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 			// Don't respect MaxWidth for non-truncatable - content takes priority
 			columnWidths[i] = finalWidth
 			nonTruncatableWidth += finalWidth
-			nonTruncatableCount++
 		}
 	}
 
@@ -258,10 +260,7 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 				// Lower priority number (higher importance) = higher weight (less truncation)
 				// Higher priority number (lower importance) = lower weight (more truncation)
 				// Invert: weight decreases as priority number increases
-				weight := 1.0 - float64(col.Priority-1)*0.1
-				if weight < 0.1 {
-					weight = 0.1 // Minimum weight to avoid zero/negative
-				}
+				weight := calculatePriorityWeight(col.Priority)
 				priorityWeights[candidate.index] = weight
 				totalPriorityWeight += weight
 			}
@@ -277,7 +276,7 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 				// Higher priority = less reduction (closer to baseScale) = less truncation
 				// Lower priority = more reduction (further from baseScale) = more truncation
 				// Calculate reduction factor: lower priority columns contribute more to reduction
-				reductionFactor := 1.0 - (weight/totalPriorityWeight)*0.5 // Max 50% adjustment
+				reductionFactor := 1.0 - (weight/totalPriorityWeight)*maxReductionAdjustment
 				priorityScale := baseScale - (1.0-baseScale)*reductionFactor
 
 				newWidth := int(float64(columnWidths[i]) * priorityScale)
@@ -302,16 +301,7 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 		truncatedColumns := make([]int, 0)
 		for i, col := range config.Columns {
 			if col.Truncatable {
-				// Find the widest content in this column
-				contentWidth := len(col.Header)
-				for _, row := range config.Rows {
-					if i < len(row) {
-						cellWidth := len(row[i])
-						if cellWidth > contentWidth {
-							contentWidth = cellWidth
-						}
-					}
-				}
+				contentWidth := calculateColumnContentWidth(config, i)
 				// If content is wider than current width, column is truncated
 				if contentWidth > columnWidths[i] {
 					truncatedColumns = append(truncatedColumns, i)
@@ -333,16 +323,7 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 			col := config.Columns[idx]
 
 			// Calculate how much width this column needs to show all content
-			contentWidth := len(col.Header)
-			for _, row := range config.Rows {
-				if idx < len(row) {
-					cellWidth := len(row[idx])
-					if cellWidth > contentWidth {
-						contentWidth = cellWidth
-					}
-				}
-			}
-
+			contentWidth := calculateColumnContentWidth(config, idx)
 			neededWidth := contentWidth - columnWidths[idx]
 			if neededWidth > 0 {
 				// Respect MaxWidth if set
@@ -369,9 +350,8 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 		// Second pass: Distribute any remaining width proportionally to expandable columns
 		distributed := 0
 		iterations := 0
-		maxIterations := 100 // Safety limit
 
-		for remainingWidth > 0 && iterations < maxIterations {
+		for remainingWidth > 0 && iterations < maxDistributionIterations {
 			iterations++
 
 			// Recalculate which columns can still receive width
@@ -401,10 +381,7 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 				col := config.Columns[idx]
 				// Lower priority number = higher weight (more space)
 				// Priority 1 = weight 1.0, Priority 2 = weight 0.9, etc.
-				weight := 1.0 - float64(col.Priority-1)*0.1
-				if weight < 0.1 {
-					weight = 0.1 // Minimum weight
-				}
+				weight := calculatePriorityWeight(col.Priority)
 				priorityWeights[idx] = weight
 				// Weight by both priority and percentage
 				totalPriorityWeight += weight * col.PercentWidth
@@ -466,7 +443,7 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 		}
 	}
 
-	// Step 6: Distribute remaining width equally to columns without fixed/percent widths
+	// Step 6.5: Distribute remaining width equally to columns without fixed/percent widths
 	equalColumns := make([]int, 0)
 	for i, col := range config.Columns {
 		if col.Width == 0 && col.PercentWidth == 0 {
@@ -699,6 +676,34 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 	}
 
 	return columnWidths
+}
+
+// calculateColumnContentWidth calculates the widest content in a column (header + all cells)
+func calculateColumnContentWidth(config TableConfig, columnIndex int) int {
+	if columnIndex >= len(config.Columns) {
+		return 0
+	}
+	contentWidth := len(config.Columns[columnIndex].Header)
+	for _, row := range config.Rows {
+		if columnIndex < len(row) {
+			cellWidth := len(row[columnIndex])
+			if cellWidth > contentWidth {
+				contentWidth = cellWidth
+			}
+		}
+	}
+	return contentWidth
+}
+
+// calculatePriorityWeight calculates the weight for a given priority level
+// Lower priority numbers (higher importance) get higher weights
+// Priority 1 = weight 1.0, Priority 2 = weight 0.9, Priority 3 = weight 0.8, etc.
+func calculatePriorityWeight(priority int) float64 {
+	weight := 1.0 - float64(priority-1)*priorityWeightStep
+	if weight < minPriorityWeight {
+		weight = minPriorityWeight
+	}
+	return weight
 }
 
 // truncateString truncates a string to the specified width with ellipsis

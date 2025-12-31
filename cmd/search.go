@@ -432,7 +432,7 @@ Use -s without a value to list sources.`,
 		}
 		fmt.Printf("\n%s\n\n", searchMsg)
 
-		// Build table rows with priority: Font ID > Font Name > Source > Categories > License
+		// Build table rows with priority: Font ID > Font Name > Categories > License > Source
 		var tableRows [][]string
 		for i, result := range results {
 			// Format categories
@@ -447,12 +447,12 @@ Use -s without a value to list sources.`,
 				license = result.License
 			}
 
-			// Build row: Font Name, Font ID, License, Categories, Source
+			// Build row: Font Name, Font ID, Categories, License, Source
 			row := []string{
 				result.Name,
 				result.ID,
-				license,
 				categoriesStr,
+				license,
 				result.SourceName,
 			}
 			tableRows = append(tableRows, row)
@@ -469,15 +469,17 @@ Use -s without a value to list sources.`,
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
 			Columns: []components.ColumnConfig{
-				{Header: "Font Name", MinWidth: 32, PercentWidth: 22.0},
-				{Header: "Font ID", MinWidth: 39, PercentWidth: 24.0}, // Highest priority, don't trim
-				{Header: "License", MinWidth: 3, PercentWidth: 8.0},   // Lowest priority
-				{Header: "Categories", PercentWidth: 22.0},
-				{Header: "Source", MaxWidth: 14, PercentWidth: 24.0},
+				{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+				{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+				{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+				{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+				{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
 			},
-			Rows:  tableRows,
-			Width: 0, // Auto-detect terminal width
-			Mode:  components.TableModeStatic,
+			Rows:     tableRows,
+			Width:    0,   // Auto-detect terminal width
+			MaxWidth: 120, // Maximum width
+			Mode:     components.TableModeStatic,
+			Padding:  1, // Default padding
 		}
 
 		fmt.Println(components.RenderStaticTable(tableConfig))

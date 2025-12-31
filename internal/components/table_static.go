@@ -4,6 +4,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
+
 	"fontget/internal/shared"
 	"fontget/internal/ui"
 )
@@ -41,6 +43,32 @@ func RenderStaticTable(config TableConfig) string {
 		priority int
 	}
 
+	// Helper function to create a visible config from visible column indices
+	createVisibleConfig := func(visibleCols []int) TableConfig {
+		visibleConfig := TableConfig{
+			Columns:  make([]ColumnConfig, len(visibleCols)),
+			Rows:     make([][]string, len(config.Rows)),
+			Width:    config.Width,
+			MaxWidth: config.MaxWidth,
+			Mode:     config.Mode,
+			Padding:  config.Padding,
+		}
+		// Copy visible column configs
+		for i, colIdx := range visibleCols {
+			visibleConfig.Columns[i] = config.Columns[colIdx]
+		}
+		// Copy rows
+		for rowIdx, row := range config.Rows {
+			visibleConfig.Rows[rowIdx] = make([]string, len(visibleCols))
+			for i, colIdx := range visibleCols {
+				if colIdx < len(row) {
+					visibleConfig.Rows[rowIdx][i] = row[colIdx]
+				}
+			}
+		}
+		return visibleConfig
+	}
+
 	// Iteratively hide columns that don't fit, starting with lowest priority
 	var columnWidths []int
 	for {
@@ -49,28 +77,7 @@ func RenderStaticTable(config TableConfig) string {
 		}
 
 		// Create config with current visible columns
-		visibleConfig := TableConfig{
-			Columns: make([]ColumnConfig, len(visibleColumns)),
-			Rows:    make([][]string, len(config.Rows)),
-			Width:   config.Width,
-			Mode:    config.Mode,
-			Padding: config.Padding,
-		}
-
-		// Copy visible column configs
-		for i, colIdx := range visibleColumns {
-			visibleConfig.Columns[i] = config.Columns[colIdx]
-		}
-
-		// Copy rows
-		for rowIdx, row := range config.Rows {
-			visibleConfig.Rows[rowIdx] = make([]string, len(visibleColumns))
-			for i, colIdx := range visibleColumns {
-				if colIdx < len(row) {
-					visibleConfig.Rows[rowIdx][i] = row[colIdx]
-				}
-			}
-		}
+		visibleConfig := createVisibleConfig(visibleColumns)
 
 		// Recalculate widths for current visible columns
 		visibleWidths := calculateColumnWidths(visibleConfig, tableWidth)
@@ -91,10 +98,10 @@ func RenderStaticTable(config TableConfig) string {
 			width := visibleWidths[i]
 
 			// Column doesn't fit if:
-			// 1. Too narrow (< 4 chars), OR
+			// 1. Too narrow (below minimum width), OR
 			// 2. Header would be truncated
 			// AND it's hideable
-			if col.Hideable && (width < 4 || len(col.Header) > width) {
+			if col.Hideable && (width < minColumnWidthBeforeHide || len(col.Header) > width) {
 				columnsThatDontFit = append(columnsThatDontFit, hideCandidate{
 					index:    colIdx,
 					priority: col.Priority,
@@ -152,24 +159,7 @@ func RenderStaticTable(config TableConfig) string {
 	}
 
 	// Get final widths (recalculate one more time to ensure accuracy)
-	visibleConfig := TableConfig{
-		Columns: make([]ColumnConfig, len(visibleColumns)),
-		Rows:    make([][]string, len(config.Rows)),
-		Width:   config.Width,
-		Mode:    config.Mode,
-		Padding: config.Padding,
-	}
-	for i, colIdx := range visibleColumns {
-		visibleConfig.Columns[i] = config.Columns[colIdx]
-	}
-	for rowIdx, row := range config.Rows {
-		visibleConfig.Rows[rowIdx] = make([]string, len(visibleColumns))
-		for i, colIdx := range visibleColumns {
-			if colIdx < len(row) {
-				visibleConfig.Rows[rowIdx][i] = row[colIdx]
-			}
-		}
-	}
+	visibleConfig := createVisibleConfig(visibleColumns)
 	finalWidths := calculateColumnWidths(visibleConfig, tableWidth)
 	columnWidths = make([]int, len(config.Columns))
 	for i, colIdx := range visibleColumns {
@@ -217,20 +207,8 @@ func RenderStaticTable(config TableConfig) string {
 			if j < len(row) {
 				cellValue = row[j]
 			}
-			// Use Truncatable value directly
 			formattedCell, _ := formatCell(cellValue, columnWidths[j], align, config.Columns[j].Truncatable)
-
-			// Apply style with width constraint to ensure proper formatting
-			var styledCell string
-			if j == 0 {
-				// First column uses TableSourceName style
-				cellStyle := ui.TableSourceName.Copy().Width(columnWidths[j]).MaxWidth(columnWidths[j])
-				styledCell = cellStyle.Render(formattedCell)
-			} else {
-				// Other columns use Text style
-				cellStyle := ui.Text.Copy().Width(columnWidths[j]).MaxWidth(columnWidths[j])
-				styledCell = cellStyle.Render(formattedCell)
-			}
+			styledCell := styleCell(formattedCell, columnWidths[j], j == 0)
 			rowCells = append(rowCells, styledCell)
 		}
 		rowText := strings.Join(rowCells, " ")
@@ -239,4 +217,16 @@ func RenderStaticTable(config TableConfig) string {
 	}
 
 	return strings.TrimRight(output.String(), "\n")
+}
+
+// styleCell applies styling to a cell based on its position
+// First column uses TableSourceName style, others use Text style
+func styleCell(formattedCell string, width int, isFirstColumn bool) string {
+	var cellStyle lipgloss.Style
+	if isFirstColumn {
+		cellStyle = ui.TableSourceName.Copy().Width(width).MaxWidth(width)
+	} else {
+		cellStyle = ui.Text.Copy().Width(width).MaxWidth(width)
+	}
+	return cellStyle.Render(formattedCell)
 }
