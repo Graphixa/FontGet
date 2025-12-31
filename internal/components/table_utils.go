@@ -1,7 +1,6 @@
 package components
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -684,14 +683,15 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 }
 
 // calculateColumnContentWidth calculates the widest content in a column (header + all cells)
+// Uses visual width (strips ANSI codes) for accurate measurement
 func calculateColumnContentWidth(config TableConfig, columnIndex int) int {
 	if columnIndex >= len(config.Columns) {
 		return 0
 	}
-	contentWidth := len(config.Columns[columnIndex].Header)
+	contentWidth := lipgloss.Width(config.Columns[columnIndex].Header)
 	for _, row := range config.Rows {
 		if columnIndex < len(row) {
-			cellWidth := len(row[columnIndex])
+			cellWidth := lipgloss.Width(row[columnIndex])
 			if cellWidth > contentWidth {
 				contentWidth = cellWidth
 			}
@@ -712,6 +712,7 @@ func calculatePriorityWeight(priority int) float64 {
 }
 
 // truncateString truncates a string to the specified width with ellipsis
+// Uses visual width (strips ANSI codes) for accurate truncation
 func truncateString(s string, width int) string {
 	if width <= 0 {
 		return ""
@@ -719,9 +720,23 @@ func truncateString(s string, width int) string {
 	if width <= 3 {
 		return strings.Repeat(".", width)
 	}
-	if len(s) <= width {
+	// Use visual width (strips ANSI codes) for comparison
+	visualWidth := lipgloss.Width(s)
+	if visualWidth <= width {
 		return s
 	}
+	// Use lipgloss to truncate, which handles ANSI codes correctly
+	// Lipgloss will preserve ANSI codes and truncate at the visual width
+	truncatedWidth := width - 3 // Reserve space for "..."
+	truncated := lipgloss.NewStyle().Width(truncatedWidth).MaxWidth(truncatedWidth).Render(s)
+	// Check if lipgloss actually truncated it
+	if lipgloss.Width(truncated) < visualWidth {
+		// Lipgloss truncated it, add our ellipsis
+		// We need to append "..." but preserve any trailing ANSI reset codes
+		return truncated + "..."
+	}
+	// Fallback: if lipgloss didn't truncate (shouldn't happen), use simple approach
+	// This is a fallback for edge cases
 	return s[:width-3] + "..."
 }
 
@@ -732,6 +747,9 @@ func truncateString(s string, width int) string {
 //
 // Returns the formatted cell and its actual visual width (accounting for ANSI codes)
 func formatCell(value string, width int, align string, truncatable bool) (string, int) {
+	// Get visual width (strips ANSI codes) for accurate measurement
+	visualValueWidth := lipgloss.Width(value)
+
 	var truncated string
 	// IMPORTANT: truncatable parameter:
 	// - true: truncate content if it exceeds width
@@ -739,23 +757,44 @@ func formatCell(value string, width int, align string, truncatable bool) (string
 	// Default behavior should be to truncate, but since zero value is false,
 	// we need to handle this at the call site
 	if truncatable {
-		// Truncatable: truncate if needed
-		truncated = truncateString(value, width)
+		// Truncatable: truncate if needed (use visual width for comparison)
+		if visualValueWidth > width {
+			truncated = truncateString(value, width)
+		} else {
+			truncated = value
+		}
 	} else {
 		// Non-truncatable: use content as-is, but pad to width
 		truncated = value
 	}
+
+	// Get visual width of truncated value for padding calculation
+	visualTruncatedWidth := lipgloss.Width(truncated)
+
 	var formatted string
 	switch align {
 	case "right":
-		formatted = fmt.Sprintf("%*s", width, truncated)
+		// Use visual width for padding calculation
+		padding := width - visualTruncatedWidth
+		if padding < 0 {
+			padding = 0
+		}
+		formatted = strings.Repeat(" ", padding) + truncated
 	case "center":
-		padding := width - len(truncated)
+		padding := width - visualTruncatedWidth
+		if padding < 0 {
+			padding = 0
+		}
 		leftPad := padding / 2
 		rightPad := padding - leftPad
 		formatted = strings.Repeat(" ", leftPad) + truncated + strings.Repeat(" ", rightPad)
 	default: // "left"
-		formatted = fmt.Sprintf("%-*s", width, truncated)
+		// Use visual width for padding calculation
+		padding := width - visualTruncatedWidth
+		if padding < 0 {
+			padding = 0
+		}
+		formatted = truncated + strings.Repeat(" ", padding)
 	}
 	// Get visual width (strips ANSI codes)
 	visualWidth := lipgloss.Width(formatted)

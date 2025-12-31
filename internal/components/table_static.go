@@ -154,6 +154,7 @@ func RenderStaticTable(config TableConfig) string {
 	}
 
 	// If no columns are visible, return empty
+	// This should not happen in normal operation, but handle gracefully
 	if len(visibleColumns) == 0 {
 		return ""
 	}
@@ -196,6 +197,7 @@ func RenderStaticTable(config TableConfig) string {
 	output.WriteString("\n")
 
 	// Build data rows (only visible columns)
+	// Even if there are no rows, we still show the header and separator above
 	for _, row := range config.Rows {
 		rowCells := make([]string, 0, len(visibleColumns))
 		for _, j := range visibleColumns {
@@ -216,6 +218,8 @@ func RenderStaticTable(config TableConfig) string {
 		output.WriteString("\n")
 	}
 
+	// Always return at least the header and separator, even if there are no rows
+	// This ensures the table structure is visible even when empty
 	return strings.TrimRight(output.String(), "\n")
 }
 
