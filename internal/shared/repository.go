@@ -17,6 +17,9 @@ import (
 	"fontget/internal/repo"
 )
 
+// PlaceholderNA is used for missing table data
+const PlaceholderNA = "N/A"
+
 // FontResolutionResult contains the result of resolving a font query
 type FontResolutionResult struct {
 	Fonts              []repo.FontFile
@@ -104,4 +107,46 @@ func GetSourceNameFromID(fontID string) string {
 
 	// Fallback to capitalized prefix if not found
 	return cases.Title(language.English).String(sourcePrefix)
+}
+
+// FindMatchesInRepository finds font matches using an already-loaded repository (performance optimization).
+// This is useful when you already have a repository loaded and want to avoid reloading it.
+func FindMatchesInRepository(repository *repo.Repository, fontName string) []repo.FontMatch {
+	// Get the manifest from the repository
+	manifest, err := repository.GetManifest()
+	if err != nil {
+		return nil
+	}
+
+	// Normalize font name for comparison
+	fontName = strings.ToLower(fontName)
+	fontNameNoSpaces := strings.ReplaceAll(fontName, " ", "")
+
+	var matches []repo.FontMatch
+
+	// Search through all sources
+	for sourceName, source := range manifest.Sources {
+		for id, font := range source.Fonts {
+			// Check both the font name and ID with case-insensitive comparison
+			fontNameLower := strings.ToLower(font.Name)
+			idLower := strings.ToLower(id)
+			fontNameNoSpacesLower := strings.ReplaceAll(fontNameLower, " ", "")
+			idNoSpacesLower := strings.ReplaceAll(idLower, " ", "")
+
+			// Check for exact match
+			if fontNameLower == fontName ||
+				fontNameNoSpacesLower == fontNameNoSpaces ||
+				idLower == fontName ||
+				idNoSpacesLower == fontNameNoSpaces {
+				matches = append(matches, repo.FontMatch{
+					ID:       id,
+					Name:     font.Name,
+					Source:   sourceName,
+					FontInfo: font,
+				})
+			}
+		}
+	}
+
+	return matches
 }
