@@ -16,6 +16,7 @@ import (
 	"fontget/internal/functions"
 	"fontget/internal/output"
 	"fontget/internal/repo"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -159,9 +160,17 @@ var sourcesInfoCmd = &cobra.Command{
 		cards = append(cards, components.CustomCard("Summary", sb.String()))
 
 		// Render Summary card only (no page title)
-		model := components.NewCardModel("", cards)
-		model.SetWidth(80)
+		// Match the table width: terminal width, capped at 120 (same as table MaxWidth)
+		// Subtract 1 to account for the card being 1 character wider than the table
 		fmt.Println()
+		terminalWidth := shared.GetTerminalWidth()
+		cardWidth := terminalWidth
+		if cardWidth > 120 {
+			cardWidth = 120 // Match table MaxWidth
+		}
+		cardWidth = cardWidth - 2 // Card is 1 character wider than table, so subtract 1
+		model := components.NewCardModel("", cards)
+		model.SetWidth(cardWidth)
 		fmt.Println(model.Render())
 
 		// Unified Sources table without headings, includes Status
@@ -201,9 +210,11 @@ var sourcesInfoCmd = &cobra.Command{
 			source := r.src
 
 			// Format source name with [Disabled] tag if needed
+			// Style [Disabled] tag with ErrorText style
 			displayName := sourceName
 			if !source.Enabled {
-				displayName = sourceName + DisabledTag
+				disabledTag := ui.ErrorText.Render(DisabledTag)
+				displayName = sourceName + disabledTag
 			}
 
 			last := "Unknown"
@@ -211,13 +222,15 @@ var sourcesInfoCmd = &cobra.Command{
 				last = lastUpdated
 			}
 
-			// Determine Type
-			typ := "Custom"
+			// Determine Type and style it using RenderSourceTag (same as sources manage command)
+			isBuiltIn := false
 			if def, _ := config.GetDefaultManifest(); def != nil {
 				if _, ok := def.Sources[sourceName]; ok {
-					typ = "Built-in"
+					isBuiltIn = true
 				}
 			}
+			// Use RenderSourceTag to match sources manage command styling
+			typ := ui.RenderSourceTag(isBuiltIn)
 
 			row := []string{
 				displayName,
@@ -231,10 +244,10 @@ var sourcesInfoCmd = &cobra.Command{
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
 			Columns: []components.ColumnConfig{
-				{Header: "Source Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 1, PercentWidth: 35.0},
-				{Header: "Prefix", Truncatable: true, MaxWidth: 15, Hideable: true, Priority: 4, PercentWidth: 15.0},
-				{Header: "Last Updated", Truncatable: true, Hideable: true, Priority: 3, PercentWidth: 35.0},
-				{Header: "Type", Truncatable: true, MaxWidth: 12, Hideable: true, Priority: 2, PercentWidth: 15.0},
+				{Header: "Source Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 1, PercentWidth: 32.0},
+				{Header: "Prefix", Truncatable: true, MaxWidth: 12, Hideable: true, Priority: 4, PercentWidth: 16.0},
+				{Header: "Last Updated", Truncatable: true, Hideable: true, Priority: 3, PercentWidth: 34.0},
+				{Header: "Type", Truncatable: true, MaxWidth: 12, Hideable: true, Priority: 2, PercentWidth: 18.0},
 			},
 			Rows:     tableRows,
 			Width:    0,   // Auto-detect terminal width
@@ -244,7 +257,6 @@ var sourcesInfoCmd = &cobra.Command{
 		}
 
 		fmt.Println(components.RenderStaticTable(tableConfig))
-
 		fmt.Println()
 		output.GetDebug().State("Sources operation complete")
 		return nil
