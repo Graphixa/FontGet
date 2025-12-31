@@ -72,11 +72,6 @@ const (
 	InstallScopeLabelMachine = "machine scope"
 )
 
-// Placeholder constants
-const (
-	PlaceholderNA = "N/A"
-)
-
 // InstallResult tracks the result of installing a single font
 type InstallResult struct {
 	Success      int
@@ -173,7 +168,7 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 			if len(uniqueMatches) >= maxSuggestions {
 				break
 			}
-			matches := findMatchesInRepository(repository, suggestion)
+			matches := shared.FindMatchesInRepository(repository, suggestion)
 			if len(matches) > 0 {
 				for _, match := range matches {
 					if len(uniqueMatches) >= maxSuggestions {
@@ -192,14 +187,14 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 			// Build table rows
 			var tableRows [][]string
 			for _, match := range uniqueMatches {
-				categories := PlaceholderNA
+				categories := shared.PlaceholderNA
 				if len(match.FontInfo.Categories) > 0 {
 					categories = match.FontInfo.Categories[0]
 				}
 
 				license := match.FontInfo.License
 				if license == "" {
-					license = PlaceholderNA
+					license = shared.PlaceholderNA
 				}
 
 				row := []string{
@@ -272,7 +267,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 
 	for _, suggestion := range similar {
 		// Use the already-loaded repository instead of FindFontMatches
-		matches := findMatchesInRepository(repository, suggestion)
+		matches := shared.FindMatchesInRepository(repository, suggestion)
 		if len(matches) > 0 {
 			// Add all unique matches from this suggestion
 			for _, match := range matches {
@@ -292,7 +287,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 		var tableRows [][]string
 		for _, match := range uniqueMatches {
 			// Get categories (first one if available)
-			categories := PlaceholderNA
+			categories := shared.PlaceholderNA
 			if len(match.FontInfo.Categories) > 0 {
 				categories = match.FontInfo.Categories[0]
 			}
@@ -300,7 +295,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 			// Get license
 			license := match.FontInfo.License
 			if license == "" {
-				license = PlaceholderNA
+				license = shared.PlaceholderNA
 			}
 
 			row := []string{
@@ -432,47 +427,6 @@ func handleNotFoundFonts(notFoundFonts []string, isDebug bool) {
 	}
 }
 
-// findMatchesInRepository finds font matches using an already-loaded repository (performance optimization)
-func findMatchesInRepository(repository *repo.Repository, fontName string) []repo.FontMatch {
-	// Get the manifest from the repository
-	manifest, err := repository.GetManifest()
-	if err != nil {
-		return nil
-	}
-
-	// Normalize font name for comparison
-	fontName = strings.ToLower(fontName)
-	fontNameNoSpaces := strings.ReplaceAll(fontName, " ", "")
-
-	var matches []repo.FontMatch
-
-	// Search through all sources
-	for sourceName, source := range manifest.Sources {
-		for id, font := range source.Fonts {
-			// Check both the font name and ID with case-insensitive comparison
-			fontNameLower := strings.ToLower(font.Name)
-			idLower := strings.ToLower(id)
-			fontNameNoSpacesLower := strings.ReplaceAll(fontNameLower, " ", "")
-			idNoSpacesLower := strings.ReplaceAll(idLower, " ", "")
-
-			// Check for exact match
-			if fontNameLower == fontName ||
-				fontNameNoSpacesLower == fontNameNoSpaces ||
-				idLower == fontName ||
-				idNoSpacesLower == fontNameNoSpaces {
-				matches = append(matches, repo.FontMatch{
-					ID:       id,
-					Name:     font.Name,
-					Source:   sourceName,
-					FontInfo: font,
-				})
-			}
-		}
-	}
-
-	return matches
-}
-
 // showMultipleMatchesAndExit displays search results and instructs user to use specific font ID
 func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 
@@ -483,7 +437,7 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 	var tableRows [][]string
 	for _, match := range matches {
 		// Get categories (first one if available)
-		categories := PlaceholderNA
+		categories := shared.PlaceholderNA
 		if len(match.FontInfo.Categories) > 0 {
 			categories = match.FontInfo.Categories[0]
 		}
@@ -491,7 +445,7 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 		// Get license
 		license := match.FontInfo.License
 		if license == "" {
-			license = PlaceholderNA
+			license = shared.PlaceholderNA
 		}
 
 		row := []string{
