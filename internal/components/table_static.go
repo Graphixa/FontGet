@@ -20,6 +20,15 @@ func RenderStaticTable(config TableConfig) string {
 		tableWidth = shared.GetTerminalWidth()
 	}
 
+	// Apply maximum width constraint
+	maxWidth := config.MaxWidth
+	if maxWidth == 0 {
+		maxWidth = DefaultMaxTableWidth // Use default if not specified
+	}
+	if maxWidth > 0 && tableWidth > maxWidth {
+		tableWidth = maxWidth
+	}
+
 	// Start with all columns visible
 	visibleColumns := make([]int, len(config.Columns))
 	for i := range config.Columns {

@@ -46,14 +46,20 @@ type ColumnConfig struct {
 	Align        string  // "left", "right", "center" (default: "left")
 }
 
+// DefaultMaxTableWidth is the default maximum width for tables
+// This prevents tables from becoming too wide on ultrawide screens
+// Set to 0 to disable maximum width constraint
+const DefaultMaxTableWidth = 120
+
 // TableConfig holds table configuration
 type TableConfig struct {
-	Columns []ColumnConfig
-	Rows    [][]string
-	Width   int       // Table width (0 = auto-detect terminal width)
-	Height  int       // Table height (0 = auto-size to content, for TUI)
-	Mode    TableMode // Static or dynamic mode
-	Padding int       // Cell padding (0 = no padding, 1 = default, 2 = more padding)
+	Columns  []ColumnConfig
+	Rows     [][]string
+	Width    int       // Table width (0 = auto-detect terminal width)
+	MaxWidth int       // Maximum table width (0 = use DefaultMaxTableWidth, -1 = no limit)
+	Height   int       // Table height (0 = auto-size to content, for TUI)
+	Mode     TableMode // Static or dynamic mode
+	Padding  int       // Cell padding (0 = no padding, 1 = default, 2 = more padding)
 }
 
 // calculateColumnWidths calculates actual column widths based on configuration
