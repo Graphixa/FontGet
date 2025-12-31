@@ -154,7 +154,9 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			for k := range families {
 				allFamilyNames = append(allFamilyNames, k)
 			}
-			sort.Strings(allFamilyNames)
+			sort.Slice(allFamilyNames, func(i, j int) bool {
+				return strings.ToLower(allFamilyNames[i]) < strings.ToLower(allFamilyNames[j])
+			})
 			output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
 
 			// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
@@ -186,7 +188,7 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 					// Update all fonts in this family group with match data
 					for i := range fontGroup {
 						fontGroup[i].FontID = match.FontID
-						fontGroup[i].License = match.License
+						fontGroup[i].License = match.License // Only use repository license
 						fontGroup[i].Categories = match.Categories
 						fontGroup[i].Source = match.Source
 					}
@@ -199,11 +201,13 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			// Apply filter using helper function
 			filteredFamilies = filterFontsByFamilyAndID(families, familyFilter)
 
-			// Get sorted list of filtered family names
+			// Get sorted list of filtered family names (case-insensitive)
 			for k := range filteredFamilies {
 				names = append(names, k)
 			}
-			sort.Strings(names)
+			sort.Slice(names, func(i, j int) bool {
+				return strings.ToLower(names[i]) < strings.ToLower(names[j])
+			})
 			output.GetDebug().State("After filtering: %d font families remaining", len(names))
 
 			return nil
@@ -244,17 +248,17 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			fmt.Printf("%s\n\n", ui.Text.Render(info))
 		}
 
-		// Build table rows with priority: Font ID > Font Name > Source > Categories > License
+		// Build table rows with priority: Font ID > Font Name > Categories > License > Type > Scope > Source
 		var tableRows [][]string
 		for _, fam := range names {
 			group := filteredFamilies[fam]
 			sort.Slice(group, func(i, j int) bool { return group[i].Style < group[j].Style })
 			rep := group[0]
 
-			// Format Font ID
+			// Format Font ID (empty string if not available)
 			fontID := rep.FontID
 
-			// Format License
+			// Format License (empty string if not available)
 			license := rep.License
 
 			// Format Categories (first category only, like search command)
@@ -263,15 +267,15 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 				categories = rep.Categories[0]
 			}
 
-			// Format Source
+			// Format Source (empty string if not available)
 			source := rep.Source
 
-			// Build row: Font Name, Font ID, License, Categories, Type, Scope, Source
+			// Build row: Font Name, Font ID, Categories, License, Type, Scope, Source
 			row := []string{
 				fam,
 				fontID,
-				license,
 				categories,
+				license,
 				rep.Type,
 				rep.Scope,
 				source,
@@ -292,12 +296,12 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 				for _, s := range styles {
 					variantRow := []string{
 						fmt.Sprintf("  ↳ %s", s),
-						"",
-						"",
-						"",
-						"",
-						"",
-						"",
+						"", // Font ID
+						"", // Categories
+						"", // License
+						"", // Type
+						"", // Scope
+						"", // Source
 					}
 					tableRows = append(tableRows, variantRow)
 				}
@@ -307,24 +311,19 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
 			Columns: []components.ColumnConfig{
-				{Header: "Font Name", MinWidth: 32, PercentWidth: 20.0},
-				{Header: "Font ID", MinWidth: 39, PercentWidth: 22.0}, // Highest priority, don't trim
-				{Header: "License", PercentWidth: 6.0},                // Lowest priority
-				{Header: "Categories", PercentWidth: 16.0},
-				{Header: "Type", MinWidth: 0, PercentWidth: 6.0},
-				{Header: "Scope", MinWidth: 8, PercentWidth: 14.0},
-				{Header: "Source", MinWidth: 10, MaxWidth: 10, PercentWidth: 16.0}, // Expandable column
+				{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 20.0},
+				{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 28.0}, // Highest priority, don't trim
+				{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 12.0},
+				{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 8.0},
+				{Header: "Type", Truncatable: true, Hideable: true, Priority: 6, PercentWidth: 6.0},
+				{Header: "Scope", Truncatable: true, Hideable: true, Priority: 5, PercentWidth: 10.0},
+				{Header: "Source", Truncatable: true, MaxWidth: 14, MinWidth: 12, Hideable: true, Priority: 7, PercentWidth: 16.0}, // Lowest priority
 			},
-
-			// REFERENCE FROM SEARCH.GO
-			// 	{Header: "Font Name", MinWidth: 32, PercentWidth: 22.0},
-			//  {Header: "Font ID", MinWidth: 39, PercentWidth: 24.0}, // Highest priority, don't trim
-			//  {Header: "License", MinWidth: 3, PercentWidth: 8.0},   // Lowest priority
-			//	{Header: "Categories", PercentWidth: 22.0},
-			//  {Header: "Source", MaxWidth: 14, PercentWidth: 24.0},
-			Rows:  tableRows,
-			Width: 0, // Auto-detect terminal width
-			Mode:  components.TableModeStatic,
+			Rows:     tableRows,
+			Width:    0,   // Auto-detect terminal width
+			MaxWidth: 120, // Maximum width
+			Mode:     components.TableModeStatic,
+			Padding:  1, // Default padding
 		}
 
 		fmt.Println(components.RenderStaticTable(tableConfig))
