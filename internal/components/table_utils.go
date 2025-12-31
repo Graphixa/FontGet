@@ -713,6 +713,7 @@ func calculatePriorityWeight(priority int) float64 {
 
 // truncateString truncates a string to the specified width with ellipsis
 // Uses visual width (strips ANSI codes) for accurate truncation
+// This function truncates at the character level, not by wrapping
 func truncateString(s string, width int) string {
 	if width <= 0 {
 		return ""
@@ -725,19 +726,50 @@ func truncateString(s string, width int) string {
 	if visualWidth <= width {
 		return s
 	}
-	// Use lipgloss to truncate, which handles ANSI codes correctly
-	// Lipgloss will preserve ANSI codes and truncate at the visual width
+
+	// We need to truncate to width - 3 (for "...")
 	truncatedWidth := width - 3 // Reserve space for "..."
-	truncated := lipgloss.NewStyle().Width(truncatedWidth).MaxWidth(truncatedWidth).Render(s)
-	// Check if lipgloss actually truncated it
-	if lipgloss.Width(truncated) < visualWidth {
-		// Lipgloss truncated it, add our ellipsis
-		// We need to append "..." but preserve any trailing ANSI reset codes
-		return truncated + "..."
+
+	// Use lipgloss to truncate - but it might wrap, so we need to handle that
+	// The issue is that lipgloss Width/MaxWidth can wrap instead of truncate
+	// So we'll manually truncate by finding the right character position
+	// We need to preserve ANSI codes while truncating
+
+	// Simple approach: use lipgloss to get truncated version, but if it wraps, take first line only
+	truncated := lipgloss.NewStyle().
+		Width(truncatedWidth).
+		MaxWidth(truncatedWidth).
+		Render(s)
+
+	// Split by newlines - if wrapping occurred, take only first line
+	lines := strings.Split(truncated, "\n")
+	firstLine := lines[0]
+
+	// Trim trailing spaces - lipgloss might add padding spaces
+	firstLine = strings.TrimRight(firstLine, " ")
+
+	// Check if first line is the right width
+	firstLineWidth := lipgloss.Width(firstLine)
+	if firstLineWidth <= truncatedWidth {
+		// First line fits, use it with ellipsis (no space before ellipsis)
+		return firstLine + "..."
 	}
-	// Fallback: if lipgloss didn't truncate (shouldn't happen), use simple approach
-	// This is a fallback for edge cases
-	return s[:width-3] + "..."
+
+	// First line is still too wide (shouldn't happen, but handle it)
+	// Manually truncate by removing characters until it fits
+	result := firstLine
+	for lipgloss.Width(result) > truncatedWidth && len(result) > 0 {
+		// Remove last rune
+		runes := []rune(result)
+		if len(runes) > 0 {
+			result = string(runes[:len(runes)-1])
+		} else {
+			break
+		}
+	}
+	// Trim any trailing spaces before adding ellipsis
+	result = strings.TrimRight(result, " ")
+	return result + "..."
 }
 
 // formatCell formats a cell value according to alignment and width
