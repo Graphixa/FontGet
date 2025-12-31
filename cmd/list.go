@@ -14,7 +14,6 @@ import (
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
-	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -160,9 +159,11 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
 
 			// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
+			// Use nil filter instead of IsCriticalSystemFont to allow matching user-installed fonts
+			// that happen to share names with system fonts (e.g., Ubuntu installed via FontGet)
 			output.GetVerbose().Info("Matching installed fonts to repository...")
 			output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
-			matches, workErr = repo.MatchAllInstalledFonts(allFamilyNames, shared.IsCriticalSystemFont)
+			matches, workErr = repo.MatchAllInstalledFonts(allFamilyNames, nil)
 			if workErr != nil {
 				output.GetVerbose().Error("%v", workErr)
 				output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", workErr)
