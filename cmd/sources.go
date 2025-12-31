@@ -228,17 +228,19 @@ var sourcesInfoCmd = &cobra.Command{
 			tableRows = append(tableRows, row)
 		}
 
-		// Render table
+		// Render table with priority configuration
 		tableConfig := components.TableConfig{
 			Columns: []components.ColumnConfig{
-				{Header: "Source Name", MinWidth: 20, PercentWidth: 40.0},
-				{Header: "Prefix", MinWidth: 8, MaxWidth: 15, PercentWidth: 12.0},
-				{Header: "Last Updated", MinWidth: 20, PercentWidth: 30.0},
-				{Header: "Type", MinWidth: 8, MaxWidth: 12, PercentWidth: 10.0},
+				{Header: "Source Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 1, PercentWidth: 35.0},
+				{Header: "Prefix", Truncatable: true, MaxWidth: 15, Hideable: true, Priority: 4, PercentWidth: 15.0},
+				{Header: "Last Updated", Truncatable: true, Hideable: true, Priority: 3, PercentWidth: 35.0},
+				{Header: "Type", Truncatable: true, MaxWidth: 12, Hideable: true, Priority: 2, PercentWidth: 15.0},
 			},
-			Rows:  tableRows,
-			Width: 0, // Auto-detect terminal width
-			Mode:  components.TableModeStatic,
+			Rows:     tableRows,
+			Width:    0,   // Auto-detect terminal width
+			MaxWidth: 120, // Maximum width
+			Mode:     components.TableModeStatic,
+			Padding:  1, // Default padding
 		}
 
 		fmt.Println(components.RenderStaticTable(tableConfig))
