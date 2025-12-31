@@ -99,6 +99,11 @@ type FontToInstall struct {
 
 // showGroupedFontNotFoundWithSuggestions displays all not-found fonts grouped together with consolidated suggestions
 func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
+	// Safety check
+	if len(notFoundFonts) == 0 {
+		return
+	}
+
 	// Show all not-found fonts first
 	if len(notFoundFonts) == 1 {
 		// Single font - use the original function for consistency
@@ -107,11 +112,13 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 		if len(allFonts) > 0 {
 			similar = shared.FindSimilarFonts(notFoundFonts[0], allFonts, false) // false = repository fonts
 		}
+		// Ensure we always show output, even if similar fonts list is empty
 		showFontNotFoundWithSuggestions(notFoundFonts[0], similar)
 		return
 	}
 
 	// Multiple fonts - show grouped format
+	fmt.Println()
 	fmt.Printf("%s\n", ui.ErrorText.Render("The following font(s) were not found:"))
 	for _, fontName := range notFoundFonts {
 		fmt.Printf("  - %s\n", fontName)
@@ -198,8 +205,8 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 				row := []string{
 					match.Name,
 					match.ID,
-					license,
 					categories,
+					license,
 					match.Source,
 				}
 				tableRows = append(tableRows, row)
@@ -208,15 +215,17 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 			// Render table with priority configuration
 			tableConfig := components.TableConfig{
 				Columns: []components.ColumnConfig{
-					{Header: "Font Name", MinWidth: 30, MaxWidth: 34, PercentWidth: 26.0},
-					{Header: "Font ID", MinWidth: 40, MaxWidth: 41, PercentWidth: 26.0}, // Highest priority, don't trim
-					{Header: "License", MaxWidth: 9, PercentWidth: 8.0},                 // Lowest priority
-					{Header: "Categories", MaxWidth: 14, PercentWidth: 16.0},
-					{Header: "Source", PercentWidth: 20.0},
+					{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+					{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+					{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+					{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+					{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
 				},
-				Rows:  tableRows,
-				Width: 0, // Auto-detect terminal width
-				Mode:  components.TableModeStatic,
+				Rows:     tableRows,
+				Width:    0,   // Auto-detect terminal width
+				MaxWidth: 120, // Maximum width
+				Mode:     components.TableModeStatic,
+				Padding:  1, // Default padding
 			}
 
 			fmt.Println(components.RenderStaticTable(tableConfig))
@@ -224,26 +233,24 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 		} else {
 			// No matches found, show general guidance
 			fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
-			fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
-			fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
+			fmt.Println()
 		}
 	} else {
 		// No suggestions at all, show general guidance
 		fmt.Println()
 		fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
-		fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
-		fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
+		fmt.Println()
 	}
 }
 
 // showFontNotFoundWithSuggestions displays font not found error with suggestions in table format
 func showFontNotFoundWithSuggestions(fontName string, similar []string) {
-	fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+	fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("\nFont '%s' not found.", fontName)))
+
 	// If no similar fonts found, show general guidance
 	if len(similar) == 0 {
 		fmt.Printf("%s\n", ui.Text.Render("Try using the search command to find available fonts."))
-		fmt.Printf("\n%s\n", ui.Text.Render("Example:"))
-		fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
+		fmt.Println()
 		return
 	}
 
@@ -299,8 +306,8 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 			row := []string{
 				match.Name,
 				match.ID,
-				license,
 				categories,
+				license,
 				match.Source,
 			}
 			tableRows = append(tableRows, row)
@@ -309,15 +316,17 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
 			Columns: []components.ColumnConfig{
-				{Header: "Font Name", MinWidth: 30, MaxWidth: 34, PercentWidth: 26.0},
-				{Header: "Font ID", MinWidth: 40, MaxWidth: 41, PercentWidth: 26.0}, // Highest priority, don't trim
-				{Header: "License", MaxWidth: 9, PercentWidth: 8.0},                 // Lowest priority
-				{Header: "Categories", MaxWidth: 14, PercentWidth: 16.0},
-				{Header: "Source", PercentWidth: 20.0},
+				{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+				{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+				{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+				{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+				{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
 			},
-			Rows:  tableRows,
-			Width: 0, // Auto-detect terminal width
-			Mode:  components.TableModeStatic,
+			Rows:     tableRows,
+			Width:    0,   // Auto-detect terminal width
+			MaxWidth: 120, // Maximum width
+			Mode:     components.TableModeStatic,
+			Padding:  1, // Default padding
 		}
 
 		fmt.Println(components.RenderStaticTable(tableConfig))
@@ -330,12 +339,16 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 		fmt.Printf("\n%s\n", ui.Text.Render("Please refresh FontGet sources using:"))
 		fmt.Printf("  %s\n", ui.Text.Render("fontget sources update"))
 		fmt.Printf("\n%s\n", ui.Text.Render("Try using the search command to find other available fonts:"))
-		fmt.Printf("  %s\n\n", ui.Text.Render("fontget search \"roboto\""))
+		fmt.Printf("  %s\n", ui.Text.Render("fontget search \"font name\""))
+		fmt.Println()
 	}
 }
 
 // resolveAndValidateFonts resolves font queries and validates them, returning fonts to install and not found fonts.
 func resolveAndValidateFonts(fontNames []string) (fontsToInstall []FontToInstall, notFoundFonts []string) {
+	// Initialize as empty slice (not nil) to distinguish between "no fonts" and "multiple matches" cases
+	fontsToInstall = []FontToInstall{}
+	notFoundFonts = []string{}
 	for _, fontName := range fontNames {
 		GetLogger().Info("Processing font: %s", fontName)
 
@@ -484,8 +497,8 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 		row := []string{
 			match.Name,
 			match.ID,
-			license,
 			categories,
+			license,
 			match.Source,
 		}
 		tableRows = append(tableRows, row)
@@ -494,19 +507,21 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 	// Render table with priority configuration
 	tableConfig := components.TableConfig{
 		Columns: []components.ColumnConfig{
-			{Header: "Font Name", MinWidth: 30, MaxWidth: 34, PercentWidth: 26.0},
-			{Header: "Font ID", MinWidth: 40, MaxWidth: 41, PercentWidth: 26.0}, // Highest priority, don't trim
-			{Header: "License", MaxWidth: 9, PercentWidth: 8.0},                 // Lowest priority
-			{Header: "Categories", MaxWidth: 14, PercentWidth: 16.0},
-			{Header: "Source", PercentWidth: 20.0},
+			{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
+			{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
+			{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
+			{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
+			{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
 		},
-		Rows:  tableRows,
-		Width: 0, // Auto-detect terminal width
-		Mode:  components.TableModeStatic,
+		Rows:     tableRows,
+		Width:    0,   // Auto-detect terminal width
+		MaxWidth: 120, // Maximum width
+		Mode:     components.TableModeStatic,
+		Padding:  1, // Default padding
 	}
 
 	fmt.Println(components.RenderStaticTable(tableConfig))
-	fmt.Printf("\n")
+	fmt.Println()
 }
 
 var addCmd = &cobra.Command{
@@ -541,7 +556,8 @@ Use --scope to set installation location:
 		GetLogger().Info("Starting font installation operation")
 
 		// Always start with a blank line for consistent spacing from command prompt
-		fmt.Println()
+		// Note: Only print blank line if we're not in a case where we'll show error messages
+		// This prevents extra blank lines when showing "not found" errors
 
 		// Ensure manifest system is initialized (fixes missing sources.json bug)
 		if err := cmdutils.EnsureManifestInitialized(func() cmdutils.Logger { return GetLogger() }); err != nil {
@@ -643,8 +659,22 @@ Use --scope to set installation location:
 					}
 				} else {
 					// In normal/verbose mode, show user-friendly message with suggestions
+					// Always ensure output is shown, even if suggestions fail
+					defer func() {
+						if r := recover(); r != nil {
+							// If table rendering panics, at least show the error message
+							fmt.Fprintf(os.Stdout, "Font(s) not found: %v\n", notFoundFonts)
+							fmt.Fprintf(os.Stdout, "Try using the search command to find available fonts.\n")
+						}
+					}()
+					// Ensure output is visible - print directly to stdout
+					os.Stdout.Sync()
 					showGroupedFontNotFoundWithSuggestions(notFoundFonts)
+					os.Stdout.Sync()
 				}
+			} else {
+				// No fonts to install and no not-found fonts - this shouldn't happen, but handle gracefully
+				fmt.Printf("%s\n", ui.ErrorText.Render("No fonts specified or found."))
 			}
 			return nil
 		}
