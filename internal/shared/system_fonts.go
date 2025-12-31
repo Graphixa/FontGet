@@ -48,6 +48,17 @@ var criticalSystemFonts = map[string]bool{
 	"gillsans":              true,
 	"gillsansmt":            true,
 
+	// Windows CJK (Chinese, Japanese, Korean) fonts
+	"msjh":     true, // Microsoft JhengHei
+	"msjhbd":   true, // Microsoft JhengHei Bold
+	"msjhl":    true, // Microsoft JhengHei Light
+	"msyh":     true, // Microsoft YaHei
+	"msyhbd":   true, // Microsoft YaHei Bold
+	"msyhl":    true, // Microsoft YaHei Light
+	"mingliub": true, // MingLiU (Traditional Chinese)
+	"msgothic": true, // MS Gothic (Japanese)
+	"simsun":   true, // SimSun (Simplified Chinese)
+
 	// macOS core fonts
 	"cambria":              true,
 	"sfnsdisplay":          true,
