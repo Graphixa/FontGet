@@ -27,18 +27,25 @@ func (m tableTuiModel) Init() tea.Cmd {
 }
 
 // calculateAvailableHeight calculates the available height for the table
-// Accounts for title, instructions, help text, and margins
-// Includes a small buffer to ensure selected row stays visible with some "lead" space
+// Accounts for title, instructions, help text, blank line between table and controls, and margins
+// Returns the exact height the table should use (including table header)
 func (m tableTuiModel) calculateAvailableHeight() int {
-	titleHeight := 2        // Title + blank line
-	instructionsHeight := 2 // Instructions (2 lines)
-	helpHeight := 4         // Help text (4 lines)
-	margins := 2            // Top/bottom margins
-	buffer := 1             // Small buffer to keep selected row visible with lead space
+	// Count actual header lines
+	header := ui.PageTitle.Render("Dynamic TUI Table Test") + "\n\n" +
+		ui.Text.Render("This is a dynamic TUI table that resizes with the terminal window.") + "\n" +
+		ui.Text.Render("Try resizing your terminal to see the table adjust automatically.") + "\n\n"
+	headerLines := strings.Count(header, "\n")
 
-	availableHeight := m.height - titleHeight - instructionsHeight - helpHeight - margins - buffer
+	// Help text is 5 lines (blank line + "Controls:" + 3 instruction lines)
+	// Plus 1 blank line between table and controls
+	helpLines := 5 + 1 // 5 for help text + 1 blank line
+
+	// Available height = total height - header - help
+	availableHeight := m.height - headerLines - helpLines
+
+	// Ensure minimum height (at least 3 rows visible)
 	if availableHeight < 3 {
-		availableHeight = 3 // Minimum height for table
+		availableHeight = 3
 	}
 	return availableHeight
 }
@@ -54,9 +61,10 @@ func (m tableTuiModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		availableHeight := m.calculateAvailableHeight()
 
 		// Update table with new size and available height
+		// Pass the actual terminal width to ensure proper sizing
 		if m.tableModel != nil {
-			// Create a modified window size message with calculated height
-			// We need to pass the available height to the table model
+			// Update table with new size and available height
+			// The UpdateWithHeight method will update the config width internally
 			updated, cmd := m.tableModel.UpdateWithHeight(msg, availableHeight)
 			if updated != nil {
 				m.tableModel = updated
@@ -90,22 +98,20 @@ func (m tableTuiModel) View() string {
 		return ""
 	}
 
+	// If width/height not set yet, return empty (will be set by WindowSizeMsg)
+	if m.width == 0 || m.height == 0 {
+		return ""
+	}
+
 	// Build title and instructions (fixed at top)
 	header := ui.PageTitle.Render("Dynamic TUI Table Test") + "\n\n" +
 		ui.Text.Render("This is a dynamic TUI table that resizes with the terminal window.") + "\n" +
 		ui.Text.Render("Try resizing your terminal to see the table adjust automatically.") + "\n\n"
 
-	// Table (constrained to width only - height is handled by bubbles/table component)
+	// Table - the table component handles its own width constraints
 	var tableOutput string
 	if m.tableModel != nil {
 		tableOutput = m.tableModel.View()
-		// Constrain table width only - let bubbles/table handle height/scrolling
-		if m.width > 0 {
-			tableOutput = lipgloss.NewStyle().
-				Width(m.width).
-				MaxWidth(m.width).
-				Render(tableOutput)
-		}
 	}
 
 	// Build help text (at bottom, but only if there's space)
@@ -122,24 +128,26 @@ func (m tableTuiModel) View() string {
 			ui.Text.Render("  Resize terminal - Table adjusts automatically")
 	}
 
-	// Combine: header (top) + table + help (bottom if space)
-	// Use lipgloss.JoinVertical with Top alignment to ensure top-down rendering
-	parts := []string{header, tableOutput}
+	// Combine: header (top) + table + blank line + help (bottom if space)
+	// Build result string directly to avoid lipgloss wrapping issues
+	var result strings.Builder
+	result.WriteString(header)
+	result.WriteString(tableOutput)
 	if help != "" {
-		parts = append(parts, help)
+		result.WriteString("\n") // Always add a blank line between table and controls
+		result.WriteString(help)
 	}
 
-	// Join vertically with top alignment to ensure content starts from top
-	result := lipgloss.JoinVertical(lipgloss.Top, parts...)
-
-	// Constrain output to terminal width (but not height - let it flow naturally from top)
+	// Constrain final output to terminal width to prevent wrapping
+	output := result.String()
 	if m.width > 0 {
-		return lipgloss.NewStyle().
+		output = lipgloss.NewStyle().
 			Width(m.width).
 			MaxWidth(m.width).
-			Render(result)
+			Render(output)
 	}
-	return result
+
+	return output
 }
 
 var tableTuiCmd = &cobra.Command{
@@ -194,10 +202,11 @@ This displays an interactive table that:
 		tableModel.SetFocus(true)
 
 		// Create TUI model
+		// Initial width/height will be set by first WindowSizeMsg
 		model := tableTuiModel{
 			tableModel: tableModel,
-			width:      80,
-			height:     24,
+			width:      0, // Will be set by WindowSizeMsg
+			height:     0, // Will be set by WindowSizeMsg
 			help:       "Use arrow keys to navigate, q to quit",
 		}
 

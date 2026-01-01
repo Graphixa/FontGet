@@ -2,28 +2,31 @@ package components
 
 import (
 	"fmt"
-	"strings"
 
 	"fontget/internal/shared"
 	"fontget/internal/ui"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 // CustomTable is a custom table component with full viewport control
 type CustomTable struct {
-	columns        []ColumnConfig
-	rows           [][]string
-	cursor         int // Current selected row
-	viewportStart  int // First visible row index
-	viewportHeight int // Number of visible rows
-	hasFocus       bool
-	cellPadding    int
-	columnWidths   []int
-	headerStyle    lipgloss.Style
-	cellStyle      lipgloss.Style
-	selectedStyle  lipgloss.Style
+	columns       []ColumnConfig
+	rows          [][]string
+	cursor        int // Current selected row
+	hasFocus      bool
+	cellPadding   int
+	columnWidths  []int
+	headerStyle   lipgloss.Style
+	cellStyle     lipgloss.Style
+	selectedStyle lipgloss.Style
+	tableWidth    int // Total table width
+	viewport      viewport.Model
+	start         int // First visible row index
+	end           int // Last visible row index
 }
 
 // NewCustomTable creates a new CustomTable instance
@@ -53,18 +56,24 @@ func NewCustomTable(config TableConfig) (*CustomTable, error) {
 		cellPadding = 1 // Default padding
 	}
 
-	// Reserve space for padding and separators
+	// Reserve space for padding and column separators (spaces)
+	// Separators: space between columns = (numColumns - 1) chars
+	// Padding: cellPadding on each side of each cell = numColumns * cellPadding * 2
 	numColumns := len(config.Columns)
-	paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
-	availableWidthForColumns := tableWidth - paddingAndSeparators
+	separatorsWidth := numColumns - 1            // Space separators between columns
+	paddingWidth := numColumns * cellPadding * 2 // Padding on both sides of each cell
+	availableWidthForColumns := tableWidth - separatorsWidth - paddingWidth
 	if availableWidthForColumns < numColumns {
 		availableWidthForColumns = numColumns // Minimum width
 	}
 
 	// Calculate column widths based on available width
+	// Note: calculateColumnWidths expects the raw available width for column content
+	// Padding is handled separately via lipgloss styles, not in the width calculation
 	columnWidths := calculateColumnWidths(config, availableWidthForColumns)
 
-	// Determine viewport height
+	// Initialize viewport
+	// Height will be set later via SetHeight, use a default for now
 	viewportHeight := config.Height
 	if viewportHeight == 0 {
 		viewportHeight = len(config.Rows)
@@ -75,32 +84,47 @@ func NewCustomTable(config TableConfig) (*CustomTable, error) {
 
 	// Initialize styles
 	headerStyle := ui.TableHeader.Copy().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderTop(true).
-		BorderBottom(true).
-		BorderLeft(false).
-		BorderRight(false).
 		Padding(0, cellPadding)
 
 	cellStyle := ui.Text.Copy().
 		Padding(0, cellPadding)
 
-	selectedStyle := ui.TableRowSelected.Copy().
-		Padding(0, 0) // No padding for selected row to remove indent
+	// Selected style - will be applied per cell (no padding for selected rows)
+	selectedTextStyle := ui.TableRowSelected.Copy().
+		Padding(0, 0)
 
-	return &CustomTable{
-		columns:        config.Columns,
-		rows:           config.Rows,
-		cursor:         0,
-		viewportStart:  0,
-		viewportHeight: viewportHeight,
-		hasFocus:       false,
-		cellPadding:    cellPadding,
-		columnWidths:   columnWidths,
-		headerStyle:    headerStyle,
-		cellStyle:      cellStyle,
-		selectedStyle:  selectedStyle,
-	}, nil
+	// Calculate total table width (including separators and padding)
+	// Total width = sum of column widths + separators between columns + padding
+	totalColumnWidth := 0
+	for _, w := range columnWidths {
+		totalColumnWidth += w
+	}
+	calculatedTableWidth := totalColumnWidth + separatorsWidth + paddingWidth
+
+	// Create viewport with calculated width
+	// Width will be updated on WindowSizeMsg, but initialize with calculated width
+	vp := viewport.New(calculatedTableWidth, viewportHeight)
+
+	ct := &CustomTable{
+		columns:       config.Columns,
+		rows:          config.Rows,
+		cursor:        0,
+		hasFocus:      false,
+		cellPadding:   cellPadding,
+		columnWidths:  columnWidths,
+		headerStyle:   headerStyle,
+		cellStyle:     cellStyle,
+		selectedStyle: selectedTextStyle,
+		tableWidth:    calculatedTableWidth,
+		viewport:      vp,
+		start:         0,
+		end:           viewportHeight,
+	}
+
+	// Update viewport content
+	ct.UpdateViewport()
+
+	return ct, nil
 }
 
 // Cursor returns the current cursor position
@@ -110,33 +134,23 @@ func (ct *CustomTable) Cursor() int {
 
 // SetCursor sets the cursor position and adjusts viewport if needed
 func (ct *CustomTable) SetCursor(index int) {
-	if index < 0 {
-		index = 0
-	}
-	if index >= len(ct.rows) {
-		index = len(ct.rows) - 1
-	}
-	ct.cursor = index
+	ct.cursor = clamp(index, 0, len(ct.rows)-1)
 	ct.ensureCursorVisible()
 }
 
 // ViewportStart returns the first visible row index
 func (ct *CustomTable) ViewportStart() int {
-	return ct.viewportStart
+	return ct.start
 }
 
 // ViewportEnd returns the last visible row index
 func (ct *CustomTable) ViewportEnd() int {
-	end := ct.viewportStart + ct.viewportHeight - 1
-	if end >= len(ct.rows) {
-		end = len(ct.rows) - 1
-	}
-	return end
+	return ct.end
 }
 
 // Height returns the viewport height
 func (ct *CustomTable) Height() int {
-	return ct.viewportHeight
+	return ct.viewport.Height
 }
 
 // Rows returns all table rows
@@ -151,19 +165,28 @@ func (ct *CustomTable) Columns() []ColumnConfig {
 
 // ensureCursorVisible adjusts the viewport to ensure the cursor is visible
 func (ct *CustomTable) ensureCursorVisible() {
-	viewportEnd := ct.ViewportEnd()
-
-	if ct.cursor < ct.viewportStart {
-		// Cursor above viewport - scroll up
-		ct.viewportStart = ct.cursor
-	} else if ct.cursor > viewportEnd {
-		// Cursor below viewport - scroll down
-		ct.viewportStart = ct.cursor - ct.viewportHeight + 1
-		if ct.viewportStart < 0 {
-			ct.viewportStart = 0
+	// If cursor is before start, move start to cursor
+	if ct.cursor < ct.start {
+		ct.start = ct.cursor
+		ct.end = ct.start + ct.viewport.Height
+		if ct.end > len(ct.rows) {
+			ct.end = len(ct.rows)
+		}
+	} else if ct.cursor >= ct.end {
+		// Cursor is after end - move viewport to show cursor at the start
+		ct.start = ct.cursor
+		ct.end = ct.start + ct.viewport.Height
+		if ct.end > len(ct.rows) {
+			ct.end = len(ct.rows)
+			// Adjust start to show viewport.Height rows if we hit the end
+			ct.start = ct.end - ct.viewport.Height
+			if ct.start < 0 {
+				ct.start = 0
+			}
 		}
 	}
-	// If cursor is within viewport, no change needed
+	// Update viewport content
+	ct.UpdateViewport()
 }
 
 // handleNavigation handles keyboard navigation with smart scrolling
@@ -183,17 +206,8 @@ func (ct *CustomTable) handleNavigation(key string) {
 		return // Not a navigation key
 	}
 
-	viewportEnd := ct.ViewportEnd()
-
-	// Check if cursor would stay in viewport
-	if newCursor >= ct.viewportStart && newCursor <= viewportEnd {
-		// Cursor stays visible - just update, no scroll
-		ct.cursor = newCursor
-	} else {
-		// Cursor would go off-screen - update and scroll
-		ct.cursor = newCursor
-		ct.ensureCursorVisible()
-	}
+	ct.cursor = newCursor
+	ct.ensureCursorVisible()
 }
 
 // renderHeader renders the table header
@@ -201,14 +215,25 @@ func (ct *CustomTable) renderHeader() string {
 	var cells []string
 	for i, col := range ct.columns {
 		width := ct.columnWidths[i]
-		headerText := col.Header
-		if len(headerText) > width {
-			headerText = truncateString(headerText, width)
+		if width <= 0 {
+			continue
 		}
+
+		// Use runewidth.Truncate for proper truncation
+		headerText := runewidth.Truncate(col.Header, width, "…")
+
+		// Format cell with alignment
 		formatted, _ := formatCell(headerText, width, col.Align, true)
-		cells = append(cells, ct.headerStyle.Render(formatted))
+
+		// Apply style with width constraint and inline to prevent wrapping
+		style := lipgloss.NewStyle().Width(width).MaxWidth(width).Inline(true)
+		renderedCell := style.Render(formatted)
+		styledCell := ct.headerStyle.Render(renderedCell)
+		cells = append(cells, styledCell)
 	}
-	return strings.Join(cells, " ")
+
+	// Join cells horizontally (like bubbles table)
+	return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
 }
 
 // renderRow renders a single row
@@ -221,19 +246,84 @@ func (ct *CustomTable) renderRow(rowIndex int, isSelected bool) string {
 	var cells []string
 	for i, col := range ct.columns {
 		width := ct.columnWidths[i]
+		if width <= 0 {
+			continue
+		}
+
 		var cellValue string
 		if i < len(row) {
 			cellValue = row[i]
 		}
-		formatted, _ := formatCell(cellValue, width, col.Align, col.Truncatable)
 
-		if isSelected {
-			cells = append(cells, ct.selectedStyle.Render(formatted))
+		// Use runewidth.Truncate for proper truncation if truncatable
+		var truncated string
+		if col.Truncatable {
+			truncated = runewidth.Truncate(cellValue, width, "…")
 		} else {
-			cells = append(cells, ct.cellStyle.Render(formatted))
+			truncated = cellValue
+		}
+
+		// Format cell with alignment
+		formatted, _ := formatCell(truncated, width, col.Align, col.Truncatable)
+
+		// Apply style with width constraint and inline to prevent wrapping
+		style := lipgloss.NewStyle().Width(width).MaxWidth(width).Inline(true)
+		renderedCell := style.Render(formatted)
+
+		// Apply the same cell style with padding to all rows (selected or not)
+		// This ensures alignment is exactly the same for all rows
+		styledCell := ct.cellStyle.Render(renderedCell)
+		cells = append(cells, styledCell)
+	}
+
+	// Join cells horizontally (like bubbles table)
+	rowContent := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+
+	// Apply selected style to entire row if selected (background color and inverted text only, no additional padding)
+	if isSelected {
+		// Apply selected style to entire row - background and foreground only
+		// The rowContent already has the correct padding from cellStyle, so we just apply colors
+		return ct.selectedStyle.Padding(0, 0).Render(rowContent)
+	}
+
+	return rowContent
+}
+
+// UpdateViewport updates the viewport content based on visible rows
+func (ct *CustomTable) UpdateViewport() {
+	if len(ct.rows) == 0 {
+		ct.viewport.SetContent("")
+		return
+	}
+
+	// Calculate visible row range - show exactly viewport.Height rows
+	// Start from cursor and show viewport.Height rows going forward
+	ct.start = ct.cursor
+	if ct.start < 0 {
+		ct.start = 0
+	}
+
+	// End is start + viewport height, but don't exceed total rows
+	ct.end = ct.start + ct.viewport.Height
+	if ct.end > len(ct.rows) {
+		ct.end = len(ct.rows)
+		// If we hit the end, adjust start to show viewport.Height rows
+		ct.start = ct.end - ct.viewport.Height
+		if ct.start < 0 {
+			ct.start = 0
 		}
 	}
-	return strings.Join(cells, " ")
+
+	// Render visible rows only
+	renderedRows := make([]string, 0, ct.end-ct.start)
+	for i := ct.start; i < ct.end; i++ {
+		renderedRows = append(renderedRows, ct.renderRow(i, i == ct.cursor))
+	}
+
+	// Set viewport content
+	ct.viewport.SetContent(
+		lipgloss.JoinVertical(lipgloss.Left, renderedRows...),
+	)
 }
 
 // View renders the table
@@ -245,15 +335,11 @@ func (ct *CustomTable) View() string {
 	// Render header
 	header := ct.renderHeader()
 
-	// Render visible rows only
-	var rows []string
-	viewportEnd := ct.ViewportEnd()
-	for i := ct.viewportStart; i <= viewportEnd && i < len(ct.rows); i++ {
-		row := ct.renderRow(i, i == ct.cursor)
-		rows = append(rows, row)
-	}
+	// Render viewport (rows)
+	rowsView := ct.viewport.View()
 
-	return strings.Join(append([]string{header}, rows...), "\n")
+	// Combine header and rows (like bubbles table)
+	return header + "\n" + rowsView
 }
 
 // Update handles messages for the table
@@ -272,11 +358,18 @@ func (ct *CustomTable) Update(msg tea.Msg) (*CustomTable, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		// Handle window resize - recalculate column widths
+		// Account for: cell padding and column separators (spaces)
+		// Separators: space between columns = (numColumns - 1) chars
+		// Padding: cellPadding on each side of each cell = numColumns * cellPadding * 2
 		numColumns := len(ct.columns)
-		paddingAndSeparators := numColumns*ct.cellPadding*2 + (numColumns - 1)
-		availableWidthForColumns := msg.Width - paddingAndSeparators
+		separatorsWidth := (numColumns - 1)             // Space separators between columns
+		paddingWidth := numColumns * ct.cellPadding * 2 // Padding on both sides of each cell
+		availableWidthForColumns := msg.Width - separatorsWidth - paddingWidth
 		if availableWidthForColumns < numColumns {
-			availableWidthForColumns = numColumns
+			availableWidthForColumns = numColumns // Minimum width
+		}
+		if availableWidthForColumns < 0 {
+			availableWidthForColumns = numColumns // Fallback for very small terminals
 		}
 
 		// Recalculate column widths
@@ -288,9 +381,26 @@ func (ct *CustomTable) Update(msg tea.Msg) (*CustomTable, tea.Cmd) {
 		}
 		ct.columnWidths = calculateColumnWidths(config, availableWidthForColumns)
 
+		// Update table width
+		totalColumnWidth := 0
+		for _, w := range ct.columnWidths {
+			totalColumnWidth += w
+		}
+		ct.tableWidth = totalColumnWidth + separatorsWidth + paddingWidth
+
+		// Update viewport width
+		ct.viewport.Width = msg.Width
+
+		// Update viewport content
+		ct.UpdateViewport()
+
 		// Ensure cursor is still visible after resize
 		ct.ensureCursorVisible()
-		return ct, nil
+
+		// Update viewport (handles scrolling)
+		var cmd tea.Cmd
+		ct.viewport, cmd = ct.viewport.Update(msg)
+		return ct, cmd
 	}
 
 	return ct, nil
@@ -306,8 +416,20 @@ func (ct *CustomTable) SetHeight(height int) {
 	if height < 1 {
 		height = 1
 	}
-	ct.viewportHeight = height
+	// Set viewport height (accounting for header)
+	headerHeight := lipgloss.Height(ct.renderHeader())
+	ct.viewport.Height = height - headerHeight
+	if ct.viewport.Height < 1 {
+		ct.viewport.Height = 1
+	}
+	ct.UpdateViewport()
 	ct.ensureCursorVisible()
+}
+
+// SetWidth sets the viewport width
+func (ct *CustomTable) SetWidth(width int) {
+	ct.viewport.Width = width
+	ct.UpdateViewport()
 }
 
 // SetColumnWidths sets the column widths

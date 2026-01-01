@@ -82,22 +82,24 @@ func (tm *TableModel) SetFocus(focused bool) {
 	tm.table.SetFocus(focused)
 }
 
-// View returns the rendered table, centered if there's extra space
+// View returns the rendered table, constrained to terminal width
 func (tm *TableModel) View() string {
 	tableOutput := tm.table.View()
 
-	// Calculate the actual rendered width of the table
-	tableWidth := lipgloss.Width(tableOutput)
+	// Always constrain table to config.Width (which should be set to terminal width)
+	// This ensures proper rendering in small windows
+	if tm.config.Width > 0 {
+		// Calculate actual rendered width
+		tableWidth := lipgloss.Width(tableOutput)
 
-	// If table is narrower than terminal width, center it
-	if tm.config.Width > 0 && tableWidth < tm.config.Width {
-		// Center the table horizontally
-		padding := (tm.config.Width - tableWidth) / 2
-		if padding > 0 {
+		// If table exceeds terminal width, constrain it
+		if tableWidth > tm.config.Width {
 			tableOutput = lipgloss.NewStyle().
-				PaddingLeft(padding).
+				Width(tm.config.Width).
+				MaxWidth(tm.config.Width).
 				Render(tableOutput)
 		}
+		// Don't center - let table use full width when it fits
 	}
 
 	return tableOutput
@@ -105,16 +107,29 @@ func (tm *TableModel) View() string {
 
 // UpdateWithHeight handles window resize with a specific available height
 func (tm *TableModel) UpdateWithHeight(msg tea.WindowSizeMsg, availableHeight int) (*TableModel, tea.Cmd) {
-	// Update config width
+	// Update config width to actual terminal width
 	tm.config.Width = msg.Width
 
-	// Recalculate column widths
+	// Apply maximum width constraint if set
+	tableWidth := msg.Width
+	if tm.config.MaxWidth > 0 && tableWidth > tm.config.MaxWidth {
+		tableWidth = tm.config.MaxWidth
+	}
+
+	// Recalculate column widths using the same logic as NewCustomTable
+	// Account for: cell padding and column separators (spaces)
+	// Separators: space between columns = (numColumns - 1) chars
+	// Padding: cellPadding on each side of each cell = numColumns * cellPadding * 2
 	numColumns := len(tm.config.Columns)
 	cellPadding := tm.getCellPadding()
-	paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
-	availableWidthForColumns := msg.Width - paddingAndSeparators
+	separatorsWidth := numColumns - 1            // Space separators between columns
+	paddingWidth := numColumns * cellPadding * 2 // Padding on both sides of each cell
+	availableWidthForColumns := tableWidth - separatorsWidth - paddingWidth
 	if availableWidthForColumns < numColumns {
-		availableWidthForColumns = numColumns
+		availableWidthForColumns = numColumns // Minimum width
+	}
+	if availableWidthForColumns < 0 {
+		availableWidthForColumns = numColumns // Fallback for very small terminals
 	}
 
 	// Recalculate column widths
@@ -145,16 +160,29 @@ func (tm *TableModel) Update(msg interface{}) (*TableModel, tea.Cmd) {
 	// Handle window resize events to recalculate column widths
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Update config width
+		// Update config width to actual terminal width
 		tm.config.Width = msg.Width
 
-		// Recalculate column widths
+		// Apply maximum width constraint if set
+		tableWidth := msg.Width
+		if tm.config.MaxWidth > 0 && tableWidth > tm.config.MaxWidth {
+			tableWidth = tm.config.MaxWidth
+		}
+
+		// Recalculate column widths using the same logic as NewCustomTable
+		// Account for: cell padding and column separators (spaces)
+		// Separators: space between columns = (numColumns - 1) chars
+		// Padding: cellPadding on each side of each cell = numColumns * cellPadding * 2
 		numColumns := len(tm.config.Columns)
 		cellPadding := tm.getCellPadding()
-		paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
-		availableWidthForColumns := msg.Width - paddingAndSeparators
+		separatorsWidth := numColumns - 1            // Space separators between columns
+		paddingWidth := numColumns * cellPadding * 2 // Padding on both sides of each cell
+		availableWidthForColumns := tableWidth - separatorsWidth - paddingWidth
 		if availableWidthForColumns < numColumns {
-			availableWidthForColumns = numColumns
+			availableWidthForColumns = numColumns // Minimum width
+		}
+		if availableWidthForColumns < 0 {
+			availableWidthForColumns = numColumns // Fallback for very small terminals
 		}
 
 		// Recalculate column widths
