@@ -42,6 +42,7 @@ jobs:
           # Custom tokens for package manager repositories
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          WINGET_PR_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
 
   chocolatey:
     name: Build Chocolatey Package
