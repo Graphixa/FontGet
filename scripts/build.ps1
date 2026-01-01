@@ -51,6 +51,30 @@ Write-Host "  Commit:  $commit" -ForegroundColor Gray
 Write-Host "  Date:    $date" -ForegroundColor Gray
 Write-Host ""
 
+# Generate Windows resources (icon, version info) if go-winres is available
+if (Get-Command go-winres -ErrorAction SilentlyContinue) {
+    Write-Host "Generating Windows resources..." -ForegroundColor Gray
+    # Convert version to Windows format (e.g., "2.1.0" -> "2.1.0.0")
+    $winVersion = $version
+    if ($version -ne "dev" -and $version -notmatch '^\d+\.\d+\.\d+\.\d+$') {
+        # Add .0 if version doesn't have 4 parts
+        $parts = $version -split '\.'
+        while ($parts.Count -lt 4) {
+            $parts += "0"
+        }
+        $winVersion = $parts -join "."
+    } elseif ($version -eq "dev") {
+        $winVersion = "0.0.0.0"
+    }
+    go-winres make --in build/winres.json --out rsrc --file-version $winVersion --product-version $winVersion
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "Warning: Failed to generate Windows resources. Building without icon." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Note: go-winres not found. Install with: go install github.com/tc-hib/go-winres@latest" -ForegroundColor Gray
+    Write-Host "      Building without embedded icon." -ForegroundColor Gray
+}
+
 # Build flags
 $ldflags = @(
     "-s",

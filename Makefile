@@ -33,6 +33,11 @@ build: ## Build with auto-detected version (from git tag)
 	@echo "  Version: $(VERSION)"
 	@echo "  Commit:  $(COMMIT)"
 	@echo "  Date:    $(DATE)"
+	@if command -v go-winres >/dev/null 2>&1 && [ "$(GOOS)" = "windows" ] || [ -z "$(GOOS)" ] && [ "$(OS)" = "Windows_NT" ]; then \
+		echo "  Generating Windows resources..."; \
+		WIN_VERSION=$$(echo "$(VERSION)" | sed 's/^v//' | awk -F. '{for(i=NF+1;i<=4;i++)$$i=0;printf "%d.%d.%d.%d",$$1,$$2,$$3,$$4}'); \
+		go-winres make --in build/winres.json --out rsrc --file-version "$$WIN_VERSION" --product-version "$$WIN_VERSION" || echo "  Warning: Failed to generate Windows resources"; \
+	fi
 	@go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 
 build-dev: ## Build for local testing (simple dev version)
@@ -40,6 +45,10 @@ build-dev: ## Build for local testing (simple dev version)
 	@echo "  Version: dev"
 	@echo "  Commit:  $(COMMIT)"
 	@echo "  Date:    $(DATE)"
+	@if command -v go-winres >/dev/null 2>&1 && [ "$(GOOS)" = "windows" ] || [ -z "$(GOOS)" ] && [ "$(OS)" = "Windows_NT" ]; then \
+		echo "  Generating Windows resources..."; \
+		go-winres make --in build/winres.json --out rsrc --file-version "0.0.0.0" --product-version "0.0.0.0" || echo "  Warning: Failed to generate Windows resources"; \
+	fi
 	@go build -ldflags "-s -w -X fontget/internal/version.Version=dev -X fontget/internal/version.GitCommit=$(COMMIT) -X fontget/internal/version.BuildDate=$(DATE)" -o $(BINARY_NAME) .
 
 build-release: ## Build with specific version (use VERSION=v2.1.0 make build-release)
@@ -51,6 +60,11 @@ build-release: ## Build with specific version (use VERSION=v2.1.0 make build-rel
 	@echo "  Version: $(VERSION)"
 	@echo "  Commit:  $(COMMIT)"
 	@echo "  Date:    $(DATE)"
+	@if command -v go-winres >/dev/null 2>&1 && [ "$(GOOS)" = "windows" ] || [ -z "$(GOOS)" ] && [ "$(OS)" = "Windows_NT" ]; then \
+		echo "  Generating Windows resources..."; \
+		WIN_VERSION=$$(echo "$(VERSION)" | sed 's/^v//' | awk -F. '{for(i=NF+1;i<=4;i++)$$i=0;printf "%d.%d.%d.%d",$$1,$$2,$$3,$$4}'); \
+		go-winres make --in build/winres.json --out rsrc --file-version "$$WIN_VERSION" --product-version "$$WIN_VERSION" || echo "  Warning: Failed to generate Windows resources"; \
+	fi
 	@go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) .
 
 version: ## Show current version info
