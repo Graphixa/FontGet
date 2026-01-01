@@ -222,15 +222,17 @@ var sourcesInfoCmd = &cobra.Command{
 				last = lastUpdated
 			}
 
-			// Determine Type and style it using RenderSourceTag (same as sources manage command)
+			// Determine Type (plain text, no styling)
 			isBuiltIn := false
 			if def, _ := config.GetDefaultManifest(); def != nil {
 				if _, ok := def.Sources[sourceName]; ok {
 					isBuiltIn = true
 				}
 			}
-			// Use RenderSourceTag to match sources manage command styling
-			typ := ui.RenderSourceTag(isBuiltIn)
+			typ := "Custom"
+			if isBuiltIn {
+				typ = "Built-in"
+			}
 
 			row := []string{
 				displayName,
