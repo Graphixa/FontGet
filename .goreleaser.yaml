@@ -132,8 +132,12 @@ scoops:
     license: "MIT"
 
 # Chocolatey (Windows)
+# GoReleaser can build Chocolatey packages on Ubuntu - it generates .nupkg files internally
+# and pushes them via HTTP using the API key. No choco CLI needed.
 chocolateys:
   - name: fontget
+    ids:
+      - default
     api_key: "{{ .Env.CHOCOLATEY_API_KEY }}"
     title: "FontGet"
     owners: "Graphixa"
