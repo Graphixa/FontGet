@@ -155,7 +155,7 @@ chocolateys:
     release_notes: "https://github.com/Graphixa/FontGet/releases/tag/v{{ .Version }}"
     bug_tracker_url: "https://github.com/Graphixa/FontGet/issues"
     docs_url: "https://github.com/Graphixa/FontGet/blob/main/README.md"
-    icon_url: "https://raw.githubusercontent.com/Graphixa/FontGet/main/assets/icon.png"
+    icon_url: "https://raw.githubusercontent.com/Graphixa/FontGet/main/assets/icons/icon.png"
 
 # Winget (Windows) - Automated PRs to microsoft/winget-pkgs
 winget:
