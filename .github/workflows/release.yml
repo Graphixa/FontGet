@@ -72,7 +72,7 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --skip=homebrew,scoop,winget,nfpm
+          args: release --clean --skip=homebrew,scoop,winget,nfpm,release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
