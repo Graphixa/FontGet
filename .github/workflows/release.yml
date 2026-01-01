@@ -32,6 +32,15 @@ jobs:
           version: latest
           args: check
 
+      - name: Install Chocolatey CLI
+        run: |
+          sudo apt update
+          sudo apt install -y mono-complete
+          wget https://community.chocolatey.org/install.ps1 -O - | sudo bash
+          # Verify choco is in PATH and accessible
+          which choco || echo "choco not found in PATH"
+          choco --version || echo "choco command failed"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
