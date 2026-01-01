@@ -241,12 +241,6 @@ winget:
         enabled: true
         # Open PR as ready for review (fully automated)
         draft: false
-        # Optional: PR body (will append to any PR template)
-        # Templates: allowed (Since: v2.12)
-        body: |
-          Automated PR for FontGet {{.Version}}
-          
-          This PR was automatically created by GoReleaser.
         # Base repository (where the PR will be opened)
         base:
           owner: microsoft
