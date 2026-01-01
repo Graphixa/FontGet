@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"strings"
 
 	"fontget/internal/shared"
 	"fontget/internal/ui"
@@ -326,20 +327,55 @@ func (ct *CustomTable) UpdateViewport() {
 	)
 }
 
+// renderBorderLine renders a horizontal border line for the table
+func (ct *CustomTable) renderBorderLine() string {
+	// Use viewport width to match the actual rendered width (prevents wrapping)
+	// The viewport width is the actual available width for rendering
+	width := ct.viewport.Width
+	if width <= 0 {
+		// Fallback: use the rendered header width
+		header := ct.renderHeader()
+		width = lipgloss.Width(header)
+		if width <= 0 {
+			width = 1 // Minimum width
+		}
+	}
+
+	// Create border line using horizontal line character
+	borderChar := "─"
+	borderLine := strings.Repeat(borderChar, width)
+
+	// Style the border with a subtle color (gray) and constrain width to prevent wrapping
+	return lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Width(width).
+		MaxWidth(width).
+		Render(borderLine)
+}
+
 // View renders the table
 func (ct *CustomTable) View() string {
 	if len(ct.rows) == 0 {
 		return ""
 	}
 
+	// Render border line above header
+	topBorder := ct.renderBorderLine()
+
 	// Render header
 	header := ct.renderHeader()
+
+	// Render border line below header
+	headerBorder := ct.renderBorderLine()
 
 	// Render viewport (rows)
 	rowsView := ct.viewport.View()
 
-	// Combine header and rows (like bubbles table)
-	return header + "\n" + rowsView
+	// Render border line at bottom of viewport
+	bottomBorder := ct.renderBorderLine()
+
+	// Combine: top border + header + header border + rows + bottom border
+	return topBorder + "\n" + header + "\n" + headerBorder + "\n" + rowsView + "\n" + bottomBorder
 }
 
 // Update handles messages for the table
@@ -416,9 +452,12 @@ func (ct *CustomTable) SetHeight(height int) {
 	if height < 1 {
 		height = 1
 	}
-	// Set viewport height (accounting for header)
+	// Set viewport height (accounting for header and border lines)
+	// Border lines: 1 top + 1 below header + 1 bottom = 3 lines
+	// Header: 1 line
 	headerHeight := lipgloss.Height(ct.renderHeader())
-	ct.viewport.Height = height - headerHeight
+	borderLines := 3 // top border, header border, bottom border
+	ct.viewport.Height = height - headerHeight - borderLines
 	if ct.viewport.Height < 1 {
 		ct.viewport.Height = 1
 	}

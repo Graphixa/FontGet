@@ -28,7 +28,7 @@ func (m tableTuiModel) Init() tea.Cmd {
 
 // calculateAvailableHeight calculates the available height for the table
 // Accounts for title, instructions, help text, blank line between table and controls, and margins
-// Returns the exact height the table should use (including table header)
+// Returns the exact height the table should use (including table header and border lines)
 func (m tableTuiModel) calculateAvailableHeight() int {
 	// Count actual header lines
 	header := ui.PageTitle.Render("Dynamic TUI Table Test") + "\n\n" +
@@ -40,12 +40,16 @@ func (m tableTuiModel) calculateAvailableHeight() int {
 	// Plus 1 blank line between table and controls
 	helpLines := 5 + 1 // 5 for help text + 1 blank line
 
+	// Table has 3 border lines: top, below header, and bottom
+	// These are accounted for in SetHeight, so we don't need to subtract them here
+	// The table component will handle the border lines internally
+
 	// Available height = total height - header - help
 	availableHeight := m.height - headerLines - helpLines
 
-	// Ensure minimum height (at least 3 rows visible)
-	if availableHeight < 3 {
-		availableHeight = 3
+	// Ensure minimum height (at least 3 rows visible + border lines + header)
+	if availableHeight < 6 {
+		availableHeight = 6 // Minimum: 3 border lines + 1 header + 2 rows
 	}
 	return availableHeight
 }
