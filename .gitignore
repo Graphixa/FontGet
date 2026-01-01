@@ -28,7 +28,11 @@ vendor/
 
 # Build directories
 dist/
-bin/ 
+bin/
+
+# Generated Windows resource files
+*.syso
+rsrc_windows_*.syso 
 
 
 bubbletea-sources-plan.md
