@@ -167,11 +167,14 @@ This displays an interactive table that:
 		// Create sample table data
 		tableConfig := components.TableConfig{
 			Columns: []components.ColumnConfig{
-				{Header: "Font Name", MinWidth: 20, PercentWidth: 35.0},
-				{Header: "Font ID", MinWidth: 15, PercentWidth: 30.0},
-				{Header: "License", MinWidth: 8, MaxWidth: 15, PercentWidth: 12.0},
-				{Header: "Categories", MinWidth: 12, PercentWidth: 15.0},
-				{Header: "Source", MinWidth: 12, PercentWidth: 8.0},
+				// Dynamic TUI tables: generally don't use PercentWidth (auto-calculates based on content)
+				// Truncatable: true (default) allows truncation when space is limited
+				// Truncatable: false forces column to size to fit content (may cause other columns to shrink)
+				{Header: "Font Name", Truncatable: true, MinWidth: 6},
+				{Header: "Font ID", Truncatable: false, MinWidth: 6},
+				{Header: "License", MaxWidth: 15, Truncatable: false, MinWidth: 6},
+				{Header: "Categories", Truncatable: false, MinWidth: 6},
+				{Header: "Source", Truncatable: false, MinWidth: 6},
 			},
 			Padding: 0, // Reduced padding for tighter layout
 			Rows: [][]string{

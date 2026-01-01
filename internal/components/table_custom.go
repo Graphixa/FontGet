@@ -212,29 +212,56 @@ func (ct *CustomTable) handleNavigation(key string) {
 }
 
 // renderHeader renders the table header
+// Uses the same rendering logic as renderRow for consistency
 func (ct *CustomTable) renderHeader() string {
 	var cells []string
+	totalCellWidth := 0
+
 	for i, col := range ct.columns {
 		width := ct.columnWidths[i]
 		if width <= 0 {
 			continue
 		}
 
-		// Use runewidth.Truncate for proper truncation
-		headerText := runewidth.Truncate(col.Header, width, "…")
+		// Headers should NEVER be truncated - always use full header text
+		// Column widths are calculated to accommodate header width via calculateColumnContentWidth
+		headerText := col.Header
 
-		// Format cell with alignment
-		formatted, _ := formatCell(headerText, width, col.Align, true)
+		// Format cell with alignment - headers are never truncatable
+		// Use false for truncatable to ensure header text is never truncated
+		formatted, _ := formatCell(headerText, width, col.Align, false)
 
-		// Apply style with width constraint and inline to prevent wrapping
-		style := lipgloss.NewStyle().Width(width).MaxWidth(width).Inline(true)
-		renderedCell := style.Render(formatted)
-		styledCell := ct.headerStyle.Render(renderedCell)
+		// Apply header style with padding (same pattern as rows)
+		styledCell := ct.headerStyle.Render(formatted)
+
+		// Calculate total cell width (content + padding)
+		cellTotalWidth := width + (ct.cellPadding * 2)
+		totalCellWidth += cellTotalWidth
+
+		// Apply width constraint with inline to prevent wrapping
+		// Content is already properly truncated before formatting, so no need for additional truncation
+		styledCell = lipgloss.NewStyle().
+			Width(cellTotalWidth).
+			MaxWidth(cellTotalWidth).
+			Inline(true).
+			Render(styledCell)
+
 		cells = append(cells, styledCell)
 	}
 
-	// Join cells horizontally (like bubbles table)
-	return lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+	// Join cells horizontally - lipgloss.JoinHorizontal doesn't add spaces, just concatenates
+	headerRow := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+
+	// Apply width constraint to prevent wrapping
+	if ct.viewport.Width > 0 {
+		headerRow = lipgloss.NewStyle().
+			Width(ct.viewport.Width).
+			MaxWidth(ct.viewport.Width).
+			Inline(true).
+			Render(headerRow)
+	}
+
+	return headerRow
 }
 
 // renderRow renders a single row
@@ -245,6 +272,8 @@ func (ct *CustomTable) renderRow(rowIndex int, isSelected bool) string {
 
 	row := ct.rows[rowIndex]
 	var cells []string
+	totalCellWidth := 0
+
 	for i, col := range ct.columns {
 		width := ct.columnWidths[i]
 		if width <= 0 {
@@ -256,29 +285,61 @@ func (ct *CustomTable) renderRow(rowIndex int, isSelected bool) string {
 			cellValue = row[i]
 		}
 
-		// Use runewidth.Truncate for proper truncation if truncatable
+		// Use runewidth.Truncate for proper truncation
+		// Truncate if: column is marked truncatable, OR content exceeds column width (after scaling)
+		// This ensures content never wraps, even for non-truncatable columns that were scaled down
 		var truncated string
-		if col.Truncatable {
+		contentWidth := runewidth.StringWidth(cellValue)
+		if col.Truncatable || contentWidth > width {
 			truncated = runewidth.Truncate(cellValue, width, "…")
 		} else {
 			truncated = cellValue
 		}
 
-		// Format cell with alignment
+		// Format cell with alignment - this returns a string exactly 'width' characters wide
 		formatted, _ := formatCell(truncated, width, col.Align, col.Truncatable)
 
-		// Apply style with width constraint and inline to prevent wrapping
-		style := lipgloss.NewStyle().Width(width).MaxWidth(width).Inline(true)
-		renderedCell := style.Render(formatted)
+		// Apply cell style with padding (same pattern as header)
+		styledCell := ct.cellStyle.Render(formatted)
 
-		// Apply the same cell style with padding to all rows (selected or not)
-		// This ensures alignment is exactly the same for all rows
-		styledCell := ct.cellStyle.Render(renderedCell)
+		// Calculate total cell width (content + padding)
+		cellTotalWidth := width + (ct.cellPadding * 2)
+		totalCellWidth += cellTotalWidth
+
+		// Apply width constraint with inline to prevent wrapping
+		// Content is already properly truncated before formatting, so no need for additional truncation
+		styledCell = lipgloss.NewStyle().
+			Width(cellTotalWidth).
+			MaxWidth(cellTotalWidth).
+			Inline(true).
+			Render(styledCell)
+
 		cells = append(cells, styledCell)
 	}
 
-	// Join cells horizontally (like bubbles table)
+	// Join cells horizontally - lipgloss.JoinHorizontal doesn't add spaces, just concatenates
 	rowContent := lipgloss.JoinHorizontal(lipgloss.Top, cells...)
+
+	// Calculate total width: cells + separators (spaces between cells)
+	// Separators = number of columns - 1
+	numColumns := len(cells)
+	separatorWidth := numColumns - 1
+	expectedTotalWidth := totalCellWidth + separatorWidth
+
+	// If total exceeds viewport, truncate the entire row
+	if ct.viewport.Width > 0 && expectedTotalWidth > ct.viewport.Width {
+		// Truncate to fit viewport
+		rowContent = runewidth.Truncate(rowContent, ct.viewport.Width, "")
+	}
+
+	// Apply width constraint to prevent wrapping
+	if ct.viewport.Width > 0 {
+		rowContent = lipgloss.NewStyle().
+			Width(ct.viewport.Width).
+			MaxWidth(ct.viewport.Width).
+			Inline(true).
+			Render(rowContent)
+	}
 
 	// Apply selected style to entire row if selected (background color and inverted text only, no additional padding)
 	if isSelected {
@@ -394,13 +455,12 @@ func (ct *CustomTable) Update(msg tea.Msg) (*CustomTable, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		// Handle window resize - recalculate column widths
-		// Account for: cell padding and column separators (spaces)
-		// Separators: space between columns = (numColumns - 1) chars
+		// calculateColumnWidths already accounts for separators, so we only need to account for padding
 		// Padding: cellPadding on each side of each cell = numColumns * cellPadding * 2
 		numColumns := len(ct.columns)
-		separatorsWidth := (numColumns - 1)             // Space separators between columns
 		paddingWidth := numColumns * ct.cellPadding * 2 // Padding on both sides of each cell
-		availableWidthForColumns := msg.Width - separatorsWidth - paddingWidth
+		// calculateColumnWidths will subtract separators internally, so we only subtract padding here
+		availableWidthForColumns := msg.Width - paddingWidth
 		if availableWidthForColumns < numColumns {
 			availableWidthForColumns = numColumns // Minimum width
 		}
@@ -408,7 +468,7 @@ func (ct *CustomTable) Update(msg tea.Msg) (*CustomTable, tea.Cmd) {
 			availableWidthForColumns = numColumns // Fallback for very small terminals
 		}
 
-		// Recalculate column widths
+		// Recalculate column widths (calculateColumnWidths handles separator space internally)
 		config := TableConfig{
 			Columns: ct.columns,
 			Rows:    ct.rows,
@@ -417,12 +477,47 @@ func (ct *CustomTable) Update(msg tea.Msg) (*CustomTable, tea.Cmd) {
 		}
 		ct.columnWidths = calculateColumnWidths(config, availableWidthForColumns)
 
-		// Update table width
+		// Validate that calculated column widths fit within viewport
 		totalColumnWidth := 0
 		for _, w := range ct.columnWidths {
 			totalColumnWidth += w
 		}
-		ct.tableWidth = totalColumnWidth + separatorsWidth + paddingWidth
+		// Add separators and padding to get total table width
+		separatorsWidth := numColumns - 1
+		calculatedTotalWidth := totalColumnWidth + separatorsWidth + paddingWidth
+
+		// Ensure total width doesn't exceed viewport width
+		// If it does, the final validation in calculateColumnWidths should have caught it,
+		// but we verify here as a safety check
+		if calculatedTotalWidth > msg.Width {
+			// This shouldn't happen if calculateColumnWidths is working correctly,
+			// but if it does, scale down proportionally
+			scaleFactor := float64(msg.Width-paddingWidth-separatorsWidth) / float64(totalColumnWidth)
+			if scaleFactor < 0 {
+				scaleFactor = 0
+			}
+			for i, col := range ct.columns {
+				if col.Width > 0 {
+					continue // Skip fixed-width
+				}
+				newWidth := int(float64(ct.columnWidths[i]) * scaleFactor)
+				if col.MinWidth > 0 && newWidth < col.MinWidth {
+					newWidth = col.MinWidth
+				}
+				if newWidth < 1 {
+					newWidth = 1
+				}
+				ct.columnWidths[i] = newWidth
+			}
+			// Recalculate total
+			totalColumnWidth = 0
+			for _, w := range ct.columnWidths {
+				totalColumnWidth += w
+			}
+			calculatedTotalWidth = totalColumnWidth + separatorsWidth + paddingWidth
+		}
+
+		ct.tableWidth = calculatedTotalWidth
 
 		// Update viewport width
 		ct.viewport.Width = msg.Width
