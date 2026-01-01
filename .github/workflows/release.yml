@@ -67,12 +67,27 @@ jobs:
         shell: pwsh
         run: choco --version
 
-      - name: Run GoReleaser (Chocolatey only)
+      - name: Build and package with GoReleaser (skip publishing)
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --skip=homebrew,scoop,winget,nfpm,release
+          args: release --clean --skip=homebrew,scoop,winget,nfpm,publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+
+      - name: Publish Chocolatey package
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem -Path dist -Filter "*.nupkg" -Recurse | Select-Object -First 1
+          if ($nupkg) {
+            Write-Host "Publishing Chocolatey package: $($nupkg.FullName)"
+            choco push $nupkg.FullName --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY --force
+          } else {
+            Write-Error "No .nupkg file found in dist directory"
+            Get-ChildItem -Path dist -Recurse | ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+        env:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
