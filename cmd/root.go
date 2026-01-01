@@ -291,7 +291,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	// Add verbose flag - shows detailed operation information including file/variant listings (user-friendly)
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed operation information including file/variant listings")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed verbose output of operations")
 
 	// Add debug flag - shows full diagnostic logs with timestamps (for developers)
 	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show debug logs with timestamps (for troubleshooting)")
