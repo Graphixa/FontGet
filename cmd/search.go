@@ -148,7 +148,8 @@ Use -s without a value to list sources.`,
 		// Validate query - require either a query, category, or source
 		if query == "" && category == "" && source == "" {
 			fmt.Printf("\n%s\n", ui.RenderError("A search query, category, or source is required"))
-			fmt.Printf("Use 'fontget search --help' for more information.\n\n")
+			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget search --help' for more information."))
+			fmt.Println()
 			// Return nil since we've already printed the error message
 			// This prevents Cobra from printing a duplicate error
 			return nil
@@ -158,7 +159,8 @@ Use -s without a value to list sources.`,
 		// Skip validation if source is "list" (NoOptDefVal for listing all sources)
 		if source != "" && source != "list" && !validateSource(source) {
 			fmt.Printf("\n%s\n", ui.RenderError(fmt.Sprintf("Source '%s' not found. Use 'fontget sources info' to see available sources.", source)))
-			fmt.Printf("Use 'fontget search --help' for more information.\n\n")
+			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget search --help' for more information."))
+			fmt.Println()
 			return nil
 		}
 		return nil
@@ -442,7 +444,9 @@ Use -s without a value to list sources.`,
 				searchMsg = fmt.Sprintf("Found %d fonts", len(results))
 			}
 		}
-		fmt.Printf("\n%s\n\n", searchMsg)
+		fmt.Println()
+		fmt.Printf("%s\n", searchMsg)
+		fmt.Println()
 
 		// Build table rows with priority: Font ID > Font Name > Categories > License > Source
 		var tableRows [][]string
@@ -613,13 +617,16 @@ func showAllCategories() error {
 	categories := r.GetAllCategories()
 
 	if len(categories) == 0 {
-		fmt.Printf("\n%s\n\n", ui.RenderError("No categories found in any sources"))
+		fmt.Println()
+		fmt.Printf("%s\n", ui.RenderError("No categories found in any sources"))
+		fmt.Println()
 		return nil
 	}
 
 	// Start with a blank line for consistent spacing
 	fmt.Println()
-	fmt.Printf("Found %d categories across all sources:\n\n", len(categories))
+	fmt.Printf("Found %d categories across all sources:\n", len(categories))
+	fmt.Println()
 
 	// Display categories in a proper 3-column table format using consistent table styling
 	// Display in 3 columns with proper table alignment
@@ -633,8 +640,10 @@ func showAllCategories() error {
 	}
 
 	// Show usage example
-	fmt.Printf("\n%s\n", ui.Text.Render("Usage: fontget search -c \"Category Name\""))
-	fmt.Printf("Example: fontget search -c \"Sans Serif\"\n\n")
+	fmt.Println()
+	fmt.Printf("%s\n", ui.Text.Render("Usage: fontget search -c \"Category Name\""))
+	fmt.Printf("Example: fontget search -c \"Sans Serif\"\n")
+	fmt.Println()
 
 	return nil
 }
@@ -708,7 +717,9 @@ func showAllSources() error {
 	}
 
 	if len(sources) == 0 {
-		fmt.Printf("\n%s\n\n", ui.RenderError("No sources found"))
+		fmt.Println()
+		fmt.Printf("%s\n", ui.RenderError("No sources found"))
+		fmt.Println()
 		return nil
 	}
 
@@ -733,7 +744,8 @@ func showAllSources() error {
 
 	// Start with a blank line for consistent spacing
 	fmt.Println()
-	fmt.Printf("Found %d sources:\n\n", len(sources))
+	fmt.Printf("Found %d sources:\n", len(sources))
+	fmt.Println()
 
 	// Print table header
 	headerPrefix := "Prefix"
@@ -749,8 +761,10 @@ func showAllSources() error {
 	}
 
 	// Show usage example
-	fmt.Printf("\n%s\n", ui.Text.Render("Usage: fontget search -s \"source\""))
-	fmt.Printf("Example: fontget search -s google\n\n")
+	fmt.Println()
+	fmt.Printf("%s\n", ui.Text.Render("Usage: fontget search -s \"source\""))
+	fmt.Printf("Example: fontget search -s google\n")
+	fmt.Println()
 
 	return nil
 }

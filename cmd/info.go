@@ -31,7 +31,8 @@ Use --license to show only license information.`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			fmt.Printf("\n%s\n", ui.RenderError("A font ID is required"))
-			fmt.Printf("Use 'fontget info --help' for more information.\n\n")
+			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget info --help' for more information."))
+			fmt.Println()
 			return nil
 		}
 		return nil

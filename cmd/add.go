@@ -141,7 +141,8 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 	// Show consolidated suggestions if any
 	if len(allSimilar) > 0 {
 		fmt.Println()
-		fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these fonts?"))
+		fmt.Printf("%s\n", ui.Text.Render("Did you mean one of these fonts?"))
+		fmt.Println()
 
 		// Load repository for detailed font information
 		repository, err := repo.GetRepository()
@@ -253,7 +254,8 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 	repository, err := repo.GetRepository()
 	if err != nil {
 		// If we can't load repository, show simple list (like remove command)
-		fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these fonts?"))
+		fmt.Printf("%s\n", ui.Text.Render("Did you mean one of these fonts?"))
+		fmt.Println()
 		for _, font := range similar {
 			fmt.Printf("  - %s\n", ui.TableSourceName.Render(font))
 		}
@@ -281,7 +283,8 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 
 	// If we found matches, display them in table format
 	if len(uniqueMatches) > 0 {
-		fmt.Printf("%s\n\n", ui.Text.Render("Did you mean one of these fonts?"))
+		fmt.Printf("%s\n", ui.Text.Render("Did you mean one of these fonts?"))
+		fmt.Println()
 
 		// Build table rows
 		var tableRows [][]string
@@ -421,7 +424,7 @@ func handleNotFoundFonts(notFoundFonts []string, isDebug bool) {
 		}
 		// Add blank line before "Try using..." message (within section)
 		fmt.Println()
-		fmt.Printf("Try using 'fontget search' to find available fonts.\n")
+		fmt.Printf("%s\n", ui.Text.Render("Try using 'fontget search' to find available fonts."))
 		// Section ends with blank line per spacing framework
 		fmt.Println()
 	}
@@ -431,7 +434,8 @@ func handleNotFoundFonts(notFoundFonts []string, isDebug bool) {
 func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 
 	fmt.Printf("\n%s\n", ui.InfoText.Render(fmt.Sprintf("Multiple fonts found matching '%s'.", ui.QueryText.Render(fontName))))
-	fmt.Printf("%s\n\n", ui.Text.Render("Please specify the exact font ID to install from a specific source."))
+	fmt.Printf("%s\n", ui.Text.Render("Please specify the exact font ID to install from a specific source."))
+	fmt.Println()
 
 	// Build table rows
 	var tableRows [][]string
@@ -501,7 +505,8 @@ Use --scope to set installation location:
 		// Only handle empty query case
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			fmt.Printf("%s\n", ui.RenderError("A font ID is required"))
-			fmt.Printf("Use 'fontget add --help' for more information.\n\n")
+			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget add --help' for more information."))
+			fmt.Println()
 			return nil
 		}
 		return nil
@@ -690,6 +695,12 @@ Use --scope to set installation location:
 		title := OpInstallingFonts
 		if installScope == platform.MachineScope {
 			title = OpInstallingFontsAllUsers
+		}
+
+		// Add blank line before progress bar (per spacing guidelines)
+		// Only add if verbose mode is not enabled (verbose section already ends with blank line)
+		if !IsVerbose() {
+			fmt.Println()
 		}
 
 		// Run unified progress for download and install

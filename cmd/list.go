@@ -227,9 +227,11 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 				if typeFilter != "" {
 					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.QueryText.Render(typeFilter))
 				}
-				fmt.Printf("%s\n\n", filterInfo)
+				fmt.Printf("%s\n", filterInfo)
+				fmt.Println()
 			} else {
-				fmt.Printf("%s\n\n", ui.Text.Render("Found 0 font families installed"))
+				fmt.Printf("%s\n", ui.Text.Render("Found 0 font families installed"))
+				fmt.Println()
 			}
 			return nil
 		}
@@ -243,10 +245,12 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			if typeFilter != "" {
 				filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.QueryText.Render(typeFilter))
 			}
-			fmt.Printf("%s\n\n", filterInfo)
+			fmt.Printf("%s\n", filterInfo)
+			fmt.Println()
 		} else {
 			info := fmt.Sprintf("Found %d font families installed", len(names))
-			fmt.Printf("%s\n\n", ui.Text.Render(info))
+			fmt.Printf("%s\n", ui.Text.Render(info))
+			fmt.Println()
 		}
 
 		// Build table rows with priority: Font ID > Font Name > Categories > License > Type > Scope > Source

@@ -362,7 +362,8 @@ func runSourcesUpdateVerbose() error {
 		source, exists := manifest.Sources[sourceName]
 		if !exists {
 			fmt.Printf("Checking for updates for %s\n", sourceName)
-			fmt.Printf("%s\n\n", ui.RenderError("Source not found in configuration"))
+			fmt.Printf("%s\n", ui.RenderError("Source not found in configuration"))
+			fmt.Println()
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -391,7 +392,8 @@ func runSourcesUpdateVerbose() error {
 			} else {
 				errorMsg = fmt.Sprintf("network error: %v", err)
 			}
-			fmt.Printf("%s\n\n", ui.RenderError(errorMsg))
+			fmt.Printf("%s\n", ui.RenderError(errorMsg))
+			fmt.Println()
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -400,7 +402,8 @@ func runSourcesUpdateVerbose() error {
 
 		// Check HTTP status code immediately
 		if headResp.StatusCode >= 400 {
-			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Source URL returned status %d", headResp.StatusCode)))
+			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Source URL returned status %d", headResp.StatusCode)))
+			fmt.Println()
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -411,7 +414,8 @@ func runSourcesUpdateVerbose() error {
 		fmt.Printf("Downloading from: '%s'\n", ui.InfoText.Render(source.URL))
 		resp, err := client.Get(source.URL)
 		if err != nil {
-			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to download source - %v", err)))
+			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to download source - %v", err)))
+			fmt.Println()
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -421,7 +425,8 @@ func runSourcesUpdateVerbose() error {
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close() // Close immediately after reading
 		if err != nil {
-			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to read source content - %v", err)))
+			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to read source content - %v", err)))
+			fmt.Println()
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -430,7 +435,8 @@ func runSourcesUpdateVerbose() error {
 		// Validate JSON
 		var jsonData interface{}
 		if err := json.Unmarshal(body, &jsonData); err != nil {
-			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Source content is not valid JSON - %v", err)))
+			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Source content is not valid JSON - %v", err)))
+			fmt.Println()
 			failed++
 			continue
 		}
@@ -438,7 +444,8 @@ func runSourcesUpdateVerbose() error {
 		// Success - show where it would be cached
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to get home directory - %v", err)))
+			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to get home directory - %v", err)))
+			fmt.Println()
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -447,7 +454,8 @@ func runSourcesUpdateVerbose() error {
 		sanitizedName := strings.ToLower(sourceName)
 		sanitizedName = strings.ReplaceAll(sanitizedName, " ", "_")
 		cachePath := filepath.Join(homeDir, ".fontget", "sources", fmt.Sprintf("%s.json", sanitizedName))
-		fmt.Printf("%s\n\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to '%s' (%d bytes)", ui.InfoText.Render(cachePath), len(body))))
+		fmt.Printf("%s\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to '%s' (%d bytes)", ui.InfoText.Render(cachePath), len(body))))
+		fmt.Println()
 		successful++
 	}
 
@@ -508,10 +516,11 @@ func runSourcesUpdateVerbose() error {
 	// Status Report at the bottom (only shown in verbose mode - this function is only called in verbose mode)
 	fmt.Printf("\n%s\n", ui.TextBold.Render("Status Report"))
 	fmt.Printf("---------------------------------------------\n")
-	fmt.Printf("%s: %s  |  %s: %s  |  %s: %s\n\n",
+	fmt.Printf("%s: %s  |  %s: %s  |  %s: %s\n",
 		ui.SuccessText.Render("Updated"), ui.Text.Render(fmt.Sprintf("%d", successful)),
 		ui.WarningText.Render("Skipped"), ui.Text.Render("0"),
 		ui.ErrorText.Render("Failed"), ui.Text.Render(fmt.Sprintf("%d", failed)))
+	fmt.Println()
 
 	return nil
 }
@@ -682,7 +691,8 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 
 		// Start with a blank line for consistent spacing
 		fmt.Println()
-		fmt.Printf("%s '%s'\n\n", ui.TextBold.Render("Sources Path:"), ui.InfoText.Render(sourcesDir))
+		fmt.Printf("%s '%s'\n", ui.TextBold.Render("Sources Path:"), ui.InfoText.Render(sourcesDir))
+		fmt.Println()
 
 		// Validate individual source files
 		entries, err := os.ReadDir(sourcesDir)
@@ -750,7 +760,8 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 
 		if invalidCount > 0 {
 			fmt.Printf("\n%s\n", ui.WarningText.Render("One or more sources failed to validate."))
-			fmt.Printf("Run 'fontget sources validate --help' for troubleshooting steps.\n\n")
+			fmt.Printf("%s\n", ui.Text.Render("Run 'fontget sources validate --help' for troubleshooting steps."))
+			fmt.Println()
 			output.GetVerbose().Warning("Sources validation found %d invalid files", invalidCount)
 		} else {
 			fmt.Printf("\n%s\n", ui.SuccessText.Render("All source files are valid\n"))

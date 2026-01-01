@@ -342,7 +342,7 @@ func showImportWarnings(disabledSourceFonts, missingSourceFonts map[string][]str
 		}
 		// Blank line before help text (within section, per spacing framework)
 		fmt.Println()
-		fmt.Printf("Enable this source via 'fontget sources manage' to import these fonts.\n")
+		fmt.Printf("%s\n", ui.Text.Render("Enable this source via 'fontget sources manage' to import these fonts."))
 		// Section ends with blank line (per spacing framework)
 		fmt.Println()
 	}
@@ -354,9 +354,9 @@ func showImportWarnings(disabledSourceFonts, missingSourceFonts map[string][]str
 			fmt.Printf("  - %s\n", fontName)
 		}
 		if BuiltInSources[sourceName] {
-			fmt.Printf("Run 'fontget sources update' to refresh sources, or enable this source via 'fontget sources manage'.\n")
+			fmt.Printf("%s\n", ui.Text.Render("Run 'fontget sources update' to refresh sources, or enable this source via 'fontget sources manage'."))
 		} else {
-			fmt.Printf("Add this source via 'fontget sources manage' to import these fonts.\n")
+			fmt.Printf("%s\n", ui.Text.Render("Add this source via 'fontget sources manage' to import these fonts."))
 		}
 		fmt.Println()
 	}
@@ -411,7 +411,7 @@ func showImportWarnings(disabledSourceFonts, missingSourceFonts map[string][]str
 			for _, fontName := range remainingNotFound {
 				fmt.Printf("  - %s\n", fontName)
 			}
-			fmt.Printf("Try running 'fontget sources update' to refresh the repository.\n")
+			fmt.Printf("%s\n", ui.Text.Render("Try running 'fontget sources update' to refresh the repository."))
 			fmt.Println()
 		}
 	}

@@ -671,7 +671,8 @@ Use --scope to set removal location:
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			fmt.Printf("%s\n", ui.RenderError("A font ID is required"))
-			fmt.Printf("Use 'fontget remove --help' for more information.\n\n")
+			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget remove --help' for more information."))
+			fmt.Println()
 			return nil
 		}
 		return nil
@@ -731,10 +732,7 @@ Use --scope to set removal location:
 		}
 		output.GetVerbose().Info("Scope: %s", scopeDisplay)
 		output.GetVerbose().Info("Removing %d font(s)", len(args))
-		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
-			fmt.Println()
-		}
+		// Note: Don't add blank line here if fonts are not found - error section will handle spacing
 
 		// Determine which scopes to check
 		var scopes []platform.InstallationScope
@@ -830,6 +828,11 @@ Use --scope to set removal location:
 					}
 				} else {
 					// In normal/verbose mode, show user-friendly message with suggestions
+					// Add blank line after verbose output (if verbose was shown) before error messages
+					if IsVerbose() {
+						fmt.Println()
+					}
+
 					// Deduplicate notFoundFonts
 					seenNotFound := make(map[string]bool)
 					uniqueNotFound := []string{}
@@ -1084,7 +1087,6 @@ Use --scope to set removal location:
 								fmt.Println()
 							}
 							fmt.Printf("%s\n", ui.Text.Render("Try using 'fontget list' to show currently installed fonts."))
-							fmt.Println()
 						} else {
 							// Multiple fonts - show grouped format with header
 							fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
@@ -1236,7 +1238,6 @@ Use --scope to set removal location:
 								fmt.Println()
 							}
 							fmt.Printf("%s\n", ui.Text.Render("Try using 'fontget list' to show currently installed fonts."))
-							fmt.Println()
 						}
 
 						// Add blank line before next section if needed
@@ -1256,10 +1257,24 @@ Use --scope to set removal location:
 						}
 						// Section ends with blank line per spacing framework
 						fmt.Println()
-					} else if len(trulyNotFound) > 0 {
-						// Section ends with blank line per spacing framework
-						fmt.Println()
 					}
+				}
+
+				// Section ends with blank line per spacing framework
+				// (Status report expects previous section to end with blank line)
+				fmt.Println()
+
+				// Print status report in verbose mode (like add command) even when fonts are not found
+				// Status report will add its own blank line at the end
+				if IsVerbose() {
+					output.PrintStatusReport(output.StatusReport{
+						Success:      0,
+						Skipped:      0,
+						Failed:       len(notFoundFonts),
+						SuccessLabel: "Removed",
+						SkippedLabel: "Skipped",
+						FailedLabel:  "Failed",
+					}, true)
 				}
 			}
 			return nil

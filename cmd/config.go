@@ -444,7 +444,8 @@ Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore de
 
 		// Start with a blank line for consistent spacing
 		fmt.Println()
-		fmt.Printf("Configuration Path: '%s'\n\n", ui.InfoText.Render(configPath))
+		fmt.Printf("Configuration Path: '%s'\n", ui.InfoText.Render(configPath))
+		fmt.Println()
 
 		// Load and validate configuration
 		output.GetVerbose().Info("Loading configuration from: %s", configPath)
@@ -461,7 +462,10 @@ Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore de
 				output.GetDebug().Error("Validation errors: %v", validationErr)
 				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.ErrorText.Render("Invalid"))
 				fmt.Printf("\n%s\n", ui.ErrorText.Render("Configuration validation failed"))
-				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n\n%s\n", validationErr.Error())
+				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n")
+				fmt.Println()
+				fmt.Printf("%s\n", validationErr.Error())
+				fmt.Println()
 				return nil
 			}
 
@@ -472,7 +476,10 @@ Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore de
 				output.GetDebug().Error("Wrapped validation errors: %v", validationErrors)
 				fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.ErrorText.Render("Invalid"))
 				fmt.Printf("\n%s\n", ui.ErrorText.Render("Configuration validation failed"))
-				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n\n%s\n", validationErrors.Error())
+				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n")
+				fmt.Println()
+				fmt.Printf("%s\n", validationErrors.Error())
+				fmt.Println()
 				return nil
 			}
 
