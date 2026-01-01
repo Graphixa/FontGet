@@ -398,7 +398,19 @@ Use -s without a value to list sources.`,
 		}
 		output.GetDebug().State("Search returned %d font results", len(results))
 
-		// Build the search result message
+		// Handle zero results case (only when there's a query)
+		if len(results) == 0 && query != "" {
+			// Show error message (all in ErrorText style, including query)
+			fmt.Printf("\n%s\n", ui.ErrorText.Render(fmt.Sprintf("No font found matching '%s'", query)))
+			// Show guidance message
+			fmt.Printf("%s\n", ui.Text.Render("Try a different search term or use fewer characters."))
+			fmt.Println()
+
+			GetLogger().Info("Font search operation completed (no results)")
+			return nil
+		}
+
+		// Build the search result message (for non-zero results)
 		var searchMsg string
 		if query != "" {
 			if limit > 0 && totalResults > limit {
