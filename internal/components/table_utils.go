@@ -222,19 +222,25 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 	// Step 5: If total width exceeds available width, scale down truncatable columns proportionally
 	// Lower priority truncatable columns are truncated more aggressively (get less width)
 	// Higher priority columns are scaled down less (preserved more)
-	// Non-truncatable columns are already at their minimum (content width), so we only scale truncatable
+	// Fixed-width and non-truncatable columns are protected, so we only scale truncatable
 	if remainingWidth < 0 {
-		// Identify truncation candidates: all truncatable columns
+		// Identify truncation candidates: truncatable columns without fixed widths
 		// Lower priority columns will be truncated more (receive less width)
+		// Fixed-width columns should never be scaled down
 		type truncateCandidate struct {
 			index    int
 			priority int
 		}
 		truncateCandidates := make([]truncateCandidate, 0, len(truncatableColumns))
 		for _, i := range truncatableColumns {
+			col := config.Columns[i]
+			// Skip fixed-width columns - they should never be scaled down
+			if col.Width > 0 {
+				continue
+			}
 			truncateCandidates = append(truncateCandidates, truncateCandidate{
 				index:    i,
-				priority: config.Columns[i].Priority,
+				priority: col.Priority,
 			})
 		}
 
@@ -244,9 +250,13 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 			return truncateCandidates[i].priority > truncateCandidates[j].priority
 		})
 
-		// Calculate total width of only truncatable columns
+		// Calculate total width of only truncatable columns (excluding fixed-width)
 		truncatableCurrentWidth := 0
 		for _, i := range truncatableColumns {
+			// Skip fixed-width columns when calculating width to reduce
+			if config.Columns[i].Width > 0 {
+				continue
+			}
 			truncatableCurrentWidth += columnWidths[i]
 		}
 
@@ -302,8 +312,12 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 	// Prioritize columns that are currently truncated (content > width)
 	if remainingWidth > 0 {
 		// First, identify columns that are truncated (content width > column width)
+		// Skip fixed-width columns - they should never be expanded
 		truncatedColumns := make([]int, 0)
 		for i, col := range config.Columns {
+			if col.Width > 0 {
+				continue // Skip fixed-width columns
+			}
 			if col.Truncatable {
 				contentWidth := calculateColumnContentWidth(config, i)
 				// If content is wider than current width, column is truncated
@@ -359,10 +373,15 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 			iterations++
 
 			// Recalculate which columns can still receive width
+			// Skip fixed-width columns - they should never be expanded
 			activePercentColumns := make([]int, 0)
 			activeTotalPercent := 0.0
 			for _, idx := range percentColumns {
 				col := config.Columns[idx]
+				// Skip fixed-width columns
+				if col.Width > 0 {
+					continue
+				}
 				// Column can receive width if it has no MaxWidth or hasn't reached it
 				if col.MaxWidth == 0 || columnWidths[idx] < col.MaxWidth {
 					activePercentColumns = append(activePercentColumns, idx)
@@ -418,10 +437,15 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 		}
 
 		// Handle any remaining width from rounding - distribute to higher priority columns first
+		// Skip fixed-width columns - they should never be expanded
 		if remainingWidth > 0 {
 			expandableColumns := make([]int, 0)
 			for _, idx := range percentColumns {
 				col := config.Columns[idx]
+				// Skip fixed-width columns
+				if col.Width > 0 {
+					continue
+				}
 				if col.MaxWidth == 0 || columnWidths[idx] < col.MaxWidth {
 					expandableColumns = append(expandableColumns, idx)
 				}
@@ -473,13 +497,19 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 			columnWidths[i] = col.MaxWidth
 
 			// Find columns that can receive excess (haven't hit their max and have percentages)
+			// Skip fixed-width columns - they should never be expanded
 			redistributeColumns := make([]int, 0)
 			totalRedistPercent := 0.0
 			for j := range columnWidths {
-				if j != i && (config.Columns[j].MaxWidth == 0 || columnWidths[j] < config.Columns[j].MaxWidth) {
-					if config.Columns[j].PercentWidth > 0 {
+				col := config.Columns[j]
+				// Skip fixed-width columns
+				if col.Width > 0 {
+					continue
+				}
+				if j != i && (col.MaxWidth == 0 || columnWidths[j] < col.MaxWidth) {
+					if col.PercentWidth > 0 {
 						redistributeColumns = append(redistributeColumns, j)
-						totalRedistPercent += config.Columns[j].PercentWidth
+						totalRedistPercent += col.PercentWidth
 					}
 				}
 			}
@@ -522,26 +552,28 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 		totalWidth += w
 	}
 	if totalWidth > availableWidth {
-		// Scale down proportionally, but protect non-truncatable columns
-		// Calculate width of non-truncatable columns
-		nonTruncatableWidth := 0
+		// Scale down proportionally, but protect fixed-width and non-truncatable columns
+		// Calculate width of protected columns (fixed-width and non-truncatable)
+		protectedWidth := 0
 		truncatableWidth := 0
 		for i, w := range columnWidths {
-			if !config.Columns[i].Truncatable {
-				nonTruncatableWidth += w
+			col := config.Columns[i]
+			if col.Width > 0 || !col.Truncatable {
+				// Fixed-width columns and non-truncatable columns are protected
+				protectedWidth += w
 			} else {
 				truncatableWidth += w
 			}
 		}
 
-		// If non-truncatable columns alone exceed available width, we have a problem
+		// If protected columns alone exceed available width, we have a problem
 		// But we must respect them - scale down truncatable columns only
-		if nonTruncatableWidth >= availableWidth {
-			// Can't fit - non-truncatable columns take priority
+		if protectedWidth >= availableWidth {
+			// Can't fit - protected columns take priority
 			// Scale down truncatable columns to minimum
 			for i, col := range config.Columns {
-				if !col.Truncatable {
-					continue // Keep non-truncatable width
+				if col.Width > 0 || !col.Truncatable {
+					continue // Keep fixed-width and non-truncatable width
 				}
 				if col.MinWidth > 0 {
 					columnWidths[i] = col.MinWidth
@@ -550,21 +582,22 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 				}
 			}
 		} else {
-			// Scale down only truncatable columns
-			availableForTruncatable := availableWidth - nonTruncatableWidth
+			// Scale down only truncatable columns (not fixed-width)
+			availableForTruncatable := availableWidth - protectedWidth
 			if truncatableWidth > 0 && availableForTruncatable > 0 {
 				scale := float64(availableForTruncatable) / float64(truncatableWidth)
 				for i := range columnWidths {
-					if !config.Columns[i].Truncatable {
-						continue // Don't scale non-truncatable
+					col := config.Columns[i]
+					if col.Width > 0 || !col.Truncatable {
+						continue // Don't scale fixed-width or non-truncatable
 					}
 					columnWidths[i] = int(float64(columnWidths[i]) * scale)
 					if columnWidths[i] < 1 {
 						columnWidths[i] = 1
 					}
 					// Respect MinWidth
-					if config.Columns[i].MinWidth > 0 && columnWidths[i] < config.Columns[i].MinWidth {
-						columnWidths[i] = config.Columns[i].MinWidth
+					if col.MinWidth > 0 && columnWidths[i] < col.MinWidth {
+						columnWidths[i] = col.MinWidth
 					}
 				}
 			}
@@ -578,12 +611,18 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 
 	// Step 9: Distribute any remaining width to columns without MaxWidth constraints
 	// This ensures we fully utilize the terminal width when some columns have MaxWidth limits
+	// Skip fixed-width columns - they should never be expanded
 	remainingWidth = availableWidth - totalWidth
 	for remainingWidth > 0 {
 		// Find columns that can receive additional width (no MaxWidth or haven't hit it)
+		// Exclude fixed-width columns
 		expandableColumns := make([]int, 0)
 		totalExpandPercent := 0.0
 		for i, col := range config.Columns {
+			// Skip fixed-width columns
+			if col.Width > 0 {
+				continue
+			}
 			// Column is expandable if it has no MaxWidth or hasn't reached it
 			if col.MaxWidth == 0 || columnWidths[i] < col.MaxWidth {
 				expandableColumns = append(expandableColumns, i)
@@ -620,10 +659,14 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 
 			// If still have remaining width, distribute equally to all expandable columns
 			if remainingWidth > 0 {
-				// Re-check which columns can still expand
+				// Re-check which columns can still expand (excluding fixed-width)
 				stillExpandable := make([]int, 0)
 				for _, idx := range expandableColumns {
 					col := config.Columns[idx]
+					// Skip fixed-width columns (shouldn't be in expandableColumns, but double-check)
+					if col.Width > 0 {
+						continue
+					}
 					if col.MaxWidth == 0 || columnWidths[idx] < col.MaxWidth {
 						stillExpandable = append(stillExpandable, idx)
 					}
@@ -652,11 +695,16 @@ func calculateColumnWidths(config TableConfig, availableWidth int) []int {
 			}
 		} else {
 			// No PercentWidth specified, distribute equally to expandable columns
+			// (expandableColumns already excludes fixed-width columns)
 			extraPerColumn := remainingWidth / len(expandableColumns)
 			extraRemainder := remainingWidth % len(expandableColumns)
 			distributed := 0
 			for i, idx := range expandableColumns {
 				col := config.Columns[idx]
+				// Double-check: skip fixed-width columns (shouldn't be here, but be safe)
+				if col.Width > 0 {
+					continue
+				}
 				extra := extraPerColumn
 				if i < extraRemainder {
 					extra++
