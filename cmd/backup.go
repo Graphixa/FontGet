@@ -203,7 +203,7 @@ func performBackup(fontManager platform.FontManager, scopes []platform.Installat
 
 	GetLogger().Info("Backup operation complete - Backed up %d font families, %d files to %s", result.familyCount, result.fileCount, zipPath)
 	output.GetDebug().State("Backup operation complete - Families: %d, Files: %d", result.familyCount, result.fileCount)
-	fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font files backed up to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", zipPath)))))
+	fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font files backed up to: '%s'", ui.InfoText.Render(zipPath))))
 	fmt.Println()
 	return nil
 }
@@ -304,7 +304,7 @@ func runBackupWithProgressBar(fontManager platform.FontManager, scopes []platfor
 	// Show success message after progress bar completes
 	if backupResult != nil {
 		// Show destination path with checkmark, matching remove command style
-		fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font files backed up to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", zipPath)))))
+		fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font files backed up to: '%s'", ui.InfoText.Render(zipPath))))
 		fmt.Println()
 	}
 

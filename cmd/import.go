@@ -39,7 +39,7 @@ func loadAndValidateManifest(manifestFile string) (*ExportManifest, error) {
 		return nil, err
 	}
 	if !exists {
-		cmdutils.PrintErrorf("Manifest file not found: %s", manifestFile)
+		cmdutils.PrintErrorf("Manifest file not found: '%s'", ui.InfoText.Render(manifestFile))
 		fmt.Println()
 		return nil, fmt.Errorf("manifest file not found: %s", manifestFile)
 	}
@@ -694,7 +694,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		// Show success message with checkmark format (only if fonts were installed)
 		if status.Installed > 0 {
 			manifestFile := args[0]
-			fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Fonts imported from: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", manifestFile)))))
+			fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Fonts imported from: '%s'", ui.InfoText.Render(manifestFile))))
 			fmt.Println()
 		}
 

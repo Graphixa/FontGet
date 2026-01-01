@@ -1004,7 +1004,7 @@ Use --scope to set removal location:
 
 							var hasSuggestions bool
 							if len(similar) > 0 {
-								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", ui.QueryText.Render(fontName))))
 
 								// Match installed font names to repository entries (like list command)
 								// Try to match, but always show table even if matching fails
@@ -1075,7 +1075,7 @@ Use --scope to set removal location:
 									hasSuggestions = true
 								}
 							} else {
-								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+								fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", ui.QueryText.Render(fontName))))
 								hasSuggestions = false
 							}
 
@@ -1087,7 +1087,7 @@ Use --scope to set removal location:
 							fmt.Println()
 						} else {
 							// Multiple fonts - show grouped format with header
-							fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
+							fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", ui.QueryText.Render(scopeDisplay))))
 							for _, fontName := range trulyNotFound {
 								fmt.Printf(" - %s\n", fontName)
 							}
@@ -1248,7 +1248,7 @@ Use --scope to set removal location:
 					// Display fonts found in opposite scope as a separate section
 					if len(fontsInOppositeScope) > 0 {
 						// Use FeedbackWarning (yellow, no bold) for the header message
-						fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
+						fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", ui.QueryText.Render(oppositeScopeName), ui.QueryText.Render(oppositeScopeName))))
 						for _, fontName := range notFoundFonts {
 							if properName, foundInOpposite := fontsInOppositeScope[fontName]; foundInOpposite {
 								fmt.Printf(" - %s\n", properName)
@@ -1885,7 +1885,7 @@ Use --scope to set removal location:
 
 					var hasSuggestions bool
 					if len(similar) > 0 {
-						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", ui.QueryText.Render(fontName))))
 
 						// Match installed font names to repository entries (like list command)
 						// Try to match, but always show table even if matching fails
@@ -1956,7 +1956,7 @@ Use --scope to set removal location:
 							hasSuggestions = true
 						}
 					} else {
-						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", fontName)))
+						fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Font '%s' not found.", ui.QueryText.Render(fontName))))
 						hasSuggestions = false
 					}
 
@@ -1968,7 +1968,7 @@ Use --scope to set removal location:
 					fmt.Println()
 				} else {
 					// Multiple fonts - show grouped format with header
-					fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", scopeDisplay)))
+					fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("The following font(s) were not found installed in the '%s' scope:", ui.QueryText.Render(scopeDisplay))))
 					for _, fontName := range notFoundFonts {
 						fmt.Printf(" - %s\n", fontName)
 					}
@@ -2148,7 +2148,7 @@ Use --scope to set removal location:
 				}
 
 				// Use FeedbackWarning (yellow, no bold) for the header message
-				fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", oppositeScopeName, oppositeScopeName)))
+				fmt.Printf("%s\n", ui.WarningText.Render(fmt.Sprintf("The following font(s) are installed in the '%s' scope, use '--scope %s' to remove them:", ui.QueryText.Render(oppositeScopeName), ui.QueryText.Render(oppositeScopeName))))
 				for _, fontName := range uniqueFonts {
 					fmt.Printf(" - %s\n", fontName)
 				}

@@ -444,7 +444,7 @@ Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore de
 
 		// Start with a blank line for consistent spacing
 		fmt.Println()
-		fmt.Printf("Configuration Path: %s\n\n", configPath)
+		fmt.Printf("Configuration Path: '%s'\n\n", ui.InfoText.Render(configPath))
 
 		// Load and validate configuration
 		output.GetVerbose().Info("Loading configuration from: %s", configPath)

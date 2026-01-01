@@ -406,7 +406,7 @@ func runSourcesUpdateVerbose() error {
 
 		// Source is reachable, now download the full content
 		fmt.Printf("Source Found\n")
-		fmt.Printf("Downloading from: %s\n", ui.InfoText.Render(source.URL))
+		fmt.Printf("Downloading from: '%s'\n", ui.InfoText.Render(source.URL))
 		resp, err := client.Get(source.URL)
 		if err != nil {
 			fmt.Printf("%s\n\n", ui.RenderError(fmt.Sprintf("Failed to download source - %v", err)))
@@ -445,7 +445,7 @@ func runSourcesUpdateVerbose() error {
 		sanitizedName := strings.ToLower(sourceName)
 		sanitizedName = strings.ReplaceAll(sanitizedName, " ", "_")
 		cachePath := filepath.Join(homeDir, ".fontget", "sources", fmt.Sprintf("%s.json", sanitizedName))
-		fmt.Printf("%s\n\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to %s (%d bytes)", cachePath, len(body))))
+		fmt.Printf("%s\n\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to '%s' (%d bytes)", ui.InfoText.Render(cachePath), len(body))))
 		successful++
 	}
 
@@ -680,7 +680,7 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 
 		// Start with a blank line for consistent spacing
 		fmt.Println()
-		fmt.Printf("%s %s\n\n", ui.TextBold.Render("Sources Path:"), sourcesDir)
+		fmt.Printf("%s '%s'\n\n", ui.TextBold.Render("Sources Path:"), ui.InfoText.Render(sourcesDir))
 
 		// Validate individual source files
 		entries, err := os.ReadDir(sourcesDir)

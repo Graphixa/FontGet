@@ -4,16 +4,14 @@ import (
 	"fmt"
 
 	"fontget/internal/shared"
-	"fontget/internal/ui"
 
-	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// TableModel wraps bubbles/table.Model for dynamic TUI use
+// TableModel wraps CustomTable for dynamic TUI use
 type TableModel struct {
-	table    table.Model
+	table    *CustomTable
 	config   TableConfig
 	hasFocus bool
 }
@@ -48,94 +46,26 @@ func NewTableModel(config TableConfig) (*TableModel, error) {
 		tableWidth = shared.GetTerminalWidth()
 	}
 
-	// Calculate column widths - the bubbles/table component will handle padding internally
-	// We'll account for padding by using a slightly smaller available width
-	numColumns := len(config.Columns)
-	// Get padding value (default to 1 if not set)
-	cellPadding := config.Padding
-	if cellPadding == 0 {
-		cellPadding = 1 // Default padding
+	// Apply maximum width constraint
+	maxWidth := config.MaxWidth
+	if maxWidth == 0 {
+		maxWidth = DefaultMaxTableWidth // Use default if not specified
 	}
-	// Reserve space for padding (cellPadding char left + cellPadding char right per column) and separators
-	paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
-	availableWidthForColumns := tableWidth - paddingAndSeparators
-	if availableWidthForColumns < numColumns {
-		availableWidthForColumns = numColumns // Minimum width
+	if maxWidth > 0 && tableWidth > maxWidth {
+		tableWidth = maxWidth
 	}
 
-	// Calculate column widths based on available width
-	columnWidths := calculateColumnWidths(config, availableWidthForColumns)
+	// Update config with calculated width
+	config.Width = tableWidth
 
-	// Build table columns
-	tableColumns := make([]table.Column, len(config.Columns))
-	for i, col := range config.Columns {
-		tableColumns[i] = table.Column{
-			Title: col.Header,
-			Width: columnWidths[i],
-		}
+	// Create custom table
+	customTable, err := NewCustomTable(config)
+	if err != nil {
+		return nil, err
 	}
-
-	// Build table rows
-	tableRows := make([]table.Row, len(config.Rows))
-	for i, row := range config.Rows {
-		formattedRow := make([]string, len(config.Columns))
-		for j := range formattedRow {
-			if j < len(row) {
-				formattedRow[j] = row[j]
-			} else {
-				formattedRow[j] = ""
-			}
-		}
-		tableRows[i] = formattedRow
-	}
-
-	// Determine height
-	height := config.Height
-	if height == 0 {
-		height = len(tableRows)
-		if height > 20 {
-			height = 20 // Max height for TUI
-		}
-	}
-
-	// Update columns with calculated widths
-	for i := range tableColumns {
-		tableColumns[i].Width = columnWidths[i]
-	}
-
-	// Create table
-	t := table.New(
-		table.WithColumns(tableColumns),
-		table.WithRows(tableRows),
-		table.WithFocused(false),
-		table.WithHeight(height),
-	)
-
-	// Don't set a fixed width - let the table size itself based on columns
-	// The View method will center it if needed
-
-	// Apply theme styles
-	styles := table.DefaultStyles()
-	headerStyle := ui.TableHeader.Copy()
-	styles.Header = headerStyle.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderTop(true).
-		BorderBottom(true).
-		BorderLeft(false).
-		BorderRight(false).
-		Padding(0, cellPadding)
-
-	cellStyle := ui.Text.Copy()
-	styles.Cell = cellStyle.Padding(0, cellPadding)
-
-	// Selected row: use inverted colors (like ButtonSelected) and no padding (no indent)
-	styles.Selected = ui.TableRowSelected.Copy().
-		Padding(0, 0) // No padding for selected row to remove indent
-
-	t.SetStyles(styles)
 
 	return &TableModel{
-		table:    t,
+		table:    customTable,
 		config:   config,
 		hasFocus: false,
 	}, nil
@@ -149,33 +79,7 @@ func (tm *TableModel) HasFocus() bool {
 // SetFocus sets the focus state of the table
 func (tm *TableModel) SetFocus(focused bool) {
 	tm.hasFocus = focused
-	// Recreate table with new focus state
-	tm.table = table.New(
-		table.WithColumns(tm.table.Columns()),
-		table.WithRows(tm.table.Rows()),
-		table.WithFocused(focused),
-		table.WithHeight(tm.table.Height()),
-	)
-	// Reapply styles
-	cellPadding := tm.getCellPadding()
-	styles := table.DefaultStyles()
-	headerStyle := ui.TableHeader.Copy()
-	styles.Header = headerStyle.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderTop(true).
-		BorderBottom(true).
-		BorderLeft(false).
-		BorderRight(false).
-		Padding(0, cellPadding)
-
-	cellStyle := ui.Text.Copy()
-	styles.Cell = cellStyle.Padding(0, cellPadding)
-
-	// Selected row: use inverted colors (like ButtonSelected) and no padding (no indent)
-	styles.Selected = ui.TableRowSelected.Copy().
-		Padding(0, 0) // No padding for selected row to remove indent
-
-	tm.table.SetStyles(styles)
+	tm.table.SetFocus(focused)
 }
 
 // View returns the rendered table, centered if there's extra space
@@ -201,91 +105,37 @@ func (tm *TableModel) View() string {
 
 // UpdateWithHeight handles window resize with a specific available height
 func (tm *TableModel) UpdateWithHeight(msg tea.WindowSizeMsg, availableHeight int) (*TableModel, tea.Cmd) {
-	// Preserve current state
-	selectedRow := tm.table.Cursor()
-	rows := tm.table.Rows()
-
-	// Calculate column widths - the bubbles/table component will handle padding internally
-	// We'll account for padding by using a slightly smaller available width
-	numColumns := len(tm.config.Columns)
-	cellPadding := tm.getCellPadding()
-	// Reserve space for padding (cellPadding char left + cellPadding char right per column) and separators
-	paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
-	availableWidthForColumns := msg.Width - paddingAndSeparators
-	if availableWidthForColumns < numColumns {
-		availableWidthForColumns = numColumns // Minimum width
-	}
-
-	// Recalculate column widths based on available width
-	columnWidths := calculateColumnWidths(tm.config, availableWidthForColumns)
-
-	// Update table columns with new widths
-	tableColumns := make([]table.Column, len(tm.config.Columns))
-	for i, col := range tm.config.Columns {
-		tableColumns[i] = table.Column{
-			Title: col.Header,
-			Width: columnWidths[i],
-		}
-	}
-
-	// Calculate table height based on available space
-	tableHeight := availableHeight
-	if tableHeight > len(rows) {
-		tableHeight = len(rows)
-	}
-	if tableHeight < 1 {
-		tableHeight = 1
-	}
-
-	// Update columns with calculated widths
-	for i := range tableColumns {
-		tableColumns[i].Width = columnWidths[i]
-	}
-
-	// Recreate table with new dimensions
-	tm.table = table.New(
-		table.WithColumns(tableColumns),
-		table.WithRows(rows),
-		table.WithFocused(tm.hasFocus),
-		table.WithHeight(tableHeight),
-	)
-
-	// Don't set a fixed width - let the table size itself based on columns
-	// The View method will center it if needed
-
-	// Restore selected row (ensure it's within bounds)
-	if selectedRow >= len(rows) {
-		selectedRow = len(rows) - 1
-	}
-	if selectedRow < 0 {
-		selectedRow = 0
-	}
-	tm.table.SetCursor(selectedRow)
-
-	// Reapply styles (cellPadding already declared above)
-	styles := table.DefaultStyles()
-	headerStyle := ui.TableHeader.Copy()
-	styles.Header = headerStyle.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderTop(true).
-		BorderBottom(true).
-		BorderLeft(false).
-		BorderRight(false).
-		Padding(0, cellPadding)
-
-	cellStyle := ui.Text.Copy()
-	styles.Cell = cellStyle.Padding(0, cellPadding)
-
-	// Selected row: use inverted colors (like ButtonSelected) and no padding (no indent)
-	styles.Selected = ui.TableRowSelected.Copy().
-		Padding(0, 0) // No padding for selected row to remove indent
-
-	tm.table.SetStyles(styles)
-
 	// Update config width
 	tm.config.Width = msg.Width
 
-	return tm, nil
+	// Recalculate column widths
+	numColumns := len(tm.config.Columns)
+	cellPadding := tm.getCellPadding()
+	paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
+	availableWidthForColumns := msg.Width - paddingAndSeparators
+	if availableWidthForColumns < numColumns {
+		availableWidthForColumns = numColumns
+	}
+
+	// Recalculate column widths
+	columnWidths := calculateColumnWidths(tm.config, availableWidthForColumns)
+
+	// Update custom table column widths
+	tm.table.columnWidths = columnWidths
+
+	// Set viewport height based on available height
+	if availableHeight > len(tm.table.rows) {
+		availableHeight = len(tm.table.rows)
+	}
+	if availableHeight < 1 {
+		availableHeight = 1
+	}
+	tm.table.SetHeight(availableHeight)
+
+	// Handle window resize in custom table
+	_, cmd := tm.table.Update(msg)
+
+	return tm, cmd
 }
 
 // Update handles messages for the table (for tea.Model integration)
@@ -295,94 +145,33 @@ func (tm *TableModel) Update(msg interface{}) (*TableModel, tea.Cmd) {
 	// Handle window resize events to recalculate column widths
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		// Preserve current state
-		selectedRow := tm.table.Cursor()
-		rows := tm.table.Rows()
-
-		// Calculate column widths - the bubbles/table component will handle padding internally
-		// We'll account for padding by using a slightly smaller available width
-		numColumns := len(tm.config.Columns)
-		cellPadding := tm.getCellPadding()
-		// Reserve space for padding (cellPadding char left + cellPadding char right per column) and separators
-		paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
-		availableWidthForColumns := msg.Width - paddingAndSeparators
-		if availableWidthForColumns < numColumns {
-			availableWidthForColumns = numColumns // Minimum width
-		}
-
-		// Recalculate column widths based on available width
-		columnWidths := calculateColumnWidths(tm.config, availableWidthForColumns)
-
-		// Update table columns with new widths
-		tableColumns := make([]table.Column, len(tm.config.Columns))
-		for i, col := range tm.config.Columns {
-			tableColumns[i] = table.Column{
-				Title: col.Header,
-				Width: columnWidths[i],
-			}
-		}
-
-		// Calculate table height - use config height if set, otherwise use current height
-		tableHeight := tm.config.Height
-		if tableHeight == 0 {
-			// Keep current height or use number of rows
-			tableHeight = tm.table.Height()
-			if tableHeight == 0 {
-				tableHeight = len(rows)
-				if tableHeight > 20 {
-					tableHeight = 20
-				}
-			}
-		}
-
-		// Recreate table with new column widths
-		tm.table = table.New(
-			table.WithColumns(tableColumns),
-			table.WithRows(rows),
-			table.WithFocused(tm.hasFocus),
-			table.WithHeight(tableHeight),
-		)
-
-		// Don't set a fixed width - let the table size itself based on columns
-		// The View method will center it if needed
-
-		// Restore selected row (ensure it's within bounds)
-		if selectedRow >= len(rows) {
-			selectedRow = len(rows) - 1
-		}
-		if selectedRow < 0 {
-			selectedRow = 0
-		}
-		tm.table.SetCursor(selectedRow)
-
-		// Reapply styles (cellPadding already declared above)
-		styles := table.DefaultStyles()
-		headerStyle := ui.TableHeader.Copy()
-		styles.Header = headerStyle.
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderTop(true).
-			BorderBottom(true).
-			BorderLeft(false).
-			BorderRight(false).
-			Padding(0, cellPadding)
-
-		cellStyle := ui.Text.Copy()
-		styles.Cell = cellStyle.Padding(0, cellPadding)
-
-		// Selected row: use inverted colors (like ButtonSelected) and no padding (no indent)
-		styles.Selected = ui.TableRowSelected.Copy().
-			Padding(0, 0) // No padding for selected row to remove indent
-
-		tm.table.SetStyles(styles)
-
 		// Update config width
 		tm.config.Width = msg.Width
 
-		return tm, nil
-	default:
-		if tm.hasFocus {
-			tm.table, cmd = tm.table.Update(msg)
+		// Recalculate column widths
+		numColumns := len(tm.config.Columns)
+		cellPadding := tm.getCellPadding()
+		paddingAndSeparators := numColumns*cellPadding*2 + (numColumns - 1)
+		availableWidthForColumns := msg.Width - paddingAndSeparators
+		if availableWidthForColumns < numColumns {
+			availableWidthForColumns = numColumns
 		}
+
+		// Recalculate column widths
+		columnWidths := calculateColumnWidths(tm.config, availableWidthForColumns)
+
+		// Update custom table column widths
+		tm.table.SetColumnWidths(columnWidths)
+
+		// Handle window resize in custom table
+		tm.table, cmd = tm.table.Update(msg)
 		return tm, cmd
 	}
+
+	// Delegate all other messages to CustomTable - it handles smart scrolling
+	if tm.hasFocus {
+		tm.table, cmd = tm.table.Update(msg)
+	}
+
+	return tm, cmd
 }

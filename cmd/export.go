@@ -134,7 +134,7 @@ The output file can be specified as a positional argument or using the -o flag.`
 		// Handle file existence confirmation
 		if needsConfirm {
 			// File exists - show error message
-			cmdutils.PrintErrorf("File already exists: %s", normalizedPath)
+			cmdutils.PrintErrorf("File already exists: '%s'", ui.InfoText.Render(normalizedPath))
 			cmdutils.PrintInfo("Use --force to overwrite")
 			fmt.Println()
 			return nil
@@ -365,7 +365,7 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 	// Show success message after progress bar completes
 	if len(exportedFonts) > 0 {
 		// Show destination path with checkmark, matching backup command style
-		fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font manifest exported to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", outputFile)))))
+		fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font manifest exported to: '%s'", ui.InfoText.Render(outputFile))))
 		fmt.Println()
 	}
 
@@ -483,7 +483,7 @@ func performFullExport(fontManager platform.FontManager, scopes []platform.Insta
 	}
 
 	output.GetDebug().State("Export operation complete - Exported: %d font families", len(exportedFonts))
-	fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font manifest exported to: %s", ui.InfoText.Render(fmt.Sprintf("'%s'", outputFile)))))
+	fmt.Printf("  %s %s\n", ui.SuccessText.Render("✓"), ui.Text.Render(fmt.Sprintf("Font manifest exported to: '%s'", ui.InfoText.Render(outputFile))))
 	fmt.Println()
 	return nil
 }
