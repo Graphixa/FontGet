@@ -32,24 +32,56 @@ jobs:
           version: latest
           args: check
 
-      - name: Install Chocolatey CLI
-        run: |
-          sudo apt update
-          sudo apt install -y mono-complete
-          wget https://community.chocolatey.org/install.ps1 -O - | sudo bash
-          # Verify choco is in PATH and accessible
-          which choco || echo "choco not found in PATH"
-          choco --version || echo "choco command failed"
-
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           version: latest
-          args: release --clean
+          args: release --clean --skip=chocolatey
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Custom tokens for package manager repositories
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
 
+  chocolatey:
+    name: Build Chocolatey Package
+    runs-on: windows-latest
+    needs: release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+
+      - name: Install Chocolatey
+        shell: pwsh
+        run: |
+          Set-ExecutionPolicy Bypass -Scope Process -Force
+          [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+          iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+      - name: Verify Chocolatey installation
+        shell: pwsh
+        run: |
+          # Refresh environment to pick up Chocolatey PATH
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          choco --version
+
+      - name: Run GoReleaser (Chocolatey only)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean --skip=homebrew,scoop,winget,nfpm
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          # Ensure Chocolatey is in PATH for GoReleaser
+          Path: ${{ env.Path }};C:\ProgramData\chocolatey\bin
