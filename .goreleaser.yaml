@@ -7,6 +7,10 @@ dist: dist
 before:
   hooks:
     - go mod tidy
+    # Generate Windows resources (icon, version info) for Windows builds
+    # Note: This will only work on Windows, but won't fail on other platforms
+    # Use git-tag special value to automatically get version from git tag
+    - cmd: go-winres make --in build/winres.json --out rsrc --file-version git-tag --product-version git-tag || true
 
 builds:
   - id: fontget
@@ -143,15 +147,15 @@ chocolateys:
     owners: "Graphixa"
     authors: "Graphixa"
     project_url: "https://github.com/Graphixa/FontGet"
-    project_source_url: "https://github.com/Graphixa/FontGet"
     package_source_url: "https://github.com/Graphixa/FontGet"
     description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line. Search for fonts, list installed fonts, install or remove fonts all from the CLI."
     summary: "Install and manage fonts from the command line"
-    tags: "fonts,font-manager,cli,cross-platform"
+    tags: "fonts font-manager cli cross-platform"
     license_url: "https://github.com/Graphixa/FontGet/blob/main/LICENSE"
     release_notes: "https://github.com/Graphixa/FontGet/releases/tag/v{{ .Version }}"
     bug_tracker_url: "https://github.com/Graphixa/FontGet/issues"
     docs_url: "https://github.com/Graphixa/FontGet/blob/main/README.md"
+    icon_url: "https://raw.githubusercontent.com/Graphixa/FontGet/main/assets/icon.png"
 
 # Winget (Windows) - Automated PRs to microsoft/winget-pkgs
 winget:

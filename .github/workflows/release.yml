@@ -23,6 +23,9 @@ jobs:
         with:
           go-version: "1.24.4"
 
+      - name: Install go-winres (for Windows icon embedding)
+        run: go install github.com/tc-hib/go-winres@latest
+
       - name: Run tests
         run: go test ./...
 
@@ -62,6 +65,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: "1.24.4"
+
+      - name: Install go-winres (for Windows icon embedding)
+        run: go install github.com/tc-hib/go-winres@latest
 
       - name: Verify Chocolatey installation
         shell: pwsh
