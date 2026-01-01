@@ -66,47 +66,182 @@ type RemoveResult struct {
 	Errors  []string
 }
 
+// extractBaseFontName extracts the base font name by removing common suffixes
+// This handles cases where installed fonts have suffixes that aren't in the repository Font ID
+// Examples:
+//   - "JetBrainsMono Nerd Font" -> "JetBrainsMono"
+//   - "JetBrainsMono Nerd Font Mono" -> "JetBrainsMono"
+//   - "JetBrainsMonoNL Nerd Font" -> "JetBrainsMono" (removes both "NL" and " Nerd Font")
+//   - "FiraCode Nerd Font" -> "FiraCode"
+//   - "Roboto" -> "Roboto" (no change if no suffix)
+//
+// Returns the original name if no suffix pattern is found
+func extractBaseFontName(familyName string) string {
+	lower := strings.ToLower(familyName)
+
+	// First, remove "Nerd Font" suffix patterns
+	nerdPatterns := []string{
+		" nerd font",
+		"nerdfont",
+		" nerd",
+	}
+
+	var baseName string
+	foundNerdPattern := false
+	for _, pattern := range nerdPatterns {
+		if idx := strings.Index(lower, pattern); idx > 0 {
+			// Extract the base name before the pattern
+			baseName = familyName[:idx]
+			baseName = strings.TrimSpace(baseName)
+			foundNerdPattern = true
+			break
+		}
+	}
+
+	// If no Nerd Font pattern found, use the original name
+	if !foundNerdPattern {
+		baseName = familyName
+	}
+
+	// Now remove variant suffixes that might be part of the base name
+	// These are common font variant suffixes that don't appear in repository Font IDs
+	// Note: We don't remove "Mono" because it's often part of the base font name (e.g., "JetBrainsMono")
+	variantSuffixes := []string{
+		"NL",           // No Ligatures (e.g., "JetBrainsMonoNL" -> "JetBrainsMono")
+		"Propo",        // Proportional variant
+		"Proportional", // Proportional variant (full word)
+	}
+
+	// Try removing variant suffixes from the end of the base name
+	baseLower := strings.ToLower(baseName)
+	for _, suffix := range variantSuffixes {
+		suffixLower := strings.ToLower(suffix)
+		// Check if the base name ends with this suffix (case-insensitive)
+		if strings.HasSuffix(baseLower, suffixLower) {
+			// Remove the suffix
+			baseName = baseName[:len(baseName)-len(suffix)]
+			baseName = strings.TrimSpace(baseName)
+			baseLower = strings.ToLower(baseName)
+		}
+	}
+
+	return baseName
+}
+
+// ProgressCallback is a function type for reporting progress during font finding
+type ProgressCallback func(percent float64)
+
 // findFontFamilyFiles returns a list of font files that belong to the given font family
-func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, scope platform.InstallationScope) []string {
+// If progressCallback is provided, it will be called periodically with progress (0-50% range)
+func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, scope platform.InstallationScope, progressCallback ...ProgressCallback) []string {
 	// Get the font directory
 	fontDir := fontManager.GetFontDir(scope)
 
+	// Extract base name from query (removes "Nerd Font" suffixes, etc.)
+	baseQueryName := extractBaseFontName(fontFamily)
 	// Normalize the query font name for comparison
-	normalizedQuery := normalizeFontName(fontFamily)
+	normalizedQuery := normalizeFontName(baseQueryName)
 
-	// Get all installed fonts
-	var matchingFonts []string
+	// Count total font files first for progress calculation
+	var totalFiles int
+	var fontFiles []string
 	filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		if !info.IsDir() {
-			// Try to extract family name from font metadata first (most accurate)
-			var familyName string
-			if metadata, err := platform.ExtractFontMetadata(path); err == nil {
-				// Prefer TypographicFamily over FamilyName for accuracy
-				if metadata.TypographicFamily != "" {
-					familyName = metadata.TypographicFamily
-				} else if metadata.FamilyName != "" {
-					familyName = metadata.FamilyName
-				}
-			}
-
-			// Fallback to filename parsing if metadata extraction failed
-			if familyName == "" {
-				familyName, _ = parseFontName(info.Name())
-			}
-
-			// Normalize the extracted family name for comparison
-			normalizedFamily := normalizeFontName(familyName)
-
-			// Match if the normalized names are exactly equal
-			if normalizedFamily == normalizedQuery {
-				matchingFonts = append(matchingFonts, info.Name())
+			// Check if it's a font file by extension
+			ext := strings.ToLower(filepath.Ext(info.Name()))
+			if ext == ".ttf" || ext == ".otf" || ext == ".ttc" || ext == ".otc" {
+				totalFiles++
+				fontFiles = append(fontFiles, path)
 			}
 		}
 		return nil
 	})
+
+	// If no files found, return early
+	if totalFiles == 0 {
+		return []string{}
+	}
+
+	// Get progress callback if provided
+	var progressCb ProgressCallback
+	if len(progressCallback) > 0 && progressCallback[0] != nil {
+		progressCb = progressCallback[0]
+	}
+
+	// Get all installed fonts with two-phase search
+	var matchingFonts []string
+	filesScanned := 0
+	lastProgressUpdate := 0.0
+
+	filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			filesScanned++
+
+			// Phase 1: Quick filename-based matching (no I/O)
+			fileName := info.Name()
+			baseFileName := strings.TrimSuffix(fileName, filepath.Ext(fileName))
+			normalizedFileName := normalizeFontName(baseFileName)
+
+			// Quick check: does filename suggest a potential match?
+			potentialMatch := false
+			if strings.Contains(normalizedFileName, normalizedQuery) ||
+				strings.Contains(normalizedQuery, normalizedFileName) ||
+				normalizedFileName == normalizedQuery {
+				potentialMatch = true
+			}
+
+			// Phase 2: Extract metadata only for potential matches
+			var familyName string
+			if potentialMatch {
+				// Try to extract family name from font metadata (accurate but expensive)
+				if metadata, err := platform.ExtractFontMetadata(path); err == nil {
+					// Prefer TypographicFamily over FamilyName for accuracy
+					if metadata.TypographicFamily != "" {
+						familyName = metadata.TypographicFamily
+					} else if metadata.FamilyName != "" {
+						familyName = metadata.FamilyName
+					}
+				}
+			}
+
+			// Fallback to filename parsing if metadata extraction failed or wasn't attempted
+			if familyName == "" {
+				familyName, _ = parseFontName(fileName)
+			}
+
+			// Extract base name from installed font (removes "Nerd Font" suffixes, etc.)
+			baseFamilyName := extractBaseFontName(familyName)
+			// Normalize the extracted family name for comparison
+			normalizedFamily := normalizeFontName(baseFamilyName)
+
+			// Match if the normalized base names are equal
+			if normalizedFamily == normalizedQuery {
+				matchingFonts = append(matchingFonts, info.Name())
+			}
+
+			// Send progress updates periodically (every 1-2% or every 25-50 files)
+			if progressCb != nil && totalFiles > 0 {
+				currentProgress := (float64(filesScanned) / float64(totalFiles)) * 50.0 // 0-50% range
+				// Update if progress changed by at least 1% or every 25 files
+				if currentProgress-lastProgressUpdate >= 1.0 || filesScanned%25 == 0 {
+					progressCb(currentProgress)
+					lastProgressUpdate = currentProgress
+				}
+			}
+		}
+		return nil
+	})
+
+	// Send final progress update (50%) if callback provided
+	if progressCb != nil {
+		progressCb(50.0)
+	}
 
 	return matchingFonts
 }
@@ -423,6 +558,13 @@ type FontInfo struct {
 	ProperName string // Proper display name (e.g., "Open Sans")
 }
 
+// checkFontMatchesFontID checks if an installed font matches a specific Font ID using repository matching.
+// This is more accurate than checking metadata strings and works for all Font ID variants.
+// Returns true if the font's Font ID matches the target Font ID.
+func checkFontMatchesFontID(fontFamilyName string, targetFontID string, fontIndex repo.FontIndex) bool {
+	return repo.MatchFontFamilyToFontID(fontFamilyName, targetFontID, fontIndex)
+}
+
 // preEvaluateFontsForRemoval pre-evaluates all fonts to separate found fonts from not found fonts.
 // This ensures we only show found fonts in the progress bar.
 func preEvaluateFontsForRemoval(
@@ -433,12 +575,36 @@ func preEvaluateFontsForRemoval(
 ) (foundFonts []FontInfo, notFoundFonts []string, fontNameMap map[string]string) {
 	fontNameMap = make(map[string]string) // Maps search name to proper name for found fonts
 
+	// Build font index once for all Font ID matching (optimization)
+	// Only build if we have Font IDs to check
+	var fontIndex repo.FontIndex
+	hasFontIDs := false
+	for _, fontName := range fontNames {
+		if strings.Contains(fontName, ".") {
+			hasFontIDs = true
+			break
+		}
+	}
+	if hasFontIDs && repository != nil {
+		var err error
+		fontIndex, err = repo.BuildFontIndexForMatching()
+		if err != nil {
+			// If index build fails, continue without Font ID matching (fallback to name matching)
+			fontIndex = nil
+		}
+	}
+
 	for _, fontName := range fontNames {
 		properName := ""
 		fontFound := false
 
 		// Resolve Font ID to font name if needed (supports both Font IDs and font names)
 		searchName := resolveFontNameOrID(fontName, repository)
+		isFontID := strings.Contains(fontName, ".")
+		targetFontID := ""
+		if isFontID {
+			targetFontID = strings.ToLower(fontName)
+		}
 
 		// Try to find the font and extract its proper name
 		// For "all" scope, check all scopes to find the font (don't break early)
@@ -447,12 +613,39 @@ func preEvaluateFontsForRemoval(
 			matchingFonts := findFontFamilyFiles(searchName, fontManager, scopeType)
 			if len(matchingFonts) > 0 {
 				fontDir := fontManager.GetFontDir(scopeType)
-				firstFontPath := filepath.Join(fontDir, matchingFonts[0])
-				// Extract proper name (use first one found, but continue checking for "all" scope)
-				if properName == "" {
-					properName = extractFontFamilyNameFromPath(firstFontPath)
+
+				// If we have a Font ID, verify that the found font matches the Font ID
+				// This ensures we get the correct variant (e.g., Nerd Font vs base font)
+				if isFontID && fontIndex != nil {
+					// Check all matching fonts to find one that matches the Font ID
+					foundMatchingFontID := false
+					for _, matchingFont := range matchingFonts {
+						fontPath := filepath.Join(fontDir, matchingFont)
+						foundFamilyName := extractFontFamilyNameFromPath(fontPath)
+						if checkFontMatchesFontID(foundFamilyName, targetFontID, fontIndex) {
+							// Found a font that matches the Font ID
+							if properName == "" {
+								properName = foundFamilyName
+							}
+							fontFound = true
+							foundMatchingFontID = true
+							break
+						}
+					}
+					if !foundMatchingFontID {
+						// No matching Font ID found, continue searching
+						continue
+					}
+				} else {
+					// No Font ID or no index, use first match
+					firstFontPath := filepath.Join(fontDir, matchingFonts[0])
+					// Extract proper name (use first one found, but continue checking for "all" scope)
+					if properName == "" {
+						properName = extractFontFamilyNameFromPath(firstFontPath)
+					}
+					fontFound = true
 				}
-				fontFound = true
+
 				// For single scope, break after first match
 				if len(scopes) == 1 {
 					break
@@ -469,12 +662,38 @@ func preEvaluateFontsForRemoval(
 					matchingFonts := findFontFamilyFiles(repoSearchName, fontManager, scopeType)
 					if len(matchingFonts) > 0 {
 						fontDir := fontManager.GetFontDir(scopeType)
-						firstFontPath := filepath.Join(fontDir, matchingFonts[0])
-						// Extract proper name (use first one found, but continue checking for "all" scope)
-						if properName == "" {
-							properName = extractFontFamilyNameFromPath(firstFontPath)
+
+						// If we have a Font ID, verify that the found font matches the Font ID
+						if isFontID && fontIndex != nil {
+							// Check all matching fonts to find one that matches the Font ID
+							foundMatchingFontID := false
+							for _, matchingFont := range matchingFonts {
+								fontPath := filepath.Join(fontDir, matchingFont)
+								foundFamilyName := extractFontFamilyNameFromPath(fontPath)
+								if checkFontMatchesFontID(foundFamilyName, targetFontID, fontIndex) {
+									// Found a font that matches the Font ID
+									if properName == "" {
+										properName = foundFamilyName
+									}
+									fontFound = true
+									foundMatchingFontID = true
+									break
+								}
+							}
+							if !foundMatchingFontID {
+								// No matching Font ID found, continue searching
+								continue
+							}
+						} else {
+							// No Font ID or no index, use first match
+							firstFontPath := filepath.Join(fontDir, matchingFonts[0])
+							// Extract proper name (use first one found, but continue checking for "all" scope)
+							if properName == "" {
+								properName = extractFontFamilyNameFromPath(firstFontPath)
+							}
+							fontFound = true
 						}
-						fontFound = true
+
 						// For single scope, break after first match
 						if len(scopes) == 1 {
 							break
@@ -487,6 +706,8 @@ func preEvaluateFontsForRemoval(
 
 		// If still not found and we're checking a single scope, check the opposite scope
 		// This provides better UX by detecting fonts in the opposite scope early
+		// BUT: If this is a Font ID (e.g., nerd.liberation-mono), prioritize finding the Font ID variant
+		// in the specified scope over the base font in opposite scope
 		if !fontFound && len(scopes) == 1 {
 			var oppositeScope platform.InstallationScope
 			switch scopes[0] {
@@ -497,28 +718,95 @@ func preEvaluateFontsForRemoval(
 			}
 
 			if oppositeScope != "" {
-				// Check opposite scope for the font
-				oppositeMatchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
-				if len(oppositeMatchingFonts) > 0 {
-					// Font found in opposite scope - check if it's a protected system font first
-					oppositeFontDir := fontManager.GetFontDir(oppositeScope)
-					oppositeFontPath := filepath.Join(oppositeFontDir, oppositeMatchingFonts[0])
-					oppositeProperName := extractFontFamilyNameFromPath(oppositeFontPath)
-
-					// If it's a protected system font, show the protection error instead of scope message
-					if shared.IsPlatformSystemFont(oppositeProperName) || shared.IsPlatformSystemFont(searchName) {
-						// Add to foundFonts so it gets caught by the protection check later
-						foundFonts = append(foundFonts, FontInfo{
-							SearchName: fontName,
-							ProperName: oppositeProperName,
-						})
-						fontNameMap[fontName] = oppositeProperName
-						continue
+				// If it's a Font ID, try harder to find it in the specified scope using Font ID matching
+				// This handles cases like nerd.liberation-mono where we want the Nerd Font version,
+				// not the base font that might exist in machine scope
+				if isFontID && fontIndex != nil {
+					// Re-check the specified scope more carefully with Font ID matching
+					specifiedScopeMatchingFonts := findFontFamilyFiles(searchName, fontManager, scopes[0])
+					if len(specifiedScopeMatchingFonts) > 0 {
+						fontDir := fontManager.GetFontDir(scopes[0])
+						// Check all matching fonts to find one that matches the Font ID
+						for _, matchingFont := range specifiedScopeMatchingFonts {
+							fontPath := filepath.Join(fontDir, matchingFont)
+							foundFamilyName := extractFontFamilyNameFromPath(fontPath)
+							if checkFontMatchesFontID(foundFamilyName, targetFontID, fontIndex) {
+								// Found a font that matches the Font ID in the specified scope
+								properName = foundFamilyName
+								fontFound = true
+								break
+							}
+						}
 					}
 				}
-				// Not a protected font, show scope message as usual
-				notFoundFonts = append(notFoundFonts, fontName)
-				continue // Skip adding to foundFonts
+
+				// If still not found, check opposite scope
+				if !fontFound {
+					oppositeMatchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+					if len(oppositeMatchingFonts) > 0 {
+						oppositeFontDir := fontManager.GetFontDir(oppositeScope)
+
+						// Check if any of the found fonts match the Font ID (if we have one)
+						oppositeProperName := ""
+						matchesFontID := false
+
+						if isFontID && fontIndex != nil {
+							// Check all matching fonts to find one that matches the Font ID
+							for _, matchingFont := range oppositeMatchingFonts {
+								fontPath := filepath.Join(oppositeFontDir, matchingFont)
+								foundFamilyName := extractFontFamilyNameFromPath(fontPath)
+								if checkFontMatchesFontID(foundFamilyName, targetFontID, fontIndex) {
+									// Found a font that matches the Font ID in opposite scope
+									oppositeProperName = foundFamilyName
+									matchesFontID = true
+									break
+								}
+							}
+						} else {
+							// No Font ID, use first match
+							oppositeFontPath := filepath.Join(oppositeFontDir, oppositeMatchingFonts[0])
+							oppositeProperName = extractFontFamilyNameFromPath(oppositeFontPath)
+						}
+
+						if oppositeProperName == "" {
+							// No proper name extracted, skip
+							if !fontFound {
+								notFoundFonts = append(notFoundFonts, fontName)
+								continue
+							}
+						}
+
+						// If it's a protected system font, show the protection error instead of scope message
+						if shared.IsPlatformSystemFont(oppositeProperName) || shared.IsPlatformSystemFont(searchName) {
+							// Add to foundFonts so it gets caught by the protection check later
+							foundFonts = append(foundFonts, FontInfo{
+								SearchName: fontName,
+								ProperName: oppositeProperName,
+							})
+							fontNameMap[fontName] = oppositeProperName
+							continue
+						}
+
+						// If this is a Font ID and we found a font that matches the Font ID in opposite scope,
+						// show the scope message (user needs to use --scope flag)
+						if isFontID && matchesFontID {
+							// Found the Font ID variant in opposite scope
+							// Add to notFoundFonts so the scope message will be shown later
+							notFoundFonts = append(notFoundFonts, fontName)
+							continue
+						} else if isFontID && !matchesFontID {
+							// Found base font in opposite scope, but we're looking for Font ID variant
+							// Don't show opposite scope message - font truly not found
+							notFoundFonts = append(notFoundFonts, fontName)
+							continue
+						}
+					}
+					// Not a protected font, show scope message as usual
+					if !fontFound {
+						notFoundFonts = append(notFoundFonts, fontName)
+						continue // Skip adding to foundFonts
+					}
+				}
 			}
 		}
 
@@ -1495,19 +1783,44 @@ Use --scope to set removal location:
 						if len(scopes) == 1 && scopes[0] == platform.UserScope {
 							// Resolve Font ID to font name if needed
 							searchName := resolveFontNameOrID(fontName, r)
-							// Check both scopes efficiently
-							machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
-							userFonts := findFontFamilyFiles(searchName, fontManager, platform.UserScope)
+							// Create progress callback for finding phase (0-50% of total progress)
+							// Split progress between machine and user scope checks
+							findingProgress := 0.0
+							progressCb := func(percent float64) {
+								// percent is 0-50 from findFontFamilyFiles, map to 0-25 for each scope
+								// First scope (machine) uses 0-25%, second scope (user) uses 25-50%
+								if findingProgress < 25.0 {
+									// Machine scope: 0-25%
+									findingProgress = percent * 0.5 // Map 0-50% to 0-25%
+								} else {
+									// User scope: 25-50%
+									findingProgress = 25.0 + (percent * 0.5) // Map 0-50% to 25-50%
+								}
+								// Calculate overall progress: finding (0-50%) + base progress from font index
+								baseProgress := float64(i) / float64(len(foundFonts)) * 100
+								totalProgress := baseProgress + (findingProgress / float64(len(foundFonts)))
+								send(components.ProgressUpdateMsg{Percent: totalProgress})
+							}
+							// Check both scopes efficiently with progress updates
+							machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope, progressCb)
+							findingProgress = 25.0 // Set to 25% after machine scope completes
+							userFonts := findFontFamilyFiles(searchName, fontManager, platform.UserScope, progressCb)
 
 							// If no direct matches, try repository search to find the font
 							if len(machineFonts) == 0 && len(userFonts) == 0 {
 								results, err := r.SearchFonts(searchName, "false")
 								if err == nil && len(results) > 0 {
 									repoSearchName := results[0].Name
-									machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope)
-									userFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.UserScope)
+									machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope, progressCb)
+									findingProgress = 25.0
+									userFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.UserScope, progressCb)
 								}
 							}
+							// Finding phase complete - ensure we're at 50% for this font
+							findingProgress = 50.0
+							baseProgress := float64(i) / float64(len(foundFonts)) * 100
+							totalProgress := baseProgress + (findingProgress / float64(len(foundFonts)))
+							send(components.ProgressUpdateMsg{Percent: totalProgress})
 
 							// Handle different scenarios
 							if len(userFonts) == 0 && len(machineFonts) == 0 {
@@ -1524,8 +1837,8 @@ Use --scope to set removal location:
 									Message:      statusMessage,
 									ErrorMessage: "Font not found",
 								})
-								// Update progress percentage
-								percent = float64(i+1) / float64(len(foundFonts)) * 100
+								// Update progress percentage (finding complete at 50%, this is a failure so stay at 50%)
+								percent = 50.0 + (float64(i+1) / float64(len(foundFonts)) * 50.0)
 								send(components.ProgressUpdateMsg{Percent: percent})
 								// Continue to next font instead of exiting
 								continue
@@ -1541,8 +1854,8 @@ Use --scope to set removal location:
 									Status:  fontStatus,
 									Message: statusMessage,
 								})
-								// Update progress percentage
-								percent = float64(i+1) / float64(len(foundFonts)) * 100
+								// Update progress percentage (finding complete at 50%, this is a skip so stay at 50%)
+								percent = 50.0 + (float64(i+1) / float64(len(foundFonts)) * 50.0)
 								send(components.ProgressUpdateMsg{Percent: percent})
 								continue
 							}
@@ -1732,8 +2045,9 @@ Use --scope to set removal location:
 							})
 						}
 
-						// Update progress percentage
-						percent = float64(i+1) / float64(len(foundFonts)) * 100
+						// Update progress percentage (finding phase 0-50%, removal phase 50-100%)
+						// Finding is complete, so we're in removal phase: 50% + (font progress * 50%)
+						percent = 50.0 + (float64(i+1) / float64(len(foundFonts)) * 50.0)
 						send(components.ProgressUpdateMsg{Percent: percent})
 					}
 				}

@@ -162,8 +162,38 @@ type FontMetadata struct {
 	TypographicStyle  string // raw NameID17 if present
 }
 
+// ErrInvalidFontFile indicates that the file is not a valid font file
+var ErrInvalidFontFile = &InvalidFontFileError{}
+
+// InvalidFontFileError represents an error indicating an invalid font file
+type InvalidFontFileError struct {
+	msg string
+}
+
+func (e *InvalidFontFileError) Error() string {
+	if e.msg != "" {
+		return e.msg
+	}
+	return "invalid font file"
+}
+
+func (e *InvalidFontFileError) Unwrap() error {
+	return nil
+}
+
 // ExtractFontMetadata extracts font family and style names from a font file
 func ExtractFontMetadata(fontPath string) (*FontMetadata, error) {
+	// Basic file validation: check if file exists and is readable
+	info, err := os.Stat(fontPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to access font file: %w", err)
+	}
+
+	// Check if file is empty (size 0)
+	if info.Size() == 0 {
+		return nil, fmt.Errorf("%w: file is empty", ErrInvalidFontFile)
+	}
+
 	// Early font type detection - check file extension first
 	ext := strings.ToLower(filepath.Ext(fontPath))
 	if !isFontFile(ext) {
@@ -183,8 +213,43 @@ func ExtractFontMetadata(fontPath string) (*FontMetadata, error) {
 		return metadata, nil
 	}
 
+	// Check if the error indicates an invalid font file (not just parsing issues)
+	// Errors like "failed to open", "failed to read", "invalid SFNT header", "name table not found"
+	// indicate the file is invalid/corrupted
+	if isInvalidFontError(err) {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidFontFile, err)
+	}
+
 	// Fall back to full file reading if header-only fails
 	return extractFontMetadataFullFile(fontPath)
+}
+
+// isInvalidFontError checks if an error indicates the font file is invalid/corrupted
+// vs a parsing issue that might still allow fallback
+func isInvalidFontError(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	// These errors indicate the file structure is invalid
+	invalidErrors := []string{
+		"failed to open font file",
+		"failed to read font file",
+		"failed to read SFNT header",
+		"invalid SFNT header",
+		"invalid number of tables",
+		"failed to read table directory",
+		"name table not found",
+		"failed to read name table",
+		"name table too short",
+		"insufficient name data in name table",
+	}
+	for _, invalidErr := range invalidErrors {
+		if strings.Contains(errStr, invalidErr) {
+			return true
+		}
+	}
+	return false
 }
 
 // extractFontMetadataHeaderOnly attempts to extract font metadata by reading only the header and name table
@@ -253,20 +318,20 @@ func extractFontMetadataFullFile(fontPath string) (*FontMetadata, error) {
 	// Read the font file
 	fontData, err := os.ReadFile(fontPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read font file: %w", err)
+		return nil, fmt.Errorf("%w: failed to read font file: %w", ErrInvalidFontFile, err)
+	}
+
+	// Check if file is empty
+	if len(fontData) == 0 {
+		return nil, fmt.Errorf("%w: file is empty", ErrInvalidFontFile)
 	}
 
 	// Parse the font using SFNT (supports both TTF and OTF)
 	font, err := sfnt.Parse(fontData)
 	if err != nil {
-		// If font parsing fails, fall back to improved filename parsing
-		filename := filepath.Base(fontPath)
-		family, style := parseFontNameImproved(filename)
-		return &FontMetadata{
-			FamilyName: family,
-			StyleName:  style,
-			FullName:   family + " " + style,
-		}, nil
+		// If font parsing fails, the file is likely invalid/corrupted
+		// Don't fall back to filename parsing for invalid fonts
+		return nil, fmt.Errorf("%w: failed to parse font file: %w", ErrInvalidFontFile, err)
 	}
 
 	var buf sfnt.Buffer

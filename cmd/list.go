@@ -407,7 +407,11 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 			}
 
 			// Build ParsedFont struct using extracted function
-			parsed = append(parsed, buildParsedFont(p, name, scope, info))
+			parsedFont := buildParsedFont(p, name, scope, info)
+			// Skip invalid font files (returns nil)
+			if parsedFont != nil {
+				parsed = append(parsed, *parsedFont)
+			}
 		}
 	}
 	if !shouldSuppressVerbose {
@@ -421,7 +425,8 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 }
 
 // buildParsedFont extracts font metadata from a file path and builds a ParsedFont struct
-func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope, fileInfo os.FileInfo) ParsedFont {
+// Returns nil if the font file is invalid and should be skipped
+func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope, fileInfo os.FileInfo) *ParsedFont {
 	// Extract file extension for type
 	fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
 
@@ -443,13 +448,20 @@ func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope
 			style = md.StyleName
 		}
 	} else {
-		// Fallback to filename parsing (minimal)
+		// Check if this is an invalid font file error - if so, skip it
+		if errors.Is(err, platform.ErrInvalidFontFile) {
+			// Log debug info but don't include in list
+			output.GetDebug().Warning("Skipping invalid font file: %s (%v)", fontPath, err)
+			return nil
+		}
+		// For other errors (e.g., parsing issues but file might still be valid), use filename fallback
+		// This handles edge cases where metadata extraction fails but file structure is OK
 		base := strings.TrimSuffix(fileName, filepath.Ext(fileName))
 		family = base
 		style = "Regular"
 	}
 
-	return ParsedFont{
+	return &ParsedFont{
 		Name:        fileName,
 		Family:      family,
 		Style:       style,

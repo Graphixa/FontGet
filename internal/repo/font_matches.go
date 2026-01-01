@@ -33,6 +33,10 @@ type fontIndex struct {
 	byIDName map[string][]fontIndexEntry
 }
 
+// FontIndex is an exported type alias for fontIndex to allow external packages to use it
+// while maintaining internal implementation details
+type FontIndex = *fontIndex
+
 // normalizeFamilyName normalizes a font family name for matching
 // - Converts to lowercase
 // - Removes spaces, hyphens, underscores
@@ -372,4 +376,32 @@ func MatchAllInstalledFonts(familyNames []string, isProtectedFont func(string) b
 	output.GetDebug().State("Matching complete: %d matches found out of %d families", matchCount, len(familyNames))
 
 	return matches, nil
+}
+
+// BuildFontIndexForMatching builds a font index for repository matching.
+// This is exported for use by commands that need to match fonts efficiently.
+// Returns nil if manifest cannot be loaded.
+func BuildFontIndexForMatching() (FontIndex, error) {
+	manifest, err := GetCachedManifest()
+	if err != nil {
+		return nil, err
+	}
+	return buildFontIndex(manifest), nil
+}
+
+// MatchFontFamilyToFontID checks if an installed font family name matches a specific Font ID.
+// This is more accurate than string matching and works for all Font ID variants.
+// Returns true if the font's Font ID matches the target Font ID.
+func MatchFontFamilyToFontID(familyName string, targetFontID string, index FontIndex) bool {
+	if index == nil {
+		return false
+	}
+
+	match, err := MatchInstalledFontToRepository(familyName, index, nil)
+	if err != nil || match == nil {
+		return false
+	}
+
+	// Check if the matched Font ID matches our target Font ID (case-insensitive)
+	return strings.EqualFold(match.FontID, targetFontID)
 }
