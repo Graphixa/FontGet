@@ -51,7 +51,7 @@ More installation options can be found in the [Installation Guide](docs/installa
 winget install --id "fontget.fontget"
 ```
 
-**[Chocolatey](https://chocolatey.org/)**
+**[Chocolatey](https://chocolatey.org/)** (coming soon)
 
 ```powershell
 choco install fontget
@@ -75,7 +75,7 @@ brew install fontget
 
 ### Linux
 
-**[AUR (Arch User Repository)](https://aur.archlinux.org/packages/fontget)**
+**[AUR (Arch User Repository)](https://aur.archlinux.org/packages/fontget)** (coming soon)
 
 ```bash
 yay -S fontget
