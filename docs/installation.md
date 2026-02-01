@@ -114,7 +114,7 @@ paru -S fontget
 
 ## Build and Install from Source
 
-Complete instructions for building FontGet from source can be found in the [Contributing guide](contributing.md).
+Complete instructions for building FontGet from source can be found below.
 
 ### Prerequisites
 
