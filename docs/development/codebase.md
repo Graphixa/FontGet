@@ -902,7 +902,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Main project documentation
 **Status**: ✅ Active - Project documentation
 
-### `docs/help.md`
+### `docs/usage.md`
 **Purpose**: Command reference documentation
 **Status**: ✅ Active - User documentation
 

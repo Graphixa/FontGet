@@ -39,7 +39,7 @@ FontGet follows a clean architecture pattern:
 1. Create a new file in `cmd/` (e.g., `cmd/newcommand.go`)
 2. Use the template in `internal/templates/command_template.go`
 3. Register the command in `cmd/root.go`
-4. Add documentation to `docs/help.md`
+4. Add documentation to `docs/usage.md`
 
 ### Testing
 - Write tests for new functionality
@@ -47,7 +47,7 @@ FontGet follows a clean architecture pattern:
 - Use the `--debug` flag for troubleshooting
 
 ### Documentation
-- Update `docs/help.md` for user-facing changes
+- Update `docs/usage.md` for user-facing changes
 - Update `docs/codebase.md` for architectural changes
 - Run the documentation audit: `go run docs/maintenance/audit-flags.go cmd/`
 

@@ -1,8 +1,20 @@
 # FontGet Installation Guide
 
-Complete installation instructions for FontGet on all supported platforms.
+This document provides complete installation instructions for FontGet on all supported platforms. FontGet is a single binary with no external dependencies; binaries are available for both `amd64` and `arm64` architectures.
+
+## Quick Reference
+
+| Method | Platform | Section |
+|--------|----------|---------|
+| Install script | Mac, Linux, Windows | [Install latest version](#install-latest-version) |
+| Package manager | Windows, macOS, Linux | [Install via package manager](#install-via-package-manager) |
+| Build from source | All | [Build from source](#build-and-install-from-source) |
+
+---
 
 ## Install Latest Version
+
+The recommended way to install FontGet. Downloads the latest release and installs to your user directory.
 
 ### Shell (Mac, Linux)
 
@@ -18,7 +30,7 @@ irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 
 
 ## Install Specific Version
 
-You can install a specific version by setting the `FONTGET_VERSION` environment variable.
+Install a specific version by setting the `FONTGET_VERSION` environment variable.
 
 ### Shell (Mac, Linux)
 
@@ -34,36 +46,15 @@ $env:FONTGET_VERSION="1.0.0"; irm https://raw.githubusercontent.com/Graphixa/Fon
 
 ## Install via Package Manager
 
-#### WinGet (Windows)
+### Windows
+
+**[WinGet](https://winstall.app/)**
 
 ```powershell
-winget install --id=Graphixa.FontGet
+winget install --id "fontget.fontget"
 ```
 
-> [!NOTE]
-> Winget package is coming soon. For now, use the PowerShell install script.
-
-
-#### Homebrew (Mac)
-
-```sh
-brew tap Graphixa/homebrew-tap
-brew install fontget
-```
-
-> [!NOTE]
-> You need to add the tap first before installing, as FontGet is not in the main Homebrew repository.
-
-#### Chocolatey (Windows)
-
-```powershell
-choco install fontget
-```
-
-> [!NOTE]
-> Chocolatey package is coming soon. For now, use the PowerShell install script.
-
-#### Scoop (Windows)
+**[Scoop](https://scoop.sh/)**
 
 ```powershell
 scoop bucket add fontget https://github.com/Graphixa/scoop-bucket
@@ -71,13 +62,34 @@ scoop install fontget
 ```
 
 > [!NOTE]
-> You need to add the bucket first before installing, as FontGet is not in the main Scoop repository.
+> Add the bucket first; FontGet is not in the main Scoop repository.
 
-### Debian/Ubuntu (`.deb` package)
+**[Chocolatey](https://chocolatey.org/)** (coming soon)
 
-Visit the [GitHub Releases page](https://github.com/Graphixa/FontGet/releases/latest) and download the `.deb` file for your architecture.
+```powershell
+choco install fontget
+```
 
-Then, in the directory where you downloaded the file, run the following:
+> [!NOTE]
+> Chocolatey package is coming soon. Use the [PowerShell install script](#powershell-windows) for now.
+
+### macOS
+
+**[Homebrew](https://formulae.brew.sh/)**
+
+```sh
+brew tap Graphixa/homebrew-tap
+brew install fontget
+```
+
+> [!NOTE]
+> Add the tap first; FontGet is not in the main Homebrew repository yet.
+
+### Linux
+
+**Debian/Ubuntu (`.deb` package)**
+
+Visit the [GitHub Releases page](https://github.com/Graphixa/FontGet/releases/latest) and download the `.deb` file for your architecture. Then run:
 
 ```bash
 ARCH=$(dpkg --print-architecture)
@@ -85,23 +97,18 @@ sudo dpkg -i fontget_*_${ARCH}.deb
 sudo apt-get install -f  # Fix dependencies if needed
 ```
 
-The package installs FontGet to `/usr/bin/fontget`, making it available system-wide. You can verify the installation with `fontget version`.
+**Fedora/RHEL/CentOS (`.rpm` package)**
 
-### Fedora/RHEL/CentOS (`.rpm` package)
-
-Visit the [GitHub Releases page](https://github.com/Graphixa/FontGet/releases/latest) and download the `.rpm` file for your architecture.
-
-
-Then, in the directory where you downloaded the file, run the following:
+Visit the [GitHub Releases page](https://github.com/Graphixa/FontGet/releases/latest) and download the `.rpm` file for your architecture. Then run:
 
 ```bash
 ARCH=$(rpm --eval '%{_arch}')
 sudo rpm -i fontget_*_${ARCH}.rpm
 ```
 
-The package installs FontGet to `/usr/bin/fontget`, making it available system-wide. You can verify the installation with `fontget version`.
+Both packages install FontGet to `/usr/bin/fontget`. Verify with `fontget version`.
 
-### AUR (Arch Linux)
+**AUR (Arch Linux)** (coming soon)
 
 ```bash
 yay -S fontget
@@ -110,11 +117,11 @@ paru -S fontget
 ```
 
 > [!NOTE]
-> AUR package is coming soon. For now, use the shell install script or download packages from GitHub Releases.
+> AUR package is coming soon. Use the [shell install script](#shell-mac-linux) or download from [GitHub Releases](https://github.com/Graphixa/FontGet/releases).
 
 ## Build and Install from Source
 
-Complete instructions for building FontGet from source can be found below.
+For contributors or users who prefer to build from source. See the [Contributing guide](contributing.md) for detailed development setup.
 
 ### Prerequisites
 
@@ -130,7 +137,7 @@ git clone https://github.com/Graphixa/FontGet.git
 cd FontGet
 go build -o fontget
 
-# Then move the binary to a directory in your PATH
+# Move the binary to a directory in your PATH
 sudo mv fontget /usr/local/bin/
 ```
 
@@ -254,8 +261,8 @@ You may also need to remove it from your PATH manually via System Settings → E
 If you installed via a package manager:
 
 ```powershell
-# Winget
-winget uninstall Graphixa.FontGet
+# WinGet
+winget uninstall fontget.fontget
 
 # Scoop
 scoop uninstall fontget
@@ -337,7 +344,7 @@ If you see permission errors:
 
 ## Additional Resources
 
-- **[Help](help.md)**: FontGet command reference and usage examples
+- **[Help](usage.md)**: FontGet command reference and usage examples
 - **[Contributing](contributing.md)**: How to contribute to FontGet
 - **[GitHub Releases](https://github.com/Graphixa/FontGet/releases)**: Download binaries and packages
 

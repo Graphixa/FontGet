@@ -273,8 +273,8 @@ func checkDocumentationSync(commands map[string]*CommandInfo) {
 	fmt.Println("📚 Documentation Sync Check:")
 	fmt.Println()
 
-	// Read the current help.md
-	docPath := "docs/help.md"
+	// Read the current usage.md
+	docPath := "docs/usage.md"
 	content, err := os.ReadFile(docPath)
 	if err != nil {
 		fmt.Printf("❌ Could not read %s: %v\n", docPath, err)
@@ -353,6 +353,6 @@ func checkDocumentationSync(commands map[string]*CommandInfo) {
 	}
 
 	fmt.Println()
-	fmt.Println("💡 To update documentation, run this script and manually update docs/help.md")
+	fmt.Println("💡 To update documentation, run this script and manually update docs/usage.md")
 	fmt.Println("   with any missing flags found above.")
 }

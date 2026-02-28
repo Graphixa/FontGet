@@ -224,7 +224,7 @@ If completions are not working:
 
 ## Additional Resources
 
-- [FontGet Help](help.md) - Complete command reference
+- [FontGet Help](usage.md) - Complete command reference
 
 ---
 

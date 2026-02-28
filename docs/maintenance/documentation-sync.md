@@ -4,7 +4,7 @@ This document outlines the process for keeping FontGet's command reference docum
 
 ## Overview
 
-The FontGet CLI tool has many flags and commands that need to be accurately documented. This process ensures that the `docs/help.md` file stays current with the actual implementation.
+The FontGet CLI tool has many flags and commands that need to be accurately documented. This process ensures that the `docs/usage.md` file stays current with the actual implementation.
 
 ## Current Status
 
@@ -73,7 +73,7 @@ go run docs/maintenance/audit-flags.go cmd/
 ```
 
 ### 2. Check for Missing Flags
-Look for any flags listed in the "Missing flags in documentation" section and add them to `docs/help.md`.
+Look for any flags listed in the "Missing flags in documentation" section and add them to `docs/usage.md`.
 
 ### 3. Verify Flag Descriptions
 Compare the audit output with the documentation to ensure:
@@ -132,7 +132,7 @@ fontget search --help
 4. Check help output consistency
 
 ### When Adding New Commands
-1. Add command to `docs/help.md`
+1. Add command to `docs/usage.md`
 2. Include all flags in Quick Reference table
 3. Add detailed flag descriptions
 4. Provide working examples
