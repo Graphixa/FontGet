@@ -2,7 +2,6 @@
 
   <img src="assets/icons/icon.svg" alt="FontGet" width="120" />
   <br>
-    <br>
   <h1>FontGet - CLI Font Manager</h1>
   <p><strong></strong></p>
 
