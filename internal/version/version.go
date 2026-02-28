@@ -35,7 +35,11 @@ var (
 // - Fallback to "dev" when no version info is available
 func GetVersion() string {
 	if Version != "dev" {
-		// For dev builds with commit hash (e.g., "2.0.0-dev+ae04b20"), preserve the full string
+		// Dev build with date and commit (e.g., "dev-20260228020445-6c41181") - return as-is
+		if strings.HasPrefix(Version, "dev-") {
+			return Version
+		}
+		// For dev builds with commit hash (e.g., "dev+ae04b20", "2.0.0-dev+ae04b20"), preserve the full string
 		if strings.Contains(Version, "-dev+") || strings.HasPrefix(Version, "dev+") {
 			return strings.TrimPrefix(Version, "v") // Only strip 'v' prefix, keep rest
 		}

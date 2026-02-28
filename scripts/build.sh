@@ -1,86 +1,75 @@
-#!/bin/bash
-# FontGet Build Script for Linux/macOS
-# Simple build script for local testing
-# Note: Release builds are handled automatically by GitHub Actions on tag push
+#!/bin/sh
+#
+# FontGet build script (Linux/macOS).
+# Run with:  sh scripts/build.sh   (no execute bit needed)
+#
+# By default builds to /tmp/fontget-dev (a file) so the binary always runs (e.g. on cloud drives).
+# Override with FONTGET_OUTPUT=./fontget to build in the repo.
+#
 
 set -e
 
-# Run from repo root (so script works when called from any directory)
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve repo root (script lives in scripts/, repo is parent)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
-VERSION=""
+# Default: build to /tmp/fontget
+OUTPUT="${FONTGET_OUTPUT:-/tmp/fontget}"
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
+# Parse -v / --version and -h / --help
+VERSION=""
+while [ $# -gt 0 ]; do
+    case "$1" in
         -v|--version)
-            VERSION="$2"
+            VERSION="${2:-}"
             shift 2
             ;;
         -h|--help)
-            echo "FontGet Build Script"
+            echo "FontGet build script"
             echo ""
-            echo "Usage: ./scripts/build.sh [options]"
+            echo "  sh scripts/build.sh           # build (dev version) → /tmp/fontget-dev"
+            echo "  sh scripts/build.sh -v 2.1.0   # build with version string"
+            echo "  FONTGET_OUTPUT=./fontget sh scripts/build.sh   # build in repo"
             echo ""
-            echo "Options:"
-            echo "  -v, --version <version>  Build with specific version (for testing release builds locally)"
-            echo "  -h, --help               Show this help message"
-            echo ""
-            echo "Examples:"
-            echo "  ./scripts/build.sh              # Build for local testing (uses 'dev' version)"
-            echo "  ./scripts/build.sh -v 2.1.0      # Test a specific version locally"
-            echo ""
-            echo "Note: For releases, just create and push a git tag. GitHub Actions will build automatically."
+            echo "Default output: /tmp/fontget (so the binary runs on all drives)."
+            echo "Override: FONTGET_OUTPUT=/path/to/fontget"
             echo ""
             exit 0
             ;;
         *)
-            echo "Unknown option: $1"
-            echo "Use -h or --help for usage information"
+            echo "Unknown option: $1" >&2
+            echo "Use -h for help." >&2
             exit 1
             ;;
     esac
 done
 
-# Get git info (for build metadata)
-COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+COMMIT=$(git rev-parse --short=12 HEAD 2>/dev/null) || COMMIT=$(git rev-parse --short HEAD 2>/dev/null) || COMMIT="unknown"
 DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+DATE_COMPACT=$(date -u +"%Y%m%d%H%M%S")
 
-# Determine version
-if [ -n "$VERSION" ]; then
-    # User specified a version (for testing release builds locally)
-    echo "Building FontGet v$VERSION (local test build)..."
-else
-    # Default: simple dev build for local testing
-    VERSION="dev"
-    echo "Building FontGet (local dev build)..."
-fi
+# Dev builds: dev-YYYYMMDDHHMMSS-<commit> so they sort lower than release versions
+[ -z "$VERSION" ] && VERSION="dev-${DATE_COMPACT}-${COMMIT}"
 
-echo "  Version: $VERSION"
-echo "  Commit:  $COMMIT"
-echo "  Date:    $DATE"
+echo "Building FontGet (version: $VERSION)"
+echo "  Commit: $COMMIT  Date: $DATE"
+echo "  Output: $OUTPUT"
 echo ""
 
-# Build flags
-LDFLAGS="-s -w \
-    -X fontget/internal/version.Version=$VERSION \
-    -X fontget/internal/version.GitCommit=$COMMIT \
-    -X fontget/internal/version.BuildDate=$DATE"
+LDFLAGS="-s -w -X fontget/internal/version.Version=$VERSION -X fontget/internal/version.GitCommit=$COMMIT -X fontget/internal/version.BuildDate=$DATE"
+go build -ldflags "$LDFLAGS" -o "$OUTPUT" .
 
-# Build
-go build -ldflags "$LDFLAGS" -o fontget .
+echo ""
+echo "Build OK: $OUTPUT"
+echo ""
+echo "Run:  $OUTPUT version"
+echo "      $OUTPUT search roboto"
+echo ""
 
-if [ $? -eq 0 ]; then
-    echo ""
-    echo "Build successful! Binary: ./fontget"
-    echo ""
-    echo "Version info:"
-    ./fontget version
+# Show version if we can run the binary
+if "$OUTPUT" version 2>/dev/null; then
+    :
 else
-    echo ""
-    echo "Build failed!"
-    exit 1
+    echo "(Binary could not be run from here; run the commands above in your terminal.)"
 fi
-

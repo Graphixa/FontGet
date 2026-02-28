@@ -25,13 +25,13 @@ Use --release-notes to get a link to the release notes for this version.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		v := version.GetVersion()
 		display := v
-		// Handle dev+hash format (build metadata) - preserve commit hash
-		if strings.HasPrefix(v, "dev+") {
-			display = v // Keep as "dev+abc123"
+		// Dev builds: no "v" prefix (dev, dev+hash, dev-YYYYMMDDHHMMSS-commit)
+		if v == "dev" || strings.HasPrefix(v, "dev+") || strings.HasPrefix(v, "dev-") {
+			display = v
 		} else if strings.Contains(v, "-dev+") {
-			// Handle release-dev+hash format (e.g., "2.0.0-dev+ae04b20")
-			display = "v" + v // Keep full version with commit hash
-		} else if v != "dev" {
+			// Release with build metadata (e.g., "2.0.0-dev+ae04b20")
+			display = "v" + v
+		} else {
 			display = "v" + v
 		}
 
@@ -54,8 +54,8 @@ Use --release-notes to get a link to the release notes for this version.`,
 		}
 
 		if versionReleaseNotes {
-			// Check if it's a dev build (with or without commit hash)
-			if v == "dev" || strings.HasPrefix(v, "dev+") {
+			// Check if it's a dev build (dev, dev+hash, dev-date-commit)
+			if v == "dev" || strings.HasPrefix(v, "dev+") || strings.HasPrefix(v, "dev-") {
 				fmt.Println(ui.Text.Render("Release notes are only available for tagged releases."))
 				return
 			}
