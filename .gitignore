@@ -1,6 +1,10 @@
 # Generic files
 .DS_Store
 
+# Binaries
+fontget
+fontget.exe
+
 # Binaries for programs and plugins
 *.exe
 *.dll
@@ -10,6 +14,7 @@
 *.json
 *exe.old
 *exe~
+
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
 
@@ -40,4 +45,5 @@ rsrc_windows_*.syso
 
 bubbletea-sources-plan.md
 command-fixes.md
+
 
