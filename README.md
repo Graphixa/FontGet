@@ -14,7 +14,7 @@
 
 
 <strong>
-FontGet is a lightweight terminal font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.
+FontGet is a lightweight, cross-platform terminal font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.
 <br>
 <br>
 </strong>
