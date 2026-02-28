@@ -2,6 +2,41 @@
 
 This guide covers how to build FontGet for local testing. **For releases, GitHub Actions handles everything automatically when you push a git tag.**
 
+## Prerequisites
+
+Before building, you need:
+
+| Requirement | Purpose |
+|-------------|---------|
+| **Go 1.24+** | Compiler (see `go.mod` for exact version) |
+| **Git** | Clone repo and for build metadata (commit hash) |
+
+### Installing Go
+
+- **macOS (Homebrew):** `brew install go`
+- **Windows:** [Download the installer](https://go.dev/dl/) or `winget install GoLang.Go`
+- **Linux:** Use your package manager (e.g. `sudo apt install golang-go` on Debian/Ubuntu) or [official install](https://go.dev/doc/install)
+
+Check your version:
+```bash
+go version   # Should be 1.24 or higher
+```
+
+### Getting dependencies
+
+After cloning the repo, fetch Go module dependencies once:
+
+```bash
+cd /path/to/FontGet
+go mod download
+# Or simply run a build – Go will download modules automatically
+```
+
+Optional (not required for a basic build):
+
+- **Make** – For `make build` / `make build-dev` on Linux/macOS. On Windows use the PowerShell script or install make via Chocolatey/WSL.
+- **go-winres** – Only for Windows; used by the Makefile to embed version/icon resources. Builds work without it (you’ll see a warning).
+
 ## Quick Start
 
 ### Local Testing Builds
@@ -138,9 +173,10 @@ Use the `-Version` flag:
 
 ### Build fails
 
-- Make sure Go is installed: `go version`
-- Make sure you're in the FontGet directory
-- Check that dependencies are up to date: `go mod tidy`
+- **Go not found** – Install Go (see [Prerequisites](#prerequisites)) and ensure it’s on your `PATH`. Check with `go version`.
+- **Wrong directory** – Run the build from the FontGet repo root (where `go.mod` is).
+- **Missing or stale modules** – Run `go mod download` or `go mod tidy`, then try again.
+- **Version mismatch** – Use Go 1.24 or newer (see `go.mod`).
 
 ### Makefile not found (Windows)
 

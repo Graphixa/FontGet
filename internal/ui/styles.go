@@ -28,11 +28,10 @@ var (
 // MESSAGE STYLES - User notifications and responses
 // ============================================================================
 var (
-	// Text - Regular text content
+	// Text - Regular text content (terminal default color)
 	// Usage: Regular text, descriptions, supporting text
 	// Example: ui.Text.Render("This is regular text")
-	Text = lipgloss.NewStyle().
-		Foreground(lipgloss.NoColor{}) // No color
+	Text = lipgloss.NewStyle()
 
 	// TextBold - Bold text with terminal default color
 	// Usage: Bold labels, report titles, emphasized text without color

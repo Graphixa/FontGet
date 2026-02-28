@@ -4,40 +4,71 @@ This document defines the styling system and visual hierarchy for FontGet. FontG
 
 ## Theme System Overview
 
-FontGet uses a **semantic color system** where theme files define color keys (like `accent`, `warning`, `error`) that are mapped to UI styles. This approach provides:
+FontGet uses a **semantic color system** where theme files define color keys (`primary`, `secondary`, `components`, etc.) that are mapped to UI styles. This approach provides:
 
-- **Consistency**: All styles reference semantic colors, not hardcoded hex values
+- **Consistency**: All styles reference theme colors, not hardcoded hex values
 - **Customization**: Users can create custom themes by editing YAML files
-- **Dark/Light Mode**: Themes support both dark and light modes
+- **Dark/Light Mode**: Themes support both dark and light modes (via theme `style` or separate theme files)
 - **Auto-detection**: Terminal theme can be automatically detected
 
 ### Theme File Structure
 
-Themes are stored in `~/.fontget/themes/` and follow this structure:
+Themes are stored in `~/.fontget/themes/` and follow this structure. Each theme file has a single `colors` block; the top-level `style` field is optional (e.g. `dark` or `light`).
 
 ```yaml
-fontget_theme:
-  dark_mode:
-    accent: "#cba6f7"          # Primary accent color
-    accent2: "#94e2d5"          # Secondary accent color
-    warning: "#f9e2af"          # Warning messages
-    error: "#e78284"            # Error messages
-    success: "#a6e3a1"           # Success messages
-    page_title: "#cba6f7"       # Page title color
-    page_subtitle: "#7f849c"    # Subtitle color
-    grey_light: "#cdd6f4"       # Light text color
-    grey_mid: "#7f849c"          # Medium grey (borders, placeholders)
-    grey_dark: "#313244"         # Dark background color
-    progress_bar_gradient:
-      color_start: "#cba6f7"    # Gradient start
-      color_end: "#eba0ac"       # Gradient end
-  light_mode:
-    # Same keys with light mode colors
+theme_name: "My Theme"
+style: dark   # optional: "dark" or "light"
+
+colors:
+  # Required base colors
+  primary: "#cba6f7"       # Main accent – InfoText, PageTitle, CardTitle, Cursor, Spinner, QueryText
+  secondary: "#94e2d5"    # Secondary accent – TableSourceName, FormLabel, CardLabel
+  components: "#cdd6f4"   # Interactive elements – Button, Switch, FormInput
+  placeholders: "#7f849c" # Muted elements – borders, placeholders, CommandKey text, CheckboxUnchecked
+  base: "#313244"         # Backgrounds – PageTitle, CardTitle, CommandKey, selected states
+
+  # Required status colors
+  warning: "#f9e2af"
+  error: "#e78284"
+  success: "#a6e3a1"
+
+  # Optional component overrides (defaults to base colors above)
+  overrides:
+    page_title:
+      text: "#cba6f7"
+      background: "#313244"
+    button:
+      foreground: "#cdd6f4"
+      background: "#313244"
+    switch:
+      foreground: "#cdd6f4"
+      background: "#313244"
+    checkbox:
+      unchecked: "#7f849c"
+      checked: "#cba6f7"
+    card:
+      title_text: "#cba6f7"
+      title_background: "#313244"
+      label: "#94e2d5"
+      border: "#7f849c"
+    command_keys:
+      text: "#7f849c"
+      background: "#313244"
+    table:
+      header: "#94e2d5"
+      row: "#cba6f7"
+      selected: "#cdd6f4"
+    spinner:
+      normal: "#cba6f7"
+      done: "#a6e3a1"
+    progress_bar:
+      start: "#cba6f7"
+      finish: "#eba0ac"
 ```
 
 ### Default Theme
 
-The default theme is **Catppuccin** (Mocha for dark mode, Latte for light mode), which is embedded in the binary. If no custom theme is specified, this theme is used automatically.
+The default theme is **Catppuccin**, which is embedded in the binary. If no custom theme is specified, this theme is used automatically.
 
 ### Theme Configuration
 
@@ -49,89 +80,81 @@ theme:
   mode: "auto"        # "dark", "light", or "auto" (auto-detects terminal theme)
 ```
 
-## Semantic Color System
+## Theme Color Keys and Style Mapping
 
-FontGet uses semantic color keys that are mapped to multiple styles. This table shows which styles use each semantic color:
+Theme YAML files use these **exact key names** under `colors`. This table shows which UI styles use each theme key:
 
-| Semantic Color | Default (Dark) | Used By (Style Names) |
-|----------------|----------------|----------------------|
-| **accent** | #cba6f7 (Mauve) | `InfoText`, `PageTitle` (FG), `CardTitle` (FG), `CheckboxCursor`, `SpinnerColor`, `ProgressBarGradientStart` |
-| **accent2** | #94e2d5 (Teal) | `TableSourceName`, `FormLabel`, `CardLabel`, `CheckboxChecked` |
-| **warning** | #f9e2af (Yellow) | `WarningText` |
-| **error** | #e78284 (Red) | `ErrorText` |
-| **success** | #a6e3a1 (Green) | `SuccessText`, `SpinnerDoneColor` |
-| **page_title** | #cba6f7 (Mauve) | `PageTitle` (foreground) |
-| **page_subtitle** | #7f849c (Overlay 1) | `PageSubtitle` |
-| **grey_light** | #cdd6f4 (Text) | `ButtonNormal`, `ButtonSelected` (FG), `SwitchLeftNormal`, `SwitchRightNormal`, `SwitchLeftSelected` (FG), `SwitchRightSelected` (FG) |
-| **grey_mid** | #7f849c (Overlay 1) | `FormPlaceholder`, `CardBorder`, `SwitchSeparator`, `CommandKey` (FG), `CommandLabel`, `FormReadOnly` |
-| **grey_dark** | #313244 (Surface 0) | `PageTitle` (BG), `TableRowSelected` (BG), `CardTitle` (BG), `CommandKey` (BG), `ButtonSelected` (BG), `CheckboxItemSelected` (BG), `SwitchLeftSelected` (BG), `SwitchRightSelected` (BG) |
+| Theme Key | Default (Catppuccin) | Used By (Style Names) |
+|-----------|----------------------|------------------------|
+| **primary** | #cba6f7 | `InfoText`, `QueryText`, `PageTitle` (text), `CardTitle` (text), `Cursor`, `CheckboxChecked`, `SpinnerColor`, progress bar start (default) |
+| **secondary** | #94e2d5 | `TableSourceName`, `FormLabel`, `CardLabel` |
+| **components** | #cdd6f4 | `ButtonNormal` (fg), `FormInput`, `SwitchNormal` (fg), selected-state backgrounds (inverted) for `ButtonSelected`, `SwitchSelected`, `TableRowSelected` |
+| **placeholders** | #7f849c | `FormPlaceholder`, `FormReadOnly`, `CardBorder`, `CommandKey` (text), `CheckboxUnchecked`, `SwitchSeparator`, `RenderSourceTag` (built-in tag color) |
+| **base** | #313244 | `PageTitle` (bg), `CardTitle` (bg), `CommandKey` (bg), `ButtonSelected` (fg), `CheckboxItemSelected` (bg), `SwitchSelected` (fg), `TableRowSelected` (inverted fg/bg) |
+| **warning** | #f9e2af | `WarningText` |
+| **error** | #e78284 | `ErrorText` |
+| **success** | #a6e3a1 | `SuccessText`, `SpinnerDoneColor` |
 
 **Note**: Some styles use terminal default colors (no theme color):
-- `Text`, `TextBold`, `TableHeader`, `CommandExample`, `CardContent`, `CheckboxUnchecked` - Terminal default
-- These styles are not affected by theme changes
+- `Text`, `TextBold`, `TableHeader`, `CommandExample`, `CardContent` – terminal default
+- These are not affected by theme changes. Command labels use `TextBold` (no separate `CommandLabel` style).
 
 ## Style Categories
 
-FontGet uses a clear categorization system for different types of UI elements:
+FontGet uses a clear categorization system for different types of UI elements. Theme key names (e.g. `primary`, `secondary`) match the YAML keys in theme files.
 
 ### 1. PAGE STRUCTURE STYLES - Layout hierarchy and page elements
-- **PageTitle** - Main page titles (uses `accent`/`page_title` with `grey_dark` background)
-- **PageSubtitle** - Section subtitles (uses `page_subtitle`/`grey_mid`)
+- **PageTitle** - Main page titles (theme: `primary` text, `base` background; overridable via `overrides.page_title`)
 
 ### 2. MESSAGE STYLES - User notifications and responses
-- **Text** - Regular text content (Terminal default - no theme color)
-- **InfoText** - Informational messages (uses `accent`)
-- **SecondaryText** - Secondary informational text (uses `accent2`)
-- **WarningText** - Warning messages (uses `warning`)
-- **ErrorText** - Error messages (uses `error`)
-- **SuccessText** - Success messages (uses `success`)
-- **TextBold** - Bold text with terminal default color
+- **Text** - Regular text content (terminal default - no theme color)
+- **InfoText** - Informational messages (theme: `primary`)
+- **SecondaryText** - Secondary informational text (theme: `secondary`)
+- **QueryText** - User input values e.g. search queries (theme: `primary`)
+- **WarningText** - Warning messages (theme: `warning`)
+- **ErrorText** - Error messages (theme: `error`)
+- **SuccessText** - Success messages (theme: `success`)
+- **TextBold** - Bold text with terminal default color (use for command labels; no separate CommandLabel style)
 
 ### 3. DATA DISPLAY STYLES - Tables, lists, and data presentation
-- **TableHeader** - Column headers (Terminal default - no theme color)
-- **TableSourceName** - Font names in search/add results (uses `accent2`)
-  - Used by `RenderSourceNameWithTag()` for colored source names with tags
-  - For plain source names, use `Text.Render(name) + " " + RenderSourceTag(isBuiltIn)`
-- **TableRow** - Regular table rows (Terminal default - no theme color)
-- **TableRowSelected** - Selected rows (uses `grey_dark` background)
+- **TableHeader** - Column headers (terminal default - no theme color)
+- **TableSourceName** - Font/source names in tables (theme: `secondary`). Used by `RenderSourceNameWithTag()` for colored source names with tags. For plain source names use `Text.Render(name) + " " + RenderSourceTag(isBuiltIn)`.
+- **TableRowSelected** - Selected table rows (theme: inverted `components`/`base` for contrast)
 
 ### 4. FORM STYLES - Input interfaces and forms
-- **FormLabel** - Field labels (uses `accent2`)
-- **FormInput** - Input field content (Terminal default - no theme color)
-- **FormPlaceholder** - Placeholder text (uses `grey_mid`)
-- **FormReadOnly** - Read-only field content (uses `grey_mid`)
+- **FormLabel** - Field labels (theme: `secondary`)
+- **FormInput** - Input field content (theme: `components`)
+- **FormPlaceholder** - Placeholder text (theme: `placeholders`)
+- **FormReadOnly** - Read-only field content (theme: `placeholders`)
 
 ### 5. COMMAND STYLES - Interactive elements and controls
-- **CommandKey** - Keyboard shortcuts (uses `grey_mid` with `grey_dark` background)
-- **CommandLabel** - Button-like labels (uses `grey_mid`)
-- **CommandExample** - Example commands (Terminal default - no theme color)
+- **CommandKey** - Keyboard shortcuts (theme: `placeholders` text, `base` background; overridable via `overrides.command_keys`)
+- **CommandExample** - Example commands (terminal default - no theme color). For button-like labels use **TextBold**.
 
 ### 6. CARD STYLES - Card components and layouts
-- **CardTitle** - Card titles integrated into borders (uses `accent` with `grey_dark` background)
-- **CardLabel** - Labels within cards (uses `accent2`)
-- **CardContent** - Regular content within cards (Terminal default - no theme color)
-- **CardBorder** - Card border styling (uses `grey_mid`)
+- **CardTitle** - Card titles integrated into borders (theme: `primary` text, `base` background; overridable via `overrides.card`)
+- **CardLabel** - Labels within cards (theme: `secondary`)
+- **CardContent** - Use **Text** for regular content (terminal default)
+- **CardBorder** - Card border (theme: `placeholders`)
 
 ### 7. BUTTON COMPONENT STYLES
-- **ButtonNormal** - Unselected button text (uses `grey_light`)
-- **ButtonSelected** - Selected button (uses `grey_dark` text on `grey_light` background - inverted)
+- **ButtonNormal** - Unselected button text (theme: `components`; overridable via `overrides.button`)
+- **ButtonSelected** - Selected button (inverted: `base` text on `components` background)
 
 ### 8. CHECKBOX COMPONENT STYLES
-- **CheckboxUnchecked** - Unchecked checkbox (Terminal default - no theme color)
-- **CheckboxChecked** - Checked checkbox (uses `accent2`)
-- **CheckboxItemSelected** - Selected checkbox item background (uses `grey_dark`)
-- **CheckboxCursor** - Checkbox cursor indicator (uses `accent2`)
+- **CheckboxUnchecked** - Unchecked checkbox (theme: `placeholders`; overridable via `overrides.checkbox`)
+- **CheckboxChecked** - Checked checkbox (theme: `primary`; overridable via `overrides.checkbox`)
+- **CheckboxItemSelected** - Selected checkbox row background (theme: `base`)
+- **Cursor** - Cursor indicator for lists/checkboxes (theme: `primary`)
 
 ### 9. SWITCH COMPONENT STYLES
-- **SwitchLeftNormal** - Unselected left option (uses `grey_light`)
-- **SwitchLeftSelected** - Selected left option (uses `grey_dark` text on `grey_light` background - inverted)
-- **SwitchRightNormal** - Unselected right option (uses `grey_light`)
-- **SwitchRightSelected** - Selected right option (uses `grey_dark` text on `grey_light` background - inverted)
-- **SwitchSeparator** - Switch separator (uses `grey_mid`)
+- **SwitchNormal** - Unselected switch option (theme: `components`; overridable via `overrides.switch`)
+- **SwitchSelected** - Selected switch option (inverted: `base` text on `components` background)
+- **SwitchSeparator** - Separator between options (theme: `placeholders`)
 
 ### 10. SPINNER COMPONENT
-- **SpinnerColor** - Spinner color constant (uses `accent`)
-- **SpinnerDoneColor** - Spinner done color constant (uses `success`)
+- **SpinnerColor** - Spinner animation color, hex string (theme: `primary`; overridable via `overrides.spinner`)
+- **SpinnerDoneColor** - Done checkmark color, hex string (theme: `success`; overridable via `overrides.spinner`)
 
 ## Implementation
 
@@ -224,43 +247,42 @@ customCard := components.Card{
 ```
 
 This creates:
-- **Card titles** → Integrated into top border with accent color and grey_dark background
-- **Card labels** → Accent2 color (e.g., "Name:", "ID:", "Category:")
+- **Card titles** → Integrated into top border with `primary` color and `base` background
+- **Card labels** → `secondary` color (e.g. "Name:", "ID:", "Category:")
 - **Card content** → Terminal default color for values
-- **Card borders** → Grey_mid color with rounded corners
+- **Card borders** → `placeholders` color with rounded corners
 
 ## Color Hierarchy
 
 ### Primary Visual Elements
-1. **Page Titles** - Accent color with grey_dark background
-2. **Card Titles** - Accent color with grey_dark background, integrated into borders
-3. **Font Names & Labels** - Accent2 color - most prominent content, form labels, and card labels
-4. **Warning Messages** - Warning color - warnings and skipped status
-5. **Status Words** - Success/Warning/Error colors based on status
-6. **Primary Text** - Terminal default for better compatibility
+1. **Page Titles** - `primary` text on `base` background
+2. **Card Titles** - `primary` text on `base` background, integrated into borders
+3. **Font Names & Labels** - `secondary` for prominent content, form labels, and card labels
+4. **Warning Messages** - `warning` for warnings and skipped status
+5. **Status Words** - `success` / `warning` / `error` via `SuccessText`, `WarningText`, `ErrorText`
+6. **Primary Text** - Terminal default for compatibility
 
 ### Status Colors
-- **Success** - Success color - Use `SuccessText`
-- **Warning** - Warning color - Use `WarningText`
-- **Error** - Error color - Use `ErrorText`
-- **Info** - Accent color - Use `InfoText`
+- **Success** - Use `SuccessText` (theme: `success`)
+- **Warning** - Use `WarningText` (theme: `warning`)
+- **Error** - Use `ErrorText` (theme: `error`)
+- **Info** - Use `InfoText` (theme: `primary`)
 
-**Note:** The old `Feedback*` style names (`FeedbackText`, `FeedbackInfo`, `FeedbackWarning`, `FeedbackError`, `FeedbackSuccess`) are deprecated but still available as aliases for backward compatibility. Use the new names (`Text`, `InfoText`, `WarningText`, `ErrorText`, `SuccessText`) in all new code.
+**Note:** The old `Feedback*` style names (`FeedbackText`, `FeedbackInfo`, etc.) are deprecated. Use `Text`, `InfoText`, `WarningText`, `ErrorText`, `SuccessText` in new code.
 
 ### Background Usage
-- **Page Titles** - Grey_dark background
-- **Command Keys** - Grey_dark background
-- **Selected Rows** - Grey_dark background
-- **Selected Buttons/Switches** - Grey_light background (inverted)
-- **Regular Content** - No background (terminal default)
+- **Page titles, card titles, command keys** - `base` background
+- **Selected rows, checkbox items** - `base` background
+- **Selected buttons/switches** - `components` background (inverted)
+- **Regular content** - No background (terminal default)
 
 ## Creating Custom Themes
 
 To create a custom theme:
 
-1. **Copy the default theme** from `internal/ui/themes/catppuccin.yaml` as a starting point
-2. **Save it** to `~/.fontget/themes/your-theme.yaml` (or `your-theme-theme.yaml`)
-3. **Edit the colors** in both `dark_mode` and `light_mode` sections
+1. **Copy the default theme** from `internal/ui/themes/catppuccin.yaml` or `internal/templates/dark-theme-template.yaml` as a starting point.
+2. **Save it** to `~/.fontget/themes/your-theme.yaml` (or `your-theme-theme.yaml`).
+3. **Edit the colors** under the single `colors:` block using the key names below. Optionally add `overrides:` for component-specific colors.
 4. **Update config.yaml** to use your theme:
    ```yaml
    theme:
@@ -270,13 +292,24 @@ To create a custom theme:
 
 ### Theme Validation
 
-Themes must include all required color keys for both dark and light modes:
-- `accent`, `accent2`, `warning`, `error`, `success`
-- `page_title`, `page_subtitle`
-- `grey_light`, `grey_mid`, `grey_dark`
-- `progress_bar_gradient.color_start`, `progress_bar_gradient.color_end`
+Themes must include all **required** color keys under `colors:`:
 
-If a theme is missing required keys or fails validation, FontGet will fall back to the default Catppuccin theme.
+- **Base colors:** `primary`, `secondary`, `components`, `placeholders`, `base`
+- **Status colors:** `warning`, `error`, `success`
+
+**Optional** `overrides` (each defaults to the base color above if omitted):
+
+- `page_title` (text, background)
+- `button` (foreground, background)
+- `switch` (foreground, background)
+- `checkbox` (unchecked, checked)
+- `card` (title_text, title_background, label, border)
+- `command_keys` (text, background)
+- `table` (header, row, selected)
+- `spinner` (normal, done)
+- `progress_bar` (start, finish)
+
+If a theme is missing required keys or fails validation, FontGet falls back to the default Catppuccin theme.
 
 ## Table Standards
 
@@ -309,17 +342,17 @@ Different commands use different column structures based on their purpose:
 - **Name**: 109 characters (source name with tags - much wider)
 
 ### Implementation
-Use the shared table functions in `cmd/shared.go` for consistent formatting:
+Use the shared table functions and column constants in `internal/ui/tables.go` for consistent formatting:
 ```go
 // For font search/add/remove tables
-fmt.Printf("%s\n", ui.TableHeader.Render(GetTableHeader()))
-fmt.Printf("%s\n", GetTableSeparator())
+fmt.Printf("%s\n", ui.TableHeader.Render(ui.GetSearchTableHeader()))
+fmt.Printf("%s\n", ui.GetTableSeparator())
 
-// For custom tables, use the column constants
+// For custom tables, use the column constants (e.g. ui.TableColName, ui.TableColID, ui.TableColSource)
 fmt.Printf("%-*s %-*s %-*s\n", 
-    TableColName, "Name",
-    TableColID, "ID", 
-    TableColSource, "Source")
+    ui.TableColName, "Name",
+    ui.TableColID, "ID", 
+    ui.TableColSource, "Source")
 ```
 
 ## Utility Functions
@@ -352,7 +385,7 @@ FontGet provides utility functions for rendering source names with type tags:
 6. **Table Width** - Never exceed 120 characters total width for tables
 7. **Card Design** - Use integrated titles in borders for better visual hierarchy
 8. **Padding Control** - Use vertical and horizontal padding separately for different use cases
-9. **Semantic Colors** - Reference semantic color keys in theme files, not specific hex values
+9. **Theme keys** - Use theme color keys (`primary`, `secondary`, etc.) in theme YAML; avoid hardcoding hex in code
 10. **Terminal Defaults** - Use terminal default colors for base text to ensure compatibility
 11. **Source Name Styling** - Use `RenderSourceNameWithTag()` for colored names, or combine `Text` with `RenderSourceTag()` for plain names
 
@@ -360,8 +393,8 @@ FontGet provides utility functions for rendering source names with type tags:
 
 If you're updating existing code:
 
-- **Don't hardcode colors** - Use theme-aware styles from `ui` package
-- **Don't reference specific hex codes** - Colors come from theme files
-- **Use semantic styles** - `InfoText` instead of a specific color
+- **Don't hardcode colors** - Use theme-aware styles from the `ui` package
+- **Don't reference specific hex codes** - Colors come from theme files (`primary`, `secondary`, etc.)
+- **Use named styles** - e.g. `InfoText`, `SuccessText` instead of raw colors
 - **Test both modes** - Ensure your code works in both dark and light themes
 - **Check contrast** - Verify readability in both theme modes
