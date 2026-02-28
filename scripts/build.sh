@@ -5,6 +5,11 @@
 
 set -e
 
+# Run from repo root (so script works when called from any directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
 VERSION=""
 
 # Parse arguments
