@@ -12,6 +12,7 @@ fontget.exe
 *.dylib
 *.test
 *.json
+!build/winres.json
 *exe.old
 *exe~
 

@@ -8,8 +8,8 @@ before:
   hooks:
     - go mod tidy
     # Generate Windows resources (icon, version info) for Windows builds.
-    # Only runs on Windows; other platforms ignore (|| true).
-    - go-winres make --in build/winres.json --out rsrc --file-version git-tag --product-version git-tag || true
+    # Wrapped in sh -c so || true is applied; otherwise hook fails on Linux when build/winres.json is missing.
+    - sh -c "go-winres make --in build/winres.json --out rsrc --file-version git-tag --product-version git-tag || true"
 
 builds:
   - id: fontget

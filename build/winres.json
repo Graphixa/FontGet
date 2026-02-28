@@ -1,0 +1,27 @@
+{
+  "RT_GROUP_ICON": {
+    "APP": {
+      "0000": "../assets/icons/icon.ico"
+    }
+  },
+  "RT_VERSION": {
+    "#1": {
+      "0000": {
+        "fixed": {
+          "file_version": "0.0.0.0",
+          "product_version": "0.0.0.0"
+        },
+        "info": {
+          "040904B0": {
+            "CompanyName": "Graphixa",
+            "FileDescription": "A tiny, cross-platform CLI tool to install and manage fonts from the command line",
+            "FileVersion": "0.0.0.0",
+            "LegalCopyright": "Copyright (c) Graphixa",
+            "ProductName": "FontGet",
+            "ProductVersion": "0.0.0.0"
+          }
+        }
+      }
+    }
+  }
+}
