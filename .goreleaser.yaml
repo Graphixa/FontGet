@@ -176,11 +176,8 @@ winget:
     # Default: 'v1' (we only build one amd64 version, so default is fine)
     goamd64: v1
     
-    # Package identifier
-    # Using FontGet.FontGet to match open-source project naming convention
-    # (similar to Inkscape.Inkscape, Git.Git, etc.)
-    # This overrides the default Publisher.ProjectName (Graphixa.FontGet)
-    package_identifier: FontGet.FontGet
+    # Package identifier (Publisher.PackageName convention)
+    package_identifier: Graphixa.FontGet
     
     # Commit message template
     # Templates: allowed
@@ -192,10 +189,9 @@ winget:
     url_template: "https://github.com/Graphixa/FontGet/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
     
     # Path for manifests inside the repository
-    # Default: manifests/<lowercased first char of publisher>/<publisher>/<name>/<version>
-    # Since we use package_identifier: FontGet.FontGet, the path should match:
+    # manifests/<first letter of publisher>/<publisher>/<package>/<version>
     # Templates: allowed
-    path: manifests/f/FontGet/FontGet/{{.Version}}
+    path: manifests/g/Graphixa/FontGet/{{.Version}}
     
     # Optional but recommended fields
     homepage: "https://github.com/Graphixa/FontGet"

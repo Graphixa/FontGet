@@ -51,7 +51,7 @@ $env:FONTGET_VERSION="1.0.0"; irm https://raw.githubusercontent.com/Graphixa/Fon
 **[WinGet](https://winstall.app/)**
 
 ```powershell
-winget install --id "fontget.fontget"
+winget install --id "Graphixa.FontGet"
 ```
 
 **[Scoop](https://scoop.sh/)**
@@ -262,7 +262,7 @@ If you installed via a package manager:
 
 ```powershell
 # WinGet
-winget uninstall fontget.fontget
+winget uninstall Graphixa.FontGet
 
 # Scoop
 scoop uninstall fontget

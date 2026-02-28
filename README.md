@@ -56,7 +56,7 @@ More installation options can be found in the [Installation Guide](docs/installa
 
 **[WinGet](https://winstall.app/)**
 ```
-winget install --id "fontget.fontget"
+winget install --id "Graphixa.FontGet"
 ```
 
 **[Chocolatey](https://chocolatey.org/)** (coming soon)
