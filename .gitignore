@@ -1,3 +1,6 @@
+# Generic files
+.DS_Store
+
 # Binaries for programs and plugins
 *.exe
 *.dll
@@ -37,3 +40,4 @@ rsrc_windows_*.syso
 
 bubbletea-sources-plan.md
 command-fixes.md
+
