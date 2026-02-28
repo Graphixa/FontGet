@@ -19,11 +19,11 @@ FontGet is a lightweight, cross-platform terminal font manager that can discover
 </strong>
 Fontget supports installing fonts from the following sources:
 
-<a href="https://fonts.google.com/">- Google Fonts</a>
-<p> | </p>
-<a href="https://www.nerdfonts.com/">- Nerd Fonts</a>
-<p> | </p>
-<a href="https://www.fontsquirrel.com/">- Font Squirrel</a>
+<a href="https://fonts.google.com/">Google Fonts</a>
+|
+<a href="https://www.nerdfonts.com/">Nerd Fonts</a>
+|
+<a href="https://www.fontsquirrel.com/">Font Squirrel</a>
 
 </div>
 
