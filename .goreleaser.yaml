@@ -7,10 +7,9 @@ dist: dist
 before:
   hooks:
     - go mod tidy
-    # Generate Windows resources (icon, version info) for Windows builds
-    # Note: This will only work on Windows, but won't fail on other platforms
-    # Use git-tag special value to automatically get version from git tag
-    - cmd: go-winres make --in build/winres.json --out rsrc --file-version git-tag --product-version git-tag || true
+    # Generate Windows resources (icon, version info) for Windows builds.
+    # Only runs on Windows; other platforms ignore (|| true).
+    - go-winres make --in build/winres.json --out rsrc --file-version git-tag --product-version git-tag || true
 
 builds:
   - id: fontget
