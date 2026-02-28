@@ -133,8 +133,9 @@ List installed fonts.
 - `--scope, -s` - Filter by installation scope (`user`, `machine`, or `all` default)
 - `--type, -t` - Filter by font type (e.g., TTF, OTF)
 - `--expand, -x` - Show font styles in hierarchical view
-- `--full, -f` - Show all variants in hierarchical view
-- `--family, -a` - Filter by family name
+
+### Notes
+- Pass an optional query as a positional argument to filter by family name or Font ID (e.g., `fontget list "roboto"` or `fontget list "google.roboto"`).
 
 ### Examples
 ```bash
@@ -144,14 +145,11 @@ fontget list
 # List fonts from specific scope
 fontget list --scope machine
 
-# List fonts by family
-fontget list --family "Roboto"
+# List fonts matching a query (family name or Font ID)
+fontget list "Roboto"
 
 # List fonts by type
 fontget list --type TTF
-
-# Show font and variants in a hierarchical view
-fontget list --full
 
 # Show font styles in hierarchical view
 fontget list --expand
@@ -463,7 +461,7 @@ fontget completion powershell --install
 |---------------------|---------|-------|
 | `add` | Install fonts | `--scope, -s`, `--force, -f` |
 | `search` | Find fonts | `--category, -c`, `--source, -s` |
-| `list` | Show installed fonts | `--scope, -s`, `--family, -a`, `--type, -t`, `--expand, -x`, `--full, -f` |
+| `list` | Show installed fonts | `--scope, -s`, `--type, -t`, `--expand, -x`, `[query]` |
 | `remove` | Uninstall fonts | `--scope, -s`, `--force, -f` |
 | `info` | Show font details | `--license, -l`, `--metadata, -m` |
 | `sources` | Manage font sources |  |

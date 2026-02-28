@@ -115,7 +115,7 @@ fontget add "google.roboto"
 fontget add "google.roboto" "google.open-sans"
 ```
 
-### Remove an Installed Font
+### Uninstall Font
 
 ```bash
 # Remove an installed font
