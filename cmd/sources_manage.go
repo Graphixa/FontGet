@@ -552,9 +552,12 @@ func (m *sourcesModel) validateForm() bool {
 	url := strings.TrimSpace(m.urlInput.Value())
 	prefix := strings.TrimSpace(m.prefixInput.Value())
 
-	// Convert prefix to lowercase for consistency
+	// Convert prefix and URL to lowercase for consistency (no blocking, just normalize)
 	prefix = strings.ToLower(prefix)
 	m.prefixInput.SetValue(prefix)
+
+	url = strings.ToLower(url)
+	m.urlInput.SetValue(url)
 
 	// Convert editingIndex to -1 if not editing
 	editingIndex := -1
