@@ -6,46 +6,61 @@ FontGet uses a YAML-based theme system that allows you to customize the colors a
 
 ## Theme File Structure
 
-Theme files are YAML files that define colors for both dark and light modes. The structure follows a semantic color system where color keys are mapped to multiple UI styles.
+Theme files are YAML files that define a single set of semantic colors. Each theme has a name, an optional `style` (e.g. `dark` or `light`), and a `colors` block that maps semantic keys to UI styles.
 
 ### Basic Structure
 
 ```yaml
-fontget_theme:
-  dark_mode:
-    accent: "#cba6f7"
-    accent2: "#f5c2e7"
-    warning: "#f9e2af"
-    error: "#e78284"
-    success: "#a6e3a1"
-    page_title: "#cba6f7"
-    page_subtitle: "#7f849c"
-    grey_light: "#cdd6f4"
-    grey_mid: "#7f849c"
-    grey_dark: "#313244"
-    progress_bar_gradient:
-      color_start: "#cba6f7"
-      color_end: "#eba0ac"
+theme_name: "My Theme"
+style: dark   # optional: "dark" or "light"
 
-  light_mode:
-    # ... same structure for light mode
+colors:
+  # Required base colors
+  primary: "#cba6f7"       # Main accent – InfoText, PageTitle, CardTitle, Cursor, Spinner, QueryText
+  secondary: "#94e2d5"     # Secondary accent – TableSourceName, FormLabel, CardLabel
+  components: "#cdd6f4"    # Interactive elements – Button, Switch, FormInput
+  placeholders: "#7f849c"  # Muted elements – borders, placeholders, CheckboxUnchecked
+  base: "#313244"          # Backgrounds – selected states (CommandKey uses fixed ANSI 256 grey)
+
+  # Required status colors
+  warning: "#f9e2af"
+  error: "#e78284"
+  success: "#a6e3a1"
+
+  # Optional component overrides (defaults to base colors above)
+  overrides:
+    page_title:
+      text: "#cba6f7"
+    button:
+      foreground: "#cdd6f4"
+      background: "#313244"
+    switch:
+      foreground: "#cdd6f4"
+      background: "#313244"
+    checkbox:
+      unchecked: "#7f849c"
+      checked: "#cba6f7"
+    card:
+      title_text: "#cba6f7"
+      label: "#94e2d5"
+      border: "#7f849c"
+    command_keys:
+      text: "#7f849c"
+    table:
+      header: "#94e2d5"
+      row: "#cba6f7"
+      selected: "#cdd6f4"
+    spinner:
+      normal: "#cba6f7"
+      done: "#a6e3a1"
+    progress_bar:
+      start: "#cba6f7"
+      finish: "#eba0ac"
 ```
 
 ## Semantic Color Keys
 
-The theme system uses semantic color keys that are mapped to multiple UI components:
-
-- **`accent`**: Primary accent color (InfoText, PageTitle, CardTitle, CheckboxCursor, SpinnerColor)
-- **`accent2`**: Secondary accent color (TableSourceName, FormLabel, CardLabel)
-- **`warning`**: Warning messages (WarningText)
-- **`error`**: Error messages (ErrorText)
-- **`success`**: Success messages (SuccessText)
-- **`page_title`**: Page title foreground color
-- **`page_subtitle`**: Page subtitle color
-- **`grey_light`**: Light text color (Text, unselected items)
-- **`grey_mid`**: Medium grey (borders, placeholders, subtitles, separators)
-- **`grey_dark`**: Dark background color (PageTitle background, TableRowSelected background)
-- **`progress_bar_gradient`**: Progress bar gradient colors (color_start, color_end)
+The theme system uses semantic color keys that are mapped to multiple UI components. See `docs/development/style-guide.md` for a full table of which UI styles use each key (`primary`, `secondary`, `components`, `placeholders`, `base`, `warning`, `error`, `success`, and optional `overrides`).
 
 ## Creating a New Theme
 
@@ -57,7 +72,7 @@ The theme system uses semantic color keys that are mapped to multiple UI compone
 
 ### Step 2: Define Colors
 
-Choose colors for both `dark_mode` and `light_mode` sections. You can reference existing themes:
+Choose colors for the `colors` section. You can reference existing themes:
 - `internal/ui/themes/catppuccin.yaml` - Default Catppuccin theme
 - `internal/ui/themes/gruvbox.yaml` - Gruvbox theme
 
@@ -100,44 +115,16 @@ The theme is configured in `~/.fontget/config.yaml`:
 
 ```yaml
 Theme:
-  Name: ""      # Empty string uses embedded default (catppuccin)
-  Mode: "dark"  # "dark" or "light" (defaults to "dark")
+  Name: ""                 # Empty string uses embedded default (catppuccin)
+  Use256ColorSpace: false  # Downsample theme colors to ANSI 256 for terminals without true color
 ```
 
 ### Configuration Options
 
-- **`Name`**: Theme file name without extension (e.g., "gruvbox" for `gruvbox.yaml`)
+- **`Name`**: Theme file name without extension (e.g., `"gruvbox"` for `gruvbox.yaml`)
   - Empty string (`""`) uses the embedded default theme
-  - If theme file is not found, falls back to embedded default
-- **`Mode`**: Theme mode - `"dark"` or `"light"` (defaults to `"dark"`)
-  - **`"dark"`**: Use dark mode colors
-  - **`"light"`**: Use light mode colors
-
-### Environment Variable Override
-
-You can override the theme mode using the `FONTGET_THEME_MODE` environment variable:
-
-- **Set environment variable**:
-  ```powershell
-  # Windows PowerShell
-  $env:FONTGET_THEME_MODE="light"  # or "dark"
-  ```
-  ```bash
-  # Linux/macOS
-  export FONTGET_THEME_MODE=light  # or "dark"
-  ```
-
-- **Per-session override**:
-  ```powershell
-  # Windows PowerShell
-  $env:FONTGET_THEME_MODE="light"; fontget search roboto
-  ```
-  ```bash
-  # Linux/macOS
-  FONTGET_THEME_MODE=light fontget search roboto
-  ```
-
-The environment variable takes precedence over config file settings, making it easy to override when needed.
+  - If the theme file is not found, FontGet falls back to the embedded default
+- **`Use256ColorSpace`**: When `true`, theme hex colors are downsampled to the nearest ANSI 256-color index before being applied. This is useful for terminals (e.g. Apple Terminal) that do not handle 24-bit true color well.
 
 ## Theme Validation
 
@@ -145,20 +132,16 @@ FontGet automatically validates theme files when they are loaded. The validation
 
 ### Required Color Keys
 
-All of the following keys must be present and non-empty:
+All of the following keys must be present and non-empty under `colors`:
 
-- `accent`
-- `accent2`
+- `primary`
+- `secondary`
+- `components`
+- `placeholders`
+- `base`
 - `warning`
 - `error`
 - `success`
-- `page_title`
-- `page_subtitle`
-- `grey_light`
-- `grey_mid`
-- `grey_dark`
-- `progress_bar_gradient.color_start`
-- `progress_bar_gradient.color_end`
 
 ### Validation Behavior
 
@@ -183,27 +166,18 @@ Currently, themes can be switched by:
    ```yaml
    Theme:
      Name: "gruvbox"
-     Mode: "dark"
+     Use256ColorSpace: false
    ```
 3. Run any FontGet command
 
 ### Example: Creating a Custom Theme
 
-1. Create `~/.fontget/themes/my-custom-theme.yaml`:
-   ```yaml
-   fontget_theme:
-     dark_mode:
-       accent: "#ff6b6b"
-       accent2: "#4ecdc4"
-       # ... define all color keys
-     light_mode:
-       # ... define light mode colors
-   ```
+1. Create `~/.fontget/themes/my-custom-theme.yaml` with the structure shown above.
 2. Edit `~/.fontget/config.yaml`:
    ```yaml
    Theme:
      Name: "my-custom-theme"
-     Mode: "dark"
+     Use256ColorSpace: false
    ```
 
 ## Troubleshooting
@@ -217,8 +191,7 @@ Currently, themes can be switched by:
 
 ### Colors Not Applied
 
-- Ensure all required color keys are defined in both `dark_mode` and `light_mode`
-- Check that `Theme.Mode` in config matches the mode you want to use
+- Ensure all required color keys are defined under `colors`
 - Verify YAML indentation is correct (2 spaces)
 
 ## Future Enhancements

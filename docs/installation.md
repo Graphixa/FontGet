@@ -35,13 +35,13 @@ Install a specific version by setting the `FONTGET_VERSION` environment variable
 ### Shell (Mac, Linux)
 
 ```sh
-FONTGET_VERSION=1.0.0 curl -fsSL https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.sh | sh
+FONTGET_VERSION=2.2.0 curl -fsSL https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.sh | sh
 ```
 
 ### PowerShell (Windows)
 
 ```powershell
-$env:FONTGET_VERSION="1.0.0"; irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 | iex
+$env:FONTGET_VERSION="2.2.0"; irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 | iex
 ```
 
 ## Install via Package Manager

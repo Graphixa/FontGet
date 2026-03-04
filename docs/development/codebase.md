@@ -602,16 +602,18 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Files**:
 - `user_preferences.go`: User preferences configuration (renamed from `app_config.go`)
   - **AppConfig structure**: Configuration, Logging, Update, Theme, and Search sections
-  - **ConfigVersion**: Tracks config schema version for migration support (CurrentConfigVersion = "2.0")
+  - **ConfigVersion**: Tracks config schema version for migration support (CurrentConfigVersion = "2.0", stored as `version` in YAML)
   - **Search section**: Search.ResultLimit for configurable result limiting (0 = unlimited, default)
-  - **Theme configuration**: Theme.Name (theme file name) and Theme.Mode (dark/light)
-  - Configuration loading, saving, and validation
-  - **Simplified Migration System**: Merge-based migration that preserves user values while applying new defaults
-    - Field renames handled via `fieldRenameMap` (e.g., "Update.AutoCheck" → "Update.CheckForUpdates")
-    - Field moves handled via `fieldMoveMap` (e.g., "Configuration.EnablePopularitySort" → "Search.EnablePopularitySort")
-    - Automatic field mapping via `handleLegacyFieldMapping()` before unmarshaling
-    - `MigrateConfigAfterUpdate()` merges old config with new defaults after binary updates
+  - **Theme configuration**: `Theme` section with `Name` (theme file name) and `Use256ColorSpace` (bool to downsample theme hex colors to ANSI 256 for terminals without true color support)
+  - Configuration loading, saving, validation, and schema-aware migration
+  - **Schema Migration System**:
+    - Schema defaults and comments defined in embedded `default_config.yaml`
+    - `CurrentConfigVersion` compared to `version` in YAML to decide if migration is needed
+    - `migrate.go` provides `NeedsSchemaMigration()` / `MigrateToCurrentSchema()` plus explicit rules (e.g., `Theme: \"arasaka\"` → `Theme: { Name: \"arasaka\", Use256ColorSpace: false }`, field renames/moves via `fieldRenameMap` / `fieldMoveMap`)
+    - `MigrateConfigAfterUpdate()` ensures configs are bumped to the latest version after binary updates while preserving user values
   - **Helper functions**: `ExpandLogPath()` (expands $home in log paths), `ParseMaxSize()` (parses "10MB" format)
+- `default_config.yaml`: Embedded default configuration template and schema used for initial config generation and as the baseline for migrations
+- `migrate.go`: Schema migration helpers (`NeedsSchemaMigration`, `MigrateToCurrentSchema`, `copyMatchingKeys`, `applyExplicitMigrationRules`)
 - `app_state.go`: Core application state types and functions
   - First-run state management
   - Source acceptance tracking
@@ -619,25 +621,23 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `validation.go`: Configuration validation
 
 **Key Features**:
-- **Simplified Config Migration System**: Merge-based migration that preserves user values
-  - Field renames and moves handled automatically via simple maps
-  - Old config merged with new defaults during `GetUserPreferences()` load
-  - Migration happens automatically during config loading and after binary updates
-  - No complex migration rules - just simple field mapping and merge logic
-  - Preserves all user customizations while applying new defaults
+- **Schema-Aware Config Migration**:
+  - Versioned schema defined in embedded `default_config.yaml` with `CurrentConfigVersion`
+  - Explicit migration rules in `migrate.go` for field renames/moves and structural changes (e.g., scalar → object `Theme` section)
+  - Existing configs automatically migrated to the current schema on load while preserving user customizations
 - **Search Configuration**: Search.ResultLimit allows users to limit search results (0 = unlimited)
-- **Theme Configuration**: Users can set theme name and mode in `config.yaml`
+- **Theme Configuration**: Users can set theme name and 256-color behavior in `config.yaml`
   - Theme files must be placed in `~/.fontget/themes/` directory
   - Empty theme name uses embedded default (Catppuccin)
-  - Mode can be "dark" or "light" (defaults to "dark")
-- **Logging Configuration**: LogPath, MaxSize, and MaxFiles from config.yaml are connected to logger
+  - `Theme.Use256ColorSpace` controls optional ANSI 256 downsampling for terminals without true color support
+- **Logging Configuration**: LogPath, MaxSize, and MaxFiles from `config.yaml` are connected to logger
   - LogPath supports `$home` variable expansion
   - MaxSize parses string format (e.g., "10MB") to integer
-- **Update Configuration**: AutoCheck, AutoUpdate, CheckInterval, and LastChecked are fully connected
-  - LastChecked uses UTC timezone for consistency
-  - AutoUpdate automatically installs updates when enabled and available
+- **Update Configuration**: `CheckForUpdates`, `UpdateCheckInterval`, `LastUpdateCheck`, and `NextUpdateCheck` are fully connected
+  - `UpdateCheckInterval` controls how often update checks and prompts are shown
+  - `NextUpdateCheck` is advanced when the user declines an update so prompts are suppressed until the next interval
 
-**Status**: ✅ Active - Core configuration system with theme support, migration system, and full config connections
+**Status**: ✅ Active - Core configuration system with theme support, schema versioning, and full config connections
 
 ### `internal/repo/`
 **Purpose**: Font repository management
@@ -692,6 +692,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `styles.go`: Centralized styling and theming
   - **Theme-aware styling system**: All styles initialized from theme files via `InitStyles()`
   - **Semantic color system**: Theme files define semantic color keys (accent, warning, error, etc.) that are referenced by multiple styles
+  - Optional ANSI 256 downsampling of theme hex colors controlled by `Theme.Use256ColorSpace` in `config.yaml`
   - Page structure styles (titles, subtitles, content)
   - Message styles (Text, InfoText, WarningText, ErrorText, SuccessText)
   - Data display styles (tables, lists)
@@ -704,8 +705,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `theme.go`: Theme management system
   - **Theme abstraction layer**: Loads themes from YAML files in `~/.fontget/themes/`
   - **Embedded default theme**: Catppuccin theme embedded in binary as fallback
-  - **Theme configuration**: Theme selection via `config.yaml` (Theme.Name and Theme.Mode)
-  - **Mode support**: Dark and light mode support per theme
+  - **Theme configuration**: Theme selection via `config.yaml` (`Theme.Name` and `Theme.Use256ColorSpace`)
+  - **Mode support**: Dark and light mode support per theme (via theme `style` or separate theme files)
   - **ThemeManager**: Handles theme loading, mode switching, and color retrieval
 - `tables.go`: Table formatting constants and functions
   - Table column width constants (`TableColName`, `TableColID`, etc.)
@@ -719,8 +720,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Theme System**: YAML-based theme files with semantic color system
   - Themes stored in `~/.fontget/themes/` directory
   - Default theme (Catppuccin) embedded in binary
-  - Theme selection via `config.yaml` Theme section
-  - Supports both dark and light modes
+  - Theme selection via `config.yaml` `Theme` section (`Name` plus optional `Use256ColorSpace` behavior)
+  - Supports both dark and light modes via theme definitions
 - **Semantic Colors**: Theme files define semantic keys (accent, warning, error, grey_light, etc.) that are mapped to multiple UI styles
 - **Centralized Styling**: All styles initialized from theme on startup via `InitStyles()`
 - **Unified Table API**: All table formatting in one place for consistency
