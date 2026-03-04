@@ -80,7 +80,7 @@ type MenuLine struct {
 func NewThemeSelectionModel() (*themeSelectionModel, error) {
 	// Get current theme from config
 	appConfig := config.GetUserPreferences()
-	currentTheme := appConfig.Theme
+	currentTheme := appConfig.Theme.Name
 
 	// Default to system if empty
 	if currentTheme == "" {
@@ -977,7 +977,7 @@ func (m themeSelectionModel) renderFooter(help, current string, totalWidth int) 
 func (m *themeSelectionModel) applyTheme(themeName string) error {
 	// Update config
 	appConfig := config.GetUserPreferences()
-	appConfig.Theme = themeName
+	appConfig.Theme.Name = themeName
 
 	// Save config
 	if err := config.SaveUserPreferences(appConfig); err != nil {

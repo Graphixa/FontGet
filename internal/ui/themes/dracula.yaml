@@ -7,7 +7,7 @@ colors:
   secondary: "#ff79c6" # Pink - Used for TableSourceName, FormLabel, CardLabel
   components: "#f8f8f2" # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#6272a4" # Borders, placeholders, subtitles, separators
-  base: "#282a36"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#282a36"   # Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   warning: "#f1fa8c" # Yellow

@@ -87,8 +87,7 @@ type ComponentOverrides struct {
 	} `yaml:"card"`
 
 	CommandKeys struct {
-		Text       string `yaml:"text"`
-		Background string `yaml:"background"`
+		Text string `yaml:"text"`
 	} `yaml:"command_keys"`
 
 	Table struct {
@@ -319,7 +318,7 @@ func InitThemeManager() error {
 
 	// Get theme from config
 	appConfig := config.GetUserPreferences()
-	themeName := appConfig.Theme
+	themeName := appConfig.Theme.Name
 
 	// If theme name is empty, use catppuccin theme (default)
 	if themeName == "" {

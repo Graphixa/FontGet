@@ -7,7 +7,7 @@ colors:
   secondary: "#90ee90"      # Light Green - Used for TableSourceName, FormLabel, CardLabel
   components: "#addbad"     # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#81d16d"   # Borders, placeholders, subtitles, separators
-  base: "#1c2e20"           # Background of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#1c2e20"           # Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   success: "#90ee90"      # Green

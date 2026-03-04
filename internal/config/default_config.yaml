@@ -1,0 +1,31 @@
+# FontGet default configuration (schema template).
+# Used for initial config generation and for schema migration.
+# The version value below is replaced at write time with CurrentConfigVersion (see user_preferences.go);
+# you do not need to edit this file when bumping the schema version.
+
+version: "2.0"  # Schema version for migration tracking (replaced when writing initial config)
+
+Configuration:
+  DefaultEditor: ""  # Default editor command (e.g., 'code', 'notepad.exe', 'nano')
+
+Logging:
+  LogPath: "$home/.fontget/logs/fontget.log"  # Path to log file
+  MaxLogSize: "10MB"  # Maximum size per log file before rotation
+  MaxLogFiles: 5  # Number of rotated log files to keep
+
+Network:
+  RequestTimeout: "10s"  # Timeout for HTTP requests
+  DownloadTimeout: "30s"  # Timeout for font downloads
+
+Search:
+  ResultLimit: 0  # Maximum search results to display (0 = unlimited)
+  EnablePopularitySort: true  # Sort results by popularity, then alphabetically
+
+Update:
+  CheckForUpdates: true  # Check for updates on startup
+  UpdateCheckInterval: 24  # Hours between update checks
+  LastUpdateCheck: ""  # Last check timestamp (auto-updated)
+
+Theme:
+  Name: "catppuccin"  # UI theme name (e.g., "catppuccin", "gruvbox", "system")
+  Use256ColorSpace: false  # Set true to downsample theme colors to ANSI 256 for terminals without true color (e.g. Apple Terminal)

@@ -7,7 +7,7 @@ colors:
   secondary: "#88c0d0" # nord8 (Frost - cyan) - Used for TableSourceName, FormLabel, CardLabel
   components: "#d8dee9" # nord4 (Snow Storm) - Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#81a1c1" # nord9 (Frost - blue) - Borders, placeholders, subtitles, separators
-  base: "#2e3440"   # nord0 (Polar Night) - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#2e3440"   # nord0 (Polar Night) - Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   success: "#a3be8c" # nord14 (Aurora - green)

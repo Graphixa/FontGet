@@ -94,20 +94,21 @@ func (c Card) Render() string {
 		return content
 	}
 
-	// Manually construct the top border with integrated title
-	// Use a reasonable fixed width instead of the original border width
-	totalWidth := c.Width
+	// Use the bottom border line's width so the custom top border matches exactly
+	lastLine := lines[len(lines)-1]
+	totalWidth := lipgloss.Width(lastLine)
 	if totalWidth <= 0 {
-		totalWidth = 80 // Default width
+		totalWidth = c.Width
+	}
+	if totalWidth <= 0 {
+		totalWidth = 80
 	}
 
-	// Calculate the length of the title (without ANSI codes)
-	// Account for the CardTitle padding (0, 1) which adds 2 characters total
-	plainTitleLength := len(c.Title) + 2
+	// Title section: "─" + " " + title + " " + "─" = display width len(title)+4
+	titleSectionWidth := lipgloss.Width("─" + " " + c.Title + " " + "─")
 
-	// Calculate the remaining width for the right side
-	// Total width - left corner (1) - space (1) - title length (including padding) - space (1) - right corner (1)
-	rightWidth := totalWidth - 1 - 1 - plainTitleLength - 1 - 1
+	// Right-side dashes so the top line equals totalWidth: left(1) + titleSection + rightDashes + right(1)
+	rightWidth := totalWidth - 2 - titleSectionWidth
 
 	// Ensure we don't have negative width
 	if rightWidth < 0 {
@@ -119,14 +120,17 @@ func (c Card) Render() string {
 	topLeft := "╭"
 	topRight := strings.Repeat("─", rightWidth) + "╮"
 
-	// Get border color from current theme (same as CardBorder uses)
-	colors := ui.GetCurrentColors()
+	// Use the same border color as CardBorder (includes 256 downsampling when enabled)
 	var borderColor lipgloss.TerminalColor
-	if colors != nil && colors.Placeholders != "" {
-		borderColor = lipgloss.Color(colors.Placeholders)
+	if ui.CardBorderColorStr != "" {
+		borderColor = lipgloss.Color(ui.CardBorderColorStr)
 	} else {
-		// System theme or no colors - use terminal default
-		borderColor = lipgloss.NoColor{}
+		colors := ui.GetCurrentColors()
+		if colors != nil && colors.Placeholders != "" {
+			borderColor = lipgloss.Color(colors.Placeholders)
+		} else {
+			borderColor = lipgloss.NoColor{}
+		}
 	}
 
 	// Apply border color to border elements

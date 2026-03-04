@@ -7,7 +7,7 @@ colors:
   secondary: "#04d1f9" # Cthulhu Cyan - Used for TableSourceName, FormLabel, CardLabel
   components: "#ebfafa" # Lighthouse White - used for buttons, switches, checkboxes, etc.
   placeholders: "#323449" # Shallow Depths Grey - Borders, placeholders, subtitles, separators
-  base: "#212337"   # Sunken Depths Grey - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#212337"   # Sunken Depths Grey - Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   warning: "#f1fc79" # Gold of Yuggoth (Yellow)

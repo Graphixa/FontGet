@@ -7,7 +7,7 @@ colors:
   secondary: "#36f9f6" # Cyan - Used for TableSourceName, FormLabel, CardLabel
   components: "#ffffff" # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#504975" # Borders, placeholders, subtitles, separators
-  base: "#241b2f"   # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#241b2f"   # Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   warning: "#f3e70f" # Yellow

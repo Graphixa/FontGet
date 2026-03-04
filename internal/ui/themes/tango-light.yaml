@@ -7,7 +7,7 @@ colors:
   secondary: "#75507b" # Plum - Used for TableSourceName, FormLabel, CardLabel
   components: "#2e3436" # Foreground - used for buttons, switches, checkboxes, etc.
   placeholders: "#555753" # Medium gray - Borders, placeholders, subtitles, separators
-  base: "#ffffff"   # White background - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#ffffff"   # White background - Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   warning: "#c4a000" # Yellow

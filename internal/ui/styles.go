@@ -1,8 +1,27 @@
 package ui
 
 import (
+	"strconv"
+	"strings"
+
+	"fontget/internal/config"
+
 	"github.com/charmbracelet/lipgloss"
 )
+
+// Fixed ANSI 256-color indices for CommandKey background so it renders consistently
+// across terminals (Apple Terminal, Alacritty, Windows Terminal, VS Code).
+// Grayscale ramp 232–255: we use one dark and one light grey.
+const (
+	commandKeyBgDark  = "236" // Dark grey for dark themes
+	commandKeyBgLight = "252" // Light grey for light themes
+)
+
+// commandKeyAllowBG: set to 0 to disable CommandKey background (and padding) for testing.
+// On some terminals (e.g. Apple Terminal, Alacritty) the foreground text can render
+// greyer/muted when a background is set, even though the same theme color (placeholders)
+// renders correctly for borders. With background disabled, key text may match borders.
+const commandKeyAllowBG = 1
 
 // FontGet Styles - Centralized styling with theme support
 // This package provides consistent styling across all FontGet commands
@@ -20,8 +39,7 @@ var (
 	// Example: ui.PageTitle.Render("Font Search Results")
 	// Colors: Set by InitStyles() from theme
 	PageTitle = lipgloss.NewStyle().
-		Bold(true).
-		Padding(0, 1)
+		Bold(true)
 )
 
 // ============================================================================
@@ -140,8 +158,7 @@ var (
 	// Example: ui.CardTitle.Render("Font Details")
 	// Colors: Set by InitStyles() from theme
 	CardTitle = lipgloss.NewStyle().
-			Bold(true).
-			Padding(0, 1)
+			Bold(true)
 
 	// CardLabel - Labels within cards (License:, URL:, etc.)
 	// Usage: Labels within card components
@@ -161,16 +178,19 @@ var (
 			BorderLeft(true).
 			BorderRight(true).
 			Padding(1)
+
+	// CardBorderColorStr is the border color string (after downsampling if Use256ColorSpace).
+	// Use this for manual border drawing (e.g. config info card top line) so borders match and render correctly.
+	CardBorderColorStr string
 )
 
 // ============================================================================
 // COMMAND STYLES - Interactive elements and controls
 // ============================================================================
 var (
-	// CommandKey - Keyboard shortcuts (Enter, Esc)
-	// Usage: Keyboard shortcut indicators
+	// CommandKey - Keyboard shortcuts (Enter, Esc). Uses fixed ANSI 256-color background
+	// (dark or light grey by theme) for consistent cross-terminal rendering; text from theme.
 	// Example: ui.CommandKey.Render("Enter")
-	// Colors: Set by InitStyles() from theme
 	CommandKey = lipgloss.NewStyle().
 		Bold(true).
 		Padding(0, 1)
@@ -340,11 +360,11 @@ func RenderSourceNameWithTag(name string, isBuiltIn bool) string {
 	return baseName + " " + tag
 }
 
-// RenderKeyWithDescription renders a keyboard shortcut with description
-// Usage: Display keyboard shortcuts with descriptions
+// RenderKeyWithDescription renders a keyboard shortcut with description.
+// The key is bold (CommandKey); the description is regular weight (Text) for differentiation.
 // Example: ui.RenderKeyWithDescription("Y", "Yes")
 func RenderKeyWithDescription(key, description string) string {
-	return CommandKey.Render(key) + " " + TextBold.Render(description)
+	return CommandKey.Render(key) + " " + Text.Render(description)
 }
 
 // RenderError renders an error message with consistent prefix
@@ -398,6 +418,48 @@ func resolveColor(override string, defaultColor string) string {
 	return defaultColor
 }
 
+// downsampleHexTo256 converts a hex color (#RRGGBB) to the nearest ANSI 256-color index (16–231).
+// Returns the original string if hex is empty or invalid, so it's safe to call on any value.
+func downsampleHexTo256(hex string) string {
+	if hex == "" {
+		return hex
+	}
+	s := strings.TrimPrefix(strings.TrimSpace(hex), "#")
+	if len(s) != 6 {
+		return hex
+	}
+	r, err1 := strconv.ParseUint(s[0:2], 16, 8)
+	g, err2 := strconv.ParseUint(s[2:4], 16, 8)
+	b, err3 := strconv.ParseUint(s[4:6], 16, 8)
+	if err1 != nil || err2 != nil || err3 != nil {
+		return hex
+	}
+	conv := func(v uint64) int {
+		x := int(float64(v)*5/255 + 0.5)
+		if x > 5 {
+			return 5
+		}
+		return x
+	}
+	ri, gi, bi := conv(r), conv(g), conv(b)
+	idx := 16 + 36*ri + 6*gi + bi
+	return strconv.Itoa(idx)
+}
+
+// commandKeyBackgroundForTheme returns the fixed ANSI 256-color index for the CommandKey
+// background based on the current theme's style (dark or light). Empty or unknown style
+// is treated as dark. This gives consistent key background across all terminals.
+func commandKeyBackgroundForTheme() string {
+	theme := GetCurrentTheme()
+	if theme == nil {
+		return commandKeyBgDark
+	}
+	if strings.EqualFold(strings.TrimSpace(theme.Style), "light") {
+		return commandKeyBgLight
+	}
+	return commandKeyBgDark
+}
+
 // applySystemThemeFallback applies system theme fallback colors (white bg, black text)
 // when colors are empty (system theme)
 func applySystemThemeFallback(style lipgloss.Style, fg, bg string) lipgloss.Style {
@@ -422,7 +484,6 @@ func InitStyles() error {
 
 	// Resolve override colors with defaults
 	pageTitleText := resolveColor(colors.Overrides.PageTitle.Text, colors.Primary)
-	pageTitleBg := resolveColor(colors.Overrides.PageTitle.Background, colors.Base)
 
 	buttonFg := resolveColor(colors.Overrides.Button.Foreground, colors.Components)
 	buttonBg := resolveColor(colors.Overrides.Button.Background, colors.Base)
@@ -434,84 +495,115 @@ func InitStyles() error {
 	checkboxUnchecked := resolveColor(colors.Overrides.Checkbox.Unchecked, colors.Placeholders)
 
 	cardTitleText := resolveColor(colors.Overrides.Card.TitleText, colors.Primary)
-	cardTitleBg := resolveColor(colors.Overrides.Card.TitleBackground, colors.Base)
 	cardLabel := resolveColor(colors.Overrides.Card.Label, colors.Secondary)
 	cardBorder := resolveColor(colors.Overrides.Card.Border, colors.Placeholders)
 
-	commandKeyText := resolveColor(colors.Overrides.CommandKeys.Text, colors.Placeholders)
-	commandKeyBg := resolveColor(colors.Overrides.CommandKeys.Background, colors.Base)
+	// CommandKey foreground matches SecondaryText for consistent look (borders, labels, key text)
+	commandKeyText := colors.Secondary
+	commandKeyBg := commandKeyBackgroundForTheme()
 
 	spinnerNormal := resolveColor(colors.Overrides.Spinner.Normal, colors.Primary)
 	spinnerDone := resolveColor(colors.Overrides.Spinner.Done, colors.Success)
 
-	// PAGE STRUCTURE
+	// Base theme colors as locals so we can downsample once if enabled
+	primary := colors.Primary
+	secondary := colors.Secondary
+	components := colors.Components
+	placeholders := colors.Placeholders
+	base := colors.Base
+	warning := colors.Warning
+	errColor := colors.Error
+	success := colors.Success
+
+	// Apply 256-color downsampling once if enabled (avoids per-use checks and long call chains)
+	if prefs := config.GetUserPreferences(); prefs != nil && prefs.Theme.Use256ColorSpace {
+		pageTitleText = downsampleHexTo256(pageTitleText)
+		buttonFg = downsampleHexTo256(buttonFg)
+		buttonBg = downsampleHexTo256(buttonBg)
+		switchFg = downsampleHexTo256(switchFg)
+		switchBg = downsampleHexTo256(switchBg)
+		checkboxChecked = downsampleHexTo256(checkboxChecked)
+		checkboxUnchecked = downsampleHexTo256(checkboxUnchecked)
+		cardTitleText = downsampleHexTo256(cardTitleText)
+		cardLabel = downsampleHexTo256(cardLabel)
+		cardBorder = downsampleHexTo256(cardBorder)
+		commandKeyText = downsampleHexTo256(commandKeyText)
+		spinnerNormal = downsampleHexTo256(spinnerNormal)
+		spinnerDone = downsampleHexTo256(spinnerDone)
+		primary = downsampleHexTo256(primary)
+		secondary = downsampleHexTo256(secondary)
+		components = downsampleHexTo256(components)
+		placeholders = downsampleHexTo256(placeholders)
+		base = downsampleHexTo256(base)
+		warning = downsampleHexTo256(warning)
+		errColor = downsampleHexTo256(errColor)
+		success = downsampleHexTo256(success)
+	}
+
+	// PAGE STRUCTURE (no background - uses terminal default)
 	PageTitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(getColorOrNoColor(pageTitleText)).
-		Background(getColorOrNoColor(pageTitleBg)).
-		Padding(0, 1)
+		Foreground(getColorOrNoColor(pageTitleText))
 
 	// MESSAGE STYLES
 	InfoText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Primary))
+		Foreground(getColorOrNoColor(primary))
 
 	SecondaryText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Secondary))
+		Foreground(getColorOrNoColor(secondary))
 
 	// QueryText - User input values (search queries, filter terms, user-provided values)
-	// Uses Primary color to distinguish user input from data/content
 	QueryText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Primary))
+		Foreground(getColorOrNoColor(primary))
 
 	WarningText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Warning))
+		Foreground(getColorOrNoColor(warning))
 
 	ErrorText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Error))
+		Foreground(getColorOrNoColor(errColor))
 
 	SuccessText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Success))
+		Foreground(getColorOrNoColor(success))
 
 	// TABLE COMPONENT
 	TableSourceName = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Secondary))
+		Foreground(getColorOrNoColor(secondary))
 
 	// TableRowSelected uses ButtonSelected pattern: invert colors for contrast
-	// Reuse buttonFg and buttonBg already declared above
 	TableRowSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(buttonBg)). // Inverted: base text color as foreground
-		Background(getColorOrNoColor(buttonFg)). // Inverted: components color as background
+		Foreground(getColorOrNoColor(buttonBg)).
+		Background(getColorOrNoColor(buttonFg)).
 		Bold(true)
 	TableRowSelected = applySystemThemeFallback(TableRowSelected, buttonBg, buttonFg)
 
 	// FORM COMPONENT
 	FormLabel = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Secondary)).
+		Foreground(getColorOrNoColor(secondary)).
 		Bold(true)
 
 	FormInput = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Components))
+		Foreground(getColorOrNoColor(components))
 
 	FormPlaceholder = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Placeholders))
+		Foreground(getColorOrNoColor(placeholders))
 
 	FormReadOnly = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Placeholders))
+		Foreground(getColorOrNoColor(placeholders))
 
-	// COMMAND COMPONENT
+	// COMMAND COMPONENT - optional background via commandKeyAllowBG (see const)
 	CommandKey = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(commandKeyText)).
-		Background(getColorOrNoColor(commandKeyBg)).
-		Bold(true).
-		Padding(0, 1)
-	CommandKey = applySystemThemeFallback(CommandKey, commandKeyText, commandKeyBg)
+		Bold(true)
+	if commandKeyAllowBG != 0 {
+		CommandKey = CommandKey.
+			Background(lipgloss.Color(commandKeyBg)).
+			Padding(0, 1)
+	}
 
-	// CARD COMPONENT
+	// CARD COMPONENT (card title has no background - uses terminal default)
 	CardTitle = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(cardTitleText)).
-		Background(getColorOrNoColor(cardTitleBg)).
-		Bold(true).
-		Padding(0, 1)
+		Bold(true)
 
 	CardLabel = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(cardLabel))
@@ -524,6 +616,7 @@ func InitStyles() error {
 		BorderLeft(true).
 		BorderRight(true).
 		Padding(1)
+	CardBorderColorStr = cardBorder
 
 	// BUTTON COMPONENT
 	ButtonNormal = lipgloss.NewStyle().
@@ -531,8 +624,8 @@ func InitStyles() error {
 		Bold(true)
 
 	ButtonSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(buttonBg)). // Inverted: base text
-		Background(getColorOrNoColor(buttonFg)). // Inverted: components background
+		Foreground(getColorOrNoColor(buttonBg)).
+		Background(getColorOrNoColor(buttonFg)).
 		Bold(true)
 	ButtonSelected = applySystemThemeFallback(ButtonSelected, buttonBg, buttonFg)
 
@@ -545,10 +638,10 @@ func InitStyles() error {
 		Foreground(getColorOrNoColor(checkboxUnchecked))
 
 	CheckboxItemSelected = lipgloss.NewStyle().
-		Background(getColorOrNoColor(colors.Base))
+		Background(getColorOrNoColor(base))
 
 	Cursor = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(colors.Primary)).
+		Foreground(getColorOrNoColor(primary)).
 		Bold(true)
 
 	// SWITCH COMPONENT (unified - no left/right distinction)
@@ -557,8 +650,8 @@ func InitStyles() error {
 		Bold(true)
 
 	SwitchSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(switchBg)). // Inverted: base text
-		Background(getColorOrNoColor(switchFg)). // Inverted: components background
+		Foreground(getColorOrNoColor(switchBg)).
+		Background(getColorOrNoColor(switchFg)).
 		Bold(true)
 	SwitchSelected = applySystemThemeFallback(SwitchSelected, switchBg, switchFg)
 

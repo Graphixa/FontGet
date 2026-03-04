@@ -8,7 +8,7 @@ colors:
   secondary: "#75507b" # Plum - Used for TableSourceName, FormLabel, CardLabel
   components: "#2e3436" # Should be a darker neutral color - used for buttons, switches, checkboxes, etc.
   placeholders: "#555753" # Should be a mid-range neutral color - used for borders, placeholders, subtitles, separators
-  base:  "#ffffff"   # Should be a light neutral color - used for backgrounds of page titles, cards, selected items, and inverted text in buttons/switches.
+  base:  "#ffffff"   # Should be a light neutral color - used for selected states, CommandKey, and inverted text in buttons/switches.
 
   
   # Status colors
@@ -20,7 +20,6 @@ colors:
 
     page_title: 
       text: "#3465a4"    # Defaults to 'primary' but setting this option overides that
-      background: "#ffffff"      # Defaults to 'base' but setting this option overides that.
     
     button: # make sure 'foreground' and 'background' have good contrast
       foreground: "#2e3436"      # Defaults to 'components' but setting this option overides that.
@@ -36,13 +35,11 @@ colors:
 
     card:
       title_text: "#3465a4" # Defaults to 'primary' but setting this overides that
-      title_background: "#ffffff" # Defaults to 'base' but setting this overides that
       label: "#75507b" # Defaults to 'secondary' but setting this overides that
       border: "#555753" # Defaults to 'placeholders' but setting this overides that
 
     command_keys:
       text: "#555753" # Defaults to 'placeholders' but setting this overides that
-      background: "#ffffff" # Defaults to 'base' but setting this overides that
 
     table: ## coming soon
       header: "#75507b" # Defaults to 'components' but setting this overides that

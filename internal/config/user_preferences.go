@@ -1,6 +1,7 @@
 package config
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,9 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+//go:embed default_config.yaml
+var defaultConfigYAML []byte
+
 // AppConfig represents the main application configuration structure
 type AppConfig struct {
 	ConfigVersion string               `yaml:"version"` // Schema version for migration tracking
@@ -24,7 +28,16 @@ type AppConfig struct {
 	Network       NetworkSection       `yaml:"Network"`
 	Search        SearchSection        `yaml:"Search"`
 	Update        UpdateSection        `yaml:"Update"`
-	Theme         string               `yaml:"Theme"`
+	Theme         ThemeSection         `yaml:"Theme"`
+}
+
+// ThemeSection holds theme name and display options (all under the Theme: key in config)
+type ThemeSection struct {
+	// Name is the theme name (e.g. "catppuccin", "arasaka", "system")
+	Name string `yaml:"Name"`
+	// Use256ColorSpace downsamples theme hex colors to ANSI 256 for consistent
+	// rendering on terminals that don't handle 24-bit well (e.g. Apple Terminal).
+	Use256ColorSpace bool `yaml:"Use256ColorSpace"`
 }
 
 // ConfigurationSection represents the main configuration settings
@@ -92,48 +105,53 @@ func GetAppConfigPath() string {
 
 // CurrentConfigVersion is the current config schema version.
 //
-// IMPORTANT: v2.0 is the baseline config schema. All schema changes (AutoCheck rename,
-// EnablePopularitySort move, etc.) are consolidated into v2.0 as the starting point.
+// When to bump (do not bump for additive-only changes):
+//   - Bump when you rename a key, remove a key, or change the structure of a value
+//     (e.g. Theme from string to object). Migration will run for users with older configs.
+//   - Do not bump when you only add new optional keys with defaults; existing configs
+//     stay valid and new keys get defaults from default_config.yaml or DefaultUserPreferences().
 //
-// The version format is "X.Y" where:
-//   - X = major version (increment for breaking changes)
-//   - Y = minor version (increment for non-breaking changes that need migration)
+// Version format "X.Y": increment minor for migrations that need explicit rules
+// (see fieldRenameMap, fieldMoveMap, applyExplicitMigrationRules in migrate.go).
 //
-// When updating for future breaking changes:
-// 1. Increment the version (e.g., "2.0" → "2.1")
-// 2. Add field renames/moves to fieldRenameMap and fieldMoveMap
-// 3. Update struct definitions in this file
-// 4. Update validation in validation.go
+// When you do bump:
+//   - Update this constant only. default_config.yaml does not need editing: the value
+//     written for new/initial configs is taken from this constant (see saveDefaultAppConfigWithComments).
+//   - Add any new renames/moves to fieldRenameMap/fieldMoveMap and migration rules in migrate.go.
+//   - Update struct definitions and validation in validation.go as needed.
 const CurrentConfigVersion = "2.0"
 
-// DefaultUserPreferences returns a new default user preferences configuration
+// DefaultUserPreferences returns a new default user preferences configuration.
+// Loaded from the embedded default_config.yaml (single source of truth).
 func DefaultUserPreferences() *AppConfig {
-	return &AppConfig{
-		ConfigVersion: CurrentConfigVersion, // Current config schema version
-		Configuration: ConfigurationSection{
-			DefaultEditor: "", // Use system default editor
-		},
-		Logging: LoggingSection{
-			LogPath:     "$home/.fontget/logs/fontget.log",
-			MaxLogSize:  "10MB",
-			MaxLogFiles: 5,
-		},
-		Network: NetworkSection{
-			RequestTimeout:  "10s", // Quick HTTP requests and checks
-			DownloadTimeout: "30s", // Download timeout: cancel if no data transferred for this duration (stall detection)
-		},
-		Search: SearchSection{
-			ResultLimit:          0,    // 0 = unlimited (default), set to N to limit results
-			EnablePopularitySort: true, // Default to popularity-based sorting
-		},
-		Update: UpdateSection{
-			CheckForUpdates:     true, // Check by default
-			UpdateCheckInterval: 24,   // Check daily
-			LastUpdateCheck:     "",   // Never checked
-			NextUpdateCheck:     "",   // No grace period set
-		},
-		Theme: "catppuccin", // Default to catppuccin theme
+	var cfg AppConfig
+	if err := yaml.Unmarshal(defaultConfigYAML, &cfg); err != nil {
+		return defaultUserPreferencesFallback()
 	}
+	cfg.ConfigVersion = CurrentConfigVersion
+	return &cfg
+}
+
+// defaultUserPreferencesFallback returns a minimal default when embedded default_config.yaml cannot be used.
+func defaultUserPreferencesFallback() *AppConfig {
+	return &AppConfig{
+		ConfigVersion: CurrentConfigVersion,
+		Configuration: ConfigurationSection{DefaultEditor: ""},
+		Logging:       LoggingSection{LogPath: "$home/.fontget/logs/fontget.log", MaxLogSize: "10MB", MaxLogFiles: 5},
+		Network:       NetworkSection{RequestTimeout: "10s", DownloadTimeout: "30s"},
+		Search:        SearchSection{ResultLimit: 0, EnablePopularitySort: true},
+		Update:        UpdateSection{CheckForUpdates: true, UpdateCheckInterval: 24, LastUpdateCheck: "", NextUpdateCheck: ""},
+		Theme:         ThemeSection{Name: "catppuccin", Use256ColorSpace: false},
+	}
+}
+
+// defaultConfigMap returns the embedded default_config.yaml as a map, for use in schema migration.
+func defaultConfigMap() (map[string]interface{}, error) {
+	var m map[string]interface{}
+	if err := yaml.Unmarshal(defaultConfigYAML, &m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // mergeConfigValues merges user values from loaded config into default config using reflection
@@ -338,6 +356,16 @@ func handleLegacyFieldMapping(data []byte) []byte {
 		}
 	}
 
+	// Theme: convert string (e.g. "arasaka") to object { Name, Use256ColorSpace } for unmarshaling
+	if themeVal, ok := configMap["Theme"]; ok {
+		if themeStr, ok := themeVal.(string); ok {
+			configMap["Theme"] = map[string]interface{}{
+				"Name":              themeStr,
+				"Use256ColorSpace": false,
+			}
+		}
+	}
+
 	// Re-marshal with migrated fields
 	if newData, err := yaml.Marshal(configMap); err == nil {
 		return newData
@@ -347,38 +375,43 @@ func handleLegacyFieldMapping(data []byte) []byte {
 	return data
 }
 
-// GetUserPreferences loads user preferences from config file or returns defaults
-// Automatically migrates config if needed, preserving all user custom values
+// GetUserPreferences loads user preferences from config file or returns defaults.
+// If the file has an older or missing schema version, it is migrated to the current
+// schema (matching keys copied over, explicit rules for renames/structure) and the
+// updated config is saved. Otherwise legacy field mapping and merge with defaults apply.
 func GetUserPreferences() *AppConfig {
-	// Use GetAppConfigPath() to get config.yaml, not GetConfigPath() which returns config.json
 	configPath := GetAppConfigPath()
-
-	// Start with defaults
 	config := DefaultUserPreferences()
 
-	// Try to load existing config and merge with defaults
-	if data, err := os.ReadFile(configPath); err == nil {
-		// Handle legacy field mapping (AutoCheck → CheckForUpdates) before unmarshaling
-		data = handleLegacyFieldMapping(data)
-
-		var loadedConfig AppConfig
-		if err := yaml.Unmarshal(data, &loadedConfig); err == nil {
-			// Use reflection-based merge to preserve all user values automatically
-			// This is wrapped in panic recovery to handle old/malformed configs gracefully
-			mergeConfigValues(config, &loadedConfig)
-
-			// Preserve version field (for validation, but not used for migration logic)
-			if loadedConfig.ConfigVersion != "" {
-				config.ConfigVersion = loadedConfig.ConfigVersion
-			} else {
-				// Set to current version if not present
-				config.ConfigVersion = CurrentConfigVersion
-			}
-		}
-		// If unmarshaling fails, we just continue with defaults
-		// This handles old/malformed config files gracefully
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return config
 	}
 
+	var rawData map[string]interface{}
+	_ = yaml.Unmarshal(data, &rawData) // best-effort: we need raw to check version
+
+	// Schema mismatch: migrate to current schema and save
+	if rawData != nil && NeedsSchemaMigration(rawData) {
+		migrated, err := MigrateToCurrentSchema(rawData)
+		if err == nil {
+			_ = SaveUserPreferences(migrated)
+			return migrated
+		}
+		// Migration failed; fall back to legacy path
+	}
+
+	// Same-version or unparseable: legacy field mapping then merge with defaults
+	data = handleLegacyFieldMapping(data)
+	var loadedConfig AppConfig
+	if err := yaml.Unmarshal(data, &loadedConfig); err == nil {
+		mergeConfigValues(config, &loadedConfig)
+		if loadedConfig.ConfigVersion != "" {
+			config.ConfigVersion = loadedConfig.ConfigVersion
+		} else {
+			config.ConfigVersion = CurrentConfigVersion
+		}
+	}
 	return config
 }
 
@@ -548,27 +581,27 @@ func LoadUserPreferences() (*AppConfig, error) {
 		return nil, fmt.Errorf("configuration validation failed: %w", err)
 	}
 
-	// If validation passes, parse into structured config
+	// If schema version is older or missing, migrate to current schema then load
+	if NeedsSchemaMigration(rawData) {
+		migrated, err := MigrateToCurrentSchema(rawData)
+		if err != nil {
+			return nil, fmt.Errorf("config migration failed: %w", err)
+		}
+		if err := SaveUserPreferences(migrated); err != nil {
+			logging.GetLogger().Info("Config migrated but failed to write updated file: %v", err)
+		}
+		return migrated, nil
+	}
+
+	// Same-version path: legacy field mapping then unmarshal
+	data = handleLegacyFieldMapping(data)
 	var config AppConfig
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse app config file: %w", err)
 	}
-
-	// Handle backward compatibility: convert old Theme format (map with Name) to new format (string)
-	if themeSection, exists := rawData["Theme"]; exists {
-		if themeMap, ok := themeSection.(map[string]interface{}); ok {
-			// Old format: Theme is a map with Name field
-			if name, exists := themeMap["Name"]; exists {
-				if nameStr, ok := name.(string); ok {
-					config.Theme = nameStr
-				}
-			}
-		} else if themeStr, ok := themeSection.(string); ok {
-			// New format: Theme is already a string
-			config.Theme = themeStr
-		}
+	if config.ConfigVersion == "" {
+		config.ConfigVersion = CurrentConfigVersion
 	}
-
 	return &config, nil
 }
 
@@ -668,6 +701,7 @@ func updateNodeWithConfig(node *yaml.Node, config *AppConfig) error {
 		"Network":       config.Network,
 		"Search":        config.Search,
 		"Update":        config.Update,
+		"Theme":         config.Theme,
 	}
 
 	// Iterate through root mapping pairs (key, value, key, value, ...)
@@ -681,10 +715,20 @@ func updateNodeWithConfig(node *yaml.Node, config *AppConfig) error {
 
 		sectionName := keyNode.Value
 
-		// Special handling for Theme (simple string value, not a struct)
+		// Theme: ensure value is a mapping (convert scalar to mapping if needed)
 		if sectionName == "Theme" {
-			if err := updateValueNode(valueNode, config.Theme); err != nil {
-				return fmt.Errorf("failed to update Theme: %w", err)
+			if valueNode.Kind != yaml.MappingNode {
+				valueNode.Kind = yaml.MappingNode
+				valueNode.Content = []*yaml.Node{
+					{Kind: yaml.ScalarNode, Value: "Name"},
+					{Kind: yaml.ScalarNode, Value: config.Theme.Name},
+					{Kind: yaml.ScalarNode, Value: "Use256ColorSpace"},
+					{Kind: yaml.ScalarNode, Value: strconv.FormatBool(config.Theme.Use256ColorSpace)},
+				}
+			} else {
+				if err := updateSectionNode(valueNode, config.Theme); err != nil {
+					return fmt.Errorf("failed to update Theme: %w", err)
+				}
 			}
 			continue
 		}
@@ -784,39 +828,22 @@ func updateValueNode(valueNode *yaml.Node, newValue interface{}) error {
 	return nil
 }
 
-// saveDefaultAppConfigWithComments saves a default config with helpful comments and proper formatting
+// saveDefaultAppConfigWithComments writes the embedded default_config.yaml to the path,
+// with the version field set to CurrentConfigVersion. Comments and structure are preserved.
+// The version value in the embedded YAML is replaced by CurrentConfigVersion (pattern-based,
+// so default_config.yaml does not need editing when the constant is bumped).
 func saveDefaultAppConfigWithComments(configPath string) error {
-	configContent := fmt.Sprintf(`version: "%s"  # Schema version for migration tracking
-
-Configuration:
-  DefaultEditor: ""  # Default editor command (e.g., 'code', 'notepad.exe', 'nano')
-
-Logging:
-  LogPath: "$home/.fontget/logs/fontget.log"  # Path to log file
-  MaxLogSize: "10MB"  # Maximum size per log file before rotation
-  MaxLogFiles: 5  # Number of rotated log files to keep
-
-Network:
-  RequestTimeout: "10s"  # Timeout for HTTP requests
-  DownloadTimeout: "30s"  # Timeout for font downloads
-
-Search:
-  ResultLimit: 0  # Maximum search results to display (0 = unlimited)
-  EnablePopularitySort: true  # Sort results by popularity, then alphabetically
-
-Update:
-  CheckForUpdates: true  # Check for updates on startup
-  UpdateCheckInterval: 24  # Hours between update checks
-  LastUpdateCheck: ""  # Last check timestamp (auto-updated)
-
-Theme: "catppuccin"  # UI theme name (e.g., "catppuccin", "gruvbox", "system")
-`, CurrentConfigVersion)
-
-	// Write config file
-	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+	content := string(defaultConfigYAML)
+	// Inject current version: replace the first version: "..." value with CurrentConfigVersion
+	if i := strings.Index(content, `version: "`); i >= 0 {
+		start := i + len(`version: "`)
+		if end := strings.Index(content[start:], `"`); end >= 0 {
+			content = content[:start] + CurrentConfigVersion + content[start+end:]
+		}
+	}
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write app config file: %w", err)
 	}
-
 	return nil
 }
 
@@ -846,7 +873,10 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"UpdateCheckInterval": config.Update.UpdateCheckInterval,
 			"LastUpdateCheck":     config.Update.LastUpdateCheck,
 		},
-		"Theme": config.Theme,
+		"Theme": map[string]interface{}{
+			"Name":              config.Theme.Name,
+			"Use256ColorSpace": config.Theme.Use256ColorSpace,
+		},
 	}
 
 	return ValidateStrictAppConfig(rawData)

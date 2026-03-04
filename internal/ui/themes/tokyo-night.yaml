@@ -7,7 +7,7 @@ colors:
   secondary: "#bb9af7" # Purple (Control keywords) - Used for TableSourceName, FormLabel, CardLabel
   components: "#a9b1d6" # Foreground - used for buttons, switches, checkboxes, etc.
   placeholders: "#565f89" # Comments - Borders, placeholders, subtitles, separators
-  base: "#1a1b26"   # Background - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#1a1b26"   # Background - Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   warning: "#e0af68" # Yellow (Function parameters)

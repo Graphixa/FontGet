@@ -7,8 +7,9 @@ import (
 	"fontget/internal/version"
 )
 
-// UpdateDeclinedGracePeriodHours is the grace period in hours before asking again
-// after a user declines an update prompt
+// UpdateDeclinedGracePeriodHours is the default grace period in hours before asking again
+// after a user declines an update prompt. Used when config UpdateCheckInterval is 0 or missing.
+// When set in config, UpdateCheckInterval is used so "don't prompt again" matches the check interval.
 const UpdateDeclinedGracePeriodHours = 24
 
 // CheckResult represents the result of a startup update check
@@ -109,8 +110,14 @@ func ShouldShowUpdatePrompt(updateDeclinedUntil string) bool {
 }
 
 // GetUpdateDeclinedUntilTimestamp returns a timestamp string for when the grace period expires
-// This is calculated as current time + grace period
-func GetUpdateDeclinedUntilTimestamp() string {
-	gracePeriod := time.Duration(UpdateDeclinedGracePeriodHours) * time.Hour
+// after the user declines an update. intervalHours should be UpdateCheckInterval from config;
+// if 0 or negative, UpdateDeclinedGracePeriodHours is used so the prompt is suppressed for
+// that many hours (e.g. 24) and won't block the next command.
+func GetUpdateDeclinedUntilTimestamp(intervalHours int) string {
+	hours := intervalHours
+	if hours <= 0 {
+		hours = UpdateDeclinedGracePeriodHours
+	}
+	gracePeriod := time.Duration(hours) * time.Hour
 	return time.Now().UTC().Add(gracePeriod).Format(time.RFC3339)
 }

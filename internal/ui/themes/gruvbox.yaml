@@ -7,7 +7,7 @@ colors:
   secondary: "#8ec07c"      # Aqua - Used for TableSourceName, FormLabel, CardLabel
   components: "#a89984"     # Light text color - used for buttons, switches, checkboxes, etc.
   placeholders: "#665c54"   # Borders, placeholders, subtitles, separators
-  base: "#282828"           # Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#282828"           # Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   success: "#b8bb26"  # Green

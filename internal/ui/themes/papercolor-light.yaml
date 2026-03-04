@@ -7,7 +7,7 @@ colors:
   secondary: "#d70087" # Magenta - Used for TableSourceName, FormLabel, CardLabel
   components: "#444444" # Foreground - used for buttons, switches, checkboxes, etc.
   placeholders: "#878787" # Muted gray - Borders, placeholders, subtitles, separators
-  base: "#eeeeee"   # Background - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#eeeeee"   # Background - Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   warning: "#d75f00" # Yellow

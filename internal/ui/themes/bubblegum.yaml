@@ -7,7 +7,7 @@ colors:
   secondary: "#ffdae9" # Mimi Pink - Used for TableSourceName, FormLabel, CardLabel
   components: "#ffe4e1" # Misty Rose - used for buttons, switches, checkboxes, etc.
   placeholders: "#b48395" # English lavender - Borders, placeholders, subtitles, separators
-  base: "#3a243b"   # Dark Plum - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#3a243b"   # Dark Plum - Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   warning: "#ffe5b4" # Peach

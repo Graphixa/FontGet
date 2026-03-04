@@ -24,8 +24,8 @@ colors:
   primary: "#cba6f7"       # Main accent – InfoText, PageTitle, CardTitle, Cursor, Spinner, QueryText
   secondary: "#94e2d5"    # Secondary accent – TableSourceName, FormLabel, CardLabel
   components: "#cdd6f4"   # Interactive elements – Button, Switch, FormInput
-  placeholders: "#7f849c" # Muted elements – borders, placeholders, CommandKey text, CheckboxUnchecked
-  base: "#313244"         # Backgrounds – PageTitle, CardTitle, CommandKey, selected states
+  placeholders: "#7f849c" # Muted elements – borders, placeholders, CheckboxUnchecked
+  base: "#313244"         # Backgrounds – selected states (CommandKey uses fixed ANSI 256 grey)
 
   # Required status colors
   warning: "#f9e2af"
@@ -36,7 +36,6 @@ colors:
   overrides:
     page_title:
       text: "#cba6f7"
-      background: "#313244"
     button:
       foreground: "#cdd6f4"
       background: "#313244"
@@ -48,12 +47,10 @@ colors:
       checked: "#cba6f7"
     card:
       title_text: "#cba6f7"
-      title_background: "#313244"
       label: "#94e2d5"
       border: "#7f849c"
     command_keys:
-      text: "#7f849c"
-      background: "#313244"
+      text: "#7f849c"   # optional; CommandKey foreground uses secondary (same as SecondaryText)
     table:
       header: "#94e2d5"
       row: "#cba6f7"
@@ -75,10 +72,16 @@ The default theme is **Catppuccin**, which is embedded in the binary. If no cust
 Themes are configured in `~/.fontget/config.yaml`:
 
 ```yaml
-theme:
-  name: "catppuccin"  # Theme name (file: catppuccin.yaml or catppuccin-theme.yaml)
-  mode: "auto"        # "dark", "light", or "auto" (auto-detects terminal theme)
+Theme:
+  Name: "catppuccin"  # Theme name (e.g. catppuccin, gruvbox, system)
+  Use256ColorSpace: false  # Set true to downsample theme colors to ANSI 256 for consistent rendering on terminals without true color (e.g. Apple Terminal)
 ```
+
+Backward compatibility: `Theme: "arasaka"` (string) is still supported and is treated as `Theme: { Name: "arasaka", Use256ColorSpace: false }`.
+
+### Theme display options
+
+- **Use256ColorSpace** (under `Theme:`): When `true`, theme hex colors are downsampled to the nearest ANSI 256-color index before being applied. Use this if your terminal (e.g. Apple Terminal) does not handle 24-bit true color well.
 
 ## Theme Color Keys and Style Mapping
 
@@ -87,10 +90,10 @@ Theme YAML files use these **exact key names** under `colors`. This table shows 
 | Theme Key | Default (Catppuccin) | Used By (Style Names) |
 |-----------|----------------------|------------------------|
 | **primary** | #cba6f7 | `InfoText`, `QueryText`, `PageTitle` (text), `CardTitle` (text), `Cursor`, `CheckboxChecked`, `SpinnerColor`, progress bar start (default) |
-| **secondary** | #94e2d5 | `TableSourceName`, `FormLabel`, `CardLabel` |
+| **secondary** | #94e2d5 | `TableSourceName`, `FormLabel`, `CardLabel`, `CommandKey` (text, same as SecondaryText) |
 | **components** | #cdd6f4 | `ButtonNormal` (fg), `FormInput`, `SwitchNormal` (fg), selected-state backgrounds (inverted) for `ButtonSelected`, `SwitchSelected`, `TableRowSelected` |
-| **placeholders** | #7f849c | `FormPlaceholder`, `FormReadOnly`, `CardBorder`, `CommandKey` (text), `CheckboxUnchecked`, `SwitchSeparator`, `RenderSourceTag` (built-in tag color) |
-| **base** | #313244 | `PageTitle` (bg), `CardTitle` (bg), `CommandKey` (bg), `ButtonSelected` (fg), `CheckboxItemSelected` (bg), `SwitchSelected` (fg), `TableRowSelected` (inverted fg/bg) |
+| **placeholders** | #7f849c | `FormPlaceholder`, `FormReadOnly`, `CardBorder`, `CheckboxUnchecked`, `SwitchSeparator`, `RenderSourceTag` (built-in tag color) |
+| **base** | #313244 | `ButtonSelected` (fg), `CheckboxItemSelected` (bg), `SwitchSelected` (fg), `TableRowSelected` (inverted fg/bg) |
 | **warning** | #f9e2af | `WarningText` |
 | **error** | #e78284 | `ErrorText` |
 | **success** | #a6e3a1 | `SuccessText`, `SpinnerDoneColor` |
@@ -99,12 +102,13 @@ Theme YAML files use these **exact key names** under `colors`. This table shows 
 - `Text`, `TextBold`, `TableHeader`, `CommandExample`, `CardContent` – terminal default
 - These are not affected by theme changes. Command labels use `TextBold` (no separate `CommandLabel` style).
 
+**Terminal color support**: Theme colors are sent as 24-bit hex by default. If a terminal (e.g. Apple Terminal) doesn't handle true color well, enable **Theme.Use256ColorSpace** in `~/.fontget/config.yaml` to downsample theme hex to ANSI 256. See "Theme display options" below.’below.’
 ## Style Categories
 
 FontGet uses a clear categorization system for different types of UI elements. Theme key names (e.g. `primary`, `secondary`) match the YAML keys in theme files.
 
 ### 1. PAGE STRUCTURE STYLES - Layout hierarchy and page elements
-- **PageTitle** - Main page titles (theme: `primary` text, `base` background; overridable via `overrides.page_title`)
+- **PageTitle** - Main page titles (theme: `primary` text; overridable via `overrides.page_title`)
 
 ### 2. MESSAGE STYLES - User notifications and responses
 - **Text** - Regular text content (terminal default - no theme color)
@@ -128,11 +132,11 @@ FontGet uses a clear categorization system for different types of UI elements. T
 - **FormReadOnly** - Read-only field content (theme: `placeholders`)
 
 ### 5. COMMAND STYLES - Interactive elements and controls
-- **CommandKey** - Keyboard shortcuts (theme: `placeholders` text, `base` background; overridable via `overrides.command_keys`)
+- **CommandKey** - Keyboard shortcuts. Foreground uses **secondary** (same as SecondaryText). Background uses a fixed ANSI 256-color grey (dark theme → index 236, light theme → index 252) for consistent rendering across terminals.
 - **CommandExample** - Example commands (terminal default - no theme color). For button-like labels use **TextBold**.
 
 ### 6. CARD STYLES - Card components and layouts
-- **CardTitle** - Card titles integrated into borders (theme: `primary` text, `base` background; overridable via `overrides.card`)
+- **CardTitle** - Card titles integrated into borders (theme: `primary` text; overridable via `overrides.card.title_text`)
 - **CardLabel** - Labels within cards (theme: `secondary`)
 - **CardContent** - Use **Text** for regular content (terminal default)
 - **CardBorder** - Card border (theme: `placeholders`)
@@ -282,7 +286,7 @@ To create a custom theme:
 
 1. **Copy the default theme** from `internal/ui/themes/catppuccin.yaml` or `internal/templates/dark-theme-template.yaml` as a starting point.
 2. **Save it** to `~/.fontget/themes/your-theme.yaml` (or `your-theme-theme.yaml`).
-3. **Edit the colors** under the single `colors:` block using the key names below. Optionally add `overrides:` for component-specific colors.
+3. **Edit the colors** under the single `colors:` block using the key names below.Optionally add `overrides:` for component-specific colors.
 4. **Update config.yaml** to use your theme:
    ```yaml
    theme:
@@ -299,12 +303,12 @@ Themes must include all **required** color keys under `colors:`:
 
 **Optional** `overrides` (each defaults to the base color above if omitted):
 
-- `page_title` (text, background)
+- `page_title` (text)
 - `button` (foreground, background)
 - `switch` (foreground, background)
 - `checkbox` (unchecked, checked)
-- `card` (title_text, title_background, label, border)
-- `command_keys` (text, background)
+- `card` (title_text, label, border)
+- `command_keys` (text)
 - `table` (header, row, selected)
 - `spinner` (normal, done)
 - `progress_bar` (start, finish)

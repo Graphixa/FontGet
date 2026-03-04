@@ -296,10 +296,7 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 	if pageTitleText == "" {
 		pageTitleText = colors.Primary
 	}
-	pageTitleBg := colors.Overrides.PageTitle.Background
-	if pageTitleBg == "" {
-		pageTitleBg = colors.Base
-	}
+	// Page title has no background (terminal default)
 
 	buttonFg := colors.Overrides.Button.Foreground
 	if buttonFg == "" {
@@ -314,10 +311,7 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 	if cardTitleText == "" {
 		cardTitleText = colors.Primary
 	}
-	cardTitleBg := colors.Overrides.Card.TitleBackground
-	if cardTitleBg == "" {
-		cardTitleBg = colors.Base
-	}
+	// Card title has no background (terminal default)
 	cardLabel := colors.Overrides.Card.Label
 	if cardLabel == "" {
 		cardLabel = colors.Secondary
@@ -339,9 +333,7 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 	return previewStyles{
 		PageTitle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(getColorOrNoColor(pageTitleText)).
-			Background(getColorOrNoColor(pageTitleBg)).
-			Padding(0, 1),
+			Foreground(getColorOrNoColor(pageTitleText)),
 
 		Text: lipgloss.NewStyle().
 			Foreground(lipgloss.NoColor{}), // Terminal default
@@ -354,9 +346,7 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 
 		CardTitle: lipgloss.NewStyle().
 			Foreground(getColorOrNoColor(cardTitleText)).
-			Background(getColorOrNoColor(cardTitleBg)).
-			Bold(true).
-			Padding(0, 1),
+			Bold(true),
 
 		CardLabel: lipgloss.NewStyle().
 			Foreground(getColorOrNoColor(cardLabel)).
@@ -543,11 +533,17 @@ func renderCardWithPreviewStyle(title, content string, width int, styles preview
 		return contentRendered
 	}
 
-	// Calculate title length (without ANSI codes)
-	plainTitleLength := len(title) + 2 // +2 for CardTitle padding
-
-	// Calculate remaining width for right side
-	rightWidth := width - 1 - 1 - plainTitleLength - 1 - 1
+	// Use the bottom border line's width so the custom top border matches exactly (same as card.go)
+	lastLine := lines[len(lines)-1]
+	totalWidth := lipgloss.Width(lastLine)
+	if totalWidth <= 0 {
+		totalWidth = width
+	}
+	if totalWidth <= 0 {
+		totalWidth = 80
+	}
+	titleSectionWidth := lipgloss.Width("─" + " " + title + " " + "─")
+	rightWidth := totalWidth - 2 - titleSectionWidth
 	if rightWidth < 0 {
 		rightWidth = 0
 	}

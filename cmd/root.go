@@ -266,11 +266,11 @@ var rootCmd = &cobra.Command{
 					// No explicit migration call needed here - it happens as part of the update process
 				}
 			} else {
-				// User declined - set grace period
+				// User declined - set grace period so we don't prompt again until next interval
 				if logger != nil {
 					logger.Info("User declined update - setting grace period")
 				}
-				appConfig.Update.NextUpdateCheck = update.GetUpdateDeclinedUntilTimestamp()
+				appConfig.Update.NextUpdateCheck = update.GetUpdateDeclinedUntilTimestamp(appConfig.Update.UpdateCheckInterval)
 				if err := config.SaveUserPreferences(appConfig); err != nil {
 					if logger != nil {
 						logger.Warn("Failed to save NextUpdateCheck: %v", err)

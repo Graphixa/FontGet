@@ -222,10 +222,10 @@ func (m *EnhancedOnboardingModel) SaveSelections() error {
 	}
 	// Save theme selection
 	if theme, ok := m.settingsValues["theme"].(string); ok && theme != "" {
-		appConfig.Theme = theme
+		appConfig.Theme.Name = theme
 	} else {
 		// Default to "catppuccin" if not set
-		appConfig.Theme = "catppuccin"
+		appConfig.Theme.Name = "catppuccin"
 	}
 
 	// Save config
@@ -1531,7 +1531,7 @@ func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg 
 					// Save to config temporarily so InitThemeManager() will load it
 					appConfig := config.GetUserPreferences()
 					if appConfig != nil {
-						appConfig.Theme = selectedTheme
+						appConfig.Theme.Name = selectedTheme
 						// Save to config so theme manager can reload it
 						if err := config.SaveUserPreferences(appConfig); err == nil {
 							// Reload theme manager to pick up the new theme from config
@@ -1586,7 +1586,7 @@ func (s *ThemeSelectionStepEnhanced) Update(model *EnhancedOnboardingModel, msg 
 				// Save to config temporarily so InitThemeManager() will load it
 				appConfig := config.GetUserPreferences()
 				if appConfig != nil {
-					appConfig.Theme = selectedTheme
+					appConfig.Theme.Name = selectedTheme
 					// Save to config so theme manager can reload it
 					if err := config.SaveUserPreferences(appConfig); err == nil {
 						// Reload theme manager to pick up the new theme from config

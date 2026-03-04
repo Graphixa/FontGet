@@ -19,91 +19,74 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// buildConfigCardsFromYAML builds cards dynamically from the YAML config file structure
+// buildConfigCardsFromYAML builds cards dynamically from the YAML config file structure.
+// Top-level keys become card titles; their sub-keys are normal entries; nested maps use " - " indentation.
 func buildConfigCardsFromYAML(configPath string, _ *config.AppConfig, actualEditor string) ([]components.Card, error) {
-	// Read the YAML file as raw map to preserve structure
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	// Parse as generic map to preserve YAML structure
 	var rawData map[string]interface{}
 	if err := yaml.Unmarshal(data, &rawData); err != nil {
 		return nil, fmt.Errorf("failed to parse YAML: %w", err)
 	}
 
 	var cards []components.Card
-
-	// Discover sections dynamically from YAML (no hardcoded list)
-	// Get all top-level keys from YAML and sort for consistent display
 	sectionOrder := make([]string, 0, len(rawData))
 	for key := range rawData {
 		sectionOrder = append(sectionOrder, key)
 	}
 	sort.Strings(sectionOrder)
 
-	// Build cards for each section in order
 	for _, sectionName := range sectionOrder {
 		sectionData, exists := rawData[sectionName]
 		if !exists {
 			continue
 		}
 
-		sectionMap, ok := sectionData.(map[string]interface{})
-		if !ok {
-			continue
-		}
-
-		// Build card sections from the YAML data
 		var cardSections []components.CardSection
 
-		// Special handling for Configuration section - add config path and resolved editor
+		// Configuration: add Location and resolved editor at top
 		if sectionName == "Configuration" {
 			cardSections = append(cardSections, components.CardSection{
 				Label: "Location",
 				Value: configPath,
 			})
+			cardSections = append(cardSections, components.CardSection{Label: "", Value: ""})
+		}
+
+		sectionMap, ok := sectionData.(map[string]interface{})
+		if !ok {
+			// Top-level scalar (e.g. Theme: "arasaka" in old format) → one entry
 			cardSections = append(cardSections, components.CardSection{
-				Label: "",
-				Value: "", // Empty line for spacing
+				Label: "Value",
+				Value: formatConfigValue(sectionData),
 			})
-		}
-
-		// Get keys and sort them for consistent display
-		keys := make([]string, 0, len(sectionMap))
-		for key := range sectionMap {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-
-		// Build sections from sorted keys
-		for _, key := range keys {
-			value := sectionMap[key]
-
-			// Skip if this is Configuration section and we're processing DefaultEditor
-			// (we'll use the resolved editor instead)
-			if sectionName == "Configuration" && key == "DefaultEditor" {
-				cardSections = append(cardSections, components.CardSection{
-					Label: "Default Editor",
-					Value: actualEditor,
-				})
-				continue
+		} else {
+			keys := make([]string, 0, len(sectionMap))
+			for k := range sectionMap {
+				keys = append(keys, k)
 			}
+			sort.Strings(keys)
 
-			// Format the value as string
-			valueStr := formatConfigValue(value)
-
-			// Format the label (convert camelCase to Title Case)
-			label := formatConfigLabel(key)
-
-			cardSections = append(cardSections, components.CardSection{
-				Label: label,
-				Value: valueStr,
-			})
+			for _, key := range keys {
+				value := sectionMap[key]
+				if sectionName == "Configuration" && key == "DefaultEditor" {
+					cardSections = append(cardSections, components.CardSection{
+						Label: "Default Editor",
+						Value: actualEditor,
+					})
+					continue
+				}
+				valueStr := formatConfigValue(value)
+				cardSections = append(cardSections, components.CardSection{
+					Label: formatConfigLabel(key),
+					Value: valueStr,
+				})
+			}
 		}
 
-		// Create card for this section
 		if len(cardSections) > 0 {
 			card := components.NewCardWithSections(sectionName, cardSections)
 			cards = append(cards, card)
@@ -113,12 +96,12 @@ func buildConfigCardsFromYAML(configPath string, _ *config.AppConfig, actualEdit
 	return cards, nil
 }
 
-// formatConfigValue formats a config value as a string for display
+// formatConfigValue formats a config value as a string for display.
+// Nested maps are rendered with " - " prefix for sub-sub-keys.
 func formatConfigValue(value interface{}) string {
 	if value == nil {
 		return "(empty)"
 	}
-
 	switch v := value.(type) {
 	case string:
 		if v == "" {
@@ -132,15 +115,46 @@ func formatConfigValue(value interface{}) string {
 	case int64:
 		return strconv.FormatInt(v, 10)
 	case float64:
-		// YAML numbers might be parsed as float64
 		if v == float64(int64(v)) {
 			return strconv.FormatInt(int64(v), 10)
 		}
 		return strconv.FormatFloat(v, 'f', -1, 64)
+	case map[string]interface{}:
+		return formatConfigMap(v, " - ")
 	default:
-		// For other types, use reflection or string conversion
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// formatConfigMap formats a nested map as lines with the given prefix (e.g. " - ").
+func formatConfigMap(m map[string]interface{}, prefix string) string {
+	if len(m) == 0 {
+		return "(empty)"
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	var b strings.Builder
+	for i, key := range keys {
+		v := m[key]
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		if nested, ok := v.(map[string]interface{}); ok {
+			b.WriteString(prefix)
+			b.WriteString(formatConfigLabel(key))
+			b.WriteString(":\n")
+			b.WriteString(formatConfigMap(nested, "   "+prefix))
+		} else {
+			b.WriteString(prefix)
+			b.WriteString(formatConfigLabel(key))
+			b.WriteString(": ")
+			b.WriteString(formatConfigValue(v))
+		}
+	}
+	return b.String()
 }
 
 // formatConfigLabel converts camelCase to Title Case dynamically

@@ -7,7 +7,7 @@ colors:
   secondary: "#FF6188" # Argument (Green) - Used for TableSourceName, FormLabel, CardLabel
   components: "#FCFCFA" # Foreground - used for buttons, switches, checkboxes, etc.
   placeholders: "#5B595C" # Dimmed 1 - Borders, placeholders, subtitles, separators
-  base: "#2D2A2E"   # Background - Backgrounds of page titles, cards, selected items, and inverted text in buttons/switches
+  base: "#2D2A2E"   # Background - Selected states, CommandKey, and inverted text in buttons/switches
 
   # Status colors
   success: "#A9DC76" # Function (Green)
