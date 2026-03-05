@@ -480,7 +480,7 @@ fontget completion powershell --install
 | `version` | Display version and build information | `--release-notes` |
 | `completion` | Generate completion script | `--install` |
 | `update` | Update FontGet | `--check, -c`, `--yes, -y`, `--version` |
-| _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs`, `--wizard` |
+| _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs`, `--wizard`, `--skip-onboarding`, `--accept-agreements` |
 
 ---
 
@@ -492,11 +492,39 @@ These flags are available on all commands:
 - `--debug` - Show debug logs with timestamps (for troubleshooting)
 - `--logs` - Open the logs directory in your file manager
 - `--wizard` - Run the setup wizard to configure FontGet
+- `--accept-agreements` - Accept the end-user license agreement without showing the prompt (for scripts/CI)
+- `--skip-onboarding` - Skip the setup wizard; use with `--accept-agreements` for fully non-interactive use
 
 ### Flag Combinations
 - Use `--verbose` alone for user-friendly detailed output
 - Use `--debug` alone for developer diagnostic output with timestamps
 - Use `--verbose --debug` together for maximum detail (both user info + diagnostics)
+
+---
+
+## Automation & CI
+
+Use FontGet in scripts, CI (e.g. GitHub Actions), or automation (e.g. Ansible) without interactive prompts:
+
+- **`--accept-agreements`** – Mark the license agreement as accepted (no prompt).
+- **`--skip-onboarding`** – Skip the setup wizard. On first run without a config, creates default config and manifest so the command can proceed.
+- **Both together** – Fully non-interactive: no license prompt, no wizard, default config created if needed. Ideal for CI.
+
+Environment variables (optional): `FONTGET_ACCEPT_AGREEMENTS=1`, `FONTGET_SKIP_ONBOARDING=1` (same effect as the flags).
+
+### Examples
+
+```bash
+# Install a font in CI or a script (first run: creates default config and skips all prompts)
+fontget add DejaVuSans --skip-onboarding --accept-agreements
+
+# With env vars (e.g. in GitHub Actions)
+export FONTGET_SKIP_ONBOARDING=1
+export FONTGET_ACCEPT_AGREEMENTS=1
+fontget add DejaVuSans
+```
+
+If you run FontGet in a non-interactive environment (no TTY) without these flags, the command will fail with instructions to use `--skip-onboarding --accept-agreements`. See [GitHub issue #1](https://github.com/Graphixa/FontGet/issues/1) for context.
 
 ---
 

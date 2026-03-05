@@ -13,9 +13,10 @@ import (
 
 // UserConfig represents the user's configuration
 type UserConfig struct {
-	FirstRunCompleted  bool                    `json:"first_run_completed"`
-	AcceptedSources    map[string]SourceAccept `json:"accepted_sources"`
-	SourcesLastUpdated time.Time               `json:"sources_last_updated,omitempty"`
+	FirstRunCompleted   bool                    `json:"first_run_completed"`
+	AgreementsAccepted  bool                    `json:"agreements_accepted"` // EULA / end-user agreement accepted (e.g. via --accept-agreements)
+	AcceptedSources     map[string]SourceAccept `json:"accepted_sources"`
+	SourcesLastUpdated  time.Time               `json:"sources_last_updated,omitempty"`
 }
 
 // SourceAccept represents acceptance of a font source
@@ -27,8 +28,9 @@ type SourceAccept struct {
 // DefaultConfig returns a new default user configuration
 func DefaultConfig() *UserConfig {
 	return &UserConfig{
-		FirstRunCompleted: false,
-		AcceptedSources:   make(map[string]SourceAccept),
+		FirstRunCompleted:  false,
+		AgreementsAccepted: false,
+		AcceptedSources:    make(map[string]SourceAccept),
 	}
 }
 
@@ -138,6 +140,25 @@ func MarkFirstRunCompleted() error {
 	return SaveAppState(config)
 }
 
+// IsAgreementsAccepted returns whether the user has accepted the end-user / license agreement.
+func IsAgreementsAccepted() (bool, error) {
+	config, err := LoadAppState()
+	if err != nil {
+		return false, err
+	}
+	return config.AgreementsAccepted, nil
+}
+
+// MarkAgreementsAccepted marks the end-user / license agreement as accepted.
+func MarkAgreementsAccepted() error {
+	config, err := LoadAppState()
+	if err != nil {
+		return err
+	}
+	config.AgreementsAccepted = true
+	return SaveAppState(config)
+}
+
 // AcceptSource marks a source as accepted
 func AcceptSource(sourceName string) error {
 	config, err := LoadAppState()
@@ -204,7 +225,7 @@ func ShouldRefreshSources() (bool, error) {
 	return time.Since(lastUpdated) > 24*time.Hour, nil
 }
 
-// ResetFirstRunState resets the first-run state, triggering onboarding on next run
+// ResetFirstRunState resets the first-run state and agreement state, triggering full onboarding on next run (Welcome → License → Customize).
 func ResetFirstRunState() error {
 	config, err := LoadAppState()
 	if err != nil {
@@ -212,6 +233,7 @@ func ResetFirstRunState() error {
 	}
 
 	config.FirstRunCompleted = false
+	config.AgreementsAccepted = false
 	return SaveAppState(config)
 }
 

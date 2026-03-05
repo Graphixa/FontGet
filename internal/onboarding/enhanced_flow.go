@@ -6,6 +6,7 @@ import (
 
 	"fontget/internal/components"
 	"fontget/internal/config"
+	"fontget/internal/shared"
 	"fontget/internal/sources"
 	"fontget/internal/ui"
 
@@ -298,7 +299,14 @@ func (s *WelcomeStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg
 
 		action := s.buttonGroup.HandleKey(msg.String())
 		if action == "next" || action == "enter" || msg.String() == "enter" || msg.String() == " " {
-			model.GoToNextStep()
+			// If agreements already accepted (e.g. --accept-agreements or previous run), skip to Customize (step 2)
+			if agreed, err := config.IsAgreementsAccepted(); err == nil && agreed {
+				model.currentStep = 2
+				model.resetFocus()
+				model.resetStepViewFlag()
+			} else {
+				model.GoToNextStep() // Go to License (step 1)
+			}
 			return model, nil
 		}
 	}
@@ -413,7 +421,8 @@ func (s *LicenseAgreementStepEnhanced) Update(model *EnhancedOnboardingModel, ms
 				model.GoToPreviousStep()
 				return model, nil
 			case "continue", "enter":
-				// Accept all default sources
+				// Mark agreements accepted and accept all default sources
+				_ = config.MarkAgreementsAccepted()
 				for sourceName := range sources.DefaultSources() {
 					if err := config.AcceptSource(sourceName); err != nil {
 						// Log error but continue
@@ -427,6 +436,110 @@ func (s *LicenseAgreementStepEnhanced) Update(model *EnhancedOnboardingModel, ms
 		return model, nil
 	}
 	return model, nil
+}
+
+// licenseOnlyModel is a minimal TUI that shows only the license agreement (used when --skip-onboarding without --accept-agreements).
+type licenseOnlyModel struct {
+	buttonGroup *components.ButtonGroup
+	accepted    bool
+	width       int
+	height      int
+}
+
+func (m *licenseOnlyModel) Init() tea.Cmd { return nil }
+
+func (m *licenseOnlyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+	case tea.KeyMsg:
+		key := msg.String()
+		if key == "ctrl+c" || key == "q" || key == "esc" {
+			m.accepted = false
+			return m, tea.Quit
+		}
+		action := m.buttonGroup.HandleKey(key)
+		if action != "" {
+			switch action {
+			case "accept":
+				m.accepted = true
+				return m, tea.Quit
+			case "decline":
+				m.accepted = false
+				return m, tea.Quit
+			}
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *licenseOnlyModel) View() string {
+	defaultSources := sources.DefaultSources()
+	availableWidth := m.width - 4
+	if availableWidth < 60 {
+		availableWidth = 60
+	}
+	var result strings.Builder
+	result.WriteString("\n")
+	result.WriteString(ui.PageTitle.Render("License Agreement"))
+	result.WriteString("\n\n")
+	introText := "FontGet installs fonts from various sources. These fonts are subject to their respective license agreements. You are responsible for ensuring compliance with each font's license terms."
+	for _, line := range wrapText(introText, availableWidth) {
+		result.WriteString(line)
+		result.WriteString("\n")
+	}
+	result.WriteString("\n")
+	sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+	for _, sourceName := range sourceOrder {
+		if _, exists := defaultSources[sourceName]; exists {
+			result.WriteString(fmt.Sprintf("  %s %s\n", "•", ui.TableSourceName.Render(sourceName)))
+		}
+	}
+	result.WriteString("\n")
+	acceptanceText := "By continuing to use FontGet, you agree to all license agreements."
+	for _, line := range wrapText(acceptanceText, availableWidth) {
+		result.WriteString(ui.InfoText.Render(line))
+		result.WriteString("\n")
+	}
+	result.WriteString("\n")
+	result.WriteString(m.buttonGroup.Render())
+	result.WriteString("\n")
+	return result.String()
+}
+
+// RunLicenseAgreementOnly runs only the license agreement TUI. On accept it marks agreements accepted, creates default config and manifest, marks first run completed, and returns nil. On decline it returns ErrOnboardingCancelled.
+func RunLicenseAgreementOnly() error {
+	buttons := components.NewButtonGroup([]string{"Decline", "Accept"}, 1)
+	buttons.SetFocus(true)
+	model := &licenseOnlyModel{buttonGroup: buttons}
+	program := tea.NewProgram(model, tea.WithAltScreen())
+	final, err := program.Run()
+	if err != nil {
+		return fmt.Errorf("license agreement: %w", err)
+	}
+	m, _ := final.(*licenseOnlyModel)
+	if m == nil || !m.accepted {
+		return shared.ErrOnboardingCancelled
+	}
+	if err := config.MarkAgreementsAccepted(); err != nil {
+		return fmt.Errorf("mark agreements accepted: %w", err)
+	}
+	for sourceName := range sources.DefaultSources() {
+		_ = config.AcceptSource(sourceName)
+	}
+	if err := config.GenerateInitialUserPreferences(); err != nil {
+		return fmt.Errorf("create default config: %w", err)
+	}
+	if err := config.EnsureManifestExists(); err != nil {
+		return fmt.Errorf("create manifest: %w", err)
+	}
+	if err := config.MarkFirstRunCompleted(); err != nil {
+		return fmt.Errorf("mark first run completed: %w", err)
+	}
+	return nil
 }
 
 // WizardChoiceStepEnhanced is the wizard choice step where user chooses to customize or accept defaults

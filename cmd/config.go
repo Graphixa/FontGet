@@ -606,23 +606,23 @@ Useful when the file is corrupted or you want to start fresh.`,
 			return fmt.Errorf("failed to generate default configuration: %w", err)
 		}
 
-		// Reset first-run state to trigger onboarding on next run
-		output.GetVerbose().Info("Resetting first-run state")
-		output.GetDebug().State("Calling config.ResetFirstRunState()")
-		if err := config.ResetFirstRunState(); err != nil {
-			GetLogger().Error("Failed to reset first-run state: %v", err)
-			output.GetVerbose().Warning("Failed to reset first-run state: %v", err)
-			output.GetDebug().Error("config.ResetFirstRunState() failed: %v", err)
-			// Continue anyway - config reset is still successful
-		}
-
-		// Reset accepted sources to clear license acceptances
+		// Reset accepted sources first so the final app state write includes cleared sources
 		output.GetVerbose().Info("Resetting accepted sources")
 		output.GetDebug().State("Calling config.ResetAcceptedSources()")
 		if err := config.ResetAcceptedSources(); err != nil {
 			GetLogger().Error("Failed to reset accepted sources: %v", err)
 			output.GetVerbose().Warning("Failed to reset accepted sources: %v", err)
 			output.GetDebug().Error("config.ResetAcceptedSources() failed: %v", err)
+			// Continue anyway - config reset is still successful
+		}
+
+		// Reset first-run and agreement state last so onboarding shows Welcome → License → Customize next run
+		output.GetVerbose().Info("Resetting first-run state")
+		output.GetDebug().State("Calling config.ResetFirstRunState()")
+		if err := config.ResetFirstRunState(); err != nil {
+			GetLogger().Error("Failed to reset first-run state: %v", err)
+			output.GetVerbose().Warning("Failed to reset first-run state: %v", err)
+			output.GetDebug().Error("config.ResetFirstRunState() failed: %v", err)
 			// Continue anyway - config reset is still successful
 		}
 

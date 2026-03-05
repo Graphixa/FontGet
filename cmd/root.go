@@ -17,18 +17,21 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
 
 // Version is now managed centrally in internal/version package
 
 var (
-	verbose       bool
-	debug         bool
-	logs          bool
-	wizard        bool
-	logger        *logging.Logger
-	pendingUpdate *update.CheckResult // Stores update check result for post-command prompt
+	verbose          bool
+	debug            bool
+	logs             bool
+	wizard           bool
+	acceptAgreementseements bool
+	skipOnboardingoarding   bool
+	logger           *logging.Logger
+	pendingUpdate    *update.CheckResult // Stores update check result for post-command prompt
 )
 
 var rootCmd = &cobra.Command{
@@ -146,26 +149,89 @@ var rootCmd = &cobra.Command{
 			// This prevents theme issues from breaking commands
 		}
 
-		// Skip license check for certain commands
+		// Skip onboarding/license for certain commands (e.g. help, version, config reset)
 		skipLicenseCommands := map[string]bool{
 			"help":       true,
-			"version":    true, // Version command doesn't need license acceptance
+			"version":    true,
 			"completion": true,
+			"reset":      true, // config reset: do not prompt for wizard
+		}
+
+		// Apply automation flags: read from root so they are correct when PersistentPreRunE
+		// runs for a subcommand (e.g. fontget sources manage --accept-agreements --skip-onboarding)
+		root := cmd.Root()
+		acceptAgreements := os.Getenv("FONTGET_ACCEPT_AGREEMENTS") == "1"
+		skipOnboarding := os.Getenv("FONTGET_SKIP_ONBOARDING") == "1"
+		if f := root.PersistentFlags().Lookup("accept-agreements"); f != nil && f.Value.String() == "true" {
+			acceptAgreements = true
+		}
+		if f := root.PersistentFlags().Lookup("skip-onboarding"); f != nil && f.Value.String() == "true" {
+			skipOnboarding = true
 		}
 
 		// Skip first-run onboarding if --wizard flag is set (wizard will be run in RunE)
 		if !wizard && !skipLicenseCommands[cmd.Name()] {
-			// Run first-run onboarding (welcome, license, settings)
-			if err := onboarding.RunFirstRunOnboarding(); err != nil {
-				// If onboarding was cancelled or incomplete, exit gracefully
-				// The first run status remains false, so onboarding will restart on next command
-				// Don't show error message for cancellation - it's expected behavior
-				if errors.Is(err, shared.ErrOnboardingCancelled) || errors.Is(err, shared.ErrOnboardingIncomplete) {
-					// Exit silently - user cancelled, will be prompted again next time
-					os.Exit(0)
+			isFirstRun, errFirst := config.IsFirstRun()
+			if errFirst != nil {
+				return fmt.Errorf("check first run: %w", errFirst)
+			}
+			isTTY := term.IsTerminal(os.Stdin.Fd())
+
+			// Non-interactive: require both flags to avoid blocking
+			if !isTTY && isFirstRun && (!skipOnboarding || !acceptAgreements) {
+				return fmt.Errorf("onboarding requires an interactive terminal. In CI/automation, pass --skip-onboarding --accept-agreements (or set FONTGET_SKIP_ONBOARDING=1 and FONTGET_ACCEPT_AGREEMENTS=1)")
+			}
+
+			if acceptAgreements {
+				_ = config.MarkAgreementsAccepted()
+			}
+
+			// Both flags: accept agreements, create defaults, mark complete, no TUI
+			if skipOnboarding && acceptAgreements {
+				if isFirstRun {
+					if err := config.GenerateInitialUserPreferences(); err != nil {
+						return fmt.Errorf("create default config: %w", err)
+					}
+					if err := config.EnsureManifestExists(); err != nil {
+						return fmt.Errorf("create manifest: %w", err)
+					}
+					if err := config.MarkFirstRunCompleted(); err != nil {
+						return fmt.Errorf("mark first run completed: %w", err)
+					}
 				}
-				// For other errors, return them normally
-				return err
+				// Skip running any onboarding TUI
+			} else if skipOnboarding {
+				// --skip-onboarding only: on first run, show license TUI only if agreements not already accepted
+				if isFirstRun {
+					agreed, _ := config.IsAgreementsAccepted()
+					if agreed {
+						// Already accepted (e.g. from previous --accept-agreements); create defaults, no TUI
+						if err := config.GenerateInitialUserPreferences(); err != nil {
+							return fmt.Errorf("create default config: %w", err)
+						}
+						if err := config.EnsureManifestExists(); err != nil {
+							return fmt.Errorf("create manifest: %w", err)
+						}
+						if err := config.MarkFirstRunCompleted(); err != nil {
+							return fmt.Errorf("mark first run completed: %w", err)
+						}
+					} else {
+						if err := onboarding.RunLicenseAgreementOnly(); err != nil {
+							if errors.Is(err, shared.ErrOnboardingCancelled) {
+								os.Exit(0)
+							}
+							return err
+						}
+					}
+				}
+			} else if isFirstRun {
+				// Run full onboarding (starts after license step if already accepted)
+				if err := onboarding.RunFirstRunOnboarding(); err != nil {
+					if errors.Is(err, shared.ErrOnboardingCancelled) || errors.Is(err, shared.ErrOnboardingIncomplete) {
+						os.Exit(0)
+					}
+					return err
+				}
 			}
 		}
 
@@ -301,6 +367,10 @@ func init() {
 
 	// Add wizard flag (not persistent - only applies to root command)
 	rootCmd.Flags().BoolVar(&wizard, "wizard", false, "Run the setup wizard to configure FontGet")
+
+	// Automation / CI: skip onboarding and/or pre-accept agreements (persistent so they work with e.g. fontget add X --skip-onboarding --accept-agreements)
+	rootCmd.PersistentFlags().BoolVar(&acceptAgreementseements, "accept-agreements", false, "Accept the end-user license agreement without showing the prompt (for scripts/CI)")
+	rootCmd.PersistentFlags().BoolVar(&skipOnboardingoarding, "skip-onboarding", false, "Skip the setup wizard; use with --accept-agreements for fully non-interactive use")
 
 	// Inject flag checkers into output package to avoid circular imports
 	output.SetVerboseChecker(IsVerbose)

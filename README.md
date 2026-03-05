@@ -136,6 +136,7 @@ For a full list of commands refer to the [📖 Command Documentation](docs/usage
 
 ## Additional resources
 
+- **[📚 FontGet documentation](docs/README.md)**: Everything about FontGet including, development, automation and more
 - **[⬇️ Installation Guide](docs/installation.md)**: Complete installation instructions for all platforms
 - **[🛟 How to Use FontGet](docs/usage.md)**: Complete command reference and usage examples
 - **[🤝 Contributing](docs/contributing.md)**: How to contribute to the project

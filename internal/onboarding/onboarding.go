@@ -95,7 +95,7 @@ func RunFirstRunOnboarding() error {
 		return nil // Not first run, skip onboarding
 	}
 
-	// Use enhanced onboarding flow with interactive TUI
+	// Use enhanced onboarding flow with interactive TUI (always start at Welcome)
 	model := NewEnhancedOnboardingModel()
 	program := tea.NewProgram(model, tea.WithAltScreen())
 
