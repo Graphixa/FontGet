@@ -1,9 +1,4 @@
-# FontGet default configuration (schema template).
-# Used for initial config generation and for schema migration.
-# The version value below is replaced at write time with CurrentConfigVersion (see user_preferences.go);
-# you do not need to edit this file when bumping the schema version.
-
-version: "2.0"  # Schema version for migration tracking (replaced when writing initial config)
+Version: "2.0"  # Schema version for migration tracking (replaced when writing initial config)
 
 Configuration:
   DefaultEditor: ""  # Default editor command (e.g., 'code', 'notepad.exe', 'nano')

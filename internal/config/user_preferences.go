@@ -22,7 +22,7 @@ var defaultConfigYAML []byte
 
 // AppConfig represents the main application configuration structure
 type AppConfig struct {
-	ConfigVersion string               `yaml:"version"` // Schema version for migration tracking
+	ConfigVersion string               `yaml:"Version"` // Schema version for migration tracking
 	Configuration ConfigurationSection `yaml:"Configuration"`
 	Logging       LoggingSection       `yaml:"Logging"`
 	Network       NetworkSection       `yaml:"Network"`
@@ -288,11 +288,14 @@ func handleLegacyFieldMapping(data []byte) []byte {
 		return data // Return original if unmarshaling fails
 	}
 
-	// Handle ConfigVersion → version rename
+	// Normalize version key for unmarshaling (struct expects "Version")
 	if version, ok := configMap["ConfigVersion"].(string); ok && version != "" {
-		// Migrate to new field name
-		configMap["version"] = version
+		configMap["Version"] = version
 		delete(configMap, "ConfigVersion")
+	}
+	if version, ok := configMap["version"].(string); ok && version != "" {
+		configMap["Version"] = version
+		delete(configMap, "version")
 	}
 
 	// Apply field renames (within same section)
@@ -829,14 +832,14 @@ func updateValueNode(valueNode *yaml.Node, newValue interface{}) error {
 }
 
 // saveDefaultAppConfigWithComments writes the embedded default_config.yaml to the path,
-// with the version field set to CurrentConfigVersion. Comments and structure are preserved.
-// The version value in the embedded YAML is replaced by CurrentConfigVersion (pattern-based,
+// with the Version field set to CurrentConfigVersion. Comments and structure are preserved.
+// The Version value in the embedded YAML is replaced by CurrentConfigVersion (pattern-based,
 // so default_config.yaml does not need editing when the constant is bumped).
 func saveDefaultAppConfigWithComments(configPath string) error {
 	content := string(defaultConfigYAML)
-	// Inject current version: replace the first version: "..." value with CurrentConfigVersion
-	if i := strings.Index(content, `version: "`); i >= 0 {
-		start := i + len(`version: "`)
+	// Inject current version: replace the first Version: "..." value with CurrentConfigVersion
+	if i := strings.Index(content, `Version: "`); i >= 0 {
+		start := i + len(`Version: "`)
 		if end := strings.Index(content[start:], `"`); end >= 0 {
 			content = content[:start] + CurrentConfigVersion + content[start+end:]
 		}
@@ -851,7 +854,7 @@ func saveDefaultAppConfigWithComments(configPath string) error {
 func ValidateUserPreferences(config *AppConfig) error {
 	// Convert structured config to map for validation
 	rawData := map[string]interface{}{
-		"version": config.ConfigVersion,
+		"Version": config.ConfigVersion,
 		"Configuration": map[string]interface{}{
 			"DefaultEditor": config.Configuration.DefaultEditor,
 		},

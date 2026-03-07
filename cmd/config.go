@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"fontget/internal/cmdutils"
 	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
@@ -638,6 +639,119 @@ Useful when the file is corrupted or you want to start fresh.`,
 	},
 }
 
+var configSetCmd = &cobra.Command{
+	Use:   "set [key] [value]",
+	Short: "Set a configuration value",
+	Long: `Set a single configuration value by dotted key (e.g. theme.name, logging.logpath).
+Keys are case-insensitive. Value is parsed to the correct type for that key.
+
+Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`,
+	Example: `  fontget config set theme.name catppuccin
+  fontget config set theme.use256colorspace true
+  fontget config set configuration.defaulteditor "code"
+  fontget config set search.resultlimit 50`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	Args:          cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		key, value := args[0], args[1]
+		logger := GetLogger()
+		if logger != nil {
+			logger.Info("Starting config set: %s = %s", key, value)
+		}
+		output.GetVerbose().Info("Loading configuration")
+		output.GetDebug().State("config set: key=%q value=%q", key, value)
+
+		cfg, err := config.LoadUserPreferences()
+		if err != nil {
+			GetLogger().Error("Failed to load config: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.LoadUserPreferences() failed: %v", err)
+			fmt.Println()
+			if validationErr, ok := err.(config.ValidationErrors); ok {
+				cmdutils.PrintError("Configuration validation failed")
+				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n")
+				fmt.Println()
+				fmt.Printf("%s\n", validationErr.Error())
+				fmt.Println()
+				return err
+			}
+			var validationErrors config.ValidationErrors
+			if errors.As(err, &validationErrors) {
+				cmdutils.PrintError("Configuration validation failed")
+				fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n")
+				fmt.Println()
+				fmt.Printf("%s\n", validationErrors.Error())
+				fmt.Println()
+				return err
+			}
+			cmdutils.PrintErrorf("Cannot load config: %v", err)
+			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget config edit' or 'fontget config reset'."))
+			fmt.Println()
+			return err
+		}
+
+		if err := config.SetConfigKey(cfg, key, value); err != nil {
+			GetLogger().Error("SetConfigKey failed: %v", err)
+			output.GetVerbose().Error("%v", err)
+			fmt.Println()
+			cmdutils.PrintErrorf("%v", err)
+			fmt.Println()
+			return err
+		}
+
+		if err := config.ValidateUserPreferences(cfg); err != nil {
+			GetLogger().Error("Validation failed after set: %v", err)
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("config.ValidateUserPreferences() failed: %v", err)
+			fmt.Println()
+			fmt.Printf("  ✗ %s | %s\n", "config.yaml", ui.ErrorText.Render("Invalid"))
+			fmt.Printf("\n%s\n", ui.ErrorText.Render("Configuration validation failed"))
+			fmt.Printf("Your configuration file is malformed. Please fix the following problems:\n")
+			fmt.Println()
+			if validationErr, ok := err.(config.ValidationErrors); ok {
+				fmt.Printf("%s\n", validationErr.Error())
+			} else {
+				fmt.Printf("%v\n", err)
+			}
+			fmt.Println()
+			return err
+		}
+
+		// Theme name: check that the theme exists (embedded or user)
+		if strings.ToLower(strings.TrimSpace(key)) == "theme.name" {
+			exists, errTheme := ui.ThemeExists(value)
+			if errTheme != nil {
+				GetLogger().Error("ThemeExists check failed: %v", errTheme)
+				output.GetVerbose().Error("%v", errTheme)
+				fmt.Println()
+				cmdutils.PrintErrorf("Could not verify theme: %v", errTheme)
+				fmt.Println()
+				return errTheme
+			}
+			if !exists {
+				fmt.Println()
+				cmdutils.PrintErrorf("Theme %q not found (use 'fontget theme' to list themes).", value)
+				fmt.Println()
+				return fmt.Errorf("theme %q not found", value)
+			}
+		}
+
+		if err := config.SaveUserPreferences(cfg); err != nil {
+			GetLogger().Error("Failed to save config: %v", err)
+			output.GetVerbose().Error("%v", err)
+			fmt.Println()
+			cmdutils.PrintErrorf("Failed to save config: %v", err)
+			fmt.Println()
+			return err
+		}
+
+		fmt.Println()
+		fmt.Printf("Set %s to %s\n", key, value)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
 
@@ -646,4 +760,5 @@ func init() {
 	configCmd.AddCommand(configEditCmd)
 	configCmd.AddCommand(configValidateCmd)
 	configCmd.AddCommand(configResetCmd)
+	configCmd.AddCommand(configSetCmd)
 }

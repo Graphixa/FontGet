@@ -75,6 +75,23 @@ func DiscoverThemes() ([]ThemeInfo, error) {
 	return themes, nil
 }
 
+// ThemeExists reports whether a theme with the given name exists (embedded or user).
+// Name is normalized for comparison (e.g. "Catppuccin" matches "catppuccin").
+// Used by config set to validate theme.name before saving.
+func ThemeExists(name string) (bool, error) {
+	themes, err := DiscoverThemes()
+	if err != nil {
+		return false, err
+	}
+	normalized := normalizeThemeName(name)
+	for _, t := range themes {
+		if normalizeThemeName(t.Name) == normalized {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // discoverEmbeddedThemes scans embedded theme files
 func discoverEmbeddedThemes() ([]*ThemeInfo, error) {
 	themeMap := make(map[string]*ThemeInfo)

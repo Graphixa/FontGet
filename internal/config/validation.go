@@ -37,14 +37,16 @@ func ValidateStrictAppConfig(data map[string]interface{}) error {
 	var errors ValidationErrors
 
 	// Validate version field (optional for backward compatibility - old configs may not have it)
-	// Handle both "version" (new) and "ConfigVersion" (old) field names
+	// Handle "Version" (current), "version" (legacy), and "ConfigVersion" (old) field names
 	var versionValue interface{}
 	var versionExists bool
-	if val, exists := data["version"]; exists {
+	if val, exists := data["Version"]; exists {
+		versionValue = val
+		versionExists = true
+	} else if val, exists := data["version"]; exists {
 		versionValue = val
 		versionExists = true
 	} else if val, exists := data["ConfigVersion"]; exists {
-		// Backward compatibility: handle old "ConfigVersion" field name
 		versionValue = val
 		versionExists = true
 	}
@@ -56,7 +58,7 @@ func ValidateStrictAppConfig(data map[string]interface{}) error {
 				// Check if it's a future version (2.1, 2.2, etc.) or invalid
 				if !strings.HasPrefix(versionStr, "2.") || len(versionStr) < 3 {
 					errors = append(errors, ValidationError{
-						Field:   "version",
+						Field:   "Version",
 						Message: fmt.Sprintf("unknown config version '%s' (supported: 2.0+)", versionStr),
 					})
 				}
@@ -64,7 +66,7 @@ func ValidateStrictAppConfig(data map[string]interface{}) error {
 			}
 		} else {
 			errors = append(errors, ValidationError{
-				Field:   "version",
+				Field:   "Version",
 				Message: fmt.Sprintf("must be a string, got %s", getTypeName(versionValue)),
 			})
 		}

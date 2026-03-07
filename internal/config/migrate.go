@@ -8,8 +8,11 @@ import (
 )
 
 // getConfigVersionFromRaw returns the schema version from a raw config map.
-// Checks both "version" and legacy "ConfigVersion" keys.
+// Checks "Version", legacy "version", and "ConfigVersion" keys.
 func getConfigVersionFromRaw(raw map[string]interface{}) string {
+	if v, ok := raw["Version"].(string); ok && v != "" {
+		return v
+	}
 	if v, ok := raw["version"].(string); ok && v != "" {
 		return v
 	}
@@ -111,6 +114,11 @@ func applyExplicitMigrationRules(old, new map[string]interface{}) {
 // applies explicit migration rules for renames/structural changes, and returns
 // an *AppConfig at CurrentConfigVersion.
 func MigrateToCurrentSchema(oldRaw map[string]interface{}) (*AppConfig, error) {
+	// Normalize legacy version key so copyMatchingKeys can match (schema uses "Version")
+	if v, ok := oldRaw["version"].(string); ok && v != "" {
+		oldRaw["Version"] = v
+	}
+
 	// Start from embedded default schema (same source as DefaultUserPreferences)
 	newMap, err := defaultConfigMap()
 	if err != nil {
@@ -123,8 +131,9 @@ func MigrateToCurrentSchema(oldRaw map[string]interface{}) (*AppConfig, error) {
 	// Apply explicit rules for renames and structural changes
 	applyExplicitMigrationRules(oldRaw, newMap)
 
-	// Set version to current
-	newMap["version"] = CurrentConfigVersion
+	// Normalize version key to current schema (Version)
+	newMap["Version"] = CurrentConfigVersion
+	delete(newMap, "version")
 	delete(newMap, "ConfigVersion")
 
 	// Unmarshal into AppConfig
