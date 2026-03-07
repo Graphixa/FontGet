@@ -157,15 +157,14 @@ var rootCmd = &cobra.Command{
 			"reset":      true, // config reset: do not prompt for wizard
 		}
 
-		// Apply automation flags: read from root so they are correct when PersistentPreRunE
-		// runs for a subcommand (e.g. fontget sources manage --accept-agreements --skip-onboarding)
+		// Apply automation flags: read from root (root-only flags; use before subcommand: fontget --skip-onboarding --accept-agreements add X)
 		root := cmd.Root()
 		acceptAgreements := os.Getenv("FONTGET_ACCEPT_AGREEMENTS") == "1"
 		skipOnboarding := os.Getenv("FONTGET_SKIP_ONBOARDING") == "1"
-		if f := root.PersistentFlags().Lookup("accept-agreements"); f != nil && f.Value.String() == "true" {
+		if f := root.Flags().Lookup("accept-agreements"); f != nil && f.Value.String() == "true" {
 			acceptAgreements = true
 		}
-		if f := root.PersistentFlags().Lookup("skip-onboarding"); f != nil && f.Value.String() == "true" {
+		if f := root.Flags().Lookup("skip-onboarding"); f != nil && f.Value.String() == "true" {
 			skipOnboarding = true
 		}
 
@@ -179,7 +178,7 @@ var rootCmd = &cobra.Command{
 
 			// Non-interactive: require both flags to avoid blocking
 			if !isTTY && isFirstRun && (!skipOnboarding || !acceptAgreements) {
-				return fmt.Errorf("onboarding requires an interactive terminal. In CI/automation, pass --skip-onboarding --accept-agreements (or set FONTGET_SKIP_ONBOARDING=1 and FONTGET_ACCEPT_AGREEMENTS=1)")
+				return fmt.Errorf("onboarding requires an interactive terminal. In CI/automation, pass --skip-onboarding --accept-agreements before the subcommand (e.g. fontget --skip-onboarding --accept-agreements add <font-ID>) or set FONTGET_SKIP_ONBOARDING=1 and FONTGET_ACCEPT_AGREEMENTS=1")
 			}
 
 			if acceptAgreements {
@@ -368,9 +367,9 @@ func init() {
 	// Add wizard flag (not persistent - only applies to root command)
 	rootCmd.Flags().BoolVar(&wizard, "wizard", false, "Run the setup wizard to configure FontGet")
 
-	// Automation / CI: skip onboarding and/or pre-accept agreements (persistent so they work with e.g. fontget add X --skip-onboarding --accept-agreements)
-	rootCmd.PersistentFlags().BoolVar(&acceptAgreementseements, "accept-agreements", false, "Accept the end-user license agreement without showing the prompt (for scripts/CI)")
-	rootCmd.PersistentFlags().BoolVar(&skipOnboardingoarding, "skip-onboarding", false, "Skip the setup wizard; use with --accept-agreements for fully non-interactive use")
+	// Automation / CI: skip onboarding and/or pre-accept agreements (root-only, like --wizard; use before subcommand: fontget --skip-onboarding --accept-agreements add X)
+	rootCmd.Flags().BoolVar(&acceptAgreementseements, "accept-agreements", false, "Accept the end-user license agreement without showing the prompt (for scripts/CI)")
+	rootCmd.Flags().BoolVar(&skipOnboardingoarding, "skip-onboarding", false, "Skip the setup wizard; use with --accept-agreements for fully non-interactive use")
 
 	// Inject flag checkers into output package to avoid circular imports
 	output.SetVerboseChecker(IsVerbose)

@@ -51,11 +51,11 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Root command definition and global configuration
 **Functionality**:
 - Defines the main `fontget` command
-- Sets up global flags (`--verbose`, `--debug`, `--logs`, `--wizard`)
+- **Flags**: Persistent flags (apply to all commands) — `--verbose`, `-v`, `--debug`. Root-only flags (shown in `fontget --help` only) — `--logs`, `--wizard`, `--skip-onboarding`, `--accept-agreements`. Root-only flags must appear before the subcommand (e.g. `fontget --skip-onboarding add DejaVuSans`).
 - Initializes logging configuration
 - Registers all subcommands
 - **Custom Help Templates**: Custom help and usage templates with controlled section ordering (Usage → Description → Commands → Options → Examples)
-- **Wizard Flag**: `--wizard` flag allows re-running the onboarding wizard for reconfiguration
+- **Wizard Flag**: `--wizard` re-runs the onboarding wizard. **CI flags**: `--skip-onboarding` and `--accept-agreements` skip first-run onboarding and accept the license for scripts/CI (or use env vars `FONTGET_SKIP_ONBOARDING`, `FONTGET_ACCEPT_AGREEMENTS`).
 
 **Interfaces**:
 - Imports all command packages

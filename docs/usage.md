@@ -1,6 +1,6 @@
 # FontGet Commands Reference
 
-This document provides a comprehensive overview of all FontGet commands, their Purpose, and usage examples.
+This document provides a comprehensive overview of all FontGet commands, their purpose, and usage examples.
 
 ## Commands
 
@@ -209,8 +209,6 @@ fontget sources manage
 
 # Validate sources integrity
 fontget sources validate
-
-
 ```
 
 ## Config
@@ -486,14 +484,14 @@ fontget completion powershell --install
 
 ## Global Flags
 
-These flags are available on all commands:
+These flags are available on all commands. For a concise list, run `fontget --help`.
 
 - `--verbose, -v` - Show detailed operation information (user-friendly)
 - `--debug` - Show debug logs with timestamps (for troubleshooting)
 - `--logs` - Open the logs directory in your file manager
-- `--wizard` - Run the setup wizard to configure FontGet
-- `--accept-agreements` - Accept the end-user license agreement without showing the prompt (for scripts/CI)
-- `--skip-onboarding` - Skip the setup wizard; use with `--accept-agreements` for fully non-interactive use
+- `--wizard` - Run the setup wizard to configure FontGet interactively
+- `--accept-agreements` - Accept the license agreement without showing the prompt (for scripts/CI)
+- `--skip-onboarding` - Skip the setup wizard and use fontget defaults; use with `--accept-agreements` for fully non-interactive use
 
 ### Flag Combinations
 - Use `--verbose` alone for user-friendly detailed output
@@ -516,7 +514,8 @@ Environment variables (optional): `FONTGET_ACCEPT_AGREEMENTS=1`, `FONTGET_SKIP_O
 
 ```bash
 # Install a font in CI or a script (first run: creates default config and skips all prompts)
-fontget add DejaVuSans --skip-onboarding --accept-agreements
+# Use root-only flags before the subcommand:
+fontget --skip-onboarding --accept-agreements add Google.Noto-Sans
 
 # With env vars (e.g. in GitHub Actions)
 export FONTGET_SKIP_ONBOARDING=1
@@ -524,7 +523,7 @@ export FONTGET_ACCEPT_AGREEMENTS=1
 fontget add DejaVuSans
 ```
 
-If you run FontGet in a non-interactive environment (no TTY) without these flags, the command will fail with instructions to use `--skip-onboarding --accept-agreements`. See [GitHub issue #1](https://github.com/Graphixa/FontGet/issues/1) for context.
+If you run FontGet in a non-interactive environment (no TTY) without these flags, the command will fail with instructions to pass `--skip-onboarding --accept-agreements` before the subcommand (or set the env vars).
 
 ---
 

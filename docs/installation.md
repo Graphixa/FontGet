@@ -48,7 +48,7 @@ $env:FONTGET_VERSION="2.2.0"; irm https://raw.githubusercontent.com/Graphixa/Fon
 
 ### Windows
 
-**[WinGet](https://winstall.app/)**
+**[WinGet](https://learn.microsoft.com/en-us/windows/package-manager/winget/)**
 
 ```powershell
 winget install --id "Graphixa.FontGet"
@@ -191,7 +191,7 @@ This will fetch the latest release from [GitHub Releases](https://github.com/Gra
 You can also update to a specific version:
 
 ```bash
-fontget update --version 1.0.0
+fontget update --version 2.2.0
 ```
 
 > [!NOTE]
