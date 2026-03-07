@@ -478,7 +478,7 @@ fontget completion powershell --install
 | `version` | Display version and build information | `--release-notes` |
 | `completion` | Generate completion script | `--install` |
 | `update` | Update FontGet | `--check, -c`, `--yes, -y`, `--version` |
-| _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs`, `--wizard`, `--skip-onboarding`, `--accept-agreements` |
+| _Global Flags_ | Available on all commands | `--verbose, -v`, `--debug`, `--logs`, `--wizard`, `--accept-agreements`, `--accept-defaults` |
 
 ---
 
@@ -490,8 +490,8 @@ These flags are available on all commands. For a concise list, run `fontget --he
 - `--debug` - Show debug logs with timestamps (for troubleshooting)
 - `--logs` - Open the logs directory in your file manager
 - `--wizard` - Run the setup wizard to configure FontGet interactively
-- `--accept-agreements` - Accept the license agreement without showing the prompt (for scripts/CI)
-- `--skip-onboarding` - Skip the setup wizard and use fontget defaults; use with `--accept-agreements` for fully non-interactive use
+- `--accept-agreements` - Accept the FontGet terms of use without showing the prompt (for scripts/CI)
+- `--accept-defaults` - Use default configuration and skip the setup wizard; combine with `--accept-agreements` for fully non-interactive use
 
 ### Flag Combinations
 - Use `--verbose` alone for user-friendly detailed output
@@ -504,26 +504,26 @@ These flags are available on all commands. For a concise list, run `fontget --he
 
 Use FontGet in scripts, CI (e.g. GitHub Actions), or automation (e.g. Ansible) without interactive prompts:
 
-- **`--accept-agreements`** – Mark the license agreement as accepted (no prompt).
-- **`--skip-onboarding`** – Skip the setup wizard. On first run without a config, creates default config and manifest so the command can proceed.
-- **Both together** – Fully non-interactive: no license prompt, no wizard, default config created if needed. Ideal for CI.
+- **`--accept-agreements`** – Accept the FontGet terms of use (no prompt).
+- **`--accept-defaults`** – Use default configuration and skip the setup wizard. On first run without a config, creates default config and manifest so the command can proceed.
+- **Both together** – Fully non-interactive: no terms prompt, no wizard, default config created if needed. Ideal for CI.
 
-Environment variables (optional): `FONTGET_ACCEPT_AGREEMENTS=1`, `FONTGET_SKIP_ONBOARDING=1` (same effect as the flags).
+Environment variables (optional): `FONTGET_ACCEPT_AGREEMENTS=1`, `FONTGET_ACCEPT_DEFAULTS=1` (same effect as the flags). `FONTGET_SKIP_ONBOARDING=1` is still supported for backward compatibility.
 
 ### Examples
 
 ```bash
 # Install a font in CI or a script (first run: creates default config and skips all prompts)
-# Use root-only flags before the subcommand:
-fontget --skip-onboarding --accept-agreements add Google.Noto-Sans
+# Flags work on any command (e.g. after the subcommand, like winget):
+fontget add Google.Noto-Sans --accept-agreements --accept-defaults
 
 # With env vars (e.g. in GitHub Actions)
-export FONTGET_SKIP_ONBOARDING=1
 export FONTGET_ACCEPT_AGREEMENTS=1
+export FONTGET_ACCEPT_DEFAULTS=1
 fontget add DejaVuSans
 ```
 
-If you run FontGet in a non-interactive environment (no TTY) without these flags, the command will fail with instructions to pass `--skip-onboarding --accept-agreements` before the subcommand (or set the env vars).
+If you run FontGet in a non-interactive environment (no TTY) without these flags, the command will fail with instructions to use `--accept-agreements --accept-defaults` (or set the env vars).
 
 ---
 

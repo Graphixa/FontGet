@@ -60,7 +60,7 @@ func NewLicenseStep() *LicenseStep {
 }
 
 func (s *LicenseStep) Name() string {
-	return "License Agreement"
+	return "Terms of Use"
 }
 
 func (s *LicenseStep) CanSkip() bool {
@@ -112,7 +112,7 @@ func (s *LicenseStep) Execute() (bool, error) {
 
 	// Success message - section ends with blank line
 	fmt.Println()
-	fmt.Println(ui.SuccessText.Render("License agreements accepted."))
+	fmt.Println(ui.SuccessText.Render("Terms of use accepted."))
 	fmt.Println() // Section ends with blank line per spacing guidelines
 
 	return true, nil
@@ -278,39 +278,24 @@ func (m LicenseConfirmModel) View() string {
 		availableWidth = 60 // Minimum readable width
 	}
 
-	// Start with blank line
 	result.WriteString("\n")
-
-	// Title
-	result.WriteString(ui.PageTitle.Render("License Agreement"))
-	result.WriteString("\n\n")
-
-	// Legal disclaimer - use warning style only for "IMPORTANT"
-	result.WriteString(ui.WarningText.Render("IMPORTANT: By using FontGet, you acknowledge and agree to the following:"))
-	result.WriteString("\n\n")
-
-	// Source information - plain text, wrapped
-	introText := "FontGet installs fonts from third-party sources. Each font has its own license. You are responsible for complying with the licenses of any fonts you install."
-	introLines := shared.WrapText(introText, availableWidth)
-	for _, line := range introLines {
-		result.WriteString(line)
+	for _, section := range TermsOfUseSections() {
+		render := StyleRenderer(section.Style)
+		if len(section.Items) > 0 {
+			for _, item := range section.Items {
+				result.WriteString(fmt.Sprintf("  %s %s\n", "•", render(item)))
+			}
+		} else if section.Content != "" {
+			for _, line := range shared.WrapText(section.Content, availableWidth) {
+				result.WriteString(render(line))
+				result.WriteString("\n")
+			}
+		}
 		result.WriteString("\n")
 	}
-	result.WriteString("\n")
-
-	// Help text - InfoText (mauve)
 	result.WriteString(ui.InfoText.Render("To review a particular font's license, run:"))
 	result.WriteString("\n")
 	result.WriteString(fmt.Sprintf("  %s\n", ui.Text.Render("fontget info <font-id> --license")))
-	result.WriteString("\n")
-
-	// Acceptance statement - plain text, wrapped
-	acceptText := "By accepting, you agree to these terms and to comply with each font's license."
-	acceptLines := shared.WrapText(acceptText, availableWidth)
-	for _, line := range acceptLines {
-		result.WriteString(line)
-		result.WriteString("\n")
-	}
 	result.WriteString("\n")
 
 	// Confirmation prompt is handled separately by promptConfirmSimple
@@ -422,7 +407,7 @@ func runLicenseConfirmation(sourcesMap map[string]sources.SourceInfo) (bool, err
 	}
 
 	// Use simple confirmation prompt (no alt-screen)
-	confirmed, err := promptConfirmSimple("Do you accept the license agreements?")
+	confirmed, err := promptConfirmSimple("Do you accept the terms of use?")
 	if err != nil {
 		return false, fmt.Errorf("unable to read response: %w", err)
 	}

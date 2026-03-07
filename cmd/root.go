@@ -28,8 +28,8 @@ var (
 	debug            bool
 	logs             bool
 	wizard           bool
-	acceptAgreementseements bool
-	skipOnboardingoarding   bool
+	acceptAgreements bool
+	acceptDefaults   bool
 	logger           *logging.Logger
 	pendingUpdate    *update.CheckResult // Stores update check result for post-command prompt
 )
@@ -157,15 +157,15 @@ var rootCmd = &cobra.Command{
 			"reset":      true, // config reset: do not prompt for wizard
 		}
 
-		// Apply automation flags: read from root (root-only flags; use before subcommand: fontget --skip-onboarding --accept-agreements add X)
+		// Apply automation flags (persistent: available on all commands, e.g. fontget add X --accept-agreements --accept-defaults)
 		root := cmd.Root()
 		acceptAgreements := os.Getenv("FONTGET_ACCEPT_AGREEMENTS") == "1"
-		skipOnboarding := os.Getenv("FONTGET_SKIP_ONBOARDING") == "1"
-		if f := root.Flags().Lookup("accept-agreements"); f != nil && f.Value.String() == "true" {
+		acceptDefaults := os.Getenv("FONTGET_ACCEPT_DEFAULTS") == "1" || os.Getenv("FONTGET_SKIP_ONBOARDING") == "1"
+		if f := root.PersistentFlags().Lookup("accept-agreements"); f != nil && f.Value.String() == "true" {
 			acceptAgreements = true
 		}
-		if f := root.Flags().Lookup("skip-onboarding"); f != nil && f.Value.String() == "true" {
-			skipOnboarding = true
+		if f := root.PersistentFlags().Lookup("accept-defaults"); f != nil && f.Value.String() == "true" {
+			acceptDefaults = true
 		}
 
 		// Skip first-run onboarding if --wizard flag is set (wizard will be run in RunE)
@@ -177,34 +177,19 @@ var rootCmd = &cobra.Command{
 			isTTY := term.IsTerminal(os.Stdin.Fd())
 
 			// Non-interactive: require both flags to avoid blocking
-			if !isTTY && isFirstRun && (!skipOnboarding || !acceptAgreements) {
-				return fmt.Errorf("onboarding requires an interactive terminal. In CI/automation, pass --skip-onboarding --accept-agreements before the subcommand (e.g. fontget --skip-onboarding --accept-agreements add <font-ID>) or set FONTGET_SKIP_ONBOARDING=1 and FONTGET_ACCEPT_AGREEMENTS=1")
+			if !isTTY && isFirstRun && (!acceptDefaults || !acceptAgreements) {
+				return fmt.Errorf("onboarding requires an interactive terminal. In CI/automation, use --accept-agreements --accept-defaults (e.g. fontget add <font-ID> --accept-agreements --accept-defaults) or set FONTGET_ACCEPT_AGREEMENTS=1 and FONTGET_ACCEPT_DEFAULTS=1")
 			}
 
-			if acceptAgreements {
-				_ = config.MarkAgreementsAccepted()
-			}
-
-			// Both flags: accept agreements, create defaults, mark complete, no TUI
-			if skipOnboarding && acceptAgreements {
-				if isFirstRun {
-					if err := config.GenerateInitialUserPreferences(); err != nil {
-						return fmt.Errorf("create default config: %w", err)
-					}
-					if err := config.EnsureManifestExists(); err != nil {
-						return fmt.Errorf("create manifest: %w", err)
-					}
-					if err := config.MarkFirstRunCompleted(); err != nil {
-						return fmt.Errorf("mark first run completed: %w", err)
-					}
+			if acceptAgreements || acceptDefaults {
+				fmt.Println() // Section start: blank line per spacing guidelines
+				if acceptAgreements {
+					fmt.Println("Terms Accepted: Thank you for acknowledging and agreeing to the Terms of Use and to comply with each font's applicable license.")
+					_ = config.MarkAgreementsAccepted()
 				}
-				// Skip running any onboarding TUI
-			} else if skipOnboarding {
-				// --skip-onboarding only: on first run, show license TUI only if agreements not already accepted
-				if isFirstRun {
-					agreed, _ := config.IsAgreementsAccepted()
-					if agreed {
-						// Already accepted (e.g. from previous --accept-agreements); create defaults, no TUI
+				// Both flags: accept agreements, create defaults, mark complete, no TUI
+				if acceptDefaults && acceptAgreements {
+					if isFirstRun {
 						if err := config.GenerateInitialUserPreferences(); err != nil {
 							return fmt.Errorf("create default config: %w", err)
 						}
@@ -214,16 +199,40 @@ var rootCmd = &cobra.Command{
 						if err := config.MarkFirstRunCompleted(); err != nil {
 							return fmt.Errorf("mark first run completed: %w", err)
 						}
-					} else {
-						if err := onboarding.RunLicenseAgreementOnly(); err != nil {
-							if errors.Is(err, shared.ErrOnboardingCancelled) {
-								os.Exit(0)
+					}
+					
+					fmt.Println("Defaults Accepted: FontGet will use the default configuration.")
+					// Skip running any onboarding TUI
+				} else if acceptDefaults {
+					fmt.Println("Defaults Accepted: FontGet will use the default configuration.")
+					// --accept-defaults only: on first run, show terms TUI only if agreements not already accepted
+					if isFirstRun {
+						agreed, _ := config.IsAgreementsAccepted()
+						if agreed {
+							// Already accepted (e.g. from previous --accept-agreements); create defaults, no TUI
+							if err := config.GenerateInitialUserPreferences(); err != nil {
+								return fmt.Errorf("create default config: %w", err)
 							}
-							return err
+							if err := config.EnsureManifestExists(); err != nil {
+								return fmt.Errorf("create manifest: %w", err)
+							}
+							if err := config.MarkFirstRunCompleted(); err != nil {
+								return fmt.Errorf("mark first run completed: %w", err)
+							}
+						} else {
+							if err := onboarding.RunLicenseAgreementOnly(); err != nil {
+								if errors.Is(err, shared.ErrOnboardingCancelled) {
+									os.Exit(0)
+								}
+								return err
+							}
 						}
 					}
 				}
-			} else if isFirstRun {
+				// No trailing blank: next command adds its own leading blank to avoid double space
+			}
+
+			if isFirstRun && !acceptDefaults {
 				// Run full onboarding (starts after license step if already accepted)
 				if err := onboarding.RunFirstRunOnboarding(); err != nil {
 					if errors.Is(err, shared.ErrOnboardingCancelled) || errors.Is(err, shared.ErrOnboardingIncomplete) {
@@ -367,9 +376,9 @@ func init() {
 	// Add wizard flag (not persistent - only applies to root command)
 	rootCmd.Flags().BoolVar(&wizard, "wizard", false, "Run the setup wizard to configure FontGet")
 
-	// Automation / CI: skip onboarding and/or pre-accept agreements (root-only, like --wizard; use before subcommand: fontget --skip-onboarding --accept-agreements add X)
-	rootCmd.Flags().BoolVar(&acceptAgreementseements, "accept-agreements", false, "Accept the end-user license agreement without showing the prompt (for scripts/CI)")
-	rootCmd.Flags().BoolVar(&skipOnboardingoarding, "skip-onboarding", false, "Skip the setup wizard; use with --accept-agreements for fully non-interactive use")
+	// Automation / CI: available on all commands (e.g. fontget add X --accept-agreements --accept-defaults)
+	rootCmd.PersistentFlags().BoolVar(&acceptAgreements, "accept-agreements", false, "Accept the FontGet terms of use without showing the prompt (for scripts/CI)")
+	rootCmd.PersistentFlags().BoolVar(&acceptDefaults, "accept-defaults", false, "Use default configuration and skip the setup wizard; use with --accept-agreements for fully non-interactive use")
 
 	// Inject flag checkers into output package to avoid circular imports
 	output.SetVerboseChecker(IsVerbose)

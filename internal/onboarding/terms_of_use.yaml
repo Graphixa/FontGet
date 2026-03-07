@@ -1,0 +1,19 @@
+# Terms of Use screen: ordered list of sections. Each section has a style (maps to UI style) and content or items.
+# Edit here to add, remove, reorder, or restyle.
+
+sections:
+  - name: Title
+    style: PageTitle
+    content: "Terms of Use"
+
+  - name: Intro
+    style: Text
+    content: "FontGet is software that facilitates the installation of fonts from third-party sources via the CLI. By continuing to use FontGet, you acknowledge and agree to these Terms of Use and to the applicable license terms governing each font and font source you access or install through the software."
+
+  - name: Disclaimer
+    style: Text
+    content: "DISCLAIMER: FontGet and its developers do not own, license, or endorse any third-party fonts or sources. Each font is subject to its own license (e.g. SIL Open Font License, Apache License). You are solely responsible for reviewing, understanding, and complying with the license terms of any font you install. FontGet is provided \"as is\" and use of third-party fonts is at your own risk."
+
+  - name: Acceptance
+    style: InfoText
+    content: "By selecting Accept, you confirm that you have read, understood, and agree to be bound by the above Terms of Use and to comply with each font's applicable license."

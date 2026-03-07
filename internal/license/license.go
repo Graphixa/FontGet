@@ -8,6 +8,7 @@ import (
 
 	"fontget/internal/components"
 	"fontget/internal/config"
+	"fontget/internal/onboarding"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
 )
@@ -15,11 +16,11 @@ import (
 // PromptForSourceAcceptance prompts the user to accept licenses for a source
 // This function uses styled UI components for better presentation
 func PromptForSourceAcceptance(sourceName string) (bool, error) {
-	// Display styled license information
+	// Display terms of use (shared with onboarding)
 	fmt.Println()
-	fmt.Println(ui.PageTitle.Render("License Agreement"))
+	fmt.Println(ui.PageTitle.Render("Terms of Use"))
 	fmt.Println()
-	fmt.Println(ui.Text.Render("FontGet installs fonts from third-party sources. Each font has its own license. You are responsible for complying with the licenses of any fonts you install."))
+	fmt.Println(ui.Text.Render(onboarding.TermsOfUseIntroText()))
 	fmt.Println()
 	fmt.Printf("%s %s\n", ui.InfoText.Render("Source:"), ui.TableSourceName.Render(sourceName))
 	fmt.Println()

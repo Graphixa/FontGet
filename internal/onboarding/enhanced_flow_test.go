@@ -42,7 +42,7 @@ func TestNewEnhancedOnboardingModel(t *testing.T) {
 	}
 
 	// Check step names
-	expectedSteps := []string{"Welcome", "License Agreement", "Wizard Choice", "Sources", "Settings", "Theme Selection", "Completion"}
+	expectedSteps := []string{"Welcome", "Terms of Use", "Wizard Choice", "Sources", "Settings", "Theme Selection", "Completion"}
 	for i, step := range model.steps {
 		if i < len(expectedSteps) && step.Name() != expectedSteps[i] {
 			t.Errorf("Step %d name = %q, want %q", i, step.Name(), expectedSteps[i])
@@ -230,8 +230,8 @@ func TestLicenseStepEnhanced(t *testing.T) {
 	step := NewLicenseAgreementStepEnhanced()
 	model := NewEnhancedOnboardingModel()
 
-	if step.Name() != "License Agreement" {
-		t.Errorf("LicenseAgreementStepEnhanced.Name() = %q, want %q", step.Name(), "License Agreement")
+	if step.Name() != "Terms of Use" {
+		t.Errorf("LicenseAgreementStepEnhanced.Name() = %q, want %q", step.Name(), "Terms of Use")
 	}
 
 	if !step.CanGoBack() {
@@ -328,8 +328,8 @@ func TestEnhancedOnboardingModel_resetStepViewFlag(t *testing.T) {
 	model := NewEnhancedOnboardingModel()
 
 	// Move to Sources step
-	model.GoToNextStep() // Welcome -> License Agreement
-	model.GoToNextStep() // License Agreement -> Wizard Choice
+	model.GoToNextStep() // Welcome -> Terms of Use
+	model.GoToNextStep() // Terms of Use -> Wizard Choice
 	model.GoToNextStep() // Wizard Choice -> Sources (index 3)
 
 	// Get the Sources step

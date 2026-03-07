@@ -328,7 +328,7 @@ func NewLicenseAgreementStepEnhanced() *LicenseAgreementStepEnhanced {
 }
 
 func (s *LicenseAgreementStepEnhanced) Name() string {
-	return "License Agreement"
+	return "Terms of Use"
 }
 
 func (s *LicenseAgreementStepEnhanced) CanGoBack() bool {
@@ -348,9 +348,6 @@ func (s *LicenseAgreementStepEnhanced) View(model *EnhancedOnboardingModel) stri
 
 	var result strings.Builder
 
-	// Get default sources for license info
-	defaultSources := sources.DefaultSources()
-
 	// Calculate available width
 	availableWidth := model.width - 4
 	if availableWidth < 60 {
@@ -358,38 +355,20 @@ func (s *LicenseAgreementStepEnhanced) View(model *EnhancedOnboardingModel) stri
 	}
 
 	result.WriteString("\n")
-	result.WriteString(ui.PageTitle.Render("License Agreement"))
-	result.WriteString("\n\n")
-
-	// Disclaimer: FontGet is a tool; fonts are third-party; user is responsible for their licenses
-	introText := "FontGet installs fonts from third-party sources. Each font has its own license. You are responsible for complying with the license of any font you install."
-	introLines := wrapText(introText, availableWidth)
-	for _, line := range introLines {
-		result.WriteString(line)
+	for _, section := range TermsOfUseSections() {
+		render := StyleRenderer(section.Style)
+		if len(section.Items) > 0 {
+			for _, item := range section.Items {
+				result.WriteString(fmt.Sprintf("  %s %s\n", "•", render(item)))
+			}
+		} else if section.Content != "" {
+			for _, line := range wrapText(section.Content, availableWidth) {
+				result.WriteString(render(line))
+				result.WriteString("\n")
+			}
+		}
 		result.WriteString("\n")
 	}
-	result.WriteString("\n")
-
-	// Source list
-	sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
-	for _, sourceName := range sourceOrder {
-		if _, exists := defaultSources[sourceName]; exists {
-			result.WriteString(fmt.Sprintf("  %s %s\n", "•", ui.TableSourceName.Render(sourceName)))
-		}
-	}
-	result.WriteString("\n")
-
-	// Acceptance line
-	acceptanceText := "By accepting, you agree to these terms and to comply with each font's license."
-	acceptanceLines := wrapText(acceptanceText, availableWidth)
-	result.WriteString(ui.InfoText.Render(acceptanceLines[0]))
-	if len(acceptanceLines) > 1 {
-		for i := 1; i < len(acceptanceLines); i++ {
-			result.WriteString("\n")
-			result.WriteString(ui.InfoText.Render(acceptanceLines[i]))
-		}
-	}
-	result.WriteString("\n\n")
 
 	// Buttons
 	result.WriteString(s.buttonGroup.Render())
@@ -438,17 +417,17 @@ func (s *LicenseAgreementStepEnhanced) Update(model *EnhancedOnboardingModel, ms
 	return model, nil
 }
 
-// licenseOnlyModel is a minimal TUI that shows only the license agreement (used when --skip-onboarding without --accept-agreements).
-type licenseOnlyModel struct {
+// termsOnlyModel is a minimal TUI that shows only the terms of use (used when --accept-defaults without --accept-agreements).
+type termsOnlyModel struct {
 	buttonGroup *components.ButtonGroup
 	accepted    bool
 	width       int
 	height      int
 }
 
-func (m *licenseOnlyModel) Init() tea.Cmd { return nil }
+func (m *termsOnlyModel) Init() tea.Cmd { return nil }
 
-func (m *licenseOnlyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *termsOnlyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -476,56 +455,48 @@ func (m *licenseOnlyModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *licenseOnlyModel) View() string {
-	defaultSources := sources.DefaultSources()
+func (m *termsOnlyModel) View() string {
 	availableWidth := m.width - 4
 	if availableWidth < 60 {
 		availableWidth = 60
 	}
 	var result strings.Builder
 	result.WriteString("\n")
-	result.WriteString(ui.PageTitle.Render("License Agreement"))
-	result.WriteString("\n\n")
-	introText := "FontGet installs fonts from third-party sources. Each font has its own license. You are responsible for complying with the license of any font you install."
-	for _, line := range wrapText(introText, availableWidth) {
-		result.WriteString(line)
-		result.WriteString("\n")
-	}
-	result.WriteString("\n")
-	sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
-	for _, sourceName := range sourceOrder {
-		if _, exists := defaultSources[sourceName]; exists {
-			result.WriteString(fmt.Sprintf("  %s %s\n", "•", ui.TableSourceName.Render(sourceName)))
+	for _, section := range TermsOfUseSections() {
+		render := StyleRenderer(section.Style)
+		if len(section.Items) > 0 {
+			for _, item := range section.Items {
+				result.WriteString(fmt.Sprintf("  %s %s\n", "•", render(item)))
+			}
+		} else if section.Content != "" {
+			for _, line := range wrapText(section.Content, availableWidth) {
+				result.WriteString(render(line))
+				result.WriteString("\n")
+			}
 		}
-	}
-	result.WriteString("\n")
-	acceptanceText := "By accepting, you agree to these terms and to comply with each font's license."
-	for _, line := range wrapText(acceptanceText, availableWidth) {
-		result.WriteString(ui.InfoText.Render(line))
 		result.WriteString("\n")
 	}
-	result.WriteString("\n")
 	result.WriteString(m.buttonGroup.Render())
 	result.WriteString("\n")
 	return result.String()
 }
 
-// RunLicenseAgreementOnly runs only the license agreement TUI. On accept it marks agreements accepted, creates default config and manifest, marks first run completed, and returns nil. On decline it returns ErrOnboardingCancelled.
+// RunLicenseAgreementOnly runs only the terms-of-use TUI. On accept it marks agreements accepted, creates default config and manifest, marks first run completed, and returns nil. On decline it returns ErrOnboardingCancelled.
 func RunLicenseAgreementOnly() error {
 	buttons := components.NewButtonGroup([]string{"Decline", "Accept"}, 1)
 	buttons.SetFocus(true)
-	model := &licenseOnlyModel{buttonGroup: buttons}
+	model := &termsOnlyModel{buttonGroup: buttons}
 	program := tea.NewProgram(model, tea.WithAltScreen())
 	final, err := program.Run()
 	if err != nil {
-		return fmt.Errorf("license agreement: %w", err)
+		return fmt.Errorf("terms of use: %w", err)
 	}
-	m, _ := final.(*licenseOnlyModel)
+	m, _ := final.(*termsOnlyModel)
 	if m == nil || !m.accepted {
 		return shared.ErrOnboardingCancelled
 	}
 	if err := config.MarkAgreementsAccepted(); err != nil {
-		return fmt.Errorf("mark agreements accepted: %w", err)
+		return fmt.Errorf("mark terms accepted: %w", err)
 	}
 	for sourceName := range sources.DefaultSources() {
 		_ = config.AcceptSource(sourceName)
