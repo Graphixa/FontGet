@@ -290,7 +290,7 @@ func (m LicenseConfirmModel) View() string {
 	result.WriteString("\n\n")
 
 	// Source information - plain text, wrapped
-	introText := "FontGet installs fonts from various sources. These fonts are subject to their respective license agreements. You are responsible for ensuring compliance with each font's license terms."
+	introText := "FontGet installs fonts from third-party sources. Each font has its own license. You are responsible for complying with the licenses of any fonts you install."
 	introLines := shared.WrapText(introText, availableWidth)
 	for _, line := range introLines {
 		result.WriteString(line)
@@ -305,7 +305,7 @@ func (m LicenseConfirmModel) View() string {
 	result.WriteString("\n")
 
 	// Acceptance statement - plain text, wrapped
-	acceptText := "By proceeding, you accept the license agreements for all fonts from the default sources and agree to comply with their terms."
+	acceptText := "By accepting, you agree to these terms and to comply with each font's license."
 	acceptLines := shared.WrapText(acceptText, availableWidth)
 	for _, line := range acceptLines {
 		result.WriteString(line)

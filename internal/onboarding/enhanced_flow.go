@@ -320,8 +320,8 @@ type LicenseAgreementStepEnhanced struct {
 }
 
 func NewLicenseAgreementStepEnhanced() *LicenseAgreementStepEnhanced {
-	group := components.NewButtonGroup([]string{"Back", "Continue"}, 1) // Continue selected by default
-	group.SetFocus(true)                                                // Buttons have focus by default (button-only screen)
+	group := components.NewButtonGroup([]string{"Back", "Accept"}, 1) // Accept selected by default
+	group.SetFocus(true)                                              // Buttons have focus by default (button-only screen)
 	return &LicenseAgreementStepEnhanced{
 		buttonGroup: group,
 	}
@@ -361,8 +361,8 @@ func (s *LicenseAgreementStepEnhanced) View(model *EnhancedOnboardingModel) stri
 	result.WriteString(ui.PageTitle.Render("License Agreement"))
 	result.WriteString("\n\n")
 
-	// License text
-	introText := "FontGet installs fonts from various sources. These fonts are subject to their respective license agreements. You are responsible for ensuring compliance with each font's license terms."
+	// Disclaimer: FontGet is a tool; fonts are third-party; user is responsible for their licenses
+	introText := "FontGet installs fonts from third-party sources. Each font has its own license. You are responsible for complying with the license of any font you install."
 	introLines := wrapText(introText, availableWidth)
 	for _, line := range introLines {
 		result.WriteString(line)
@@ -379,8 +379,8 @@ func (s *LicenseAgreementStepEnhanced) View(model *EnhancedOnboardingModel) stri
 	}
 	result.WriteString("\n")
 
-	// Text-based acceptance message
-	acceptanceText := "By continuing to use FontGet, you agree to all license agreements."
+	// Acceptance line
+	acceptanceText := "By accepting, you agree to these terms and to comply with each font's license."
 	acceptanceLines := wrapText(acceptanceText, availableWidth)
 	result.WriteString(ui.InfoText.Render(acceptanceLines[0]))
 	if len(acceptanceLines) > 1 {
@@ -420,7 +420,7 @@ func (s *LicenseAgreementStepEnhanced) Update(model *EnhancedOnboardingModel, ms
 			case "back":
 				model.GoToPreviousStep()
 				return model, nil
-			case "continue", "enter":
+			case "accept", "enter":
 				// Mark agreements accepted and accept all default sources
 				_ = config.MarkAgreementsAccepted()
 				for sourceName := range sources.DefaultSources() {
@@ -486,7 +486,7 @@ func (m *licenseOnlyModel) View() string {
 	result.WriteString("\n")
 	result.WriteString(ui.PageTitle.Render("License Agreement"))
 	result.WriteString("\n\n")
-	introText := "FontGet installs fonts from various sources. These fonts are subject to their respective license agreements. You are responsible for ensuring compliance with each font's license terms."
+	introText := "FontGet installs fonts from third-party sources. Each font has its own license. You are responsible for complying with the license of any font you install."
 	for _, line := range wrapText(introText, availableWidth) {
 		result.WriteString(line)
 		result.WriteString("\n")
@@ -499,7 +499,7 @@ func (m *licenseOnlyModel) View() string {
 		}
 	}
 	result.WriteString("\n")
-	acceptanceText := "By continuing to use FontGet, you agree to all license agreements."
+	acceptanceText := "By accepting, you agree to these terms and to comply with each font's license."
 	for _, line := range wrapText(acceptanceText, availableWidth) {
 		result.WriteString(ui.InfoText.Render(line))
 		result.WriteString("\n")
