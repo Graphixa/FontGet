@@ -31,7 +31,7 @@
   - [ ] Update README with improved help text examples
   - [ ] Update command reference documentation
   - [ ] Add troubleshooting guide
-  - [ ] Update installation instructions for CI/CD releases
+  - [x] Update installation instructions for CI/CD releases
 
 ---
 
@@ -229,6 +229,21 @@
   - [ ] Support multiple properties: `--name <name> --priority <num> --prefix <prefix>`
   - [ ] Prevent modifying built-in source properties (error message)
 
+#### **Source priority: make it matter everywhere**
+**Why**: Priority is stored in the manifest and can be set via `sources add` / `sources set`, but it is only used in a few places (sources update order, sources manage TUI). Search result order and the sources info table ignore it and use hardcoded or non-priority logic. That makes priority feel pointless. The intent is: **lower number = this source is preferred first** (e.g. when the same font appears in multiple sources, or when listing/loading sources).
+
+**How it would work**:
+- **Single source of truth**: Manifest `SourceConfig.Priority` (and built-in vs custom) defines order. No duplicate hardcoded maps in the repo.
+- **Search result sort** (`internal/repo/sources.go`): When sorting search results by source, use each source’s priority from the manifest instead of the hardcoded `sourcePriority` map. The repo needs access to a name→priority mapping (e.g. pass it in when loading the manifest, or have the caller pass ordered source names / a priority getter). Custom sources keep their manifest priority; built-ins keep 1–3 unless the user has changed them.
+- **Sources info table** (`cmd/sources.go`): Sort table rows by priority (built-in first, then by `SourceConfig.Priority`, then by name). Use the same ordering as `GetEnabledSourcesInOrder` (or a shared helper that returns all sources in priority order for display).
+- **Repo load order**: When building the font manifest in `loadAllSourcesWithCache`, iterate over sources in priority order (e.g. get ordered list from config/functions) instead of ranging over the map, so load order is deterministic and matches user preference.
+
+**Tasks**:
+- [ ] Replace hardcoded `sourcePriority` in `internal/repo/sources.go` with manifest-driven priority (obtain name→priority from config when sorting search results).
+- [ ] Sort sources info table rows by priority (built-in first, then manifest priority, then name).
+- [ ] In `loadAllSourcesWithCache` (or equivalent), iterate sources in priority order when loading so repo build order is consistent.
+- [ ] Document in docs/usage.md that priority controls order in search results, sources info, and sources update (lower = higher preference).
+
 ---
 
 ### **User Experience Improvements**
@@ -292,3 +307,5 @@
 - ✅ Self-update system implemented
 - ✅ Export/import functionality complete
 - ✅ Help text reviewed and improved
+- ✅ Installation doc updated (Windows section, package manager layout)
+- ✅ `fontget config set` command (reflection-based, schema-driven)

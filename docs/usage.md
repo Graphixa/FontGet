@@ -189,12 +189,38 @@ Manage font sources.
 - `update` - Refresh source configurations and font database
 - `validate` - Validate source files
 - `manage` - Interactive source management (TUI)
+- `add` - Add a custom source (non-interactive)
+- `remove` - Remove a custom source
+- `enable` / `disable` - Enable or disable a source (built-in or custom)
+- `set` - Update a custom source's URL, prefix, or priority
 
 ### Flags
 - `--verbose, -v` - Show detailed output during updates
 
 ### Notes
 - Only add sources from trusted locations.
+- Built-in sources (Google Fonts, Nerd Fonts, Font Squirrel) cannot be removed or modified with `remove` or `set`; use `enable`/`disable` to change their availability.
+
+### Sources management (CLI)
+For scripts and CI, use the non-interactive subcommands instead of the TUI. For `remove`, `enable`, `disable`, and `set`, the `--name` value can be either the full source name (e.g. "Google Fonts") or the source prefix (e.g. google, nerd, squirrel).
+
+```bash
+# Add a custom source (prefix and priority optional)
+fontget sources add --name "My Source" --url https://example.com/fonts.json
+fontget sources add --name "Custom" --url https://example.com/sources.json --prefix custom --priority 10
+
+# Remove a custom source (use --force or --yes to skip confirmation)
+fontget sources remove --name "My Source"
+fontget sources remove --name google --force
+
+# Enable or disable any source (by name or prefix)
+fontget sources enable --name "Nerd Fonts"
+fontget sources disable --name nerd
+
+# Update a custom source's properties (at least one of --url, --prefix, --priority)
+fontget sources set --name "My Source" --url https://new.example.com/fonts.json
+fontget sources set --name mysource --priority 5 --prefix mysource
+```
 
 ### Examples
 ```bash
@@ -465,8 +491,13 @@ fontget completion powershell --install
 | `sources` | Manage font sources |  |
 | &nbsp;&nbsp;&nbsp;- `info` | Show sources information |  |
 | &nbsp;&nbsp;&nbsp;- `update` | Refresh source configurations and font database | `--verbose, -v` |
-| &nbsp;&nbsp;&nbsp;- `manage` | Interactive management |  |
+| &nbsp;&nbsp;&nbsp;- `manage` | Interactive management (TUI) |  |
 | &nbsp;&nbsp;&nbsp;- `validate` | Validate sources integrity |  |
+| &nbsp;&nbsp;&nbsp;- `add` | Add custom source | `--name, -n`, `--url, -u`, `--prefix, -p`, `--priority` |
+| &nbsp;&nbsp;&nbsp;- `remove` | Remove custom source | `--name, -n`, `--force, -f`, `--yes, -y` |
+| &nbsp;&nbsp;&nbsp;- `enable` | Enable a source | `--name, -n` |
+| &nbsp;&nbsp;&nbsp;- `disable` | Disable a source | `--name, -n` |
+| &nbsp;&nbsp;&nbsp;- `set` | Update custom source properties | `--name, -n`, `--url, -u`, `--prefix, -p`, `--priority` |
 | `config` | Manage configuration |  |
 | &nbsp;&nbsp;&nbsp;- `info` | Display current config |  |
 | &nbsp;&nbsp;&nbsp;- `edit` | Open config file in editor |  |

@@ -291,6 +291,19 @@ func GetSourceByName(manifest *Manifest, name string) (*SourceConfig, bool) {
 	return &source, true
 }
 
+// BuiltInSourceNames is the list of source names that are built-in and cannot be removed or have their URL/prefix/priority modified via CLI.
+var BuiltInSourceNames = []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+
+// IsBuiltInSource returns true if name is a built-in source. Built-in sources cannot be removed or modified (except enabled/disabled) via sources remove/set.
+func IsBuiltInSource(name string) bool {
+	for _, n := range BuiltInSourceNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
 // GetDefaultManifest returns a default manifest with built-in sources
 func GetDefaultManifest() (*Manifest, error) {
 	return createDefaultManifest()

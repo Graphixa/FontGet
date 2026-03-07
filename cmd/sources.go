@@ -597,6 +597,7 @@ func init() {
 	sourcesCmd.AddCommand(sourcesInfoCmd)
 	sourcesCmd.AddCommand(sourcesUpdateCmd)
 	sourcesCmd.AddCommand(sourcesValidateCmd)
+	initSourcesCLI()
 
 	// Add flags
 	sourcesUpdateCmd.Flags().BoolP("verbose", "v", false, "Show detailed error messages for failed sources")

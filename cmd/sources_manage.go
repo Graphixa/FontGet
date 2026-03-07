@@ -96,16 +96,6 @@ func NewSourcesModel() (*sourcesModel, error) {
 	return sm, nil
 }
 
-// isBuiltInSource checks if a source name is a built-in source
-func isBuiltInSource(name string) bool {
-	switch name {
-	case "Google Fonts", "Nerd Fonts", "Font Squirrel":
-		return true
-	default:
-		return false
-	}
-}
-
 // updateInputWidths updates the width of text inputs based on terminal size
 func (m *sourcesModel) updateInputWidths() {
 	width := functions.CalculateInputWidth(m.width)
@@ -494,7 +484,7 @@ func convertManifestToSourceItems(manifest *config.Manifest) []functions.SourceI
 			Prefix:    source.Prefix,
 			URL:       source.URL,
 			Enabled:   source.Enabled,
-			IsBuiltIn: isBuiltInSource(name),
+			IsBuiltIn: config.IsBuiltInSource(name),
 			Priority:  source.Priority,
 		})
 	}
