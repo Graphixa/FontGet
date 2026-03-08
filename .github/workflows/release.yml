@@ -42,7 +42,7 @@ jobs:
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --skip=chocolatey,winget,aur_sources,homebrew,scoop --draft
+          args: release --clean --skip=chocolatey,winget,aur-source,homebrew,scoop --draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
