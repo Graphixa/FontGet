@@ -135,11 +135,10 @@ scoops:
     license: "MIT"
 
 # Chocolatey (Windows)
-# Skipped on Linux (--skip=chocolatey). Nupkg is built on the Windows runner from build/chocolatey/ in repo (dynamic checksum from release checksums.txt).
-# skip_publish: true; we push from the chocolatey job with dotnet nuget push.
+# Skipped on Linux via --skip=chocolatey in workflow. Nupkg is built on the Windows runner from build/chocolatey/ (dynamic checksum from release checksums.txt).
+# skip_publish: true — we push from the chocolatey job with dotnet nuget push.
 chocolateys:
   - name: fontget
-    skip: true
     ids:
       - default
     skip_publish: true
