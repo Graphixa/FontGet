@@ -36,20 +36,15 @@ jobs:
           version: '~> v2'
           args: check
 
-      # Create release as draft so we only publish after Chocolatey succeeds (see publish-release job).
-      # Chocolatey is skipped on Linux (choco not installed). Nupkg is built on the Windows runner.
-      - name: Run GoReleaser
+      # Create draft release only. No push to any external repo until Chocolatey succeeds (publish-release job).
+      - name: Run GoReleaser (draft only, no external pushes)
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean --skip=chocolatey --draft
+          args: release --clean --skip=chocolatey,winget,aur_sources,homebrew,scoop --draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-          WINGET_PR_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
-          AUR_PRIVATE_KEY: ${{ secrets.AUR_PRIVATE_KEY }}
 
   chocolatey:
     name: Build Chocolatey Package
@@ -116,24 +111,39 @@ jobs:
         env:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
 
-  # Only publish the release (make it public) after Chocolatey succeeds. If Chocolatey fails, the draft stays draft.
+  # Only after Chocolatey succeeds: publish the release and push to Winget + AUR.
+  # Running GoReleaser again (no --draft, skip=chocolatey) publishes the draft and runs Winget + AUR.
   publish-release:
-    name: Publish release
+    name: Publish release and push to Winget/AUR
     runs-on: ubuntu-latest
     needs: [release, chocolatey]
     permissions:
       contents: write
 
     steps:
-      - name: Install GitHub CLI
-        run: |
-          type -p curl >/dev/null || (sudo apt update && sudo apt install curl -y)
-          curl -fsSL https://cli.github.com/packages/setup-apt-repo | sudo -E bash -
-          sudo apt install gh -y
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Publish draft release
-        run: |
-          TAG="${GITHUB_REF#refs/tags/}"
-          gh release edit "$TAG" --draft=false
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+
+      - name: Install go-winres (for Windows icon embedding)
+        run: go install github.com/tc-hib/go-winres@latest
+
+      # Publish the release (undraft) and push to Winget + AUR. Chocolatey already done on Windows.
+      - name: Run GoReleaser (publish + Winget + AUR)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --clean --skip=chocolatey
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          WINGET_PR_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
+          AUR_PRIVATE_KEY: ${{ secrets.AUR_PRIVATE_KEY }}
