@@ -44,6 +44,10 @@ checksum:
   name_template: "checksums.txt"
   algorithm: sha256
 
+# Source tarball required by aur_sources (PKGBUILD builds from this on Arch).
+source:
+  enabled: true
+
 snapshot:
   version_template: "{{ .Tag }}-SNAPSHOT"
 
