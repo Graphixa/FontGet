@@ -112,7 +112,7 @@ jobs:
         run: |
           $nupkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
           if (-not $nupkg) { Write-Error "No nupkg found"; exit 1 }
-          dotnet nuget push $nupkg.FullName --api-key "$env:CHOCOLATEY_API_KEY" --source "https://push.chocolatey.org/" --force
+          dotnet nuget push $nupkg.FullName --api-key "$env:CHOCOLATEY_API_KEY" --source "https://push.chocolatey.org/"
         env:
           CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
 
