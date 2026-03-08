@@ -77,6 +77,14 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+      - "^Release:"
+      - "^ci:"
+      - "^chore:"
+      - "^fix: .*workflow"
+      - "^fix: .*goreleaser"
+      - "^fix: .*chocolatey"
+      - "^fix: .*winget"
+      - "^fix: .*aur"
 
 # Linux packages via NFPM (deb/rpm)
 nfpms:

@@ -1,0 +1,240 @@
+name: Chocolatey Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g. 2.3.6 or v2.3.6)"
+        required: true
+        type: string
+      publish:
+        description: "Push package to Chocolatey (false = dry run)"
+        required: true
+        default: false
+        type: boolean
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+
+jobs:
+  chocolatey:
+    name: Build and Push Chocolatey
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+
+      - name: Install .NET (for NuGet push)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      # Ensure Chocolatey is available (windows-latest usually has it; install if missing).
+      - name: Install Chocolatey
+        shell: pwsh
+        run: |
+          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          }
+
+      - name: Add Chocolatey to PATH
+        shell: pwsh
+        run: $env:Path += ";$env:ProgramData\chocolatey\bin"
+
+      - name: Verify Chocolatey installation
+        shell: pwsh
+        run: choco --version
+
+      - name: Resolve version and tag
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $raw = "${{ inputs.version }}"
+            if ([string]::IsNullOrWhiteSpace($raw)) { Write-Error "version input is required"; exit 1 }
+            $version = $raw -replace '^v', ''
+            $tag = "v$version"
+          } else {
+            $sha = "${{ github.event.workflow_run.head_sha }}"
+            if ([string]::IsNullOrWhiteSpace($sha)) { Write-Error "workflow_run.head_sha is empty"; exit 1 }
+            git fetch --tags --force
+            $tag = (git tag --points-at $sha | Select-Object -First 1)
+            if ([string]::IsNullOrWhiteSpace($tag)) {
+              Write-Error "No tag points at Release workflow SHA: $sha"
+              exit 1
+            }
+            $version = $tag -replace '^v', ''
+          }
+
+          if (-not ($version -match '^\d+\.\d+\.\d+([-.].+)?$')) {
+            Write-Error "Invalid version format: $version"
+            exit 1
+          }
+
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "TAG=$tag" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Using tag=$tag version=$version"
+
+      - name: Validate release and required assets
+        id: assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          $tag = "${{ steps.version.outputs.TAG }}"
+          $zipName = "fontget_${version}_windows_amd64.zip"
+          $checksumsName = "checksums.txt"
+
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/${{ github.repository }}/releases/tags/$tag" -Headers @{ Authorization = "token $env:GH_TOKEN"; Accept = "application/vnd.github.v3+json" }
+          if ($release.draft -eq $true) {
+            Write-Error "Release $tag is draft. Publish it before Chocolatey push."
+            exit 1
+          }
+
+          $zipAsset = $release.assets | Where-Object { $_.name -eq $zipName } | Select-Object -First 1
+          if (-not $zipAsset) {
+            Write-Error "Missing required asset: $zipName"
+            exit 1
+          }
+
+          $checksumsAsset = $release.assets | Where-Object { $_.name -eq $checksumsName } | Select-Object -First 1
+          if (-not $checksumsAsset) {
+            Write-Error "Missing required asset: $checksumsName"
+            exit 1
+          }
+
+          # Ensure public download URL is reachable (unauthenticated verification behavior).
+          $zipPublicUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/$zipName"
+          $publicResponse = Invoke-WebRequest -Uri $zipPublicUrl -Method Head -MaximumRedirection 10 -ErrorAction Stop
+          if ($publicResponse.StatusCode -lt 200 -or $publicResponse.StatusCode -ge 400) {
+            Write-Error "Public release asset URL is not reachable: $zipPublicUrl"
+            exit 1
+          }
+
+          $zipPath = Join-Path $env:TEMP $zipName
+          $checksumsPath = Join-Path $env:TEMP $checksumsName
+          Invoke-WebRequest -Uri $zipAsset.url -Headers @{ Authorization = "token $env:GH_TOKEN"; Accept = "application/octet-stream" } -OutFile $zipPath -UseBasicParsing
+          Invoke-WebRequest -Uri $checksumsAsset.url -Headers @{ Authorization = "token $env:GH_TOKEN"; Accept = "application/octet-stream" } -OutFile $checksumsPath -UseBasicParsing
+
+          $hash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if (-not ($hash -match '^[a-f0-9]{64}$')) {
+            Write-Error "Computed SHA256 is invalid: $hash"
+            exit 1
+          }
+
+          $expectedHash = $null
+          Get-Content $checksumsPath | ForEach-Object {
+            if ($_ -match '^(?<sum>[a-fA-F0-9]{64})\s+\*?(?<file>.+)$') {
+              $fileName = $matches['file'].Trim()
+              if ($fileName -eq $zipName) {
+                $expectedHash = $matches['sum'].ToLowerInvariant()
+              }
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($expectedHash)) {
+            Write-Error "checksums.txt does not contain a valid SHA256 entry for $zipName"
+            exit 1
+          }
+          if ($expectedHash -ne $hash) {
+            Write-Error "SHA256 mismatch for $zipName. checksums.txt=$expectedHash computed=$hash"
+            exit 1
+          }
+
+          "ZIP_SHA256=$hash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "ZIP_NAME=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Validated release assets and computed SHA256 for $zipName"
+
+      - name: Inject checksum into Chocolatey install script
+        shell: pwsh
+        run: |
+          $scriptPath = "build/chocolatey/tools/chocolateyInstall.ps1"
+          $content = Get-Content $scriptPath -Raw
+          if (-not $content.Contains('CHECKSUM_PLACEHOLDER')) {
+            Write-Error "CHECKSUM_PLACEHOLDER not found in $scriptPath"
+            exit 1
+          }
+
+          $updated = $content -replace 'CHECKSUM_PLACEHOLDER', "${{ steps.assets.outputs.ZIP_SHA256 }}"
+          Set-Content $scriptPath $updated -NoNewline
+
+          $verify = Get-Content $scriptPath -Raw
+          if ($verify.Contains('CHECKSUM_PLACEHOLDER')) {
+            Write-Error "Checksum placeholder was not fully replaced"
+            exit 1
+          }
+
+      - name: Pack Chocolatey package
+        shell: pwsh
+        run: |
+          choco pack build/chocolatey/fontget.nuspec --version ${{ steps.version.outputs.VERSION }} --output-directory nupkg
+          $nupkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
+          if (-not $nupkg) { Write-Error "No .nupkg generated"; exit 1 }
+          Write-Host "Packed $($nupkg.Name)"
+
+      - name: Validate nupkg contents
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $nupkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
+          if (-not $nupkg) { Write-Error "No .nupkg found"; exit 1 }
+
+          $zip = [System.IO.Compression.ZipFile]::OpenRead($nupkg.FullName)
+          try {
+            $entries = $zip.Entries | ForEach-Object { $_.FullName }
+            if (-not ($entries -contains 'tools/chocolateyInstall.ps1')) {
+              Write-Error "nupkg missing tools/chocolateyInstall.ps1"
+              exit 1
+            }
+            if (-not ($entries -contains 'tools/chocolateyUninstall.ps1')) {
+              Write-Error "nupkg missing tools/chocolateyUninstall.ps1"
+              exit 1
+            }
+          } finally {
+            $zip.Dispose()
+          }
+
+      - name: Smoke test package install (no publish)
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
+          if (-not $nupkg) { Write-Error "No .nupkg found"; exit 1 }
+
+          $localSource = $nupkg.Directory.FullName
+          $version = "${{ steps.version.outputs.VERSION }}"
+          choco install fontget --source "$localSource" --version "$version" --yes --force --no-progress
+          if ($LASTEXITCODE -ne 0) { Write-Error "Local install smoke test failed"; exit 1 }
+
+          # Basic sanity check that the executable is discoverable after install.
+          $fontgetCmd = Get-Command fontget -ErrorAction SilentlyContinue
+          if (-not $fontgetCmd) {
+            Write-Error "fontget command not found after local install"
+            exit 1
+          }
+          fontget --version
+
+          choco uninstall fontget --yes --force --no-progress
+          if ($LASTEXITCODE -ne 0) { Write-Error "Local uninstall smoke test failed"; exit 1 }
+
+      - name: Push to Chocolatey
+        if: ${{ github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.publish == true) }}
+        shell: pwsh
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $nupkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
+          if (-not $nupkg) { Write-Error "No nupkg found"; exit 1 }
+          dotnet nuget push $nupkg.FullName --api-key "$env:CHOCOLATEY_API_KEY" --source "https://push.chocolatey.org/" --skip-duplicate

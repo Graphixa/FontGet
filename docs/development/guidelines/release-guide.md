@@ -222,6 +222,30 @@ gh release view v1.3.0
 fontget update
 ```
 
+### **Step 9: Run Chocolatey Workflow**
+
+Chocolatey publication is handled by a dedicated workflow (`Chocolatey Release`) after the main release completes.
+
+1. Open GitHub Actions and run **Chocolatey Release** (`workflow_dispatch`).
+2. Enter the release version (for example: `1.3.0` or `v1.3.0`).
+3. Confirm preflight checks pass:
+   - Release tag exists and is public (not draft)
+   - Required assets exist (`fontget_<version>_windows_amd64.zip`, `checksums.txt`)
+   - Checksum placeholder in `chocolateyInstall.ps1` is replaced before packing
+   - Generated nupkg contains `tools/chocolateyInstall.ps1` and `tools/chocolateyUninstall.ps1`
+4. Confirm the push step succeeds (`dotnet nuget push ... --skip-duplicate`).
+
+### **Release Orchestration (Current)**
+
+1. **Release workflow** (`release.yml`)
+   - Runs tests and `goreleaser check`
+   - Publishes GitHub release assets
+   - Publishes Winget, AUR, Homebrew, and Scoop
+   - Skips Chocolatey
+2. **Chocolatey Release workflow** (`chocolatey-release.yml`)
+   - Runs strict preflight validations
+   - Packs and pushes Chocolatey package independently
+
 ---
 
 ## 📝 Complete Release Example

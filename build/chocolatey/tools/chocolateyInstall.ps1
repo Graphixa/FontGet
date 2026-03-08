@@ -3,7 +3,7 @@
 $ErrorActionPreference = 'Stop'
 $version = $env:ChocolateyPackageVersion
 $tag = "v$version"
-$zipName = "fontget_$version_windows_amd64.zip"
+$zipName = "fontget_${version}_windows_amd64.zip"
 $zipUrl = "https://github.com/Graphixa/FontGet/releases/download/$tag/$zipName"
 $toolsDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $unzipLocation = Join-Path $env:TEMP "fontget-choco-$version"
