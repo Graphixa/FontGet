@@ -224,7 +224,7 @@ jobs:
             Write-Error "fontget command not found after local install"
             exit 1
           }
-          fontget --version
+          fontget version
 
           choco uninstall fontget --yes --force --no-progress
           if ($LASTEXITCODE -ne 0) { Write-Error "Local uninstall smoke test failed"; exit 1 }
