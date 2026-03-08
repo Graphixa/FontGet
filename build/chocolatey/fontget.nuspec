@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>fontget</id>
+    <version>0.0.0</version>
+    <packageSourceUrl>https://github.com/Graphixa/FontGet</packageSourceUrl>
+    <owners>Graphixa</owners>
+    <title>FontGet</title>
+    <authors>Graphixa</authors>
+    <projectUrl>https://github.com/Graphixa/FontGet</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/Graphixa/FontGet/main/assets/icons/icon.png</iconUrl>
+    <licenseUrl>https://github.com/Graphixa/FontGet/blob/main/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/Graphixa/FontGet</projectSourceUrl>
+    <docsUrl>https://github.com/Graphixa/FontGet/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/Graphixa/FontGet/issues</bugTrackerUrl>
+    <releaseNotes>https://github.com/Graphixa/FontGet/releases</releaseNotes>
+    <summary>Install and manage fonts from the command line.</summary>
+    <description><![CDATA[FontGet is a tiny, cross-platform CLI tool to install and manage fonts. Search for fonts, list installed fonts, install or remove fonts from the command line.]]></description>
+    <tags>fonts font-manager cli cross-platform</tags>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>

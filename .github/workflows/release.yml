@@ -36,27 +36,93 @@ jobs:
           version: '~> v2'
           args: check
 
-      # GoReleaser builds the Chocolatey .nupkg on Linux (nupkg is just zip + nuspec + scripts; no Windows runner required).
-      # Building here ensures the nupkg's install script checksum matches the zip we upload to GitHub.
-      # Chocolatey skip_publish: true so we push from the chocolatey job (download nupkg from release, then dotnet nuget push).
+      # Create release as draft so we only publish after Chocolatey succeeds (see publish-release job).
+      # Chocolatey is skipped on Linux (choco not installed). Nupkg is built on the Windows runner.
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
           version: '~> v2'
-          args: release --clean
+          args: release --clean --skip=chocolatey --draft
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           SCOOP_BUCKET_TOKEN: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           WINGET_PR_TOKEN: ${{ secrets.WINGET_PR_TOKEN }}
+          AUR_PRIVATE_KEY: ${{ secrets.AUR_PRIVATE_KEY }}
 
   chocolatey:
-    name: Push Chocolatey package
-    runs-on: ubuntu-latest
+    name: Build Chocolatey Package
+    runs-on: windows-latest
     needs: release
     permissions:
-      contents: read
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.4"
+
+      # Ensure Chocolatey is available (windows-latest usually has it; install if missing, per community pattern)
+      - name: Install Chocolatey
+        shell: pwsh
+        run: |
+          if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+            iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+          }
+
+      - name: Add Chocolatey to PATH
+        shell: pwsh
+        run: $env:Path += ";$env:ProgramData\chocolatey\bin"
+
+      - name: Verify Chocolatey installation
+        shell: pwsh
+        run: choco --version
+
+      - name: Get version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF -replace 'refs/tags/', ''
+          $version = $tag -replace '^v', ''
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Packing Chocolatey for version $version"
+
+      - name: Pack Chocolatey package
+        shell: pwsh
+        run: |
+          choco pack build/chocolatey/fontget.nuspec --version ${{ steps.version.outputs.VERSION }} --output-directory nupkg
+          Get-ChildItem nupkg
+
+      - name: Install .NET (for NuGet push)
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Push to Chocolatey
+        shell: pwsh
+        run: |
+          $nupkg = Get-ChildItem nupkg/*.nupkg | Select-Object -First 1
+          if (-not $nupkg) { Write-Error "No nupkg found"; exit 1 }
+          dotnet nuget push $nupkg.FullName --api-key "$env:CHOCOLATEY_API_KEY" --source "https://push.chocolatey.org/" --force
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+
+  # Only publish the release (make it public) after Chocolatey succeeds. If Chocolatey fails, the draft stays draft.
+  publish-release:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: [release, chocolatey]
+    permissions:
+      contents: write
 
     steps:
       - name: Install GitHub CLI
@@ -66,24 +132,9 @@ jobs:
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
           sudo apt update && sudo apt install gh -y
 
-      - name: Download nupkg from GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish draft release
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          echo "Downloading *.nupkg from release $TAG"
-          gh release download "$TAG" --pattern "*.nupkg" --dir nupkg
-          ls -la nupkg/
-
-      - name: Install .NET (for NuGet push)
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "8.0.x"
-
-      - name: Push to Chocolatey
-        run: |
-          NUPKG=$(ls nupkg/*.nupkg 2>/dev/null | head -1)
-          if [ -z "$NUPKG" ]; then echo "No nupkg found"; exit 1; fi
-          dotnet nuget push "$NUPKG" --api-key "$CHOCOLATEY_API_KEY" --source "https://push.chocolatey.org/" --force
+          gh release edit "$TAG" --draft=false
         env:
-          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -135,10 +135,11 @@ scoops:
     license: "MIT"
 
 # Chocolatey (Windows)
-# Built in release job so nupkg checksum matches the zip uploaded to GitHub.
-# skip_publish: true so we push from the Chocolatey job (download nupkg from release, then dotnet nuget push).
+# Skipped on Linux (--skip=chocolatey). Nupkg is built on the Windows runner from build/chocolatey/ in repo (dynamic checksum from release checksums.txt).
+# skip_publish: true; we push from the chocolatey job with dotnet nuget push.
 chocolateys:
   - name: fontget
+    skip: true
     ids:
       - default
     skip_publish: true
@@ -250,3 +251,34 @@ winget:
           owner: microsoft
           name: winget-pkgs
           branch: master  # microsoft/winget-pkgs uses 'master' as default branch
+
+# AUR (Arch Linux) - Automated source-based package (since GoReleaser v2.5)
+aur_sources:
+  - name: fontget
+    homepage: "https://github.com/Graphixa/FontGet"
+    description: "A tiny, cross-platform CLI tool to install and manage fonts from the command line"
+    maintainers:
+      - "Graphixa <https://github.com/Graphixa>"
+    license: "MIT"
+    private_key: "{{ .Env.AUR_PRIVATE_KEY }}"
+    git_url: "ssh://aur@aur.archlinux.org/fontget.git"
+    makedepends:
+      - go
+      - git
+    depends:
+      - glibc
+    prepare: |-
+      cd "${pkgname}_${pkgver}"
+      go mod download
+    build: |-
+      cd "${pkgname}_${pkgver}"
+      export CGO_CPPFLAGS="${CPPFLAGS}"
+      export CGO_CFLAGS="${CFLAGS}"
+      export CGO_CXXFLAGS="${CXXFLAGS}"
+      export CGO_LDFLAGS="${LDFLAGS}"
+      export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
+      go build -ldflags="-w -s -buildid='' -linkmode=external -X fontget/internal/version.Version=${pkgver}" -o fontget .
+    package: |-
+      cd "${pkgname}_${pkgver}"
+      install -Dm755 ./fontget "${pkgdir}/usr/bin/fontget"
+    commit_msg_template: "Update to {{ .Tag }}"

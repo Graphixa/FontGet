@@ -3,7 +3,6 @@
   <img src="assets/icons/icon.svg" alt="FontGet" width="120" />
   <br>
   <h1>FontGet - CLI Font Manager</h1>
-  <p><strong></strong></p>
 
   [![Version](https://img.shields.io/github/v/release/Graphixa/FontGet)](https://github.com/Graphixa/FontGet/releases)
   [![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
@@ -11,19 +10,25 @@
   [![CI](https://img.shields.io/github/actions/workflow/status/Graphixa/FontGet/ci.yml?label=CI)](https://github.com/Graphixa/FontGet/actions)
   
 
+  <p>FontGet is a lightweight, cross-platform terminal font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.</p>
 
-<strong>
-FontGet is a lightweight, cross-platform terminal font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.
-<br>
-<br>
-</strong>
-Fontget supports installing fonts from the following sources:
+<strong>Fontget supports installing fonts from the following sources:</strong>
 
 <a href="https://fonts.google.com/">Google Fonts</a>
 |
 <a href="https://www.nerdfonts.com/">Nerd Fonts</a>
 |
 <a href="https://www.fontsquirrel.com/">Font Squirrel</a>
+
+---
+
+<div>
+<br>
+<p>If this project is useful, feel free to buy me a cuppa.</p>
+
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51V2JIV)
+
+</div>
 
 </div>
 
@@ -80,7 +85,7 @@ brew install fontget
 
 ### Linux
 
-**[AUR (Arch User Repository)](https://aur.archlinux.org/packages/fontget)** (coming soon)
+**[AUR (Arch User Repository)](https://aur.archlinux.org/packages/fontget)** (Arch + Arch-based distros)
 
 ```bash
 yay -S fontget

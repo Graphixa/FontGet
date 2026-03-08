@@ -108,7 +108,7 @@ sudo rpm -i fontget_*_${ARCH}.rpm
 
 Both packages install FontGet to `/usr/bin/fontget`. Verify with `fontget version`.
 
-**AUR (Arch Linux)** (coming soon)
+**[AUR (Arch User Repository)](https://aur.archlinux.org/packages/fontget)** (Arch Linux and Arch-based distros)
 
 ```bash
 yay -S fontget
@@ -116,8 +116,7 @@ yay -S fontget
 paru -S fontget
 ```
 
-> [!NOTE]
-> AUR package is coming soon. Use the [shell install script](#shell-mac-linux) or download from [GitHub Releases](https://github.com/Graphixa/FontGet/releases).
+The AUR package builds FontGet from source. You need an [AUR helper](https://wiki.archlinux.org/title/AUR_helpers) such as `yay` or `paru`, or you can build manually from the [AUR package page](https://aur.archlinux.org/packages/fontget).
 
 ## Build and Install from Source
 
