@@ -200,6 +200,7 @@ Manage font sources.
 ### Notes
 - Only add sources from trusted locations.
 - Built-in sources (Google Fonts, Nerd Fonts, Font Squirrel) cannot be removed or modified with `remove` or `set`; use `enable`/`disable` to change their availability.
+- Need to create your own source file? See the [Custom Sources Guide](custom-sources.md).
 
 ### Sources management (CLI)
 For scripts and CI, use the non-interactive subcommands instead of the TUI. For `remove`, `enable`, `disable`, and `set`, the `--name` value can be either the full source name (e.g. "Google Fonts") or the source prefix (e.g. google, nerd, squirrel).
