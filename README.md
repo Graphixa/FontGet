@@ -74,6 +74,8 @@ scoop bucket add fontget https://github.com/Graphixa/scoop-bucket
 scoop install fontget
 ```
 
+---
+
 ### macOS
 
 **[Homebrew](https://formulae.brew.sh/)**
@@ -82,6 +84,8 @@ scoop install fontget
 brew tap Graphixa/homebrew-tap
 brew install fontget
 ```
+
+---
 
 ### Linux
 
@@ -93,7 +97,7 @@ yay -S fontget
 paru -S fontget
 ```
 
-### Build and Install from Source
+## Build and Install from Source
 
 Instructions for building FontGet from source can be found in the [Contributing guide](docs/contributing.md).
 
