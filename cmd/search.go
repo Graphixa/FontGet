@@ -166,16 +166,14 @@ Use -s without a value to list sources.`,
 		return nil
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Get repository
-		r, err := repo.GetRepository()
+		r, err := repo.GetRepositoryForShellCompletion()
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
-		// Get all fonts
 		results, err := r.SearchFonts("", "")
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
 		// Filter and return font names
@@ -523,9 +521,9 @@ func init() {
 
 	// Helper function for category completion (shared by both short and long flags)
 	categoryCompletionFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		r, err := repo.GetRepository()
+		r, err := repo.GetRepositoryForShellCompletion()
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 		categories := r.GetAllCategories()
 		return categories, cobra.ShellCompDirectiveNoFileComp
@@ -537,20 +535,19 @@ func init() {
 
 	// Helper function for source completion (shared by both short and long flags)
 	sourceCompletionFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		r, err := repo.GetRepository()
+		r, err := repo.GetRepositoryForShellCompletion()
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
 		manifest, err := r.GetManifest()
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
-		// Get config manifest to access prefixes
 		configManifest, err := config.LoadManifest()
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
 		// Get all source prefixes (short IDs), IDs (full names), and names (full names)

@@ -38,16 +38,14 @@ Use --license to show only license information.`,
 		return nil
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Get repository
-		r, err := repo.GetRepository()
+		r, err := repo.GetRepositoryForShellCompletion()
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
-		// Get all fonts
 		results, err := r.SearchFonts("", "")
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
 		// Filter and return font names

@@ -545,6 +545,17 @@ func GetRepository() (*Repository, error) {
 	return &Repository{manifest: manifest}, nil
 }
 
+// GetRepositoryForShellCompletion returns a repository loaded from cache only.
+// It is used by shell completion (fontget __complete) and must not run spinners or refresh sources.
+func GetRepositoryForShellCompletion() (*Repository, error) {
+	SetPopularityScoring()
+	manifest, err := GetCachedManifest()
+	if err != nil {
+		return nil, err
+	}
+	return &Repository{manifest: manifest}, nil
+}
+
 // GetRepositoryWithRefresh forces a refresh of sources and returns a new Repository instance
 func GetRepositoryWithRefresh() (*Repository, error) {
 	// Set popularity scoring preference from user config

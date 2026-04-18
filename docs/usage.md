@@ -456,8 +456,8 @@ Generate shell completion scripts.
 - `--install` - Automatically install the completion script to the shell configuration
 
 ### Notes
-- Supports bash, zsh, and PowerShell. See documentation for installation steps.
-- After installation, restart your terminal or reload your shell configuration.
+- Supports bash, zsh, fish, and PowerShell. See [Terminal setup](terminal-setup.md) for shell-specific installation and troubleshooting.
+- After installation, restart your terminal or reload your shell configuration (Fish picks up `~/.config/fish/completions/` on new sessions).
 
 ### Examples
 ```bash
@@ -466,6 +466,9 @@ fontget completion bash
 
 # Generate completion script for zsh
 fontget completion zsh
+
+# Generate completion script for fish (output to stdout)
+fontget completion fish
 
 # Generate completion script for PowerShell
 fontget completion powershell
@@ -476,8 +479,11 @@ fontget completion --install
 # Install for specific shell
 fontget completion bash --install
 fontget completion zsh --install
+fontget completion fish --install
 fontget completion powershell --install
 ```
+
+**Fish (current session only):** `fontget completion fish | source`
 
 
 # Full Command Reference

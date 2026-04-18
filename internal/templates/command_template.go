@@ -54,18 +54,17 @@ usage: fontget command [<options>]`,
 		}
 		return nil
 	},
-	// Optional: Add argument completion using optimized repository access
+	// Optional: Add argument completion (cache-only; never spinners during fontget __complete)
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		// Use optimized repository access (smart caching)
-		r, err := repo.GetRepository()
+		r, err := repo.GetRepositoryForShellCompletion()
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
 		// Get all fonts using repository method
 		results, err := r.SearchFonts("", "")
 		if err != nil {
-			return nil, cobra.ShellCompDirectiveError
+			return nil, cobra.ShellCompDirectiveNoFileComp
 		}
 
 		// Filter and return font names
@@ -221,6 +220,7 @@ IMPORTANT NOTES:
 
 PERFORMANCE BEST PRACTICES:
 - ALWAYS use repo.GetRepository() for normal operations (smart caching)
+- In ValidArgsFunction / shell completion, use repo.GetRepositoryForShellCompletion() (cache-only, no spinners)
 - ONLY use repo.GetManifest() directly when you need fresh data
 - ONLY use repo.GetManifestWithRefresh() when forcing updates
 - This ensures consistent performance across all commands

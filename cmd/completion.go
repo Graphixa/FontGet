@@ -18,7 +18,7 @@ var completionCmd = &cobra.Command{
 	Short: "Generate or install shell completion scripts",
 	Long: `Generate or install shell completion scripts.
 
-Supports bash, zsh, and PowerShell. Use --install to auto-install to your shell config.
+Supports bash, zsh, fish, and PowerShell. Use --install to auto-install to your shell config.
 
 Examples:
   # Generate completion script (output to stdout)
@@ -76,13 +76,15 @@ See documentation for more details.`,
 			return rootCmd.GenBashCompletion(cmd.OutOrStdout())
 		case "zsh":
 			return rootCmd.GenZshCompletion(cmd.OutOrStdout())
+		case "fish":
+			return rootCmd.GenFishCompletion(cmd.OutOrStdout(), true)
 		case "powershell":
 			return rootCmd.GenPowerShellCompletion(cmd.OutOrStdout())
 		default:
-			return fmt.Errorf("unsupported shell: %s. Supported shells: bash, zsh, powershell", shell)
+			return fmt.Errorf("unsupported shell: %s. Supported shells: bash, zsh, fish, powershell", shell)
 		}
 	},
-	ValidArgs: []string{"bash", "zsh", "powershell"},
+	ValidArgs: []string{"bash", "zsh", "fish", "powershell"},
 }
 
 func init() {
@@ -114,6 +116,9 @@ func detectShell() (string, error) {
 	if detected, err := detectZsh(); err == nil && detected {
 		return "zsh", nil
 	}
+	if detected, err := detectFish(); err == nil && detected {
+		return "fish", nil
+	}
 	if detected, err := detectPowerShell(); err == nil && detected {
 		return "powershell", nil
 	}
@@ -133,7 +138,7 @@ func extractShellName(shellPath string) string {
 
 // isValidShell checks if a shell name is supported
 func isValidShell(shell string) bool {
-	validShells := []string{"bash", "zsh", "powershell"}
+	validShells := []string{"bash", "zsh", "fish", "powershell"}
 	for _, v := range validShells {
 		if shell == v {
 			return true
@@ -191,6 +196,21 @@ func detectZsh() (bool, error) {
 	return false, nil
 }
 
+// detectFish detects if fish is the current shell
+func detectFish() (bool, error) {
+	shell := os.Getenv("SHELL")
+	if shell != "" {
+		return strings.Contains(strings.ToLower(shell), "fish"), nil
+	}
+
+	cmd := exec.Command("fish", "--version")
+	if err := cmd.Run(); err == nil {
+		return true, nil
+	}
+
+	return false, nil
+}
+
 // detectPowerShell detects if PowerShell is the current shell
 func detectPowerShell() (bool, error) {
 	if runtime.GOOS == "windows" {
@@ -230,12 +250,16 @@ func expandPath(path string) (string, error) {
 func installCompletion(shellName string) error {
 	// Validate shell
 	if !isValidShell(shellName) {
-		return fmt.Errorf("unsupported shell: %s. Supported shells: bash, zsh, powershell", shellName)
+		return fmt.Errorf("unsupported shell: %s. Supported shells: bash, zsh, fish, powershell", shellName)
 	}
 
 	// PowerShell is handled differently (inline in profile)
 	if shellName == "powershell" {
 		return installPowerShellCompletion()
+	}
+
+	if shellName == "fish" {
+		return installFishCompletion()
 	}
 
 	// Generate completion script for bash/zsh
@@ -309,6 +333,10 @@ func generateCompletionScript(shellName string) ([]byte, error) {
 		if err := rootCmd.GenZshCompletion(tmpFile); err != nil {
 			return nil, fmt.Errorf("failed to generate zsh completion: %w", err)
 		}
+	case "fish":
+		if err := rootCmd.GenFishCompletion(tmpFile, true); err != nil {
+			return nil, fmt.Errorf("failed to generate fish completion: %w", err)
+		}
 	default:
 		return nil, fmt.Errorf("unsupported shell: %s", shellName)
 	}
@@ -324,6 +352,39 @@ func generateCompletionScript(shellName string) ([]byte, error) {
 	}
 
 	return script, nil
+}
+
+// installFishCompletion writes the fish completion script; Fish loads ~/.config/fish/completions/*.fish automatically.
+func installFishCompletion() error {
+	completionPath := "~/.config/fish/completions/fontget.fish"
+	completionPathExpanded, err := expandPath(completionPath)
+	if err != nil {
+		return fmt.Errorf("failed to expand completion file path: %w", err)
+	}
+
+	if data, err := os.ReadFile(completionPathExpanded); err == nil {
+		if len(data) > 0 && strings.Contains(string(data), "fish completion for fontget") {
+			return fmt.Errorf("completion already installed at %s", completionPathExpanded)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("failed to read existing fish completion file: %w", err)
+	}
+
+	completionDir := filepath.Dir(completionPathExpanded)
+	if err := os.MkdirAll(completionDir, 0755); err != nil {
+		return fmt.Errorf("failed to create fish completions directory: %w", err)
+	}
+
+	script, err := generateCompletionScript("fish")
+	if err != nil {
+		return fmt.Errorf("failed to generate completion script: %w", err)
+	}
+
+	if err := os.WriteFile(completionPathExpanded, script, 0644); err != nil {
+		return fmt.Errorf("failed to write fish completion file: %w", err)
+	}
+
+	return nil
 }
 
 // installPowerShellCompletion installs PowerShell completion (inline in profile)

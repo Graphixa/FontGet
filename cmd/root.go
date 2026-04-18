@@ -150,11 +150,14 @@ var rootCmd = &cobra.Command{
 		}
 
 		// Skip onboarding/license for certain commands (e.g. help, version, config reset)
+		// Shell tab completion invokes cobra.ShellCompRequestCmd / ShellCompNoDescRequestCmd, not "completion".
 		skipLicenseCommands := map[string]bool{
-			"help":       true,
-			"version":    true,
-			"completion": true,
-			"reset":      true, // config reset: do not prompt for wizard
+			"help":                          true,
+			"version":                       true,
+			"completion":                    true,
+			cobra.ShellCompRequestCmd:       true,
+			cobra.ShellCompNoDescRequestCmd: true,
+			"reset":                         true, // config reset: do not prompt for wizard
 		}
 
 		// Apply automation flags (persistent: available on all commands, e.g. fontget add X --accept-agreements --accept-defaults)
@@ -200,7 +203,7 @@ var rootCmd = &cobra.Command{
 							return fmt.Errorf("mark first run completed: %w", err)
 						}
 					}
-					
+
 					fmt.Println("Defaults Accepted: FontGet will use the default configuration.")
 					// Skip running any onboarding TUI
 				} else if acceptDefaults {
@@ -246,10 +249,12 @@ var rootCmd = &cobra.Command{
 		// Perform startup update check (non-blocking)
 		// Skip for certain commands to avoid unnecessary checks
 		skipUpdateCheckCommands := map[string]bool{
-			"help":       true,
-			"version":    true, // Don't check for updates when just checking version
-			"completion": true,
-			"update":     true, // Don't check for updates when running update command
+			"help":                          true,
+			"version":                       true, // Don't check for updates when just checking version
+			"completion":                    true,
+			cobra.ShellCompRequestCmd:       true,
+			cobra.ShellCompNoDescRequestCmd: true,
+			"update":                        true, // Don't check for updates when running update command
 		}
 
 		if !skipUpdateCheckCommands[cmd.Name()] {

@@ -1,158 +1,117 @@
 # Terminal Setup Guide
 
-This guide provides quick links to set up FontGet completions in popular terminal emulators. Each terminal emulator section links to the detailed shell-specific instructions.
+This guide provides quick links to set up FontGet completions in popular terminal emulators. Refer to the section that matches your terminal's current shell (e.g. Bash, Zsh, Powershell or Fish)
 
 ## Table of Contents
 
-- [Windows Terminal](#windows-terminal)
-- [PowerShell](#powershell)
-- [Git Bash](#git-bash)
-- [WSL (Windows Subsystem for Linux)](#wsl-windows-subsystem-for-linux)
-- [macOS Terminal](#macos-terminal)
-- [Kitty Terminal](#kitty-terminal)
-- [iTerm2](#iterm2)
-- [Alacritty](#alacritty)
-- [WezTerm](#wezterm)
+- [Quick Start](#quick-start)
+- [Setup by Shell](#setup-by-shell)
+- [Which shell am I using?](#which-shell-am-i-using)
+- [Platform notes](#platform-notes)
 - [Troubleshooting](#troubleshooting)
-
+- [Additional Resources](#additional-resources)
 
 ## Quick Start
 
-**Easiest method - detects shell automatically and installs**
+**Easiest method — detects your shell and installs completions**
 
 ```bash
-# Auto-detect your shell and install
 fontget completion --install
 ```
->Should work in any terminal (macOS Terminal, Kitty, Powershell etc.)
+
+Works from any terminal once `fontget` is on your `PATH`.
 
 ## Setup by Shell
-Alternatively you can specify your shell manually.
+
+Use the section for the shell you run (not the name of the terminal app).
 
 ### PowerShell
 
-**Automatic Installation (Recommended):**
+**Automatic installation (recommended):**
+
 ```powershell
 fontget completion powershell --install
 ```
 
-**Test in Current Session (before permanent install):**
+**Current session only (before a permanent install):**
+
 ```powershell
-# Enable completions for current session only
 fontget completion powershell | Out-String | Invoke-Expression
 ```
 
 ### Bash {#bash}
 
-**Automatic Installation (Recommended):**
+**Automatic installation (recommended):**
+
 ```bash
 fontget completion bash --install
 ```
 
-**Test in Current Session (before permanent install):**
+**Current session only:**
+
 ```bash
-# Enable completions for current session only
 source <(fontget completion bash)
 ```
 
 ### Zsh {#zsh}
 
-**Automatic Installation (Recommended):**
+**Automatic installation (recommended):**
+
 ```bash
 fontget completion zsh --install
 ```
 
-**Test in Current Session (before permanent install):**
+**Current session only:**
+
 ```zsh
-# Enable completions for current session only
 source <(fontget completion zsh)
 ```
 
-## Windows Terminal
+**Zsh note:** The installer appends a line that adds `~/.zsh/completions` to `fpath`. That line must run **before** `compinit` in `~/.zshrc`, or completions may not load until you run `compinit` again (or remove `~/.zcompdump` and restart the shell). If completions are missing after install, move the FontGet `fpath` block above your `compinit` call.
 
-Windows Terminal supports multiple shells. Follow the instructions for your preferred shell:
+### Fish {#fish}
 
-### Windows Terminal (PowerShell)
+Fish loads completions from `~/.config/fish/completions/` automatically; no edit to `config.fish` is required.
 
-👉 **[Goto PowerShell Setup Instructions →](#powershell)**
+**Automatic installation (recommended):**
 
-### Windows Terminal (WSL or Git Bash)
+```bash
+fontget completion fish --install
+```
 
-👉 **[Goto Bash Setup Instructions →](#bash)**
+**Current session only:**
 
->[!Note]
-> Command Prompt doesn't support completions. Use PowerShell or WSL instead.
+```fish
+fontget completion fish | source
+```
 
-## macOS Terminal
+Ensure `fontget` is on your `PATH` (`which fontget`).
 
-### macOS Terminal (macOS Mojave 10.14 and earlier)
+## Which shell am I using?
 
-Uses **Bash** completions.
+```bash
+echo "$SHELL"
+```
 
-👉 **[Goto Bash Setup Instructions →](#bash)**
+On **macOS**, Apple’s default login shell is **zsh** (Catalina 10.15 and later) and was **bash** on older releases. Your terminal app’s preferences may override the default.
 
-### macOS Terminal (macOS Catalina 10.15 and later)
+On **Windows**, use PowerShell, Git Bash, or WSL—each matches one of the shell sections above.
 
-Uses **Zsh** completions.
+## Platform notes
 
-👉 **[Goto Zsh Setup Instructions →](#zsh)**
+### Windows
 
+- **Windows Terminal** can host PowerShell, Command Prompt, or WSL—open the profile that matches how you use FontGet.
+- **Command Prompt** does not support these completions; use **PowerShell** or **WSL** instead.
+- **Git Bash** and **WSL** use **Bash** completions ([Bash](#bash)).
 
-## Kitty Terminal
+### macOS
 
-Kitty Terminal supports multiple shells. Follow the instructions for your preferred shell.
+- **Login shells** often read `~/.bash_profile` instead of `~/.bashrc`. If you installed Bash completions but they never load, ensure `~/.bashrc` is sourced from `~/.bash_profile` (e.g. `[[ -f ~/.bashrc ]] && source ~/.bashrc`).
 
-### Kitty Terminal (Bash)
+### Any terminal emulator
 
-👉 **[Goto Bash Setup Instructions →](#bash)**
-
-### Kitty Terminal (Zsh)
-
-👉 **[Goto Zsh Setup Instructions →](#zsh)**
-
----
-
-## iTerm2
-
-iTerm2 supports multiple shells. Follow the instructions for your preferred shell.
-
-### iTerm2 (Bash)
-
-👉 **[Goto Bash Setup Instructions →](#bash)**
-
-### iTerm2 (Zsh)
-
-👉 **[Goto Zsh Setup Instructions →](#zsh)**
-
----
-
-## Alacritty
-
-Alacritty supports multiple shells. Follow the instructions for your preferred shell.
-
-### Alacritty (Bash)
-
-👉 **[Goto Bash Setup Instructions →](#bash)**
-
-### Alacritty (Zsh)
-
-👉 **[Goto Zsh Setup Instructions →](#zsh)**
-
----
-
-## WezTerm
-
-WezTerm supports multiple shells. Follow the instructions for your preferred shell.
-
-### WezTerm (Bash)
-
-👉 **[Goto Bash Setup Instructions →](#bash)**
-
-### WezTerm (Zsh)
-
-👉 **[Goto Zsh Setup Instructions →](#zsh)**
-
----
+There is nothing special to configure per app (Kitty, iTerm2, Alacritty, WezTerm, etc.). Pick **PowerShell**, **Bash**, **Zsh**, or **Fish** according to the shell your profile runs.
 
 ## Troubleshooting
 
@@ -160,41 +119,38 @@ If completions are not working:
 
 1. **Verify installation:**
    ```bash
-   # Check if completion file exists
-   ls ~/.fontget-completion.bash  # Bash
-   ls ~/.zsh/completions/_fontget  # Zsh
+   ls ~/.fontget-completion.bash
+   ls ~/.zsh/completions/_fontget
+   ls ~/.config/fish/completions/fontget.fish
    ```
 
 2. **Check shell configuration:**
    ```bash
-   # Verify source line is in config file
-   grep "fontget" ~/.bashrc  # Bash
-   grep "fontget" ~/.zshrc   # Zsh
+   grep "fontget" ~/.bashrc
+   grep "fontget" ~/.zshrc
    ```
+   Fish does not need a source line; the file under `~/.config/fish/completions/` is enough.
 
 3. **Reload your shell:**
    ```bash
-   source ~/.bashrc  # Bash
-   source ~/.zshrc   # Zsh
-   # Or restart your terminal
+   source ~/.bashrc   # Bash
+   source ~/.zshrc    # Zsh
    ```
+   Or restart the terminal. See [Platform notes](#platform-notes) for login-shell behavior on macOS.
 
-4. **Make sure FontGet is in your PATH:**
+4. **Confirm FontGet is on your PATH:**
    ```bash
    which fontget
    fontget version
    ```
 
-5. **Check for any error messages when sourcing the completion script**
+5. **Watch for errors** when sourcing or running completion commands.
 
-### PowerShell-Specific Issues
+### PowerShell-specific issues
 
 1. **Profile not loading:**
    ```powershell
-   # Check if profile exists
    Test-Path $PROFILE
-   
-   # Create profile if it doesn't exist
    if (!(Test-Path $PROFILE)) {
        New-Item -Path $PROFILE -Type File -Force
    }
@@ -202,32 +158,33 @@ If completions are not working:
 
 2. **Execution policy:**
    ```powershell
-   # Check execution policy
    Get-ExecutionPolicy
-   
-   # If needed, set to RemoteSigned (requires admin)
+   # If needed (may require admin):
    Set-ExecutionPolicy RemoteSigned
    ```
 
-### Zsh-Specific Issues
+### Zsh-specific issues
 
 1. **Completion system not initialized:**
    ```zsh
-   # Make sure compinit is in your .zshrc
    grep "compinit" ~/.zshrc
-   
-   # If not, add it
    echo "autoload -Uz compinit && compinit" >> ~/.zshrc
    ```
+
+2. **`fpath` after `compinit`:** Ensure `fpath=(~/.zsh/completions $fpath)` runs before `compinit`, or run `compinit` again after fixing order (see [Zsh](#zsh) above).
+
+### Fish-specific issues
+
+1. **Completion file missing or stale:** Re-run `fontget completion fish --install`, or remove `~/.config/fish/completions/fontget.fish` and install again.
 
 ---
 
 ## Additional Resources
 
-- [FontGet Help](usage.md) - Complete command reference
+- [FontGet usage / commands](usage.md)
 
 ---
 
 ## Contributing
 
-If you'd like to add instructions for another terminal emulator or shell, please submit a pull request.
+Improvements to shell- or platform-specific notes are welcome via pull request.
