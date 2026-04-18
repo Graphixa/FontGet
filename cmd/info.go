@@ -255,9 +255,16 @@ Use --license to show only license information.`,
 			cards = append(cards, components.LicenseInfoCard(font.License, licenseURL))
 		}
 
-		// Render all cards
+		// Render all cards (match sources command: terminal width capped at 120, −2 for card/table alignment)
 		if len(cards) > 0 {
 			cardModel := components.NewCardModel("", cards)
+			terminalWidth := shared.GetTerminalWidth()
+			cardWidth := terminalWidth
+			if cardWidth > 120 {
+				cardWidth = 120
+			}
+			cardWidth = cardWidth - 2
+			cardModel.SetWidth(cardWidth)
 			fmt.Println(cardModel.Render())
 		}
 

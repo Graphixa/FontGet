@@ -167,6 +167,10 @@ var (
 	CardLabel = lipgloss.NewStyle()
 	// Note: Card content uses Text instead of a separate style
 
+	// URLLink - Visible styling for terminal hyperlinks (use with FormatTerminalURL).
+	URLLink = lipgloss.NewStyle().
+		Underline(true)
+
 	// CardBorder - Card border styling
 	// Usage: Card border styling
 	// Example: ui.CardBorder.Render("Card content here")
@@ -607,6 +611,10 @@ func InitStyles() error {
 
 	CardLabel = lipgloss.NewStyle().
 		Foreground(getColorOrNoColor(cardLabel))
+
+	URLLink = lipgloss.NewStyle().
+		Foreground(getColorOrNoColor(primary)).
+		Underline(true)
 
 	CardBorder = lipgloss.NewStyle().
 		BorderForeground(getColorOrNoColor(cardBorder)).

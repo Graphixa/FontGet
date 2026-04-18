@@ -12,6 +12,7 @@ import (
 type Card struct {
 	Title             string
 	Content           string
+	Sections          []CardSection // If non-empty, Render builds body from sections (uniform width + URL handling)
 	Width             int
 	VerticalPadding   int // Padding at top and bottom (0 = no padding, 1 = minimal padding)
 	HorizontalPadding int // Padding at left and right (0 = no padding, 1 = minimal padding)
@@ -21,6 +22,7 @@ type Card struct {
 type CardSection struct {
 	Label string
 	Value string
+	IsURL bool // When true, Value is rendered as a terminal hyperlink with URL-aware wrapping
 }
 
 // CardModel represents a collection of cards
@@ -43,21 +45,9 @@ func NewCard(title, content string) Card {
 
 // NewCardWithSections creates a new card with sections
 func NewCardWithSections(title string, sections []CardSection) Card {
-	var content strings.Builder
-
-	for i, section := range sections {
-		if section.Label != "" {
-			content.WriteString(ui.CardLabel.Render(section.Label + ": "))
-		}
-		content.WriteString(ui.Text.Render(section.Value))
-		if i < len(sections)-1 {
-			content.WriteString("\n")
-		}
-	}
-
 	return Card{
 		Title:             title,
-		Content:           content.String(),
+		Sections:          sections,
 		Width:             80,
 		VerticalPadding:   1,
 		HorizontalPadding: 2,
@@ -85,8 +75,14 @@ func (c Card) Render() string {
 		contentStyle = contentStyle.Padding(c.VerticalPadding, c.HorizontalPadding)
 	}
 
+	body := c.Content
+	if len(c.Sections) > 0 {
+		inner := CardInnerContentWidth(c.Width, c.HorizontalPadding)
+		body = buildCardSectionContent(c.Sections, inner)
+	}
+
 	// Render the content
-	content := contentStyle.Width(c.Width).Render(c.Content)
+	content := contentStyle.Width(c.Width).Render(body)
 
 	// Split content into lines
 	lines := strings.Split(content, "\n")
@@ -203,7 +199,7 @@ func FontDetailsCard(name, id, category, tags, lastModified, sourceURL, populari
 
 	// Add source URL under ID
 	if sourceURL != "" {
-		sections = append(sections, CardSection{Label: "Source URL", Value: sourceURL})
+		sections = append(sections, CardSection{Label: "Source URL", Value: sourceURL, IsURL: true})
 	}
 
 	// Add spacing before category section
@@ -232,6 +228,7 @@ func LicenseInfoCard(license, url string) Card {
 		sections = append(sections, CardSection{
 			Label: "URL",
 			Value: url,
+			IsURL: true,
 		})
 	}
 

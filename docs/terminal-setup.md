@@ -7,7 +7,7 @@ This guide provides quick links to set up FontGet completions in popular termina
 - [Quick Start](#quick-start)
 - [Setup by Shell](#setup-by-shell)
 - [Which shell am I using?](#which-shell-am-i-using)
-- [Platform notes](#platform-notes)
+- [Platform notes](#platform-notes) (includes [clickable URLs](#any-terminal-emulator))
 - [Troubleshooting](#troubleshooting)
 - [Additional Resources](#additional-resources)
 
@@ -112,6 +112,8 @@ On **Windows**, use PowerShell, Git Bash, or WSL—each matches one of the shell
 ### Any terminal emulator
 
 There is nothing special to configure per app (Kitty, iTerm2, Alacritty, WezTerm, etc.). Pick **PowerShell**, **Bash**, **Zsh**, or **Fish** according to the shell your profile runs.
+
+**Clickable URLs (OSC 8):** Commands such as `fontget info` render `http`/`https` links using terminal hyperlinks. In supporting terminals (e.g. recent **Windows Terminal**, **iTerm2**, **Kitty**, **WezTerm**, **Ghostty**), you can **ctrl+click** (or **cmd+click**) the underlined URL to open it in a browser. Other terminals still show the URL with normal styling; behavior depends on the emulator.
 
 ## Troubleshooting
 
