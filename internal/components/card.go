@@ -6,6 +6,7 @@ import (
 	"fontget/internal/ui"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // Card represents a bordered card component with integrated title
@@ -63,12 +64,72 @@ func NewCardModel(title string, cards []Card) *CardModel {
 	}
 }
 
+func fitTitlePlainForIntegratedBorder(totalWidth int, titlePlain string) string {
+	if titlePlain == "" {
+		return ""
+	}
+	maxSection := totalWidth - 2
+	if maxSection < 1 {
+		return ansi.Truncate(titlePlain, 1, "...")
+	}
+	if lipgloss.Width("─"+" "+titlePlain+" "+"─") <= maxSection {
+		return titlePlain
+	}
+	maxW := ansi.StringWidth(titlePlain)
+	if maxW > maxSection {
+		maxW = maxSection
+	}
+	for w := maxW; w >= 1; w-- {
+		tt := ansi.Truncate(titlePlain, w, "...")
+		if lipgloss.Width("─"+" "+tt+" "+"─") <= maxSection {
+			return tt
+		}
+	}
+	return ansi.Truncate(titlePlain, 1, "...")
+}
+
+// IntegratedRoundedTopBorderLine renders the ╭ ─ Title ─ ─╮ top rule with the same
+// styling as Card (CardTitle + border color). titlePlain is measured in plain cells;
+// it is truncated so the line never exceeds totalWidth.
+func IntegratedRoundedTopBorderLine(totalWidth int, titlePlain string) string {
+	if totalWidth <= 0 {
+		totalWidth = 80
+	}
+	titlePlain = fitTitlePlainForIntegratedBorder(totalWidth, strings.TrimSpace(titlePlain))
+	styledTitle := ui.CardTitle.Render(titlePlain)
+
+	titleSectionWidth := lipgloss.Width("─" + " " + titlePlain + " " + "─")
+	rightWidth := totalWidth - 2 - titleSectionWidth
+	if rightWidth < 0 {
+		rightWidth = 0
+	}
+
+	topLeft := "╭"
+	topRight := strings.Repeat("─", rightWidth) + "╮"
+
+	var borderColor lipgloss.TerminalColor
+	if ui.CardBorderColorStr != "" {
+		borderColor = lipgloss.Color(ui.CardBorderColorStr)
+	} else {
+		colors := ui.GetCurrentColors()
+		if colors != nil && colors.Placeholders != "" {
+			borderColor = lipgloss.Color(colors.Placeholders)
+		} else {
+			borderColor = lipgloss.NoColor{}
+		}
+	}
+
+	styledTopLeft := lipgloss.NewStyle().Foreground(borderColor).Render(topLeft)
+	styledTopRight := lipgloss.NewStyle().Foreground(borderColor).Render(topRight)
+	dashStyle := lipgloss.NewStyle().Foreground(borderColor)
+	styledDashes := dashStyle.Render("─")
+	styledTitleSection := styledDashes + " " + styledTitle + " " + styledDashes
+
+	return styledTopLeft + styledTitleSection + styledTopRight
+}
+
 // Render renders a single card with integrated title
 func (c Card) Render() string {
-	// Create the styled title
-	titleText := c.Title
-	styledTitle := ui.CardTitle.Render(titleText)
-
 	// Create the content with proper padding
 	contentStyle := ui.CardBorder
 	if c.VerticalPadding > 0 || c.HorizontalPadding > 0 {
@@ -100,47 +161,7 @@ func (c Card) Render() string {
 		totalWidth = 80
 	}
 
-	// Title section: "─" + " " + title + " " + "─" = display width len(title)+4
-	titleSectionWidth := lipgloss.Width("─" + " " + c.Title + " " + "─")
-
-	// Right-side dashes so the top line equals totalWidth: left(1) + titleSection + rightDashes + right(1)
-	rightWidth := totalWidth - 2 - titleSectionWidth
-
-	// Ensure we don't have negative width
-	if rightWidth < 0 {
-		rightWidth = 0
-	}
-
-	// Create the integrated title line with proper border styling
-	// Use the border color from current theme (respects theme, including system theme)
-	topLeft := "╭"
-	topRight := strings.Repeat("─", rightWidth) + "╮"
-
-	// Use the same border color as CardBorder (includes 256 downsampling when enabled)
-	var borderColor lipgloss.TerminalColor
-	if ui.CardBorderColorStr != "" {
-		borderColor = lipgloss.Color(ui.CardBorderColorStr)
-	} else {
-		colors := ui.GetCurrentColors()
-		if colors != nil && colors.Placeholders != "" {
-			borderColor = lipgloss.Color(colors.Placeholders)
-		} else {
-			borderColor = lipgloss.NoColor{}
-		}
-	}
-
-	// Apply border color to border elements
-	styledTopLeft := lipgloss.NewStyle().Foreground(borderColor).Render(topLeft)
-	styledTopRight := lipgloss.NewStyle().Foreground(borderColor).Render(topRight)
-
-	// Create dashes with border color
-	dashStyle := lipgloss.NewStyle().Foreground(borderColor)
-	styledDashes := dashStyle.Render("─")
-
-	// Reconstruct the title section with styled dashes
-	styledTitleSection := styledDashes + " " + styledTitle + " " + styledDashes
-
-	titleLine := styledTopLeft + styledTitleSection + styledTopRight
+	titleLine := IntegratedRoundedTopBorderLine(totalWidth, c.Title)
 
 	// Reconstruct the content with integrated title
 	var result strings.Builder

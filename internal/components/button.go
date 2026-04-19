@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"fontget/internal/ui"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Button represents a single button
@@ -24,14 +26,18 @@ type ButtonGroup struct {
 
 // Render renders a single button with appropriate styling
 func (b Button) Render() string {
+	return b.renderWithStyles(ui.ButtonNormal, ui.ButtonSelected)
+}
+
+func (b Button) renderWithStyles(normal, selected lipgloss.Style) string {
 	padding := 2 // Spaces on each side
 	paddedText := fmt.Sprintf("%s%s%s", strings.Repeat(" ", padding), b.Text, strings.Repeat(" ", padding))
 	brackets := fmt.Sprintf("[%s]", paddedText)
 
 	if b.Selected {
-		return ui.ButtonSelected.Render(brackets)
+		return selected.Render(brackets)
 	}
-	return ui.ButtonNormal.Render(brackets)
+	return normal.Render(brackets)
 }
 
 // RenderFullWidth renders a button that expands to fill the specified width
@@ -77,6 +83,8 @@ func (b Button) RenderFullWidth(width int) string {
 // RenderGroup renders a button group with spacing between buttons
 // Only shows selected state when HasFocus is true
 func (bg ButtonGroup) Render() string {
+	normal := ui.ButtonNormal
+	selected := ui.ButtonSelected
 	var rendered []string
 	for i, button := range bg.Buttons {
 		// Only show as selected if buttons have focus AND this is the selected button
@@ -87,9 +95,9 @@ func (bg ButtonGroup) Render() string {
 		} else {
 			buttonCopy.Selected = (i == bg.Selected)
 		}
-		rendered = append(rendered, buttonCopy.Render())
+		rendered = append(rendered, buttonCopy.renderWithStyles(normal, selected))
 	}
-	return strings.Join(rendered, "  ") // Two spaces between buttons
+	return strings.Join(rendered, "  ")
 }
 
 // HandleKey handles keyboard input for button navigation

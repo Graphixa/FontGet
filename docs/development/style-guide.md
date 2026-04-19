@@ -92,7 +92,7 @@ Theme YAML files use these **exact key names** under `colors`. This table shows 
 | **primary** | #cba6f7 | `InfoText`, `QueryText`, `PageTitle` (text), `CardTitle` (text), `Cursor`, `CheckboxChecked`, `SpinnerColor`, progress bar start (default) |
 | **secondary** | #94e2d5 | `TableSourceName`, `FormLabel`, `CardLabel`, `CommandKey` (text, same as SecondaryText) |
 | **components** | #cdd6f4 | `ButtonNormal` (fg), `FormInput`, `SwitchNormal` (fg), selected-state backgrounds (inverted) for `ButtonSelected`, `SwitchSelected`, `TableRowSelected` |
-| **placeholders** | #7f849c | `FormPlaceholder`, `FormReadOnly`, `CardBorder`, `CheckboxUnchecked`, `SwitchSeparator`, `RenderSourceTag` (built-in tag color) |
+| **placeholders** | #7f849c | `FormPlaceholder`, `FormReadOnly`, `CardBorder`, `DialogModal` (border only), `CheckboxUnchecked`, `SwitchSeparator`, `RenderSourceTag` (built-in tag color) |
 | **base** | #313244 | `ButtonSelected` (fg), `CheckboxItemSelected` (bg), `SwitchSelected` (fg), `TableRowSelected` (inverted fg/bg) |
 | **warning** | #f9e2af | `WarningText` |
 | **error** | #e78284 | `ErrorText` |
@@ -102,7 +102,8 @@ Theme YAML files use these **exact key names** under `colors`. This table shows 
 - `Text`, `TextBold`, `TableHeader`, `CommandExample`, `CardContent` – terminal default
 - These are not affected by theme changes. Command labels use `TextBold` (no separate `CommandLabel` style).
 
-**Terminal color support**: Theme colors are sent as 24-bit hex by default. If a terminal (e.g. Apple Terminal) doesn't handle true color well, enable **Theme.Use256ColorSpace** in `~/.fontget/config.yaml` to downsample theme hex to ANSI 256. See "Theme display options" below.’below.’
+**Terminal color support**: Theme colors are sent as 24-bit hex by default. If a terminal (e.g. Apple Terminal) doesn't handle true color well, enable **Theme.Use256ColorSpace** in `~/.fontget/config.yaml` to downsample theme hex to ANSI 256. See "Theme display options" above.
+
 ## Style Categories
 
 FontGet uses a clear categorization system for different types of UI elements. Theme key names (e.g. `primary`, `secondary`) match the YAML keys in theme files.
@@ -140,6 +141,7 @@ FontGet uses a clear categorization system for different types of UI elements. T
 - **CardLabel** - Labels within cards (theme: `secondary`)
 - **CardContent** - Use **Text** for regular content (terminal default)
 - **CardBorder** - Card border (theme: `placeholders`)
+- **DialogModal** - Browse font-details modal shell: border uses `placeholders` (same as **CardBorder**); no background on the shell. Inner content follows card patterns: **CardTitle**, **FormLabel**, **Text**, **FormatTerminalURL**, **ButtonGroup**. Build with **`components.RenderDialog`**
 
 ### 7. BUTTON COMPONENT STYLES
 - **ButtonNormal** - Unselected button text (theme: `components`; overridable via `overrides.button`)
@@ -202,6 +204,9 @@ ui.CardTitle.Render("Font Details")
 ui.CardLabel.Render("Name:")
 ui.CardContent.Render("Roboto Mono")
 ui.CardBorder.Render("Card content here")
+
+// Browse modal (border shell only; body uses FormLabel / Text / URLs like cards)
+components.RenderDialog(title, body, buttons, components.DialogOpts{MaxWidth: 72, MinWidth: 40})
 
 // Source name rendering
 ui.RenderSourceNameWithTag("Google Fonts", true)  // Colored name with tag

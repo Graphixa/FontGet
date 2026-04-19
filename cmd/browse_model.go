@@ -44,7 +44,6 @@ type installFinishedMsg struct {
 type browseModalState struct {
 	fontID  string
 	font    repo.FontInfo
-	cards   string
 	buttons *components.ButtonGroup
 }
 
@@ -71,8 +70,10 @@ type browseModel struct {
 
 	toastPopup *browseToastPopup
 
-	installing  bool
-	debounceGen int
+	installing           bool
+	installPopupFontName string
+	installPopupSource   string
+	debounceGen          int
 
 	tableViewportH int
 }
@@ -202,45 +203,52 @@ func (m *browseModel) lookupFontInfo(fontID string) (repo.FontInfo, bool) {
 	return repo.FontInfo{}, false
 }
 
-func (m *browseModel) buildInfoCards(font repo.FontInfo, fontID string) string {
+func browseFontDialogTitle(f repo.FontInfo, fontID string) string {
+	src := shared.GetSourceNameFromID(fontID)
+	if src == "" {
+		return f.Name
+	}
+	return fmt.Sprintf("%s – %s", f.Name, src)
+}
+
+func buildBrowseFontDialogBody(f repo.FontInfo, fontID string) string {
 	category := InfoPlaceholderUnknown
-	if len(font.Categories) > 0 {
-		category = font.Categories[0]
+	if len(f.Categories) > 0 {
+		category = f.Categories[0]
 	}
-	tags := ""
-	if len(font.Tags) > 0 {
-		tags = strings.Join(font.Tags, ", ")
-	}
-	lastModified := ""
-	if !font.LastModified.IsZero() {
-		lastModified = font.LastModified.Format("02/01/2006 - 15:04")
-	}
-	popularity := ""
-	if font.Popularity > 0 {
-		popularity = fmt.Sprintf("%d", font.Popularity)
+	var lines []string
+	add := func(label, val string) {
+		if val == "" {
+			return
+		}
+		lines = append(lines, ui.FormLabel.Render(label+":")+" "+ui.Text.Render(val))
 	}
 
-	cards := []components.Card{
-		components.FontDetailsCard(font.Name, fontID, category, tags, lastModified, font.SourceURL, popularity),
+	add("ID", fontID)
+	add("License", f.License)
+	add("Category", category)
+	if len(f.Tags) > 0 {
+		add("Tags", strings.Join(f.Tags, ", "))
+	}
+	if f.Popularity > 0 {
+		add("Popularity", fmt.Sprintf("%d", f.Popularity))
+	}
+	if !f.LastModified.IsZero() {
+		add("Updated", f.LastModified.Format("02/01/2006 - 15:04"))
+	}
+	if strings.TrimSpace(f.SourceURL) != "" {
+		lines = append(lines, ui.FormLabel.Render("Source:")+" "+ui.FormatTerminalURL(f.SourceURL))
 	}
 	licenseURL := ""
-	if font.LicenseURL != "" {
-		licenseURL = font.LicenseURL
-	} else if font.SourceURL != "" {
-		licenseURL = font.SourceURL
+	if f.LicenseURL != "" {
+		licenseURL = f.LicenseURL
+	} else if f.SourceURL != "" {
+		licenseURL = f.SourceURL
 	}
-	cards = append(cards, components.LicenseInfoCard(font.License, licenseURL))
-
-	cm := components.NewCardModel("", cards)
-	w := m.width - 4
-	if w > 120 {
-		w = 120
+	if licenseURL != "" && strings.TrimSpace(licenseURL) != strings.TrimSpace(f.SourceURL) {
+		lines = append(lines, ui.FormLabel.Render("License URL:")+" "+ui.FormatTerminalURL(licenseURL))
 	}
-	if w < 40 {
-		w = 40
-	}
-	cm.SetWidth(w - 2)
-	return cm.Render()
+	return strings.Join(lines, "\n")
 }
 
 func (m *browseModel) openModal() tea.Cmd {
@@ -262,7 +270,6 @@ func (m *browseModel) openModal() tea.Cmd {
 	m.modal = &browseModalState{
 		fontID:  id,
 		font:    font,
-		cards:   m.buildInfoCards(font, id),
 		buttons: bg,
 	}
 	return nil
@@ -272,8 +279,13 @@ func (m *browseModel) closeModal() {
 	m.modal = nil
 }
 
-func (m *browseModel) startInstallByID(fontID string) tea.Cmd {
+func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.installing = true
+	m.installPopupFontName = fontName
+	if sourceLabel == "" {
+		sourceLabel = shared.PlaceholderNA
+	}
+	m.installPopupSource = sourceLabel
 
 	fm := m.fontManager
 	scope := m.installScope
@@ -312,8 +324,10 @@ func (m *browseModel) handleModalUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch action {
 		case "install":
 			id := m.modal.fontID
+			name := m.modal.font.Name
+			src := shared.GetSourceNameFromID(id)
 			m.closeModal()
-			return m, m.startInstallByID(id)
+			return m, m.startInstallByID(id, name, src)
 		case "view online":
 			url := strings.TrimSpace(m.modal.font.SourceURL)
 			m.closeModal()
@@ -511,10 +525,6 @@ func (m *browseModel) toastOverlayView() string {
 	return ui.CardBorder.Width(boxW).Padding(1, 2).Render(inner)
 }
 
-func (m *browseModel) installingBannerView() string {
-	return ui.InfoText.Render("Installing…")
-}
-
 func (m *browseModel) routesTableNav(k string) bool {
 	// Only arrow keys — j/k would steal letters from the search query.
 	return k == "up" || k == "down"
@@ -538,6 +548,8 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case installFinishedMsg:
 		m.installing = false
+		m.installPopupFontName = ""
+		m.installPopupSource = ""
 		if msg.err != nil {
 			m.showToastPopup(ui.RenderError(msg.err.Error()))
 			cmd := m.syncTableDimensions()
@@ -651,15 +663,33 @@ func (m *browseModel) modalView() string {
 	if m.modal == nil {
 		return ""
 	}
-	content := m.modal.cards + "\n\n" + m.modal.buttons.Render()
-	return ui.CardBorder.Padding(1, 2).Render(content)
+	title := browseFontDialogTitle(m.modal.font, m.modal.fontID)
+	body := buildBrowseFontDialogBody(m.modal.font, m.modal.fontID)
+	maxW := m.contentInnerWidth()
+	if maxW <= 0 {
+		maxW = components.DefaultDialogMaxWidth
+	}
+	if maxW > components.DefaultDialogMaxWidth {
+		maxW = components.DefaultDialogMaxWidth
+	}
+	return components.RenderDialog(title, body, m.modal.buttons, components.DialogOpts{
+		MaxWidth: maxW,
+		MinWidth: 44,
+	})
 }
 
 func (m *browseModel) View() string {
 	view := m.baseView()
 	if m.installing {
-		banner := lipgloss.NewStyle().Width(m.width).Align(lipgloss.Center).Render(m.installingBannerView())
-		view = components.Composite(banner, view, components.Center, components.Bottom, 0, -1)
+		maxOuter := m.contentInnerWidth()
+		if maxOuter <= 0 {
+			maxOuter = components.DefaultStatusPopupMaxOuter
+		}
+		if maxOuter > components.DefaultStatusPopupMaxOuter {
+			maxOuter = components.DefaultStatusPopupMaxOuter
+		}
+		popup := components.RenderStatusPopup("Installing", m.installPopupFontName, m.installPopupSource, maxOuter)
+		view = components.Composite(popup, view, components.Center, components.Center, 0, 0)
 	}
 	if m.toastPopup != nil {
 		tg := m.toastOverlayView()

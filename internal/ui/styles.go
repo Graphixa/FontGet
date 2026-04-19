@@ -186,6 +186,12 @@ var (
 	// CardBorderColorStr is the border color string (after downsampling if Use256ColorSpace).
 	// Use this for manual border drawing (e.g. config info card top line) so borders match and render correctly.
 	CardBorderColorStr string
+
+	// DialogModal - Browse font-details modal shell: rounded border (same foreground role as CardBorder).
+	// Usage: components.RenderDialog — interior uses CardTitle, FormLabel, Text, FormatTerminalURL; no Background on the shell.
+	// Colors: Set by InitStyles() from theme
+	DialogModal = lipgloss.NewStyle()
+
 )
 
 // ============================================================================
@@ -625,6 +631,15 @@ func InitStyles() error {
 		BorderRight(true).
 		Padding(1)
 	CardBorderColorStr = cardBorder
+
+	DialogModal = lipgloss.NewStyle().
+		BorderForeground(getColorOrNoColor(cardBorder)).
+		BorderStyle(lipgloss.RoundedBorder()).
+		BorderTop(true).
+		BorderBottom(true).
+		BorderLeft(true).
+		BorderRight(true).
+		Padding(1, 2)
 
 	// BUTTON COMPONENT
 	ButtonNormal = lipgloss.NewStyle().
