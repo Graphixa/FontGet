@@ -153,6 +153,28 @@ func OpenDirectory(path string) error {
 	return cmd.Start()
 }
 
+// OpenURL opens an http(s) URL in the system default browser.
+func OpenURL(rawURL string) error {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return fmt.Errorf("empty URL")
+	}
+	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
+		return fmt.Errorf("URL must start with http:// or https://")
+	}
+
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", "", rawURL)
+	case "darwin":
+		cmd = exec.Command("open", rawURL)
+	default:
+		cmd = exec.Command("xdg-open", rawURL)
+	}
+	return cmd.Start()
+}
+
 // FontMetadata represents extracted font metadata
 type FontMetadata struct {
 	FamilyName        string

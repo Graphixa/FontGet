@@ -159,6 +159,18 @@ func (ct *CustomTable) Rows() [][]string {
 	return ct.rows
 }
 
+// SetRows replaces table data and keeps the cursor within range.
+func (ct *CustomTable) SetRows(rows [][]string) {
+	ct.rows = rows
+	if len(rows) == 0 {
+		ct.cursor = 0
+	} else if ct.cursor >= len(rows) {
+		ct.cursor = len(rows) - 1
+	}
+	ct.ensureCursorVisible()
+	ct.UpdateViewport()
+}
+
 // Columns returns the column configuration
 func (ct *CustomTable) Columns() []ColumnConfig {
 	return ct.columns
@@ -192,6 +204,9 @@ func (ct *CustomTable) ensureCursorVisible() {
 
 // handleNavigation handles keyboard navigation with smart scrolling
 func (ct *CustomTable) handleNavigation(key string) {
+	if len(ct.rows) == 0 {
+		return
+	}
 	var newCursor int
 	if key == "up" {
 		newCursor = ct.cursor - 1
@@ -416,10 +431,6 @@ func (ct *CustomTable) renderBorderLine() string {
 
 // View renders the table
 func (ct *CustomTable) View() string {
-	if len(ct.rows) == 0 {
-		return ""
-	}
-
 	// Render border line above header
 	topBorder := ct.renderBorderLine()
 
@@ -429,8 +440,20 @@ func (ct *CustomTable) View() string {
 	// Render border line below header
 	headerBorder := ct.renderBorderLine()
 
-	// Render viewport (rows)
-	rowsView := ct.viewport.View()
+	var rowsView string
+	if len(ct.rows) == 0 {
+		// Keep the table shell visible (header + borders) with a fixed-height
+		// body so layout does not collapse before search results load.
+		h := max(1, ct.viewport.Height)
+		w := max(1, ct.viewport.Width)
+		blanks := make([]string, h)
+		for i := range blanks {
+			blanks[i] = lipgloss.NewStyle().Width(w).MaxWidth(w).Render(strings.Repeat(" ", w))
+		}
+		rowsView = lipgloss.JoinVertical(lipgloss.Left, blanks...)
+	} else {
+		rowsView = ct.viewport.View()
+	}
 
 	// Render border line at bottom of viewport
 	bottomBorder := ct.renderBorderLine()
@@ -448,8 +471,15 @@ func (ct *CustomTable) Update(msg tea.Msg) (*CustomTable, tea.Cmd) {
 		}
 
 		key := msg.String()
-		if key == "up" || key == "down" {
-			ct.handleNavigation(key)
+		if key == "up" || key == "down" || key == "k" || key == "j" {
+			dir := key
+			if key == "k" {
+				dir = "up"
+			}
+			if key == "j" {
+				dir = "down"
+			}
+			ct.handleNavigation(dir)
 			return ct, nil
 		}
 

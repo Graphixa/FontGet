@@ -34,6 +34,12 @@ func (tm *TableModel) SetSelectedRow(index int) {
 	tm.table.SetCursor(index)
 }
 
+// SetRows replaces displayed rows (must match column layout).
+func (tm *TableModel) SetRows(rows [][]string) {
+	tm.config.Rows = rows
+	tm.table.SetRows(rows)
+}
+
 // NewTableModel creates a new TableModel for dynamic TUI tables
 func NewTableModel(config TableConfig) (*TableModel, error) {
 	if len(config.Columns) == 0 {
@@ -138,10 +144,9 @@ func (tm *TableModel) UpdateWithHeight(msg tea.WindowSizeMsg, availableHeight in
 	// Update custom table column widths
 	tm.table.columnWidths = columnWidths
 
-	// Set viewport height based on available height
-	if availableHeight > len(tm.table.rows) {
-		availableHeight = len(tm.table.rows)
-	}
+	// Use the full allocated height for this table. The viewport scrolls when
+	// there are more data rows than visible lines; do not shrink to row count
+	// (that breaks layout after loading results into an initially empty table).
 	if availableHeight < 1 {
 		availableHeight = 1
 	}
