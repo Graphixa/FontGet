@@ -13,10 +13,15 @@ import (
 
 var browseCmd = &cobra.Command{
 	Use:   "browse",
-	Short: "Interactive search and install fonts",
-	Long: `Browse the font catalog in the terminal: search, view details, open source pages, and install.
+	Short: "Interactive font catalog: search, filter by category, install or remove",
+	Long: `Browse the font catalog in the terminal: search, view details, open source pages, and install
+or remove fonts. Installation behavior matches fontget add (scope, force).
 
-Uses the same installation options as fontget add (scope, force).`,
+In the TUI, use Tab / Shift+Tab to cycle the category filter (All, then each category from your manifest,
+including custom sources). Type in the search box to narrow results; an empty search with a category
+shows all fonts in that category.
+
+Flags --scope (-s) and --force (-f) match fontget add (user/machine install scope; force reinstall).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting browse TUI")
 

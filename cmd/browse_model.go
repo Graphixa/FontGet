@@ -29,6 +29,14 @@ const (
 	browseSearchCardOuterMin   = 28
 	// Spaces inside the middle row after the left │ before the prompt (keep small so │ sits tight to >).
 	browseSearchInnerLeftPad = 1
+
+	// browseShowFullCatalogInitially fills the results table with every font (respecting the category
+	// filter) before the user types a search. Set false to keep the table empty until the first query.
+	browseShowFullCatalogInitially = true
+
+	// browseCatalogUsesSearchSortSettings: when true, empty-query browse catalog uses the same sort
+	// rules as search (user config, e.g. Search.EnablePopularitySort). When false, alphabetical only.
+	browseCatalogUsesSearchSortSettings = true
 )
 
 type searchTickMsg struct {
@@ -81,6 +89,10 @@ type browseModel struct {
 	installScope platform.InstallationScope
 	fontDir      string
 	force        bool
+
+	// Cached manifest categories (sorted); slot 0 = All, 1..n = browseCategoryNames[i-1].
+	browseCategoryNames []string
+	browseFilterSlot    int
 
 	modal *browseModalState
 
@@ -140,18 +152,22 @@ func newBrowseModel(
 	tm.SetFocus(false)
 
 	return &browseModel{
-		searchInput:    ti,
-		table:          tm,
-		repository:     repository,
-		fontManager:    fontManager,
-		installScope:   installScope,
-		fontDir:        fontDir,
-		force:          force,
-		tableViewportH: 8,
+		searchInput:         ti,
+		table:               tm,
+		repository:          repository,
+		fontManager:         fontManager,
+		installScope:        installScope,
+		fontDir:             fontDir,
+		force:               force,
+		browseCategoryNames: repository.GetAllCategories(),
+		tableViewportH:      8,
 	}, nil
 }
 
 func (m *browseModel) Init() tea.Cmd {
+	if browseShowFullCatalogInitially {
+		return tea.Batch(textinput.Blink, m.applySearch())
+	}
 	return textinput.Blink
 }
 
@@ -177,25 +193,7 @@ func (m *browseModel) setTableFocusFromResults() {
 	}
 }
 
-func (m *browseModel) applySearch() tea.Cmd {
-	q := strings.TrimSpace(m.searchInput.Value())
-	if q == "" {
-		m.results = nil
-		m.table.SetRows([][]string{})
-		m.dismissToastPopup()
-		m.setTableFocusFromResults()
-		return m.syncTableDimensions()
-	}
-
-	results, err := m.repository.SearchFonts(q, "")
-	if err != nil {
-		m.showToastPopup(ui.RenderError(err.Error()))
-		m.results = nil
-		m.table.SetRows([][]string{})
-		m.setTableFocusFromResults()
-		return m.syncTableDimensions()
-	}
-
+func (m *browseModel) browseApplyResultRows(results []repo.SearchResult) tea.Cmd {
 	m.results = results
 	rows := make([][]string, 0, len(results))
 	for _, r := range results {
@@ -214,6 +212,62 @@ func (m *browseModel) applySearch() tea.Cmd {
 	m.dismissToastPopup()
 	m.setTableFocusFromResults()
 	return m.syncTableDimensions()
+}
+
+func (m *browseModel) applySearch() tea.Cmd {
+	q := strings.TrimSpace(m.searchInput.Value())
+	category := m.browseSelectedCategory()
+	if q == "" {
+		if category == "" && !browseShowFullCatalogInitially {
+			m.results = nil
+			m.table.SetRows([][]string{})
+			m.dismissToastPopup()
+			m.setTableFocusFromResults()
+			return m.syncTableDimensions()
+		}
+		results, err := m.repository.ListCatalogFonts(category, browseCatalogUsesSearchSortSettings)
+		if err != nil {
+			m.showToastPopup(ui.RenderError(err.Error()))
+			m.results = nil
+			m.table.SetRows([][]string{})
+			m.setTableFocusFromResults()
+			return m.syncTableDimensions()
+		}
+		return m.browseApplyResultRows(results)
+	}
+
+	results, err := m.repository.SearchFonts(q, category)
+	if err != nil {
+		m.showToastPopup(ui.RenderError(err.Error()))
+		m.results = nil
+		m.table.SetRows([][]string{})
+		m.setTableFocusFromResults()
+		return m.syncTableDimensions()
+	}
+
+	return m.browseApplyResultRows(results)
+}
+
+func (m *browseModel) browseSelectedCategory() string {
+	if m.browseFilterSlot <= 0 || m.browseFilterSlot > len(m.browseCategoryNames) {
+		return ""
+	}
+	return m.browseCategoryNames[m.browseFilterSlot-1]
+}
+
+func (m *browseModel) browseFilterDisplayValue() string {
+	if m.browseFilterSlot <= 0 || m.browseFilterSlot > len(m.browseCategoryNames) {
+		return "All"
+	}
+	return m.browseCategoryNames[m.browseFilterSlot-1]
+}
+
+func (m *browseModel) cycleBrowseFilter(delta int) {
+	n := 1 + len(m.browseCategoryNames)
+	if n < 1 {
+		n = 1
+	}
+	m.browseFilterSlot = ((m.browseFilterSlot+delta)%n + n) % n
 }
 
 func (m *browseModel) lookupFontInfo(fontID string) (repo.FontInfo, bool) {
@@ -567,6 +621,54 @@ func (m *browseModel) searchCardView() string {
 	}, "\n")
 }
 
+// searchAndFilterRow places the search card and "Filter: …" side by side (or stacked when narrow).
+func (m *browseModel) searchAndFilterRow() string {
+	const (
+		gapSpaces = 4
+		filterMin = 12
+	)
+	card := m.searchCardView()
+	inner := m.contentInnerWidth()
+	cardW := lipgloss.Width(card)
+	gap := strings.Repeat(" ", gapSpaces)
+	gapW := lipgloss.Width(gap)
+	if inner < cardW+gapW+filterMin {
+		return card + "\n" + m.browseFilterLineView(inner)
+	}
+	avail := inner - cardW - gapW
+	if avail < filterMin {
+		avail = filterMin
+	}
+	filter := m.browseFilterBlockView(avail)
+	return lipgloss.JoinHorizontal(lipgloss.Center, card, gap, filter)
+}
+
+func (m *browseModel) browseFilterLineView(maxW int) string {
+	return ui.Text.Render(m.browseFilterStyledText(maxW))
+}
+
+func (m *browseModel) browseFilterBlockView(maxW int) string {
+	line := ui.Text.Render(m.browseFilterStyledText(maxW))
+	return lipgloss.NewStyle().Height(3).MaxWidth(maxW).AlignVertical(lipgloss.Center).Render(line)
+}
+
+func (m *browseModel) browseFilterStyledText(maxW int) string {
+	prefix := "Filter: "
+	val := m.browseFilterDisplayValue()
+	if maxW < 8 {
+		maxW = 8
+	}
+	room := maxW - lipgloss.Width(prefix)
+	if room < 3 {
+		room = 3
+	}
+	vis := val
+	if lipgloss.Width(val) > room {
+		vis = ansi.Truncate(val, room, "…")
+	}
+	return prefix + ui.TextBold.Render(vis)
+}
+
 // browseSearchTopRule renders: ╭─  Search  ───────────╮
 func browseSearchTopRule(outer int) string {
 	const prefix = "╭─  "
@@ -644,14 +746,16 @@ func (m *browseModel) helpLineView() string {
 	parts := []string{
 		ui.RenderKeyWithDescription("↑/↓", "Results"),
 		ui.RenderKeyWithDescription("Enter", "Details"),
-		ui.RenderKeyWithDescription("Esc", "Clear · Quit"),
+		ui.RenderKeyWithDescription("Esc", "Clear / Quit"),
+		ui.RenderKeyWithDescription("Tab", "Filter"),
+		ui.RenderKeyWithDescription("Shift+Tab", "Filter back"),
 	}
 	return "\n" + ui.Text.Render(strings.Join(parts, "  "))
 }
 
 func (m *browseModel) topSectionHeight() int {
 	title := ui.PageTitle.Render(browsePageTitle) + "\n\n"
-	search := browseApplyHorizontalMargins(m.searchCardView(), m.width, browseWindowHMargin)
+	search := browseApplyHorizontalMargins(m.searchAndFilterRow(), m.width, browseWindowHMargin)
 	return lipgloss.Height(title + search + "\n\n")
 }
 
@@ -792,6 +896,17 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
+		if k == "tab" {
+			m.cycleBrowseFilter(1)
+			cmd := m.applySearch()
+			return m, tea.Batch(cmd, textinput.Blink)
+		}
+		if k == "shift+tab" {
+			m.cycleBrowseFilter(-1)
+			cmd := m.applySearch()
+			return m, tea.Batch(cmd, textinput.Blink)
+		}
+
 		if len(m.results) > 0 && m.routesTableNav(k) {
 			if m.table != nil {
 				updated, tcmd := m.table.Update(msg)
@@ -831,7 +946,7 @@ func (m *browseModel) baseView() string {
 	}
 
 	title := ui.PageTitle.Render(browsePageTitle) + "\n\n"
-	body := m.searchCardView() + "\n\n" + m.tableAreaView() + m.helpLineView()
+	body := m.searchAndFilterRow() + "\n\n" + m.tableAreaView() + m.helpLineView()
 	margined := browseApplyHorizontalMargins(body, m.width, browseWindowHMargin)
 
 	// Do not apply Width() to the full layout: wrapping reflow breaks rounded

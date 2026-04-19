@@ -15,14 +15,14 @@ import (
 	"fontget/internal/ui"
 )
 
-// usePopularityScoring controls whether popularity is used in search scoring and sorting
-// This gets set from user config, defaults to true (popularity on)
-var usePopularityScoring = true
+// useConfiguredSearchSort mirrors Search.EnablePopularitySort from user config (see syncSearchSortFromConfig).
+// When false, search uses alphabetical-style ordering and omits popularity bonuses; when true, the
+// configured popularity-aware scoring and sort tie-breakers apply.
+var useConfiguredSearchSort = true
 
-// SetPopularityScoring sets the popularity scoring preference from user config
-func SetPopularityScoring() {
+func syncSearchSortFromConfig() {
 	userPrefs := config.GetUserPreferences()
-	usePopularityScoring = userPrefs.Search.EnablePopularitySort
+	useConfiguredSearchSort = userPrefs.Search.EnablePopularitySort
 }
 
 // SearchConfig contains all tunable parameters for the search algorithm
@@ -490,8 +490,8 @@ type Repository struct {
 
 // GetRepository returns a new Repository instance, showing spinner if sources need updating
 func GetRepository() (*Repository, error) {
-	// Set popularity scoring preference from user config
-	SetPopularityScoring()
+	// Match search sort/score behavior to user config (e.g. EnablePopularitySort).
+	syncSearchSortFromConfig()
 
 	// Check if sources should be refreshed
 	shouldRefresh, err := config.ShouldRefreshSources()
@@ -548,7 +548,7 @@ func GetRepository() (*Repository, error) {
 // GetRepositoryForShellCompletion returns a repository loaded from cache only.
 // It is used by shell completion (fontget __complete) and must not run spinners or refresh sources.
 func GetRepositoryForShellCompletion() (*Repository, error) {
-	SetPopularityScoring()
+	syncSearchSortFromConfig()
 	manifest, err := GetCachedManifest()
 	if err != nil {
 		return nil, err
@@ -558,8 +558,7 @@ func GetRepositoryForShellCompletion() (*Repository, error) {
 
 // GetRepositoryWithRefresh forces a refresh of sources and returns a new Repository instance
 func GetRepositoryWithRefresh() (*Repository, error) {
-	// Set popularity scoring preference from user config
-	SetPopularityScoring()
+	syncSearchSortFromConfig()
 
 	// Force refresh of sources with spinner
 	var manifest *FontManifest
@@ -587,16 +586,15 @@ func (r *Repository) GetManifest() (*FontManifest, error) {
 
 // SearchFonts searches for fonts matching the query using advanced search logic
 func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
-	// Load popularity preference from config each time
-	SetPopularityScoring()
-	return r.SearchFontsWithOptions(query, category, usePopularityScoring)
+	// Reload Search.* sort preferences from config (e.g. EnablePopularitySort).
+	syncSearchSortFromConfig()
+	return r.SearchFontsWithOptions(query, category)
 }
 
-// SearchFontsWithOptions searches for fonts matching the query using advanced search logic
-// with optional popularity scoring
-func (r *Repository) SearchFontsWithOptions(query string, category string, usePopularity bool) ([]SearchResult, error) {
-	// Update global popularity setting from config
-	SetPopularityScoring()
+// SearchFontsWithOptions searches for fonts matching the query using advanced search logic.
+// Sort and score behavior follows useConfiguredSearchSort (synced from config in this function).
+func (r *Repository) SearchFontsWithOptions(query string, category string) ([]SearchResult, error) {
+	syncSearchSortFromConfig()
 
 	// Early return: if query is empty and no category, return no results
 	// This prevents empty queries from matching all fonts
@@ -644,14 +642,32 @@ func (r *Repository) SearchFontsWithOptions(query string, category string, usePo
 	// Filter by category if specified
 	if category != "" {
 		results = r.filterByCategory(results, category)
-		// Sort by name for category-only searches (after filtering)
 		if query == "" {
-			sort.Slice(results, func(i, j int) bool {
-				return results[i].Name < results[j].Name
-			})
+			r.sortCatalogListing(results, true)
 		}
 	}
 
+	return results, nil
+}
+
+// ListCatalogFonts returns every font in the manifest, optionally filtered by category.
+// category empty means all fonts. useSearchSortSettings selects sortCatalogListing behavior (config
+// vs alphabetical); browse passes the UI toggle. Used when listing the full catalog without a query.
+func (r *Repository) ListCatalogFonts(category string, useSearchSortSettings bool) ([]SearchResult, error) {
+	syncSearchSortFromConfig()
+	var results []SearchResult
+	for sourceID, source := range r.manifest.Sources {
+		for id, font := range source.Fonts {
+			result := r.createSearchResult(id, font, sourceID, source.Name)
+			result.Score = 50
+			result.MatchType = "category-only"
+			results = append(results, result)
+		}
+	}
+	if category != "" {
+		results = r.filterByCategory(results, category)
+	}
+	r.sortCatalogListing(results, useSearchSortSettings)
 	return results, nil
 }
 
@@ -695,7 +711,7 @@ func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID stri
 	}
 
 	// Phase 3: Popularity - only if enabled and font has popularity
-	if usePopularityScoring && font.Popularity > 0 {
+	if useConfiguredSearchSort && font.Popularity > 0 {
 		// Apply full popularity bonus (no length adjustment here)
 		popularityBonus := float64(font.Popularity) / float64(config.PopularityDivisor)
 		score += int(popularityBonus)
@@ -715,6 +731,47 @@ func (r *Repository) createSearchResult(id string, font FontInfo, sourceID, sour
 		Categories: font.Categories,
 		Popularity: font.Popularity,
 	}
+}
+
+// sortCatalogListing orders empty-query catalog results. useSearchSortSettings false forces
+// alphabetical order (name, then source priority, then ID). When true, ordering follows
+// useConfiguredSearchSort (mirrors Search.EnablePopularitySort from config).
+func (r *Repository) sortCatalogListing(results []SearchResult, useSearchSortSettings bool) {
+	if !useSearchSortSettings {
+		sortCatalogAlphabetically(results)
+		return
+	}
+	syncSearchSortFromConfig()
+	sort.Slice(results, func(i, j int) bool {
+		if useConfiguredSearchSort {
+			if results[i].Popularity != results[j].Popularity {
+				return results[i].Popularity > results[j].Popularity
+			}
+		}
+		if results[i].Name != results[j].Name {
+			return results[i].Name < results[j].Name
+		}
+		pi := getSourcePriority(results[i].SourceName)
+		pj := getSourcePriority(results[j].SourceName)
+		if pi != pj {
+			return pi < pj
+		}
+		return results[i].ID < results[j].ID
+	})
+}
+
+func sortCatalogAlphabetically(results []SearchResult) {
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Name != results[j].Name {
+			return results[i].Name < results[j].Name
+		}
+		pi := getSourcePriority(results[i].SourceName)
+		pj := getSourcePriority(results[j].SourceName)
+		if pi != pj {
+			return pi < pj
+		}
+		return results[i].ID < results[j].ID
+	})
 }
 
 // sortResultsByScore sorts results by: Font Name Groups → Source Priority → Individual Score → Popularity
@@ -753,8 +810,8 @@ func (r *Repository) sortResultsByScore(results []SearchResult) {
 			return results[i].Score > results[j].Score
 		}
 
-		// 5. FINAL: Popularity (highest first) - ultimate tiebreaker (only if enabled)
-		if usePopularityScoring {
+		// 5. FINAL: Popularity (highest first) when Search.EnablePopularitySort is on (see useConfiguredSearchSort)
+		if useConfiguredSearchSort {
 			if results[i].Popularity != results[j].Popularity {
 				return results[i].Popularity > results[j].Popularity
 			}
