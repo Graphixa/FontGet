@@ -279,10 +279,10 @@ aur_sources:
     depends:
       - glibc
     prepare: |-
-      cd "${pkgname}_${pkgver}"
+      cd "${srcdir}"
       go mod download
     build: |-
-      cd "${pkgname}_${pkgver}"
+      cd "${srcdir}"
       export CGO_CPPFLAGS="${CPPFLAGS}"
       export CGO_CFLAGS="${CFLAGS}"
       export CGO_CXXFLAGS="${CXXFLAGS}"
@@ -290,6 +290,6 @@ aur_sources:
       export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
       go build -ldflags="-w -s -buildid='' -linkmode=external -X fontget/internal/version.Version=${pkgver}" -o fontget .
     package: |-
-      cd "${pkgname}_${pkgver}"
+      cd "${srcdir}"
       install -Dm755 ./fontget "${pkgdir}/usr/bin/fontget"
     commit_msg_template: "Update to {{ .Tag }}"
