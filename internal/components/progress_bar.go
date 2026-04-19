@@ -513,62 +513,58 @@ func (m ProgressBarModel) View() string {
 	return b.String()
 }
 
-// renderInlineProgressBar creates a compact progress bar for inline display
-func (m ProgressBarModel) renderInlineProgressBar() string {
-	percent := m.ProgressBar.Percent()
-
-	// Smaller width for inline display (15-20 chars)
-	barWidth := 15
-	if m.ProgressBar.Width < 30 {
-		// If terminal is narrow, make bar even smaller
-		barWidth = 10
+// InlineProgressBarView renders the same gradient block + percent label used by the CLI progress UI.
+// percent0to100 is clamped to [0, 100]; barCharWidth is the number of █/░ cells inside the brackets.
+func InlineProgressBarView(percent0to100 float64, barCharWidth int) string {
+	if barCharWidth < 1 {
+		barCharWidth = 1
 	}
+	p := percent0to100
+	if p < 0 {
+		p = 0
+	}
+	if p > 100 {
+		p = 100
+	}
+	filled := int(float64(barCharWidth) * (p / 100.0))
+	if filled > barCharWidth {
+		filled = barCharWidth
+	}
+	empty := barCharWidth - filled
 
-	// Calculate filled and empty portions
-	filled := int(float64(barWidth) * percent)
-	empty := barWidth - filled
-
-	// Get gradient colors
 	startColor, endColor := ui.GetProgressBarGradient()
-
-	// Build the progress bar manually with gradient colors
 	var barBuilder strings.Builder
-
-	// Filled portion with gradient
-	// Calculate gradient across the filled portion only (not the entire bar width)
 	for i := 0; i < filled; i++ {
-		// Calculate color interpolation for gradient effect
-		// Ratio should be based on position within the filled portion
 		var ratio float64
 		if filled > 1 {
 			ratio = float64(i) / float64(filled-1)
-		} else {
-			ratio = 0.0
 		}
-		// Clamp ratio to [0, 1]
 		if ratio > 1.0 {
 			ratio = 1.0
 		}
 		if ratio < 0.0 {
 			ratio = 0.0
 		}
-
-		// Use lipgloss to create gradient color
 		gradientColor := interpolateHexColor(startColor, endColor, ratio)
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(gradientColor))
 		barBuilder.WriteString(style.Render("█"))
 	}
-
-	// Empty portion
 	emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#6c7086")) // Overlay 0 - gray
 	for i := 0; i < empty; i++ {
 		barBuilder.WriteString(emptyStyle.Render("░"))
 	}
-
 	barVisual := barBuilder.String()
-	percentText := fmt.Sprintf("%.0f%%", percent*100)
-
+	percentText := fmt.Sprintf("%.0f%%", p)
 	return fmt.Sprintf("[%s] %s", barVisual, percentText)
+}
+
+// renderInlineProgressBar creates a compact progress bar for inline display
+func (m ProgressBarModel) renderInlineProgressBar() string {
+	barWidth := 15
+	if m.ProgressBar.Width < 30 {
+		barWidth = 10
+	}
+	return InlineProgressBarView(m.ProgressBar.Percent()*100, barWidth)
 }
 
 // interpolateHexColor interpolates between two hex colors

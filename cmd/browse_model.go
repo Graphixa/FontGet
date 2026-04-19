@@ -47,6 +47,8 @@ type uninstallFinishedMsg struct {
 	fontID string
 }
 
+type statusProgressTickMsg struct{}
+
 type browseModalState struct {
 	fontID  string
 	font    repo.FontInfo
@@ -56,6 +58,14 @@ type browseModalState struct {
 // browseToastPopup is a dismissible status message (Enter / Esc).
 type browseToastPopup struct {
 	body string
+}
+
+// browseResultModalState is an acknowledgement dialog after install/remove (RenderDialog + OK).
+type browseResultModalState struct {
+	borderTitle string
+	errorTitle  bool
+	body        string
+	buttons     *components.ButtonGroup
 }
 
 type browseModel struct {
@@ -74,6 +84,8 @@ type browseModel struct {
 
 	modal *browseModalState
 
+	resultModal *browseResultModalState
+
 	toastPopup *browseToastPopup
 
 	installing           bool
@@ -83,6 +95,9 @@ type browseModel struct {
 	removing            bool
 	removingFontName    string
 	removingSourceLabel string
+
+	// Indeterminate-style progress (0–100) for install/remove status overlay.
+	statusProgress float64
 
 	debounceGen int
 
@@ -296,8 +311,119 @@ func (m *browseModel) closeModal() {
 	m.modal = nil
 }
 
+func browseNormalizeSourceLabel(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return shared.PlaceholderNA
+	}
+	return s
+}
+
+func browseResultFromInstall(fontName, source string, msg installFinishedMsg) (title string, errorTitle bool, body string) {
+	fontName = strings.TrimSpace(fontName)
+	if fontName == "" {
+		fontName = shared.PlaceholderNA
+	}
+	source = browseNormalizeSourceLabel(source)
+	if msg.err != nil {
+		return "Error", true, ui.RenderError(msg.err.Error())
+	}
+	if msg.result == nil {
+		return "Error", true, ui.RenderError("Operation failed.")
+	}
+	switch msg.result.Status {
+	case InstallStatusCompleted:
+		line := fmt.Sprintf("'%s' successfully installed from %s.", fontName, source)
+		return "Installed", false, ui.Text.Render(line)
+	case InstallStatusSkipped:
+		return "Skipped", false, ui.InfoText.Render(msg.result.Message)
+	case InstallStatusFailed:
+		errText := msg.result.Message
+		if len(msg.result.Errors) > 0 {
+			errText = msg.result.Errors[0]
+		}
+		return "Error", true, ui.RenderError(errText)
+	default:
+		return "Error", true, ui.InfoText.Render(msg.result.Message)
+	}
+}
+
+func browseResultFromUninstall(fontName, source string, msg uninstallFinishedMsg) (title string, errorTitle bool, body string) {
+	fontName = strings.TrimSpace(fontName)
+	if fontName == "" {
+		fontName = shared.PlaceholderNA
+	}
+	source = browseNormalizeSourceLabel(source)
+	if msg.err != nil {
+		return "Error", true, ui.RenderError(msg.err.Error())
+	}
+	if msg.result == nil {
+		return "Error", true, ui.RenderError("Operation failed.")
+	}
+	switch msg.result.Status {
+	case StatusCompleted:
+		line := fmt.Sprintf("'%s' successfully removed from %s.", fontName, source)
+		return "Uninstalled", false, ui.Text.Render(line)
+	case StatusSkipped:
+		return "Skipped", false, ui.InfoText.Render(msg.result.Message)
+	case StatusFailed:
+		errText := msg.result.Message
+		if len(msg.result.Errors) > 0 {
+			errText = msg.result.Errors[0]
+		}
+		return "Error", true, ui.RenderError(errText)
+	default:
+		return "Error", true, ui.InfoText.Render(msg.result.Message)
+	}
+}
+
+func (m *browseModel) openResultModal(title string, errorTitle bool, body string) {
+	bg := components.NewButtonGroup([]string{"OK"}, 0)
+	bg.SetFocus(true)
+	m.resultModal = &browseResultModalState{
+		borderTitle: title,
+		errorTitle:  errorTitle,
+		body:        body,
+		buttons:     bg,
+	}
+}
+
+func (m *browseModel) closeResultModal() {
+	m.resultModal = nil
+}
+
+func (m *browseModel) handleResultModalUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.resultModal == nil {
+		return m, nil
+	}
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		k := msg.String()
+		if k == "esc" || k == "enter" || k == " " {
+			m.closeResultModal()
+			cmd := m.syncTableDimensions()
+			return m, cmd
+		}
+		action := m.resultModal.buttons.HandleKey(k)
+		if action == "ok" {
+			m.closeResultModal()
+			cmd := m.syncTableDimensions()
+			return m, cmd
+		}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *browseModel) statusProgressTick() tea.Cmd {
+	return tea.Tick(90*time.Millisecond, func(time.Time) tea.Msg {
+		return statusProgressTickMsg{}
+	})
+}
+
 func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.installing = true
+	m.statusProgress = 0
 	m.installPopupFontName = fontName
 	if sourceLabel == "" {
 		sourceLabel = shared.PlaceholderNA
@@ -327,6 +453,7 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 
 func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.removing = true
+	m.statusProgress = 0
 	m.removingFontName = fontName
 	if sourceLabel == "" {
 		sourceLabel = shared.PlaceholderNA
@@ -363,16 +490,15 @@ func (m *browseModel) handleModalUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 			name := m.modal.font.Name
 			src := shared.GetSourceNameFromID(id)
 			m.closeModal()
-			return m, m.startInstallByID(id, name, src)
+			return m, tea.Batch(m.startInstallByID(id, name, src), m.statusProgressTick())
 		case "uninstall":
 			id := m.modal.fontID
 			name := m.modal.font.Name
 			src := shared.GetSourceNameFromID(id)
 			m.closeModal()
-			return m, m.startUninstallByID(id, name, src)
+			return m, tea.Batch(m.startUninstallByID(id, name, src), m.statusProgressTick())
 		case "view online":
 			url := strings.TrimSpace(m.modal.font.SourceURL)
-			m.closeModal()
 			if url == "" {
 				m.showToastPopup(ui.RenderError("No source URL for this font"))
 				return m, nil
@@ -381,7 +507,6 @@ func (m *browseModel) handleModalUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showToastPopup(ui.RenderError(err.Error()))
 				return m, nil
 			}
-			m.showToastPopup(ui.InfoText.Render("Opened in browser"))
 			return m, nil
 		case "close":
 			m.closeModal()
@@ -582,65 +707,46 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case searchTickMsg:
-		if msg.gen != m.debounceGen || m.installing || m.removing || m.modal != nil || m.toastPopup != nil {
+		if msg.gen != m.debounceGen || m.installing || m.removing || m.modal != nil || m.resultModal != nil || m.toastPopup != nil {
 			return m, nil
 		}
 		cmd := m.applySearch()
 		return m, cmd
 
+	case statusProgressTickMsg:
+		if !m.installing && !m.removing {
+			return m, nil
+		}
+		if m.statusProgress >= 92 {
+			return m, nil
+		}
+		m.statusProgress += 3.5
+		if m.statusProgress > 92 {
+			m.statusProgress = 92
+		}
+		return m, m.statusProgressTick()
+
 	case uninstallFinishedMsg:
+		fontName := m.removingFontName
+		source := m.removingSourceLabel
 		m.removing = false
 		m.removingFontName = ""
 		m.removingSourceLabel = ""
-		if msg.err != nil {
-			m.showToastPopup(ui.RenderError(msg.err.Error()))
-			cmd := m.syncTableDimensions()
-			return m, cmd
-		}
-		if msg.result != nil {
-			switch msg.result.Status {
-			case StatusCompleted:
-				m.showToastPopup(ui.SuccessText.Render(msg.result.Message))
-			case StatusSkipped:
-				m.showToastPopup(ui.InfoText.Render(msg.result.Message))
-			case StatusFailed:
-				errText := msg.result.Message
-				if len(msg.result.Errors) > 0 {
-					errText = msg.result.Errors[0]
-				}
-				m.showToastPopup(ui.RenderError(errText))
-			default:
-				m.showToastPopup(ui.InfoText.Render(msg.result.Message))
-			}
-		}
+		m.statusProgress = 0
+		title, errTitle, body := browseResultFromUninstall(fontName, source, msg)
+		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
 		return m, cmd
 
 	case installFinishedMsg:
+		fontName := m.installPopupFontName
+		source := m.installPopupSource
 		m.installing = false
 		m.installPopupFontName = ""
 		m.installPopupSource = ""
-		if msg.err != nil {
-			m.showToastPopup(ui.RenderError(msg.err.Error()))
-			cmd := m.syncTableDimensions()
-			return m, cmd
-		}
-		if msg.result != nil {
-			switch msg.result.Status {
-			case InstallStatusCompleted:
-				m.showToastPopup(ui.SuccessText.Render(msg.result.Message))
-			case InstallStatusSkipped:
-				m.showToastPopup(ui.InfoText.Render(msg.result.Message))
-			case InstallStatusFailed:
-				errText := msg.result.Message
-				if len(msg.result.Errors) > 0 {
-					errText = msg.result.Errors[0]
-				}
-				m.showToastPopup(ui.RenderError(errText))
-			default:
-				m.showToastPopup(ui.InfoText.Render(msg.result.Message))
-			}
-		}
+		m.statusProgress = 0
+		title, errTitle, body := browseResultFromInstall(fontName, source, msg)
+		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
 		return m, cmd
 	}
@@ -650,6 +756,10 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		return m, nil
+	}
+
+	if m.resultModal != nil {
+		return m.handleResultModalUpdate(msg)
 	}
 
 	if m.modal != nil {
@@ -748,6 +858,24 @@ func (m *browseModel) modalView() string {
 	})
 }
 
+func (m *browseModel) resultModalView() string {
+	if m.resultModal == nil {
+		return ""
+	}
+	maxW := m.contentInnerWidth()
+	if maxW <= 0 {
+		maxW = components.DefaultDialogMaxWidth
+	}
+	if maxW > components.DefaultDialogMaxWidth {
+		maxW = components.DefaultDialogMaxWidth
+	}
+	return components.RenderDialog(m.resultModal.borderTitle, m.resultModal.body, m.resultModal.buttons, components.DialogOpts{
+		MaxWidth:   maxW,
+		MinWidth:   44,
+		ErrorTitle: m.resultModal.errorTitle,
+	})
+}
+
 func (m *browseModel) View() string {
 	view := m.baseView()
 	if m.installing {
@@ -758,7 +886,7 @@ func (m *browseModel) View() string {
 		if maxOuter > components.DefaultStatusPopupMaxOuter {
 			maxOuter = components.DefaultStatusPopupMaxOuter
 		}
-		popup := components.RenderStatusPopup("Installing", m.installPopupFontName, m.installPopupSource, maxOuter)
+		popup := components.RenderStatusPopup("Installing", m.installPopupFontName, m.installPopupSource, m.statusProgress, maxOuter)
 		view = components.Composite(popup, view, components.Center, components.Center, 0, 0)
 	}
 	if m.removing {
@@ -769,7 +897,7 @@ func (m *browseModel) View() string {
 		if maxOuter > components.DefaultStatusPopupMaxOuter {
 			maxOuter = components.DefaultStatusPopupMaxOuter
 		}
-		popup := components.RenderStatusPopup("Removing", m.removingFontName, m.removingSourceLabel, maxOuter)
+		popup := components.RenderStatusPopup("Removing", m.removingFontName, m.removingSourceLabel, m.statusProgress, maxOuter)
 		view = components.Composite(popup, view, components.Center, components.Center, 0, 0)
 	}
 	if m.toastPopup != nil {
@@ -782,6 +910,12 @@ func (m *browseModel) View() string {
 		fg := m.modalView()
 		if fg != "" {
 			view = components.Composite(fg, view, components.Center, components.Center, 0, 0)
+		}
+	}
+	if m.resultModal != nil {
+		rg := m.resultModalView()
+		if rg != "" {
+			view = components.Composite(rg, view, components.Center, components.Center, 0, 0)
 		}
 	}
 	return view

@@ -13,61 +13,58 @@ import (
 // DefaultStatusPopupMaxOuter is the maximum total width for RenderStatusPopup.
 const DefaultStatusPopupMaxOuter = 72
 
-// RenderStatusPopup draws a small centered-style box, e.g. Installing / Uninstalling.
-// phase is shown in the top rule (e.g. "Installing"); the middle line is
-// 'FontName' from 'SourceName' using ui.Text.
-func RenderStatusPopup(phase, fontName, sourceName string, maxOuter int) string {
-	if maxOuter <= 0 {
-		maxOuter = DefaultStatusPopupMaxOuter
-	}
+// RenderStatusPopup draws a modal shell matching the browse dialog (DialogModal padding, integrated
+// CardTitle-style top border, one-cell outer margin) with a font line and gradient progress bar.
+func RenderStatusPopup(phase, fontName, sourceName string, progressPercent float64, maxOuter int) string {
 	mid := fmt.Sprintf("'%s' from '%s'", fontName, sourceName)
 	midStyled := ui.Text.Render(mid)
-	innerNeed := lipgloss.Width(midStyled)
-	titleMin := dialogMinOuterForTitle(phase)
-	outer := max(titleMin, innerNeed+2, 32)
-	if outer > maxOuter {
-		outer = maxOuter
-	}
-	if outer < titleMin && titleMin <= maxOuter {
-		outer = titleMin
-	}
-
-	var b strings.Builder
-	b.WriteString(dialogBorderTop(outer, phase))
-	b.WriteByte('\n')
-	inner := outer - 2
-	line := midStyled
-	if lipgloss.Width(line) > inner {
-		line = ansi.Truncate(line, inner, "")
-	}
-	for lipgloss.Width(line) < inner {
-		line += " "
-	}
-	b.WriteString("│" + line + "│")
-	b.WriteByte('\n')
-	b.WriteString(dialogBorderBottom(outer))
-	return b.String()
+	return renderStatusPopupShell(phase, midStyled, progressPercent, maxOuter)
 }
 
 // RenderStatusPopupPlain is like RenderStatusPopup but with a single custom middle line (already styled if needed).
-func RenderStatusPopupPlain(phase, middleLine string, maxOuter int) string {
+// If progressPercent is negative, the progress bar row is omitted.
+func RenderStatusPopupPlain(phase, middleLine string, progressPercent float64, maxOuter int) string {
+	return renderStatusPopupShell(phase, middleLine, progressPercent, maxOuter)
+}
+
+func renderStatusPopupShell(phase, midStyled string, progressPercent float64, maxOuter int) string {
 	if maxOuter <= 0 {
 		maxOuter = DefaultStatusPopupMaxOuter
 	}
-	innerNeed := lipgloss.Width(middleLine)
-	titleMin := dialogMinOuterForTitle(phase)
-	outer := max(titleMin, innerNeed+2, 32)
-	if outer > maxOuter {
-		outer = maxOuter
+	outer := maxOuter
+	inner := CardInnerContentWidth(outer, 2)
+
+	line1 := ansi.Truncate(midStyled, inner, dialogTruncateTail)
+	line1 = padLineToInnerWidth(line1, inner)
+
+	barW := inner - 14
+	if barW < 6 {
+		barW = 6
 	}
-	if outer < titleMin && titleMin <= maxOuter {
-		outer = titleMin
+	if barW > 28 {
+		barW = 28
 	}
-	var b strings.Builder
-	b.WriteString(dialogBorderTop(outer, phase))
-	b.WriteByte('\n')
-	b.WriteString(dialogMiddleLine(outer, middleLine))
-	b.WriteByte('\n')
-	b.WriteString(dialogBorderBottom(outer))
-	return b.String()
+	var innerContent string
+	if progressPercent >= 0 {
+		barLine := InlineProgressBarView(progressPercent, barW)
+		barLine = ansi.Truncate(barLine, inner, dialogTruncateTail)
+		barLine = padLineToInnerWidth(barLine, inner)
+		blank := padLineToInnerWidth("", inner)
+		innerContent = strings.Join([]string{line1, blank, barLine}, "\n")
+	} else {
+		innerContent = line1
+	}
+
+	rendered := ui.DialogModal.Copy().Width(outer).Render(innerContent)
+	lines := strings.Split(rendered, "\n")
+	if len(lines) == 0 {
+		return lipgloss.NewStyle().Margin(1).Render(rendered)
+	}
+	tw := lipgloss.Width(lines[len(lines)-1])
+	if tw <= 0 {
+		tw = outer
+	}
+	lines[0] = IntegratedRoundedTopBorderLine(tw, phase)
+	out := strings.Join(lines, "\n")
+	return lipgloss.NewStyle().Margin(1).Render(out)
 }

@@ -128,6 +128,45 @@ func IntegratedRoundedTopBorderLine(totalWidth int, titlePlain string) string {
 	return styledTopLeft + styledTitleSection + styledTopRight
 }
 
+// IntegratedRoundedTopBorderLineError is like IntegratedRoundedTopBorderLine but uses ErrorText for the title
+// segment (e.g. result dialogs titled "Error").
+func IntegratedRoundedTopBorderLineError(totalWidth int, titlePlain string) string {
+	if totalWidth <= 0 {
+		totalWidth = 80
+	}
+	titlePlain = fitTitlePlainForIntegratedBorder(totalWidth, strings.TrimSpace(titlePlain))
+	styledTitle := ui.ErrorText.Render(titlePlain)
+
+	titleSectionWidth := lipgloss.Width("─" + " " + titlePlain + " " + "─")
+	rightWidth := totalWidth - 2 - titleSectionWidth
+	if rightWidth < 0 {
+		rightWidth = 0
+	}
+
+	topLeft := "╭"
+	topRight := strings.Repeat("─", rightWidth) + "╮"
+
+	var borderColor lipgloss.TerminalColor
+	if ui.CardBorderColorStr != "" {
+		borderColor = lipgloss.Color(ui.CardBorderColorStr)
+	} else {
+		colors := ui.GetCurrentColors()
+		if colors != nil && colors.Placeholders != "" {
+			borderColor = lipgloss.Color(colors.Placeholders)
+		} else {
+			borderColor = lipgloss.NoColor{}
+		}
+	}
+
+	styledTopLeft := lipgloss.NewStyle().Foreground(borderColor).Render(topLeft)
+	styledTopRight := lipgloss.NewStyle().Foreground(borderColor).Render(topRight)
+	dashStyle := lipgloss.NewStyle().Foreground(borderColor)
+	styledDashes := dashStyle.Render("─")
+	styledTitleSection := styledDashes + " " + styledTitle + " " + styledDashes
+
+	return styledTopLeft + styledTitleSection + styledTopRight
+}
+
 // Render renders a single card with integrated title
 func (c Card) Render() string {
 	// Create the content with proper padding

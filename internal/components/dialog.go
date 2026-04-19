@@ -21,6 +21,8 @@ type DialogOpts struct {
 	MaxWidth int
 	MinWidth int
 	Width    int // If > 0, use this width (still capped by MaxWidth).
+	// ErrorTitle draws the integrated border title with ErrorText instead of CardTitle (e.g. "Error").
+	ErrorTitle bool
 }
 
 // RenderDialog wraps title, body, and optional buttons in ui.DialogModal (theme border, no shell background).
@@ -84,7 +86,11 @@ func RenderDialog(title string, body string, buttons *ButtonGroup, opts DialogOp
 			if tw <= 0 {
 				tw = outer
 			}
-			lines[0] = IntegratedRoundedTopBorderLine(tw, title)
+			if opts.ErrorTitle {
+				lines[0] = IntegratedRoundedTopBorderLineError(tw, title)
+			} else {
+				lines[0] = IntegratedRoundedTopBorderLine(tw, title)
+			}
 			out = strings.Join(lines, "\n")
 		}
 	}
