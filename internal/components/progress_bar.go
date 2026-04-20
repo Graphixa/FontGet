@@ -437,13 +437,14 @@ func (m ProgressBarModel) View() string {
 				if idx := strings.Index(errorMsg, " could"); idx > 0 {
 					errorMsg = errorMsg[idx+1:] // Keep the space before "could"
 				}
-				// Try to get first sentence (up to period), or take up to 120 chars if no period
-				if idx := strings.Index(errorMsg, "."); idx > 0 {
+				// Try to get first sentence (up to ". "), but do NOT truncate on bare "." since that
+				// breaks URLs (e.g. "https://fonts.google.com/specimen/Roboto" -> "https://www").
+				if idx := strings.Index(errorMsg, ". "); idx > 0 {
 					errorMsg = errorMsg[:idx]
-				} else if len(errorMsg) > 120 {
+				} else if len(errorMsg) > 220 {
 					// Only truncate if extremely long (120+ chars), and try to break at word boundary
-					errorMsg = errorMsg[:120]
-					if lastSpace := strings.LastIndex(errorMsg, " "); lastSpace > 100 {
+					errorMsg = errorMsg[:220]
+					if lastSpace := strings.LastIndex(errorMsg, " "); lastSpace > 180 {
 						errorMsg = errorMsg[:lastSpace]
 					}
 				}

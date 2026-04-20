@@ -5,15 +5,22 @@ import (
 	"encoding/hex"
 	"fmt"
 	"fontget/internal/config"
+	"fontget/internal/logging"
 	"fontget/internal/network"
+	"fontget/internal/output"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 )
+
+// Use a mainstream Windows Chrome UA by default. Some WAFs are more permissive to Windows+Chrome
+// than macOS or non-browser user agents.
+const browserLikeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
 
 // FetchURLContent fetches content from a URL with cross-platform compatibility
 func FetchURLContent(url string) (string, error) {
@@ -61,12 +68,18 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 		return "", fmt.Errorf("failed to create target directory: %w", err)
 	}
 
+	// Compute target path early so we can fall back to alternate download methods.
+	targetPath := filepath.Join(targetDir, font.Path)
+
 	// Create HTTP request
 	req, err := http.NewRequest("GET", font.DownloadURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("User-Agent", "fontget-cli")
+	// Some upstreams will respond with WAF/bot challenges for non-browser clients.
+	// Use a browser-like UA to reduce false bot detection.
+	req.Header.Set("User-Agent", browserLikeUserAgent)
+	req.Header.Set("Accept", "*/*")
 
 	// Download file
 	appConfig := config.GetUserPreferences()
@@ -89,6 +102,48 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// Bot/WAF challenge: optionally retry using external tools (capability-probed).
+		if network.IsBotChallenge(resp) {
+			host := font.DownloadURL
+			if u, parseErr := url.Parse(font.DownloadURL); parseErr == nil && u.Host != "" {
+				host = u.Host
+			}
+			logging.GetLogger().Info("Download: HTTP %d bot/WAF challenge from host %s", resp.StatusCode, host)
+
+			wafAction := network.HeaderValueFold(resp.Header, "x-amzn-waf-action")
+			output.GetDebug().State("DownloadFont: IsBotChallenge=true status=%d x-amzn-waf-action=%q", resp.StatusCode, wafAction)
+
+			if !appConfig.Network.EnableExternalDownloadFallback {
+				logging.GetLogger().Info("External download fallback disabled (Network.EnableExternalDownloadFallback=false); not retrying with external tools")
+				output.GetVerbose().Warning("Upstream returned HTTP %d (bot/WAF challenge). External download fallback is disabled in config.", resp.StatusCode)
+				output.GetDebug().State("DownloadFont: skipping DownloadWithFallbacks (EnableExternalDownloadFallback=false)")
+				return "", fmt.Errorf("HTTP %d (blocked by upstream challenge): %s", resp.StatusCode, font.DownloadURL)
+			}
+
+			output.GetVerbose().Info("Upstream returned HTTP %d (bot/WAF challenge). Retrying with external download tools if available.", resp.StatusCode)
+
+			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
+				UserAgent: browserLikeUserAgent,
+				Headers: map[string]string{
+					"Accept": "*/*",
+				},
+			})
+			for _, step := range rep.Steps {
+				output.GetDebug().State("DownloadFont fallback step: tool=%s path=%s result=%s detail=%q", step.Tool, step.Path, step.Result, step.Detail)
+			}
+
+			if fbErr == nil {
+				toolName, toolPath := rep.UsedTool()
+				logging.GetLogger().Info("External download succeeded using %s (%s)", toolName, toolPath)
+				output.GetVerbose().Info("Download completed using %s after HTTP %d challenge.", toolName, resp.StatusCode)
+				return targetPath, nil
+			}
+
+			logging.GetLogger().Error("External download fallback failed for %s: %v", font.DownloadURL, fbErr)
+			output.GetVerbose().Error("External download tools did not succeed after HTTP %d challenge. Use --debug for per-tool details.", resp.StatusCode)
+			output.GetDebug().Error("DownloadFont: DownloadWithFallbacks failed: %v", fbErr)
+			return "", fmt.Errorf("HTTP %d (blocked by upstream challenge): %s", resp.StatusCode, font.DownloadURL)
+		}
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, font.DownloadURL)
 	}
 
@@ -99,7 +154,6 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 	defer stallReader.Close()
 
 	// Create target file
-	targetPath := filepath.Join(targetDir, font.Path)
 	file, err := os.Create(targetPath)
 	if err != nil {
 		return "", fmt.Errorf("failed to create file: %w", err)
