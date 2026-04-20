@@ -34,6 +34,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+
       - name: Run tests
         run: go test ./...
 
