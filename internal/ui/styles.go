@@ -191,7 +191,6 @@ var (
 	// Usage: components.RenderDialog — interior uses CardTitle, FormLabel, Text, FormatTerminalURL; no Background on the shell.
 	// Colors: Set by InitStyles() from theme
 	DialogModal = lipgloss.NewStyle()
-
 )
 
 // ============================================================================
@@ -409,11 +408,9 @@ func RenderInfo(message string) string {
 // THEME-AWARE STYLE INITIALIZATION
 // ============================================================================
 
-// getColorOrNoColor returns a TerminalColor that lipgloss can use
-// If color string is empty, returns lipgloss.NoColor{} to use terminal defaults
-// Otherwise returns lipgloss.Color(color)
-// This is used for the "system" theme which has empty color strings
-func getColorOrNoColor(color string) lipgloss.TerminalColor {
+// ColorOrNoColor returns a TerminalColor for lipgloss Foreground/Background/BorderForeground.
+// Empty color uses terminal defaults (system theme); otherwise parses as lipgloss.Color(hex).
+func ColorOrNoColor(color string) lipgloss.TerminalColor {
 	if color == "" {
 		return lipgloss.NoColor{}
 	}
@@ -553,56 +550,56 @@ func InitStyles() error {
 	// PAGE STRUCTURE (no background - uses terminal default)
 	PageTitle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(getColorOrNoColor(pageTitleText))
+		Foreground(ColorOrNoColor(pageTitleText))
 
 	// MESSAGE STYLES
 	InfoText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(primary))
+		Foreground(ColorOrNoColor(primary))
 
 	SecondaryText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(secondary))
+		Foreground(ColorOrNoColor(secondary))
 
 	// QueryText - User input values (search queries, filter terms, user-provided values)
 	QueryText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(primary))
+		Foreground(ColorOrNoColor(primary))
 
 	WarningText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(warning))
+		Foreground(ColorOrNoColor(warning))
 
 	ErrorText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(errColor))
+		Foreground(ColorOrNoColor(errColor))
 
 	SuccessText = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(success))
+		Foreground(ColorOrNoColor(success))
 
 	// TABLE COMPONENT
 	TableSourceName = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(secondary))
+		Foreground(ColorOrNoColor(secondary))
 
 	// TableRowSelected uses ButtonSelected pattern: invert colors for contrast
 	TableRowSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(buttonBg)).
-		Background(getColorOrNoColor(buttonFg)).
+		Foreground(ColorOrNoColor(buttonBg)).
+		Background(ColorOrNoColor(buttonFg)).
 		Bold(true)
 	TableRowSelected = applySystemThemeFallback(TableRowSelected, buttonBg, buttonFg)
 
 	// FORM COMPONENT
 	FormLabel = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(secondary)).
+		Foreground(ColorOrNoColor(secondary)).
 		Bold(true)
 
 	FormInput = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(components))
+		Foreground(ColorOrNoColor(components))
 
 	FormPlaceholder = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(placeholders))
+		Foreground(ColorOrNoColor(placeholders))
 
 	FormReadOnly = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(placeholders))
+		Foreground(ColorOrNoColor(placeholders))
 
 	// COMMAND COMPONENT - optional background via commandKeyAllowBG (see const)
 	CommandKey = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(commandKeyText)).
+		Foreground(ColorOrNoColor(commandKeyText)).
 		Bold(true)
 	if commandKeyAllowBG != 0 {
 		CommandKey = CommandKey.
@@ -612,18 +609,18 @@ func InitStyles() error {
 
 	// CARD COMPONENT (card title has no background - uses terminal default)
 	CardTitle = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(cardTitleText)).
+		Foreground(ColorOrNoColor(cardTitleText)).
 		Bold(true)
 
 	CardLabel = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(cardLabel))
+		Foreground(ColorOrNoColor(cardLabel))
 
 	URLLink = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(primary)).
+		Foreground(ColorOrNoColor(primary)).
 		Underline(true)
 
 	CardBorder = lipgloss.NewStyle().
-		BorderForeground(getColorOrNoColor(cardBorder)).
+		BorderForeground(ColorOrNoColor(cardBorder)).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderTop(true).
 		BorderBottom(true).
@@ -633,7 +630,7 @@ func InitStyles() error {
 	CardBorderColorStr = cardBorder
 
 	DialogModal = lipgloss.NewStyle().
-		BorderForeground(getColorOrNoColor(cardBorder)).
+		BorderForeground(ColorOrNoColor(cardBorder)).
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderTop(true).
 		BorderBottom(true).
@@ -643,43 +640,43 @@ func InitStyles() error {
 
 	// BUTTON COMPONENT
 	ButtonNormal = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(buttonFg)).
+		Foreground(ColorOrNoColor(buttonFg)).
 		Bold(true)
 
 	ButtonSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(buttonBg)).
-		Background(getColorOrNoColor(buttonFg)).
+		Foreground(ColorOrNoColor(buttonBg)).
+		Background(ColorOrNoColor(buttonFg)).
 		Bold(true)
 	ButtonSelected = applySystemThemeFallback(ButtonSelected, buttonBg, buttonFg)
 
 	// CHECKBOX COMPONENT
 	CheckboxChecked = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(checkboxChecked)).
+		Foreground(ColorOrNoColor(checkboxChecked)).
 		Bold(true)
 
 	CheckboxUnchecked = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(checkboxUnchecked))
+		Foreground(ColorOrNoColor(checkboxUnchecked))
 
 	CheckboxItemSelected = lipgloss.NewStyle().
-		Background(getColorOrNoColor(base))
+		Background(ColorOrNoColor(base))
 
 	Cursor = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(primary)).
+		Foreground(ColorOrNoColor(primary)).
 		Bold(true)
 
 	// SWITCH COMPONENT (unified - no left/right distinction)
 	SwitchNormal = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(switchFg)).
+		Foreground(ColorOrNoColor(switchFg)).
 		Bold(true)
 
 	SwitchSelected = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(switchBg)).
-		Background(getColorOrNoColor(switchFg)).
+		Foreground(ColorOrNoColor(switchBg)).
+		Background(ColorOrNoColor(switchFg)).
 		Bold(true)
 	SwitchSelected = applySystemThemeFallback(SwitchSelected, switchBg, switchFg)
 
 	SwitchSeparator = lipgloss.NewStyle().
-		Foreground(getColorOrNoColor(switchFg))
+		Foreground(ColorOrNoColor(switchFg))
 
 	// SPINNER COMPONENT
 	SpinnerColor = spinnerNormal

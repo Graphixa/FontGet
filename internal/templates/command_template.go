@@ -100,7 +100,6 @@ usage: fontget command [<options>]`,
 		// Log parameters (always log to file)
 		fontgetCmd.GetLogger().Info("Command parameters - Arg: %s, Flag: %s", argValue, flagValue)
 
-		// Debug-level information for developers
 		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Print styled title using modern UI components (if needed)

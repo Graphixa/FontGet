@@ -1,9 +1,3 @@
-// Package shared provides general-purpose, domain-agnostic utilities.
-//
-// This file contains general-purpose file utilities that can be used anywhere.
-// These functions are pure utilities with no CLI dependencies and can be used by
-// commands, tests, or other internal packages.
-
 package shared
 
 import (
@@ -12,8 +6,8 @@ import (
 	"strings"
 )
 
-// FormatFileSize formats bytes into human-readable format (KB, MB).
-// This is a general utility function that can be used anywhere file sizes need to be displayed.
+// FormatFileSize formats bytes for general display (B / KB / MB at 1024 base).
+// cmd/sources.go also defines formatFileSize (full KMGTPE range for cache sizes); outputs differ intentionally—unify only with tests.
 func FormatFileSize(bytes int64) string {
 	if bytes == 0 {
 		return ""

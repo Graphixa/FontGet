@@ -179,7 +179,7 @@ func RenderStaticTable(config TableConfig) string {
 		}
 		headerText, _ := formatCell(col.Header, columnWidths[i], align, col.Truncatable)
 		// Apply style with width constraint to ensure proper formatting
-		headerStyle := ui.TableHeader.Copy().Width(columnWidths[i]).MaxWidth(columnWidths[i])
+		headerStyle := ui.TableHeader.Width(columnWidths[i]).MaxWidth(columnWidths[i])
 		styledHeader := headerStyle.Render(headerText)
 		headerCells = append(headerCells, styledHeader)
 	}
@@ -228,9 +228,9 @@ func RenderStaticTable(config TableConfig) string {
 func styleCell(formattedCell string, width int, isFirstColumn bool) string {
 	var cellStyle lipgloss.Style
 	if isFirstColumn {
-		cellStyle = ui.TableSourceName.Copy().Width(width).MaxWidth(width)
+		cellStyle = ui.TableSourceName.Width(width).MaxWidth(width)
 	} else {
-		cellStyle = ui.Text.Copy().Width(width).MaxWidth(width)
+		cellStyle = ui.Text.Width(width).MaxWidth(width)
 	}
 	return cellStyle.Render(formattedCell)
 }

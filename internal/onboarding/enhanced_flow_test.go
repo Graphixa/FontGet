@@ -174,7 +174,7 @@ func TestEnhancedOnboardingModel_Update(t *testing.T) {
 	// Test quit key (ctrl+c)
 	model = NewEnhancedOnboardingModel()
 	quitMsg := tea.KeyMsg{Type: tea.KeyCtrlC}
-	updatedModel, cmd = model.Update(quitMsg)
+	updatedModel, _ = model.Update(quitMsg)
 
 	enhancedModel, ok = updatedModel.(*EnhancedOnboardingModel)
 	if !ok {
@@ -192,7 +192,7 @@ func TestEnhancedOnboardingModel_Update(t *testing.T) {
 	// Test quit key (q)
 	model = NewEnhancedOnboardingModel()
 	quitMsg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
-	updatedModel, cmd = model.Update(quitMsg)
+	updatedModel, _ = model.Update(quitMsg)
 
 	enhancedModel, ok = updatedModel.(*EnhancedOnboardingModel)
 	if !ok {

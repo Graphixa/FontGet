@@ -77,7 +77,7 @@ func RenderDialog(title string, body string, buttons *ButtonGroup, opts DialogOp
 	}
 	innerContent := strings.Join(blocks, "\n\n")
 
-	rendered := ui.DialogModal.Copy().Width(outer).Render(innerContent)
+	rendered := ui.DialogModal.Width(outer).Render(innerContent)
 	out := rendered
 	if title != "" {
 		lines := strings.Split(rendered, "\n")
@@ -96,44 +96,4 @@ func RenderDialog(title string, body string, buttons *ButtonGroup, opts DialogOp
 	}
 	// One cell of breathing room outside the rounded border (card size unchanged).
 	return lipgloss.NewStyle().Margin(1).Render(out)
-}
-
-// Used by status_popup (installing). Browse uses RenderDialog only.
-func dialogMinOuterForTitle(title string) int {
-	const prefix = "╭─  "
-	const gapCells = 2
-	suffix := "╮"
-	t := ui.TextBold.Render(title)
-	return lipgloss.Width(prefix) + lipgloss.Width(t) + gapCells + lipgloss.Width(suffix)
-}
-
-func dialogBorderTop(outer int, title string) string {
-	const prefix = "╭─  "
-	const gapAfterTitle = "  "
-	suffix := "╮"
-	t := ui.TextBold.Render(title)
-	fillCount := outer - lipgloss.Width(prefix) - lipgloss.Width(t) - lipgloss.Width(gapAfterTitle) - lipgloss.Width(suffix)
-	if fillCount < 0 {
-		fillCount = 0
-	}
-	return prefix + t + gapAfterTitle + strings.Repeat("─", fillCount) + suffix
-}
-
-func dialogMiddleLine(outer int, content string) string {
-	inner := outer - 2
-	if inner < 1 {
-		inner = 1
-	}
-	line := ansi.Truncate(content, inner, "")
-	for ansi.StringWidth(line) < inner {
-		line += " "
-	}
-	return "│" + line + "│"
-}
-
-func dialogBorderBottom(outer int) string {
-	if outer < 2 {
-		return "╰╯"
-	}
-	return "╰" + strings.Repeat("─", outer-2) + "╯"
 }

@@ -183,7 +183,7 @@ func TestUnifiedFormModel_Update_TabNavigation(t *testing.T) {
 
 	// Test Tab navigation
 	msg := tea.KeyMsg{Type: tea.KeyTab}
-	_, cmd := form.Update(msg)
+	_, _ = form.Update(msg)
 
 	if form.FocusedIdx != 1 {
 		t.Errorf("Update(Tab) FocusedIdx = %d, want 1", form.FocusedIdx)
@@ -191,13 +191,11 @@ func TestUnifiedFormModel_Update_TabNavigation(t *testing.T) {
 
 	// Test Shift+Tab navigation
 	msg = tea.KeyMsg{Type: tea.KeyShiftTab}
-	_, cmd = form.Update(msg)
+	_, _ = form.Update(msg)
 
 	if form.FocusedIdx != 0 {
 		t.Errorf("Update(Shift+Tab) FocusedIdx = %d, want 0", form.FocusedIdx)
 	}
-
-	_ = cmd // Suppress unused variable warning
 }
 
 func TestUnifiedFormModel_Update_Escape(t *testing.T) {

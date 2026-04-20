@@ -1,9 +1,3 @@
-// Package shared provides general-purpose, domain-agnostic utilities.
-//
-// This file contains business logic for font query resolution and source name extraction.
-// These functions contain pure business logic with no CLI dependencies and can be used
-// by any package that needs to resolve font queries or extract source information.
-
 package shared
 
 import (
@@ -19,6 +13,9 @@ import (
 
 // PlaceholderNA is used for missing table data
 const PlaceholderNA = "N/A"
+
+// PlaceholderUnknown is used when a value is missing and "N/A" is not appropriate (e.g. unknown category).
+const PlaceholderUnknown = "Unknown"
 
 // FontResolutionResult contains the result of resolving a font query
 type FontResolutionResult struct {

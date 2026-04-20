@@ -296,7 +296,7 @@ func browseFontDialogTitle(f repo.FontInfo, fontID string) string {
 }
 
 func buildBrowseFontDialogBody(f repo.FontInfo, fontID string) string {
-	category := InfoPlaceholderUnknown
+	category := shared.PlaceholderUnknown
 	if len(f.Categories) > 0 {
 		category = f.Categories[0]
 	}

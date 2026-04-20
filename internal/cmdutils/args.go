@@ -1,8 +1,3 @@
-// Package cmdutils provides CLI-specific utilities for command implementations.
-//
-// This file contains CLI argument parsing utilities.
-// These functions parse and normalize command-line arguments for CLI commands.
-
 package cmdutils
 
 import (

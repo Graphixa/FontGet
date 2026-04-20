@@ -15,7 +15,7 @@ func TestFishCompletionGeneration(t *testing.T) {
 	}
 	out := buf.String()
 	if !strings.Contains(out, "fish completion for fontget") {
-		t.Fatalf("expected fish completion header in output, got: %s", truncate(out, 400))
+		t.Fatalf("expected fish completion header in output, got: %s", truncateCompletionTestOutput(out, 400))
 	}
 }
 
@@ -29,7 +29,7 @@ func TestSkipShellCompCommandsDocumented(t *testing.T) {
 	}
 }
 
-func truncate(s string, n int) string {
+func truncateCompletionTestOutput(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}

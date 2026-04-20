@@ -16,11 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Placeholder constants
-const (
-	SearchPlaceholderNA = "N/A"
-)
-
 // Search scoring constants
 const (
 	SearchBaseScore             = 50
@@ -450,13 +445,13 @@ Use -s without a value to list sources.`,
 		var tableRows [][]string
 		for i, result := range results {
 			// Format categories
-			categoriesStr := SearchPlaceholderNA
+			categoriesStr := shared.PlaceholderNA
 			if len(result.Categories) > 0 {
 				categoriesStr = strings.Join(result.Categories, ", ")
 			}
 
 			// Format license
-			license := SearchPlaceholderNA
+			license := shared.PlaceholderNA
 			if result.License != "" {
 				license = result.License
 			}

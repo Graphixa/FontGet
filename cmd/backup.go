@@ -318,13 +318,8 @@ type fontFileInfo struct {
 	scope    string
 }
 
-// organizeFontsBySourceAndFamily organizes fonts by source and family name for zip structure.
-// Returns a map: sourceName -> familyName -> []fontFileInfo
-// organizeFontsBySourceAndFamily organizes fonts by source and family name for backup.
-//
-// It creates a nested map structure: source -> family name -> font files, which is used
-// to organize fonts in the backup zip archive. Fonts are matched to repository entries
-// to determine their source.
+// organizeFontsBySourceAndFamily groups font files into a nested map used for the backup zip layout:
+// source -> family -> files. Sources are determined via repository matches when available.
 func organizeFontsBySourceAndFamily(fontManager platform.FontManager, fontMap map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) map[string]map[string][]fontFileInfo {
 	sourceFamilyMap := make(map[string]map[string][]fontFileInfo)
 	dedupeMap := make(map[string]bool)

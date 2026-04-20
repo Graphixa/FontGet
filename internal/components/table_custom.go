@@ -84,15 +84,12 @@ func NewCustomTable(config TableConfig) (*CustomTable, error) {
 	}
 
 	// Initialize styles
-	headerStyle := ui.TableHeader.Copy().
-		Padding(0, cellPadding)
+	headerStyle := ui.TableHeader.Padding(0, cellPadding)
 
-	cellStyle := ui.Text.Copy().
-		Padding(0, cellPadding)
+	cellStyle := ui.Text.Padding(0, cellPadding)
 
 	// Selected style - will be applied per cell (no padding for selected rows)
-	selectedTextStyle := ui.TableRowSelected.Copy().
-		Padding(0, 0)
+	selectedTextStyle := ui.TableRowSelected.Padding(0, 0)
 
 	// Calculate total table width (including separators and padding)
 	// Total width = sum of column widths + separators between columns + padding

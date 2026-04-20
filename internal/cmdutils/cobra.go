@@ -1,9 +1,3 @@
-// Package cmdutils provides CLI-specific utilities for command implementations.
-//
-// This file contains Cobra framework integration utilities.
-// These functions handle elevation checking, help message printing, and other
-// Cobra-specific concerns that require command context.
-
 package cmdutils
 
 import (

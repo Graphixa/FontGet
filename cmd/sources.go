@@ -105,7 +105,7 @@ var sourcesInfoCmd = &cobra.Command{
 
 		// Summary card
 		var cards []components.Card
-		lastUpdated := "Unknown"
+		lastUpdated := shared.PlaceholderUnknown
 		relative := ""
 		if manifest != nil && !manifest.LastUpdated.IsZero() {
 			lastUpdated = manifest.LastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST")
@@ -217,7 +217,7 @@ var sourcesInfoCmd = &cobra.Command{
 				displayName = sourceName + disabledTag
 			}
 
-			last := "Unknown"
+			last := shared.PlaceholderUnknown
 			if manifest != nil {
 				last = lastUpdated
 			}
@@ -539,7 +539,6 @@ Downloads the latest font data from all enabled sources and updates the local ca
 
 		GetLogger().Info("Starting sources update operation")
 
-		// Debug-level information for developers
 		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Clear existing cached sources first
@@ -615,6 +614,7 @@ func isValidSourceFile(filePath string) bool {
 	return json.Unmarshal(data, &jsonData) == nil
 }
 
+// formatFileSize formats cache/directory sizes for sources output (KMGTPE). See shared.FormatFileSize for the narrower KB/MB helper used elsewhere.
 func formatFileSize(size int64) string {
 	const unit = 1024
 	if size < unit {
@@ -665,7 +665,6 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting sources validation operation")
 
-		// Debug-level information for developers
 		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
 		// Get sources directory

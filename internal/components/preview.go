@@ -277,19 +277,8 @@ type previewStyles struct {
 	ErrorText         lipgloss.Style
 }
 
-// getColorOrNoColor returns a TerminalColor that lipgloss can use
-// If color string is empty, returns lipgloss.NoColor{} to use terminal defaults
-// Otherwise returns lipgloss.Color(color)
-// This is used for the "system" theme which has empty color strings
-func getColorOrNoColor(color string) lipgloss.TerminalColor {
-	if color == "" {
-		return lipgloss.NoColor{}
-	}
-	return lipgloss.Color(color)
-}
-
 // createPreviewStyles creates temporary styles for preview using theme colors
-// For system theme (empty colors), uses getColorOrNoColor() to respect terminal defaults
+// For system theme (empty colors), uses ui.ColorOrNoColor() to respect terminal defaults
 func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 	// Resolve override colors with defaults
 	pageTitleText := colors.Overrides.PageTitle.Text
@@ -333,27 +322,27 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 	return previewStyles{
 		PageTitle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(getColorOrNoColor(pageTitleText)),
+			Foreground(ui.ColorOrNoColor(pageTitleText)),
 
 		Text: lipgloss.NewStyle().
 			Foreground(lipgloss.NoColor{}), // Terminal default
 
 		InfoText: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Primary)),
+			Foreground(ui.ColorOrNoColor(colors.Primary)),
 
 		SecondaryText: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Secondary)),
+			Foreground(ui.ColorOrNoColor(colors.Secondary)),
 
 		CardTitle: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(cardTitleText)).
+			Foreground(ui.ColorOrNoColor(cardTitleText)).
 			Bold(true),
 
 		CardLabel: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(cardLabel)).
+			Foreground(ui.ColorOrNoColor(cardLabel)).
 			Bold(true),
 
 		CardBorder: lipgloss.NewStyle().
-			BorderForeground(getColorOrNoColor(cardBorder)).
+			BorderForeground(ui.ColorOrNoColor(cardBorder)).
 			BorderStyle(lipgloss.RoundedBorder()).
 			BorderTop(true).
 			BorderBottom(true).
@@ -362,13 +351,13 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 			Padding(1),
 
 		ButtonNormal: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(buttonFg)).
+			Foreground(ui.ColorOrNoColor(buttonFg)).
 			Bold(true),
 
 		ButtonSelected: func() lipgloss.Style {
 			style := lipgloss.NewStyle().
-				Foreground(getColorOrNoColor(buttonBg)).
-				Background(getColorOrNoColor(buttonFg)).
+				Foreground(ui.ColorOrNoColor(buttonBg)).
+				Background(ui.ColorOrNoColor(buttonFg)).
 				Bold(true)
 			// For system theme, ensure background is visible (use white) and text is readable (use black)
 			if buttonFg == "" {
@@ -382,20 +371,20 @@ func createPreviewStyles(colors *ui.ModeColors) previewStyles {
 		}(),
 
 		CheckboxChecked: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(checkboxChecked)).
+			Foreground(ui.ColorOrNoColor(checkboxChecked)).
 			Bold(true),
 
 		CheckboxUnchecked: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(checkboxUnchecked)),
+			Foreground(ui.ColorOrNoColor(checkboxUnchecked)),
 
 		SuccessText: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Success)),
+			Foreground(ui.ColorOrNoColor(colors.Success)),
 
 		WarningText: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Warning)),
+			Foreground(ui.ColorOrNoColor(colors.Warning)),
 
 		ErrorText: lipgloss.NewStyle().
-			Foreground(getColorOrNoColor(colors.Error)),
+			Foreground(ui.ColorOrNoColor(colors.Error)),
 	}
 }
 

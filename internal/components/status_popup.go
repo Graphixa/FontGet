@@ -13,8 +13,9 @@ import (
 // DefaultStatusPopupMaxOuter is the maximum total width for RenderStatusPopup.
 const DefaultStatusPopupMaxOuter = 72
 
-// RenderStatusPopup draws a modal shell matching the browse dialog (DialogModal padding, integrated
-// CardTitle-style top border, one-cell outer margin) with a font line and gradient progress bar.
+// RenderStatusPopup draws a centered modal-style overlay using the shared dialog shell (DialogModal
+// padding, integrated CardTitle-style top border, one-cell outer margin) with a font line and
+// gradient progress bar. Use anywhere a compact status overlay should match other modal UIs.
 func RenderStatusPopup(phase, fontName, sourceName string, progressPercent float64, maxOuter int) string {
 	mid := fmt.Sprintf("'%s' from '%s'", fontName, sourceName)
 	midStyled := ui.Text.Render(mid)
@@ -55,7 +56,7 @@ func renderStatusPopupShell(phase, midStyled string, progressPercent float64, ma
 		innerContent = line1
 	}
 
-	rendered := ui.DialogModal.Copy().Width(outer).Render(innerContent)
+	rendered := ui.DialogModal.Width(outer).Render(innerContent)
 	lines := strings.Split(rendered, "\n")
 	if len(lines) == 0 {
 		return lipgloss.NewStyle().Margin(1).Render(rendered)

@@ -1,8 +1,3 @@
-// Package cmdutils provides CLI-specific utilities for command implementations.
-//
-// This file contains CLI-specific error, warning, and info message printing functions.
-// These functions use the ui package to format messages for terminal output.
-
 package cmdutils
 
 import (

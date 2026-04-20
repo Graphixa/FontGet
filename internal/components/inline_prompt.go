@@ -15,7 +15,6 @@ type TextPromptModel struct {
 	promptText string
 	textInput  textinput.Model
 	value      string
-	err        error
 	quitting   bool
 	confirmed  bool
 }

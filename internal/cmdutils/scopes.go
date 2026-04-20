@@ -1,9 +1,3 @@
-// Package cmdutils provides CLI-specific utilities for command implementations.
-//
-// This file contains scope detection utilities for CLI commands.
-// It detects which font installation scopes are accessible based on elevation status
-// and integrates with CLI output (verbose/debug messages).
-
 package cmdutils
 
 import (

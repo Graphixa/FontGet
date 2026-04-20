@@ -99,13 +99,6 @@ func (f *Font) FromFontInfo(info FontInfo) {
 	}
 }
 
-// FromFontFileInfo converts FontFileInfo to Font (deprecated - FontFileInfo type removed)
-// This function is kept for backward compatibility but is no longer used.
-// FontFileInfo type has been removed as it was unused.
-func (f *Font) FromFontFileInfo(info interface{}) {
-	// No-op: FontFileInfo type has been removed
-}
-
 // FontManifest represents the combined manifest of all fonts
 type FontManifest struct {
 	Version     string                `json:"version"`

@@ -1,9 +1,3 @@
-// Package shared provides general-purpose, domain-agnostic utilities.
-//
-// This file contains domain error type definitions used throughout the codebase.
-// These error types represent domain concepts (FontNotFoundError, PathValidationError, etc.)
-// and can be used by any package, not just CLI commands.
-
 package shared
 
 import (

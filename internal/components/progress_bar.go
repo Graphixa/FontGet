@@ -73,8 +73,6 @@ type operationCompleteMsg struct {
 	err error
 }
 
-type operationCancelledMsg struct{}
-
 type quitMsg struct{}
 
 // StatusReportData represents status report data for the progress display
@@ -119,7 +117,6 @@ func NewProgressBar(title string, items []OperationItem, verboseMode bool, debug
 	}
 }
 
-// Init implements tea.Model
 func (m ProgressBarModel) Init() tea.Cmd {
 	return tea.Batch(
 		operationTickCmd(),
@@ -144,7 +141,6 @@ func (m ProgressBarModel) startOperation() tea.Cmd {
 	}
 }
 
-// Update implements tea.Model
 func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -304,7 +300,6 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// View implements tea.Model
 func (m ProgressBarModel) View() string {
 	// Always show the progress bar, don't hide it
 
