@@ -65,8 +65,7 @@ Each package should have a single, well-defined responsibility.
 
 **Contains**:
 - Command definitions (`add.go`, `remove.go`, `list.go`, etc.)
-- Command-specific logic and workflows
-- Operation orchestration (`operations.go`, `handlers.go`)
+- Command-specific logic and workflows (install/remove/import orchestration lives in those command files, not separate `operations.go` / `handlers.go` sources)
 
 **Guidelines**:
 - ✅ Each command should be in its own file
@@ -190,7 +189,7 @@ func FormatFileSize(bytes int64) string {
 
 ### `internal/functions/` - Domain-Specific Utilities
 
-**Purpose**: Utilities that are specific to a particular domain or feature area
+**Purpose**: Utilities that are specific to a particular domain or feature area (feature-focused helpers; not “shared utils”)
 
 **Contains**:
 - Source sorting utilities (`SortSources`)
@@ -230,8 +229,12 @@ func SortSources(sources []SourceItem) {
 
 **Contains**:
 - Styling definitions (`styles.go`)
-- UI component utilities (`components.go`)
+- UI rendering helpers (`components.go`)
+- Theme loading and management (`theme.go`), theme discovery (`theme_discovery.go`)
 - Table formatting (`tables.go`)
+- Terminal hyperlink helpers (`url_format.go`)
+- Bubble Tea spinner model (`spinner_model.go`)
+- Bundled theme YAML files (`themes/`)
 
 **Guidelines**:
 - ✅ All table formatting constants and functions

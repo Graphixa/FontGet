@@ -8,13 +8,13 @@ The FontGet CLI tool has many flags and commands that need to be accurately docu
 
 ## Current Status
 
-**Last Audit Date**: 2024 (after spinner consistency refactor)
+**Last Audit Date**: 2026-04-20 (from `go run docs/maintenance/audit-flags.go cmd/`)
 
 ### Summary Statistics
-- **Total Commands**: 16
-- **Total Flags**: 27
-  - **Global Flags**: 4
-  - **Local Flags**: 23
+- **Total Commands**: 18
+- **Total Flags**: 42
+  - **Global Flags**: 6
+  - **Local Flags**: 36
 
 ## Audit Script
 

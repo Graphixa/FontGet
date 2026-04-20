@@ -1,27 +1,5 @@
 # FontGet Refactoring Plan
 
-## 🎯 **CURRENT PRIORITY: Beta Preparation**
-
-### **Phase 1: CI/CD Pipeline (HIGH PRIORITY - Beta Blocking)** ✅ **COMPLETED**
-
-#### **Distribution Preparation** ✅ **MOSTLY COMPLETED**
-- [x] **Package manager preparation**
-  - [x] Homebrew formula (macOS)
-  - [ ] Chocolatey package (Windows) - Optional, not blocking
-  - [x] Linux package formats (deb, rpm)
-  - [x] Scoop manifest (Windows)
-  - [x] Installation script updates
-  - [x] GoReleaser configuration for automated releases
-  - [x] GitHub Actions CI/CD workflows (ci.yml, release.yml)
-
-#### **Code Signing & Security** (if applicable)
-- [ ] **Code signing setup**
-  - [ ] Windows code signing certificate
-  - [ ] macOS notarization setup
-  - [ ] GPG signing for releases
-
----
-
 ## 🧹 **Code Quality & Polish**
 
 ### **Phase 2: Help Text & Documentation**
@@ -29,7 +7,7 @@
 #### **Documentation Updates**
 - [ ] **Update user documentation**
   - [ ] Update README with improved help text examples
-  - [ ] Update command reference documentation
+  - [x] Update command reference documentation (`docs/usage.md`)
   - [ ] Add troubleshooting guide
   - [x] Update installation instructions for CI/CD releases
 
@@ -73,7 +51,7 @@
   - [ ] Test on Windows, macOS, and Linux
   - [ ] Verify with: Roboto, Source Code Pro, JetBrainsMono, ZedMono, Fira Code, Terminess
 - [ ] **Document the policy**
-  - [ ] Add to `docs/codebase.md`
+  - [ ] Add to `docs/development/codebase.md`
   - [ ] Reference in relevant command documentation
 
 ---
@@ -90,7 +68,7 @@
 #### **Color Scheme Consistency**
 - [ ] **Standardize color usage**
   - [ ] Create consistent color hierarchy across all commands
-  - [ ] Add color utilities to `cmd/shared.go` for easy access
+  - [ ] Add color utilities to `internal/ui` for easy access (shared helpers; not `cmd/shared.go`)
   - [ ] Document color usage guidelines
 
 ---
@@ -134,100 +112,16 @@
 
 ### **Phase 6: New Commands & Features**
 
-#### **Self-Update System** ✅ **MOSTLY COMPLETE** (HIGH PRIORITY - Post-Beta)
-- [x] **Library Integration**
-  - [x] Add `github.com/rhysd/go-github-selfupdate/selfupdate` to `go.mod`
-  - [x] Create `internal/update/` package (wrapper around library)
-  - [x] Implement `CheckForUpdates()` function using library
-  - [x] Implement `UpdateToLatest()` function using library
-  - [x] **Note**: Library handles GitHub API, version comparison, platform detection, checksum verification, and binary replacement automatically
+#### **Self-Update System** (remaining work)
+- [ ] Handle pre-release versions (respect UpdateChannel) - may need custom filtering
+- [ ] Integration tests with library (test update flow)
+- [ ] **Future**: Code signing verification (library doesn't support, can add later)
 
-- [x] **Update Command Implementation**
-  - [x] `fontget update` - Check for updates and prompt to install
-  - [x] `fontget update --check` - Only check for updates, don't install
-  - [x] `fontget update -y` - Skip confirmation prompt
-  - [x] `fontget update --version / -v <version>` - Update to specific version (supports downgrading)
-  - [x] Show current vs. available version
-  - [x] Display changelog link (in normal mode)
-  - [x] Atomic binary replacement (cross-platform safe)
-
-- [x] **Cross-Platform Binary Replacement** ✅ **Handled by Library**
-  - [x] Library handles Windows binary replacement (atomic with rollback)
-  - [x] Library handles macOS/Linux binary replacement (atomic with rollback)
-  - [x] Library handles "file in use" errors
-  - [x] Library handles backup and rollback automatically
-  - [x] **CI/CD**: GoReleaser generates binaries with proper naming and `checksums.txt` with SHA256 checksums
-
-- [x] **Configuration Integration**
-  - [x] Add `Update` section to `config.yaml`:
-    ```yaml
-    Update:
-      AutoCheck: true          # Check for updates on startup
-      AutoUpdate: false        # Automatically install updates (manual by default)
-      UpdateCheckInterval: 24  # Hours between checks
-      LastChecked: ""          # Timestamp of last check (auto-updated)
-      UpdateChannel: "stable"  # stable/beta/nightly
-    ```
-  - [x] First-run prompt in onboarding flow
-  - [x] Configurable via `fontget config edit` and `fontget config info`
-  - [x] Respects `Update.AutoCheck` and `Update.UpdateCheckInterval` settings
-
-- [x] **Startup Update Check**
-  - [x] Check `Update.AutoCheck` and `Update.UpdateCheckInterval`
-  - [x] Only check if interval has passed
-  - [x] Non-blocking check (don't delay startup)
-  - [x] Show notification if update available
-  - [x] Auto-update support when `Update.AutoUpdate` is enabled
-
-- [x] **Error Handling & Edge Cases**
-  - [x] Map library errors to user-friendly messages
-  - [x] Network errors handled with user-friendly messages
-  - [x] GitHub API errors handled gracefully
-  - [x] Invalid checksums: Library handles retry, shows user-friendly error
-  - [x] Insufficient permissions: User-friendly error messages
-  - [x] Binary locked/in use: Handled by library
-  - [ ] Handle pre-release versions (respect UpdateChannel) - may need custom filtering
-
-- [ ] **Testing Requirements**
-  - [ ] Integration tests with library (test update flow)
-  - [x] Manual testing on Windows, macOS, Linux
-  - [x] Test rollback mechanism (library handles, verified)
-  - [x] Test edge cases (no internet, API down, etc.)
-  - [x] Test error message mapping
-  - [x] Verify binary naming matches library expectations
-
-- [x] **Security Considerations** ✅ **Handled by Library**
-  - [x] Library verifies SHA256 checksums before installation
-  - [x] Library uses HTTPS for all downloads
-  - [x] Library doesn't execute binary until verified
-  - [x] Library clears temp files after update
-  - [ ] **Future**: Code signing verification (library doesn't support, can add later)
-
-#### **Sources Management CLI Flags**
-**Goal**: Enable automation-friendly, non-interactive source management for scripts and CI/CD
-
-- [ ] **Add `sources add` subcommand** (non-TUI alternative to `sources manage`)
-  - [ ] `fontget sources add --name <name> --url <url> [--prefix <prefix>] [--priority <number>]`
-  - [ ] Auto-generate prefix from name if not provided
-  - [ ] Validate URL format and source accessibility
-  - [ ] Error if source name/prefix already exists
-
-- [ ] **Add `sources remove` subcommand**
-  - [ ] `fontget sources remove --name <name>`
-  - [ ] Prevent removal of built-in sources (error message)
-  - [ ] Confirm removal or add `--force` flag
-
-- [ ] **Add `sources enable/disable` subcommands**
-  - [ ] `fontget sources enable --name <name>`
-  - [ ] `fontget sources disable --name <name>`
-  - [ ] Work with both custom and built-in sources
-
-- [ ] **Add `sources set` subcommand** (update source properties)
-  - [ ] `fontget sources set --name <name> --priority <number>` - Update priority
-  - [ ] `fontget sources set --name <name> --prefix <prefix>` - Update prefix
-  - [ ] `fontget sources set --name <name> --url <url>` - Update URL
-  - [ ] Support multiple properties: `--name <name> --priority <num> --prefix <prefix>`
-  - [ ] Prevent modifying built-in source properties (error message)
+#### **Sources Management CLI Flags** ✅ **DONE**
+- [x] **`sources add`** — non-TUI; name, URL, optional prefix/priority (`cmd/sources_cli.go`)
+- [x] **`sources remove`** — built-ins protected; `--force` / `--yes` for scripts
+- [x] **`sources enable` / `sources disable`** — by name or prefix
+- [x] **`sources set`** — update URL, prefix, and/or priority for custom sources
 
 #### **Source priority: make it matter everywhere**
 **Why**: Priority is stored in the manifest and can be set via `sources add` / `sources set`, but it is only used in a few places (sources update order, sources manage TUI). Search result order and the sources info table ignore it and use hardcoded or non-priority logic. That makes priority feel pointless. The intent is: **lower number = this source is preferred first** (e.g. when the same font appears in multiple sources, or when listing/loading sources).

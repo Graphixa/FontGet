@@ -74,7 +74,8 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Manages font installation with progress tracking
 - Supports different installation scopes (user/system)
 - Provides detailed error handling and suggestions
-- Uses shared operation infrastructure for consistent behavior
+- Uses in-command types and helpers (`FontOperationDetails`, `installFont`, progress integration) together with shared internal packages for consistent behavior
+- **Architecture**: Installation orchestration lives in this file and `internal/*` packages; there are no `cmd/operations.go` or `cmd/handlers.go` sources
 - **Pre-installation Check**: Checks if fonts are already installed before downloading to save bandwidth and time
 
 **Key Functions**:
@@ -85,12 +86,13 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `showFontNotFoundWithSuggestions`: Error handling with suggestions
 
 **Interfaces**:
+- Uses `internal/cmdutils` for CLI helpers (manifest checks, elevation, file existence, argument handling)
 - Uses `internal/repo` for font data
 - Uses `internal/platform` for OS-specific operations
 - Uses `internal/output` for verbose/debug output
-- Uses `internal/ui` for user interface
-- Uses `cmd/operations` for shared operation logic
-- Uses `cmd/handlers` for operation output handlers
+- Uses `internal/ui` for user interface styling and spinners
+- Uses `internal/components` for progress bar and operation UI
+- Uses `internal/shared` for shared utilities (matching, formatting, errors)
 
 **Status**: ✅ Active - Core functionality
 
@@ -204,12 +206,13 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `isCriticalSystemFont`: Checks if a font file is a protected system font
 
 **Interfaces**:
+- Uses `internal/cmdutils` for CLI helpers (elevation, manifest checks, and related command utilities)
 - Uses `internal/platform` for OS-specific operations and font metadata extraction
-- Uses `internal/output` for verbose/debug output
 - Uses `internal/repo` for font repository access and Font ID resolution
+- Uses `internal/output` for verbose/debug output and status reporting
 - Uses `internal/components` for progress bar display
 - Uses `internal/shared` for protected font checking
-- Uses `internal/output` for status reporting
+- Uses `internal/ui` for user interface styling where needed
 
 **Status**: ✅ Active - Core functionality
 
@@ -320,10 +323,15 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Already-Installed Detection**: Uses same matching logic as list command to detect already-installed fonts before downloading
 
 **Interfaces**:
+- Uses `internal/cmdutils` for CLI helpers (file checks, elevation)
+- Uses `internal/config` for manifest access where needed
 - Uses `internal/repo` for font repository access and Font ID resolution
+- Uses `internal/platform` for installation scope and font directories
 - Uses `internal/output` for verbose/debug output
-- Uses `internal/ui` for user interface
-- Uses `cmd/add` for font installation logic
+- Uses `internal/ui` for user interface styling
+- Uses `internal/components` for progress bar and operation items
+- Uses `internal/shared` for shared utilities
+- Calls `installFont` and related installation helpers defined in `add.go` (same `cmd` package—not a separate import path)
 
 **Status**: ✅ Active - Core functionality (UI/UX improvements pending)
 
@@ -454,85 +462,6 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/version` for version information
 
 **Status**: ✅ Active - Core functionality
-
-### `operations.go`
-**Purpose**: Shared font operation infrastructure
-**Functionality**:
-- Defines core operation types and interfaces
-- Provides unified operation execution logic
-- Handles font installation and removal operations
-- Tracks operation status and results
-- Manages download size tracking
-
-**Key Types**:
-- `OperationHandler`: Interface for operation output handlers
-- `FontOperationType`: Distinguishes install vs remove operations
-- `OperationStatus`: Tracks success/skipped/failed counts
-- `FontToProcess`: Represents a font to be processed
-- `FontOperation`: Complete operation definition
-- `ItemResult`: Result of processing a single font
-
-**Key Functions**:
-- `executeFontOperation`: Orchestrates operation execution
-- `processFontInstall`: Handles download, extraction, and installation
-- `processFontRemove`: Handles font finding and removal
-
-**Interfaces**:
-- Used by `add.go` and `remove.go` commands
-- Uses `internal/platform` for font operations
-- Uses `internal/repo` for font data
-
-**Status**: ✅ Active - Shared operation infrastructure
-
-### `handlers.go`
-**Purpose**: Operation output handlers
-**Functionality**:
-- Provides different implementations of `OperationHandler` interface
-- Handles output formatting for different modes (debug, verbose, normal, TUI)
-- Separates output concerns from operation logic
-
-**Key Types**:
-- `DebugHandler`: Plain text output for debug mode
-- `VerboseHandler`: Detailed output for verbose mode (prepared for future use)
-- `NormalHandler`: Standard output handler (prepared for future use)
-- `noOpHandler`: Silent handler when TUI manages all output
-
-**Interfaces**:
-- Implements `OperationHandler` interface
-- Uses `internal/output` for verbose/debug output
-- Uses `internal/components` for TUI integration
-
-**Status**: ✅ Active - Output handler implementations
-
-
-### `operations.go`
-**Purpose**: Shared font operation infrastructure
-**Functionality**:
-- Defines core operation types and interfaces
-- Provides unified operation execution logic
-- Handles font installation and removal operations
-- Tracks operation status and results
-- Manages download size tracking
-
-**Key Types**:
-- `OperationHandler`: Interface for operation output handlers
-- `FontOperationType`: Distinguishes install vs remove operations
-- `OperationStatus`: Tracks success/skipped/failed counts
-- `FontToProcess`: Represents a font to be processed
-- `FontOperation`: Complete operation definition
-- `ItemResult`: Result of processing a single font
-
-**Key Functions**:
-- `executeFontOperation`: Orchestrates operation execution
-- `processFontInstall`: Handles download, extraction, and installation
-- `processFontRemove`: Handles font finding and removal
-
-**Interfaces**:
-- Used by `add.go` and `remove.go` commands
-- Uses `internal/platform` for font operations
-- Uses `internal/repo` for font data
-
-**Status**: ✅ Active - Shared operation infrastructure
 
 ---
 
@@ -681,52 +610,24 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Status**: ✅ Active - Cross-platform support
 
 ### `internal/ui/`
-**Purpose**: User interface components
+**Purpose**: Terminal UI styling, layout helpers, and theme loading (distinct from `internal/components`, which holds reusable Bubble Tea widgets)
+
 **Files**:
-- `components.go`: UI component definitions and utilities
-  - `RunSpinner`: Pin spinner wrapper with progress feedback
-  - `hexToPinColor`: Converts hex colors to pin package color constants
-  - Various rendering utilities for titles, errors, success messages
-  - `RenderSourceTag()`: Renders source type tags (`[Built-in]` or `[Custom]`) independently
-  - `RenderSourceNameWithTag()`: Renders source names with tags using colored `TableSourceName` style
-- `styles.go`: Centralized styling and theming
-  - **Theme-aware styling system**: All styles initialized from theme files via `InitStyles()`
-  - **Semantic color system**: Theme files define semantic color keys (accent, warning, error, etc.) that are referenced by multiple styles
-  - Optional ANSI 256 downsampling of theme hex colors controlled by `Theme.Use256ColorSpace` in `config.yaml`
-  - Page structure styles (titles, subtitles, content)
-  - Message styles (Text, InfoText, WarningText, ErrorText, SuccessText)
-  - Data display styles (tables, lists)
-  - Form styles (labels, inputs, placeholders)
-  - Command styles (keys, labels, examples)
-  - Card styles (titles, labels, content, borders)
-  - Button, Checkbox, and Switch component styles
-  - Progress bar styles with gradient support
-  - **Spinner styles**: Color constants and pin package color mapping (`SpinnerColor`, `SpinnerDoneColor`, `PinColorMap`)
-- `theme.go`: Theme management system
-  - **Theme abstraction layer**: Loads themes from YAML files in `~/.fontget/themes/`
-  - **Embedded default theme**: Catppuccin theme embedded in binary as fallback
-  - **Theme configuration**: Theme selection via `config.yaml` (`Theme.Name` and `Theme.Use256ColorSpace`)
-  - **Mode support**: Dark and light mode support per theme (via theme `style` or separate theme files)
-  - **ThemeManager**: Handles theme loading, mode switching, and color retrieval
-- `tables.go`: Table formatting constants and functions
-  - Table column width constants (`TableColName`, `TableColID`, etc.)
-  - Table header functions (`GetSearchTableHeader`, `GetListTableHeader`, etc.)
-  - Table separator function (`GetTableSeparator`)
-- `themes/`: Theme definition files
-  - `catppuccin.yaml`: Default embedded theme (Catppuccin Mocha/Latte)
-  - `gruvbox.yaml`: Gruvbox theme (available for user installation)
+- `components.go` — High-level render helpers (`RenderTitleWithSubtitle`, `RenderStatusReport`, `RenderSearchResults`, loading/error/success screens), `RunSpinner` (blocking spinner around a function), and `SimpleProgressBar` for lightweight progress
+- `styles.go` — Lipgloss style variables, `InitStyles()` / theme wiring, semantic colors, table and form styles, `RenderSourceTag` / `RenderSourceNameWithTag`, dialog/modal styles (`DialogModal`, etc.), spinner color fields (`SpinnerColor`, `SpinnerDoneColor`), and related theme-driven adjustments (including optional ANSI 256 downsampling via `Theme.Use256ColorSpace` in `config.yaml`, plus helpers like `ColorOrNoColor` for system-theme terminal defaults)
+- `theme.go` — Loads embedded and user themes from YAML (`~/.fontget/themes/`), `ThemeManager`, mode handling, color lookup for `InitStyles()`
+- `theme_discovery.go` — `DiscoverThemes`, `ThemeInfo` / `ThemeOption` for theme picker and onboarding
+- `tables.go` — Table column width constants, `GetSearchTableHeader`, `GetListTableHeader`, `GetTableSeparator`, etc.
+- `spinner_model.go` — `NewSpinnerModel` for Bubble Tea–driven blocking spinners (used where a full `tea.Program` model is needed)
+- `url_format.go` — `FormatTerminalURL` / `FormatTerminalURLChunk` for OSC 8 hyperlinks in supporting terminals
+- `url_format_test.go` — Tests for URL formatting
+- `themes/` — Bundled YAML theme definitions (multiple files; includes embedded defaults such as Catppuccin plus additional bundled themes—see the directory for the current set). Users can add more under `~/.fontget/themes/`.
 
 **Key Features**:
-- **Theme System**: YAML-based theme files with semantic color system
-  - Themes stored in `~/.fontget/themes/` directory
-  - Default theme (Catppuccin) embedded in binary
-  - Theme selection via `config.yaml` `Theme` section (`Name` plus optional `Use256ColorSpace` behavior)
-  - Supports both dark and light modes via theme definitions
-- **Semantic Colors**: Theme files define semantic keys (accent, warning, error, grey_light, etc.) that are mapped to multiple UI styles
-- **Centralized Styling**: All styles initialized from theme on startup via `InitStyles()`
-- **Unified Table API**: All table formatting in one place for consistency
-- **Spinner Integration**: Pin spinner colors mapped from hex to pin package constants
-- **Color Mapping**: `PinColorMap` provides hex-to-pin color conversion for spinner components
+- **Theme system**: YAML themes with semantic color keys; default theme embedded; user themes override by filename
+- **Centralized styling**: `InitStyles()` applies theme colors across commands
+- **Unified table API**: Shared headers and column conventions
+- **Spinners**: Both simple blocking (`RunSpinner`) and full Bubble Tea model (`NewSpinnerModel`) paths, with theme-based spinner colors
 
 **Status**: ✅ Active - UI system with theme support
 
