@@ -114,6 +114,9 @@ type browseModel struct {
 	debounceGen int
 
 	tableViewportH int
+
+	// Cached total fonts in the manifest (for footer “shown / total”).
+	browseManifestFontCount int
 }
 
 func newBrowseModel(
@@ -152,15 +155,16 @@ func newBrowseModel(
 	tm.SetFocus(false)
 
 	return &browseModel{
-		searchInput:         ti,
-		table:               tm,
-		repository:          repository,
-		fontManager:         fontManager,
-		installScope:        installScope,
-		fontDir:             fontDir,
-		force:               force,
-		browseCategoryNames: repository.GetAllCategories(),
-		tableViewportH:      8,
+		searchInput:             ti,
+		table:                   tm,
+		repository:              repository,
+		fontManager:             fontManager,
+		installScope:            installScope,
+		fontDir:                 fontDir,
+		force:                   force,
+		browseCategoryNames:     repository.GetAllCategories(),
+		browseManifestFontCount: repository.TotalManifestFonts(),
+		tableViewportH:          8,
 	}, nil
 }
 
@@ -743,14 +747,41 @@ func browseApplyHorizontalMargins(block string, terminalWidth, margin int) strin
 }
 
 func (m *browseModel) helpLineView() string {
-	parts := []string{
+	left := ui.Text.Render(strings.Join([]string{
 		ui.RenderKeyWithDescription("↑/↓", "Results"),
 		ui.RenderKeyWithDescription("Enter", "Details"),
 		ui.RenderKeyWithDescription("Esc", "Clear / Quit"),
 		ui.RenderKeyWithDescription("Tab", "Filter"),
 		ui.RenderKeyWithDescription("Shift+Tab", "Filter back"),
+	}, "  "))
+	right := ui.SecondaryText.Render(fmt.Sprintf("%d/%d", len(m.results), m.browseManifestFontCount))
+	inner := m.contentInnerWidth()
+	if inner < 1 {
+		inner = 1
 	}
-	return "\n" + ui.Text.Render(strings.Join(parts, "  "))
+	rw := lipgloss.Width(right)
+	if rw >= inner {
+		return "\n" + ansi.Truncate(right, inner, "")
+	}
+	lw := lipgloss.Width(left)
+	spaces := inner - lw - rw
+	if spaces < 1 {
+		maxLeft := inner - rw - 1
+		if maxLeft < 1 {
+			maxLeft = 1
+		}
+		left = ansi.Truncate(left, maxLeft, "…")
+		lw = lipgloss.Width(left)
+		spaces = inner - lw - rw
+		if spaces < 1 {
+			spaces = 1
+		}
+	}
+	line := left + strings.Repeat(" ", spaces) + right
+	if lipgloss.Width(line) > inner {
+		line = ansi.Truncate(line, inner, "")
+	}
+	return "\n" + line
 }
 
 func (m *browseModel) topSectionHeight() int {

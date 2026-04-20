@@ -584,6 +584,18 @@ func (r *Repository) GetManifest() (*FontManifest, error) {
 	return r.manifest, nil
 }
 
+// TotalManifestFonts returns the number of font entries across all sources in the manifest.
+func (r *Repository) TotalManifestFonts() int {
+	if r.manifest == nil {
+		return 0
+	}
+	n := 0
+	for _, src := range r.manifest.Sources {
+		n += len(src.Fonts)
+	}
+	return n
+}
+
 // SearchFonts searches for fonts matching the query using advanced search logic
 func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
 	// Reload Search.* sort preferences from config (e.g. EnablePopularitySort).
