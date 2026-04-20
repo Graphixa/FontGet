@@ -1,13 +1,18 @@
 # Logging Guidelines for FontGet
 
-This document establishes clear guidelines for verbose and debug messaging across all FontGet commands to ensure consistent, useful, and non-redundant output.
+This document establishes guidelines for **file logging** (`GetLogger()`), how it relates to **styled terminal output** (`GetVerbose()`, `GetDebug()`), and rules to avoid redundant output. Verbose and debug CLI behavior is specified in [verbose-debug-guidelines.md](verbose-debug-guidelines.md).
 
 ## Overview
 
-FontGet uses three types of logging:
-- **File Logging (GetLogger())**: Persistent log file for all operations, errors, and important events
-- **Verbose**: User-relevant operational details (console output)
-- **Debug**: Developer-focused technical details (console output)
+FontGet separates three outputs:
+
+- **File log (`GetLogger()`)** — Always written to the log file. Operation lifecycle, parameters, errors, completion. Never gated on `--verbose` or `--debug`.
+- **Verbose (`output.GetVerbose()`)** — Styled terminal output for users who pass `--verbose`. Operational detail: paths, scope, progress, counts. See [verbose-debug-guidelines.md](verbose-debug-guidelines.md).
+- **Debug (`output.GetDebug()`)** — Styled terminal output when `--debug` is set. Technical detail: URLs, temp paths, branches taken, subsystem context. See [verbose-debug-guidelines.md](verbose-debug-guidelines.md).
+
+**Do not** print the same lifecycle step in multiple styles on the terminal (e.g. timestamped mirrored file-log lines plus `[DEBUG STATE]` plus verbose lines for the same event). Use `GetDebug()` for the technical terminal story when `--debug` is active; use `GetVerbose()` for the user terminal story when only `--verbose` is active (see `internal/output`: verbose is disabled when `--debug` is set).
+
+If the file logger mirrors lines to the console (`ConsoleOutput`), that mirror is still file-log content, not a substitute for `GetVerbose()` / `GetDebug()`. Configure mirroring so it does not duplicate the styled verbose/debug stream for the same action.
 
 ## File Logging Guidelines (GetLogger())
 
@@ -18,7 +23,7 @@ File logging provides a persistent record of all FontGet operations, errors, and
 - **Always Active**: File logging is always enabled and writes to `fontget.log`
 - **Not Conditional**: `GetLogger()` calls should NEVER be wrapped in `IsVerbose()` or `IsDebug()` checks
 - **Level Controlled by Config**: The log level (Error/Info/Debug) is controlled by the application's configuration, not by conditional code
-- **Separate from Console**: File logging is independent of console output (verbose/debug)
+- **Separate from styled console**: File logging is not a replacement for `GetVerbose()` / `GetDebug()`. Console mirroring of file log lines, if enabled, must not produce redundant narration alongside styled verbose/debug output for the same step.
 
 ### Use Cases
 - **Operation Lifecycle**: Start, parameters, completion, and results of all operations
@@ -456,33 +461,21 @@ output.GetDebug().State("Filtering fonts - Type: %s, Family: %s", typeFilter, fa
 
 ## Summary
 
-### Three Logging Channels
+### Channels
 
-1. **File Logging (GetLogger())**
-   - Always active, writes to `fontget.log`
-   - Never conditional on flags
-   - Logs: operation lifecycle, parameters, errors, completion
-   - Purpose: Persistent record for troubleshooting
+1. **`GetLogger()`** — Always writes to `fontget.log`. Start, parameters, errors, completion. Never conditional on CLI flags.
+2. **`output.GetVerbose()`** — Styled terminal output for `--verbose` (suppressed when `--debug` is set; see `internal/output`).
+3. **`output.GetDebug()`** — Styled terminal output for `--debug`. Technical detail; do not repeat the same lifecycle text that verbose would have used.
 
-2. **Verbose (output.GetVerbose())**
-   - Console output when `--verbose` flag is used
-   - User-relevant operational details
-   - Conditional: `if IsVerbose() && !IsDebug()`
-   - Purpose: Help users understand what's happening
-
-3. **Debug (output.GetDebug())**
-   - Console output when `--debug` flag is used
-   - Technical details for developers
-   - Always shown when `--debug` is active
-   - Purpose: Help developers debug issues
+File logger console mirroring (if any) is still file-log output; keep it from duplicating styled verbose/debug lines for the same event.
 
 ### Key Rules
 
-- ✅ **Always use GetLogger()** for file logging (operation start, parameters, errors, completion)
-- ✅ **Never make GetLogger() conditional** on `IsVerbose()` or `IsDebug()`
-- ✅ **Use verbose for user-facing console output** (conditional on `IsVerbose() && !IsDebug()`)
-- ✅ **Use debug for technical console output** (shown when `--debug` is active)
-- ❌ **Don't use GetLogger() for console output** (use verbose/debug instead)
-- ❌ **Don't use verbose/debug for file logging** (use GetLogger() instead)
+- ✅ Use **`GetLogger()`** for everything that must appear in the log file regardless of flags.
+- ✅ Never wrap **`GetLogger()`** in `IsVerbose()` or `IsDebug()`.
+- ✅ Use **`GetVerbose()`** / **`GetDebug()`** for styled CLI output per [verbose-debug-guidelines.md](verbose-debug-guidelines.md).
+- ✅ Do not narrate the same step twice on the terminal in different formats (mirror + verbose + debug).
+- ❌ Do not use **`GetLogger()`** instead of **`GetVerbose()`** / **`GetDebug()`** when the goal is styled user or developer console output.
+- ❌ Do not use **verbose/debug** instead of **`GetLogger()`** for persistent file logging.
 
 This document should be referenced during code reviews and when adding new logging statements to ensure consistent, useful output across all FontGet commands.

@@ -1,53 +1,53 @@
-In a CLI program, the --verbose and --debug flags serve distinct purposes in controlling the level of output information:
+# Verbose and debug — guidelines
 
-`--verbose` flag:
-Target Audience: General users who want more insight into the program's execution.
-Purpose: To provide a more detailed and descriptive explanation of the program's operations and progress.
-Content: This typically includes information like:
-- Detailed transaction logs.
-- Progress updates during longer operations.
-- Raw error messages directly from the interpreter (no wrapper text, just the error as-is).
-- Contextual details about actions being performed.
-- Error messages should be displayed in red (FeedbackError style) for visibility.
-Analogy: Similar to a detailed log or a commentary explaining what the program is doing from a user's perspective.
+Rules for **styled terminal output** via `output.GetVerbose()` and `output.GetDebug()`. File logging uses `GetLogger()` and is defined in [logging-guidelines.md](logging-guidelines.md).
 
-Note: Normal users (without --verbose) still receive friendly, user-friendly error messages. Verbose mode shows the raw error for users who want to see exactly what went wrong.
+## `--verbose`
 
-`--debug` flag:
-Target Audience: Developers and advanced users for troubleshooting and debugging.
-Purpose: To expose low-level, internal details about the program's execution for diagnostic purposes.
-Content: This often includes:
-- Internal execution steps and function calls.
-- Values of internal variables.
-- Detailed stack traces in case of errors.
-- Information about system interactions or resource usage.
-- Raw error objects and internal error states.
-Analogy: Similar to a trace log or a developer's console, revealing the "under the hood" workings of the program.
-Key Differences:
-Level of Detail: --verbose provides a higher-level, user-friendly explanation, while --debug delves into the low-level implementation details.
-Intended Use: --verbose enhances understanding for general use, while --debug is primarily for problem identification and resolution during development or advanced troubleshooting.
-Output Volume: --debug output is typically significantly more extensive and technical than --verbose output.
-Error Handling: 
-- Normal users (no flags): Receive friendly, user-friendly error messages that describe what went wrong in plain language (e.g., "unable to load font repository: ...", "unable to access system fonts: ...").
-- --verbose: Shows raw error messages directly from the interpreter (no wrapper text, just the error as-is, styled in red).
-- --debug: Shows technical error details including function names, stack traces, and raw error objects.
+Use when the user should see **operational** detail without internal implementation noise.
 
-Examples:
-- Normal user sees: "unable to access system fonts: permission denied"
-- Verbose user sees: "permission denied" (raw error, styled in red)
-- Debug user sees: "platform.NewFontManager() failed: permission denied" (with function name and technical context)
+**Include:** paths, installation scope, source names, counts, high-level progress, configuration values the user set.
 
-## Spacing for Verbose Output
+**Avoid:** bare function names, stack traces, raw internal state dumps.
 
-When using verbose output, follow the spacing framework:
-- After a group of verbose messages, add a blank line only if verbose mode is enabled
-- This ensures proper spacing when verbose is active, without adding unnecessary blank lines when verbose is disabled
+**Errors:** Where this document and command behavior require it, show the raw error (styled); keep wrappers minimal.
 
-Example:
+`internal/output` only shows verbose when verbose mode is on **and** debug is off (`verbose && !debug`). With `--debug` set, verbose output is not shown—use debug output instead.
+
+## `--debug`
+
+Use when the reader needs **technical** detail to diagnose behavior.
+
+**Include:** URLs, temp directories, which branch or helper ran, download fallback steps, subsystem or function context that locates failure, wrapped errors with enough context to trace code.
+
+**Avoid:** user-facing success copy that duplicates normal UI; repeating the same line as verbose would use.
+
+## Duplication
+
+- Do not emit the same lifecycle message through both `GetVerbose()` and `GetDebug()` for one step.
+- Do not rely on `GetLogger()` console mirroring to stand in for `GetVerbose()` / `GetDebug()` for styled CLI output.
+- Timestamped file-log lines on the terminal (if mirroring is enabled) are not a substitute for styled verbose/debug; avoid stacking them as duplicate stories for the same event.
+
+## Relationship to file log
+
+- **`GetLogger()`**: required for persistent log file content (start, parameters, errors, completion). Not controlled by `--verbose` / `--debug`.
+- **`GetVerbose()` / `GetDebug()`**: required for styled CLI output. Not a replacement for the log file.
+
+## Errors (terminal)
+
+| Mode | Presentation |
+|------|----------------|
+| Default | Short, user-readable message |
+| `--verbose` | Raw error where these guidelines require it, minimal wrapper |
+| `--debug` | Technical context: subsystem, wrapped error, enough to locate the failure |
+
+## Spacing
+
+After a block of verbose lines, use `output.GetVerbose().EndSection()` or a single blank line only when verbose was shown. See [spacing-guidelines.md](spacing-guidelines.md).
+
 ```go
 output.GetVerbose().Info("Scope: %s", scope)
 output.GetVerbose().Info("Removing %d font(s)", count)
-// Verbose section ends with blank line per spacing framework (only if verbose was shown)
 if IsVerbose() {
     fmt.Println()
 }

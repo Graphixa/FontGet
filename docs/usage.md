@@ -8,6 +8,7 @@ This document provides a comprehensive overview of all FontGet commands, their p
 |--------|---------|---------|
 | [Help](#help) | Show all FontGet commands | `fontget help` |
 | [Search](#search) | Search for fonts across sources | `fontget search "roboto"` |
+| [Browse](#browse) | Browse the font catalog interactively in the terminal | `fontget browse` |
 | [Add](#add) | Install a font from available sources | `fontget add "google.roboto"` |
 | [Remove](#remove) | Uninstall fonts from the system | `fontget remove "google.roboto"` |
 | [List](#list) | List installed fonts on the system | `fontget list` |
@@ -60,6 +61,30 @@ fontget search "roboto" --source "Google Fonts"
 
 # List possible search categories
 fontget search -c
+```
+
+## Browse
+
+### Purpose
+Browse and search the font catalog in the terminal, and install or remove fonts. Uses the same scope and force behavior as [Add](#add) and [Remove](#remove).
+
+### Flags
+- `--scope, -s` - Installation scope: `user` (default) or `machine` (admin required)
+- `--force, -f` - Overwrite existing fonts when installing from the browser
+
+### Notes
+- Tab / Shift+Tab cycles the category filter; type in the search box to filter results.
+
+### Examples
+```bash
+# Open the font browser
+fontget browse
+
+# Machine scope
+fontget browse --scope machine
+
+# Force reinstall when installing from the browser
+fontget browse --force
 ```
 
 ## Add
@@ -267,6 +292,7 @@ fontget config reset
 ### Notes
 - `config validate`: checks config integrity. If it fails, edit with `fontget config edit` or reset with `fontget config reset`.
 - `config reset`: replaces the config with defaults while preserving log files.
+- **Network** (in `~/.fontget/config.yaml`): `RequestTimeout` and `DownloadTimeout` control HTTP and stall-based download behavior. `EnableExternalDownloadFallback` (default `true`) allows optional use of system tools (`curl`, `wget`, or PowerShell) when an upstream responds with a bot/WAF challenge instead of the file; set to `false` if you must avoid invoking external programs. With `--verbose`, successful retries report which external tool completed the download; with `--debug`, each candidate tool (skipped, failed, or ok) is listed in order.
 
 ## Export
 

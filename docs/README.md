@@ -5,7 +5,7 @@
 | Doc | What’s in it |
 |-----|----------------|
 | [Installation](installation.md) | Install on Windows, macOS, Linux (scripts, package managers, from source) |
-| [Usage / Commands](usage.md) | Full command reference: search, add, remove, list, sources, config, export/import, backup, update, completion |
+| [Usage / Commands](usage.md) | Full command reference: search, browse, add, remove, list, sources, config, export/import, backup, update, completion |
 | [Custom sources](custom-sources.md) | Build and host your own font source JSON, then add it to FontGet |
 | [Terminal setup](terminal-setup.md) | Terminal and font display tips |
 | [Automation & CI](usage.md#automation--ci) | Use FontGet in scripts, Ansible, GitHub Actions |
