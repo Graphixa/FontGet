@@ -113,7 +113,7 @@ func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope
 }
 
 // RemoveFont removes a font from the specified font directory
-func (m *darwinFontManager) RemoveFont(fontName string, scope InstallationScope) error {
+func (m *darwinFontManager) RemoveFont(fontName string, scope InstallationScope, opts *RemoveFontOptions) error {
 	var targetDir string
 
 	switch scope {
@@ -132,13 +132,16 @@ func (m *darwinFontManager) RemoveFont(fontName string, scope InstallationScope)
 		return fmt.Errorf("failed to remove font file: %w", err)
 	}
 
-	// Update the font cache (non-critical on macOS 14+)
-	// Font removal is effective immediately, cache refresh is optional
-	if err := m.updateFontCache(scope); err != nil {
-		// Cache refresh failure is non-critical - font is already removed
-		// On macOS 14+, font removal is effective without manual cache refresh
-		// Return a warning-style error that can be handled gracefully
-		return fmt.Errorf("font removed successfully, but cache refresh failed (non-critical): %w", err)
+	skipCache := opts != nil && opts.SkipPostRemoveCacheRefresh
+	if !skipCache {
+		// Update the font cache (non-critical on macOS 14+)
+		// Font removal is effective immediately, cache refresh is optional
+		if err := m.updateFontCache(scope); err != nil {
+			// Cache refresh failure is non-critical - font is already removed
+			// On macOS 14+, font removal is effective without manual cache refresh
+			// Return a warning-style error that can be handled gracefully
+			return fmt.Errorf("font removed successfully, but cache refresh failed (non-critical): %w", err)
+		}
 	}
 
 	return nil

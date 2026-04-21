@@ -109,7 +109,7 @@ func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope,
 }
 
 // RemoveFont removes a font from the specified font directory
-func (m *linuxFontManager) RemoveFont(fontName string, scope InstallationScope) error {
+func (m *linuxFontManager) RemoveFont(fontName string, scope InstallationScope, opts *RemoveFontOptions) error {
 	var targetDir string
 
 	switch scope {
@@ -128,9 +128,12 @@ func (m *linuxFontManager) RemoveFont(fontName string, scope InstallationScope) 
 		return fmt.Errorf("failed to remove font file: %w", err)
 	}
 
-	// Update the font cache
-	if err := m.updateFontCache(scope); err != nil {
-		return fmt.Errorf("failed to update font cache: %w", err)
+	skipCache := opts != nil && opts.SkipPostRemoveCacheRefresh
+	if !skipCache {
+		// Update the font cache
+		if err := m.updateFontCache(scope); err != nil {
+			return fmt.Errorf("failed to update font cache: %w", err)
+		}
 	}
 
 	return nil

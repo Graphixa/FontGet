@@ -425,6 +425,8 @@ type RemoveFontFilesParams struct {
 
 // removeFontFiles removes font files from system
 func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string) {
+	batchOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
+
 	for _, matchingFont := range params.MatchingFonts {
 		// Construct full font path for metadata extraction
 		fontPath := filepath.Join(params.FontDir, matchingFont)
@@ -442,26 +444,13 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 
 		// Remove font
 		output.GetDebug().State("Calling fontManager.RemoveFont(%s, %s)", matchingFont, params.Scope)
-		err := params.FontManager.RemoveFont(matchingFont, params.Scope)
+		err := params.FontManager.RemoveFont(matchingFont, params.Scope, batchOpts)
 
 		if err != nil {
-			// Check if error is related to font cache refresh (non-critical on macOS 14+)
-			errStr := err.Error()
-			isCacheError := strings.Contains(strings.ToLower(errStr), "cache refresh failed (non-critical)")
-
-			if isCacheError {
-				// Font was removed successfully, only cache refresh failed
-				// This is non-critical - treat as success
-				output.GetDebug().Warning("Font cache refresh failed (non-critical on macOS 14+): %s", matchingFont)
-				output.GetDebug().State("Font removed successfully, cache refresh is optional. Font removal is effective immediately.")
-				removed++
-				details = append(details, fontDisplayName)
-				continue
-			}
-
-			// Actual removal failure
+			// Actual removal failure (cache flush is handled once after the batch)
 			failed++
 			var errorMsg string
+			errStr := err.Error()
 			if containsAny(errStr, []string{"in use", "access denied", "permission"}) {
 				errorMsg = "Font is in use or access denied"
 			} else {
@@ -476,6 +465,20 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 		output.GetDebug().State("Successfully removed font: %s", fontDisplayName)
 		removed++
 		details = append(details, fontDisplayName)
+	}
+
+	// Single cache refresh / font-change notification after all removals (avoids pkill fontd / fc-cache / WM_FONTCHANGE per file)
+	if removed > 0 {
+		if flushErr := params.FontManager.FlushFontCache(params.Scope); flushErr != nil {
+			errStr := strings.ToLower(flushErr.Error())
+			isDarwinNonCritical := strings.Contains(errStr, "failed to refresh font cache (non-critical")
+			if isDarwinNonCritical {
+				output.GetDebug().Warning("Font cache refresh failed (non-critical on macOS 14+): %v", flushErr)
+				output.GetDebug().State("Fonts removed successfully; cache refresh is optional. Removal is effective immediately.")
+			} else {
+				output.GetDebug().Error("Post-remove font cache flush failed: %v", flushErr)
+			}
+		}
 	}
 
 	return removed, skipped, failed, details, errors

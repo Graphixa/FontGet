@@ -323,7 +323,10 @@ func (m *mockFontManager) InstallFont(fontPath string, scope platform.Installati
 	return nil
 }
 
-func (m *mockFontManager) RemoveFont(fontName string, scope platform.InstallationScope) error {
+func (m *mockFontManager) RemoveFont(fontName string, scope platform.InstallationScope, opts *platform.RemoveFontOptions) error {
+	_ = fontName
+	_ = scope
+	_ = opts
 	return nil
 }
 

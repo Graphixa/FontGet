@@ -33,6 +33,13 @@ type InstallFontOptions struct {
 	SkipPostInstallCacheRefresh bool
 }
 
+// RemoveFontOptions configures RemoveFont. A nil opts value keeps legacy behavior (run post-remove cache/notify after each RemoveFont).
+type RemoveFontOptions struct {
+	// SkipPostRemoveCacheRefresh skips the per-remove OS font cache update / Windows WM_FONTCHANGE notification.
+	// Use with FlushFontCache(scope) once after removing multiple files in one batch.
+	SkipPostRemoveCacheRefresh bool
+}
+
 // FontManager defines the interface for platform-specific font operations
 type FontManager interface {
 	// InstallFont installs a font file to the system. Pass opts.SkipPostInstallCacheRefresh on all but the last
@@ -41,7 +48,7 @@ type FontManager interface {
 	// FlushFontCache runs a single post-install font cache refresh for the scope (e.g. macOS fontd, Linux fc-cache, Windows font change broadcast).
 	FlushFontCache(scope InstallationScope) error
 	// RemoveFont removes a font from the system
-	RemoveFont(fontName string, scope InstallationScope) error
+	RemoveFont(fontName string, scope InstallationScope, opts *RemoveFontOptions) error
 	// GetFontDir returns the system's font directory for the given scope
 	GetFontDir(scope InstallationScope) string
 	// RequiresElevation returns whether the given scope requires elevation

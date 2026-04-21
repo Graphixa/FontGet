@@ -160,7 +160,7 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 }
 
 // RemoveFont removes a font from the specified font directory
-func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope) error {
+func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope, opts *RemoveFontOptions) error {
 	logger := logging.GetLogger()
 	logger.Debug("Starting font removal for: %s (scope: %s)", fontName, scope)
 
@@ -221,15 +221,18 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 	}
 	logger.Debug("Font file removed successfully")
 
-	// Notify other applications about the font removal
-	// Only send WM_FONTCHANGE to the desktop window to avoid hangs from full window enumeration.
-	// Enumerating all windows can hang or be extremely slow on some systems.
-	logger.Debug("Notifying system about font change...")
-	if err := NotifyFontChange(); err != nil {
-		logger.Error("Failed to notify system about font change: %v", err)
-		return fmt.Errorf("failed to notify font change: %w", err)
+	skipNotify := opts != nil && opts.SkipPostRemoveCacheRefresh
+	if !skipNotify {
+		// Notify other applications about the font removal
+		// Only send WM_FONTCHANGE to the desktop window to avoid hangs from full window enumeration.
+		// Enumerating all windows can hang or be extremely slow on some systems.
+		logger.Debug("Notifying system about font change...")
+		if err := NotifyFontChange(); err != nil {
+			logger.Error("Failed to notify system about font change: %v", err)
+			return fmt.Errorf("failed to notify font change: %w", err)
+		}
+		logger.Debug("Font change notification sent successfully")
 	}
-	logger.Debug("Font change notification sent successfully")
 
 	logger.Info("Font removal completed successfully")
 	return nil
