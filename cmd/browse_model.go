@@ -504,7 +504,7 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 				fontID: fontID,
 			}
 		}
-		ir, ierr := installFont(res.Fonts, res.FontID, fm, scope, force, fontDir)
+		ir, ierr := installFont(res.Fonts, res.FontID, fm, scope, force, fontDir, true)
 		return installFinishedMsg{result: ir, err: ierr, fontID: fontID}
 	}
 }

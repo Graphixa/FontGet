@@ -613,6 +613,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						installScope,
 						force,
 						fontDir,
+						true,
 					)
 
 					if err != nil {
@@ -726,6 +727,7 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 			installScope,
 			force,
 			fontDir,
+			false,
 		)
 
 		if err != nil {

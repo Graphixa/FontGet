@@ -315,7 +315,11 @@ type mockFontManager struct {
 	isElevatedError error
 }
 
-func (m *mockFontManager) InstallFont(fontPath string, scope platform.InstallationScope, force bool) error {
+func (m *mockFontManager) FlushFontCache(scope platform.InstallationScope) error {
+	return nil
+}
+
+func (m *mockFontManager) InstallFont(fontPath string, scope platform.InstallationScope, force bool, opts *platform.InstallFontOptions) error {
 	return nil
 }
 

@@ -59,8 +59,13 @@ func (m *darwinFontManager) GetElevationCommand() (string, []string, error) {
 	return "sudo", args, nil
 }
 
+// FlushFontCache runs one font cache refresh for the scope (after batch installs).
+func (m *darwinFontManager) FlushFontCache(scope InstallationScope) error {
+	return m.updateFontCache(scope)
+}
+
 // InstallFont installs a font file to the specified font directory
-func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope, force bool) error {
+func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope, force bool, opts *InstallFontOptions) error {
 	fontName := getFontName(fontPath)
 	var targetDir string
 
@@ -91,14 +96,17 @@ func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope
 		return fmt.Errorf("failed to copy font file: %w", err)
 	}
 
-	// Update the font cache (non-critical on macOS 14+)
-	// Fonts in ~/Library/Fonts and /Library/Fonts are auto-detected by macOS
-	if err := m.updateFontCache(scope); err != nil {
-		// Cache refresh failure is non-critical - font is already installed
-		// On macOS 14+, fonts are auto-detected without manual cache refresh
-		// Don't remove the file - installation succeeded, cache refresh is optional
-		// Return a warning-style error that can be handled gracefully
-		return fmt.Errorf("font installed successfully, but cache refresh failed (non-critical): %w", err)
+	skipCache := opts != nil && opts.SkipPostInstallCacheRefresh
+	if !skipCache {
+		// Update the font cache (non-critical on macOS 14+)
+		// Fonts in ~/Library/Fonts and /Library/Fonts are auto-detected by macOS
+		if err := m.updateFontCache(scope); err != nil {
+			// Cache refresh failure is non-critical - font is already installed
+			// On macOS 14+, fonts are auto-detected without manual cache refresh
+			// Don't remove the file - installation succeeded, cache refresh is optional
+			// Return a warning-style error that can be handled gracefully
+			return fmt.Errorf("font installed successfully, but cache refresh failed (non-critical): %w", err)
+		}
 	}
 
 	return nil

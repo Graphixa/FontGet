@@ -61,8 +61,15 @@ type FontFile struct {
 	DownloadURL string
 }
 
+// DownloadFontOptions configures DownloadFont / DownloadAndExtractFont.
+type DownloadFontOptions struct {
+	// SuppressVerboseProgressLine omits the per-file "[INFO] Downloading …" verbose line.
+	// Use true while Bubble Tea (or any other UI) owns stdout so output does not interleave.
+	SuppressVerboseProgressLine bool
+}
+
 // DownloadFont downloads a font file and verifies its SHA-256 hash if available
-func DownloadFont(font *FontFile, targetDir string) (string, error) {
+func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (string, error) {
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create target directory: %w", err)
@@ -148,14 +155,17 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, font.DownloadURL)
 	}
 
-	displayName := font.Path
-	if displayName == "" {
-		displayName = filepath.Base(targetPath)
-	}
-	if u, parseErr := url.Parse(font.DownloadURL); parseErr == nil && u.Host != "" {
-		output.GetVerbose().Info("Downloading %s from %s", displayName, u.Host)
-	} else {
-		output.GetVerbose().Info("Downloading %s", displayName)
+	suppressVerbose := opts != nil && opts.SuppressVerboseProgressLine
+	if !suppressVerbose {
+		displayName := font.Path
+		if displayName == "" {
+			displayName = filepath.Base(targetPath)
+		}
+		if u, parseErr := url.Parse(font.DownloadURL); parseErr == nil && u.Host != "" {
+			output.GetVerbose().Info("Downloading %s from %s", displayName, u.Host)
+		} else {
+			output.GetVerbose().Info("Downloading %s", displayName)
+		}
 	}
 
 	// Wrap response body with stall detection
@@ -203,7 +213,7 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 }
 
 // DownloadAndExtractFont downloads a font file (which may be an archive) and extracts it if needed
-func DownloadAndExtractFont(font *FontFile, targetDir string) ([]string, error) {
+func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFontOptions) ([]string, error) {
 
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
@@ -211,7 +221,7 @@ func DownloadAndExtractFont(font *FontFile, targetDir string) ([]string, error) 
 	}
 
 	// Download the file first
-	downloadedPath, err := DownloadFont(font, targetDir)
+	downloadedPath, err := DownloadFont(font, targetDir, opts)
 	if err != nil {
 		return nil, err
 	}

@@ -49,8 +49,14 @@ func NewFontManager() (FontManager, error) {
 	}, nil
 }
 
+// FlushFontCache notifies the system once that fonts have changed (WM_FONTCHANGE).
+func (m *windowsFontManager) FlushFontCache(scope InstallationScope) error {
+	_ = scope
+	return NotifyFontChange()
+}
+
 // InstallFont installs a font file to the specified font directory
-func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope, force bool) error {
+func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope, force bool, opts *InstallFontOptions) error {
 	logger := logging.GetLogger()
 	logger.Debug("Starting font installation for: %s (scope: %s)", fontPath, scope)
 
@@ -131,20 +137,23 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		logger.Debug("Font added to registry successfully")
 	}
 
-	// Notify other applications about the new font
-	logger.Debug("Notifying system about font change...")
-	if err := NotifyFontChange(); err != nil {
-		logger.Error("Failed to notify font change: %v", err)
-		// Clean up on error
-		logger.Debug("Cleaning up after failed notification...")
-		RemoveFontResource(targetPath)
-		if scope == MachineScope {
-			m.removeFontFromRegistry(fontName)
+	skipNotify := opts != nil && opts.SkipPostInstallCacheRefresh
+	if !skipNotify {
+		// Notify other applications about the new font
+		logger.Debug("Notifying system about font change...")
+		if err := NotifyFontChange(); err != nil {
+			logger.Error("Failed to notify font change: %v", err)
+			// Clean up on error
+			logger.Debug("Cleaning up after failed notification...")
+			RemoveFontResource(targetPath)
+			if scope == MachineScope {
+				m.removeFontFromRegistry(fontName)
+			}
+			os.Remove(targetPath)
+			return fmt.Errorf("failed to notify font change: %w", err)
 		}
-		os.Remove(targetPath)
-		return fmt.Errorf("failed to notify font change: %w", err)
+		logger.Debug("Font change notification sent successfully")
 	}
-	logger.Debug("Font change notification sent successfully")
 
 	logger.Info("Font installation completed successfully")
 	return nil

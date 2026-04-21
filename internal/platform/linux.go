@@ -58,8 +58,13 @@ func (m *linuxFontManager) GetElevationCommand() (string, []string, error) {
 	return "sudo", args, nil
 }
 
+// FlushFontCache runs fc-cache once for the scope.
+func (m *linuxFontManager) FlushFontCache(scope InstallationScope) error {
+	return m.updateFontCache(scope)
+}
+
 // InstallFont installs a font file to the specified font directory
-func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope, force bool) error {
+func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope, force bool, opts *InstallFontOptions) error {
 	fontName := getFontName(fontPath)
 	var targetDir string
 
@@ -90,11 +95,14 @@ func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope,
 		return fmt.Errorf("failed to copy font file: %w", err)
 	}
 
-	// Update the font cache
-	if err := m.updateFontCache(scope); err != nil {
-		// Clean up the file if cache update fails
-		os.Remove(targetPath)
-		return fmt.Errorf("failed to update font cache: %w", err)
+	skipCache := opts != nil && opts.SkipPostInstallCacheRefresh
+	if !skipCache {
+		// Update the font cache
+		if err := m.updateFontCache(scope); err != nil {
+			// Clean up the file if cache update fails
+			os.Remove(targetPath)
+			return fmt.Errorf("failed to update font cache: %w", err)
+		}
 	}
 
 	return nil

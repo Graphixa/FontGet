@@ -711,6 +711,7 @@ Use --scope to set installation location:
 						installScope,
 						force,
 						fontDir,
+						true, // suppress per-file verbose download lines while Bubble Tea owns stdout
 					)
 
 					if err != nil {
@@ -770,13 +771,10 @@ Use --scope to set installation location:
 					// Determine status based on results
 					finalStatus := result.Status
 
-					// Build variants list - show in verbose mode
+					// Build variants list - show in verbose mode (one line per manifest variant; avoids mixing basenames with human labels)
 					var variantsWithStatus []string
 					if verbose {
-						// Verbose mode: Show variant names - collect ALL variants
-						variantsWithStatus = append(variantsWithStatus, fontDetails.InstalledFiles...)
-						variantsWithStatus = append(variantsWithStatus, fontDetails.SkippedFiles...)
-						variantsWithStatus = append(variantsWithStatus, fontDetails.FailedFiles...)
+						variantsWithStatus = variantLinesForVerboseProgress(fontGroup.Fonts)
 					}
 					// Default mode: don't show variants in TUI (variants shown in debug mode only)
 
@@ -943,6 +941,7 @@ func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []
 			installScope,
 			force,
 			fontDir,
+			false, // debug path: allow per-file verbose download lines
 		)
 
 		if err != nil {
@@ -986,14 +985,62 @@ func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []
 	return nil
 }
 
+// variantLinesForVerboseProgress returns one human-readable label per manifest variant for the progress TUI
+// (avoids listing both style names and on-disk filenames).
+func variantLinesForVerboseProgress(fonts []repo.FontFile) []string {
+	lines := make([]string, 0, len(fonts))
+	for i := range fonts {
+		lines = append(lines, formatRepoFontVariantLine(&fonts[i]))
+	}
+	return lines
+}
+
+func formatRepoFontVariantLine(f *repo.FontFile) string {
+	v := strings.TrimSpace(f.Variant)
+	name := strings.TrimSpace(f.Name)
+	if v != "" {
+		if name != "" {
+			return strings.TrimSpace(fmt.Sprintf("%s %s", name, humanizeFontStyleLabel(v)))
+		}
+		return humanizeFontStyleLabel(v)
+	}
+	if f.Path != "" {
+		return filepath.Base(f.Path)
+	}
+	return "font"
+}
+
+func humanizeFontStyleLabel(s string) string {
+	s = strings.TrimSpace(strings.ReplaceAll(s, "_", " "))
+	s = strings.ReplaceAll(s, "-", " ")
+	fields := strings.Fields(s)
+	for i, w := range fields {
+		if w == "" {
+			continue
+		}
+		allDigit := true
+		for _, r := range w {
+			if r < '0' || r > '9' {
+				allDigit = false
+				break
+			}
+		}
+		if allDigit {
+			continue
+		}
+		fields[i] = strings.ToUpper(w[:1]) + strings.ToLower(w[1:])
+	}
+	return strings.Join(fields, " ")
+}
+
 // downloadFontVariants downloads all variants of a font family
-func downloadFontVariants(fontFiles []repo.FontFile, tempDir string) ([]string, error) {
+func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, downloadOpts *repo.DownloadFontOptions) ([]string, error) {
 	var allFontPaths []string
 
 	// Download each variant - only log errors and unusual cases
 	for _, fontFile := range fontFiles {
 		output.GetDebug().State("Calling repo.DownloadAndExtractFont() for variant: %s from %s", fontFile.Variant, fontFile.DownloadURL)
-		fontPaths, err := repo.DownloadAndExtractFont(&fontFile, tempDir)
+		fontPaths, err := repo.DownloadAndExtractFont(&fontFile, tempDir, downloadOpts)
 		if err != nil {
 			output.GetDebug().State("repo.DownloadAndExtractFont() failed for variant %s: %v", fontFile.Variant, err)
 			return nil, err
@@ -1013,6 +1060,8 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 	var installedFiles []string
 	var skippedFiles []string
 	var failedFiles []string
+
+	batchOpts := &platform.InstallFontOptions{SkipPostInstallCacheRefresh: true}
 
 	for _, fontPath := range fontPaths {
 		fontDisplayName := filepath.Base(fontPath)
@@ -1034,26 +1083,11 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 			}
 		}
 
-		// Install the font
+		// Install the font (defer OS cache / Windows font notification until after batch)
 		output.GetDebug().State("Installing font file: %s to %s (scope: %s)", fontDisplayName, fontDir, installScope)
-		installErr := fontManager.InstallFont(fontPath, installScope, force)
+		installErr := fontManager.InstallFont(fontPath, installScope, force, batchOpts)
 
 		if installErr != nil {
-			// Check if error is related to font cache refresh (non-critical on macOS 14+)
-			errStr := installErr.Error()
-			isCacheError := strings.Contains(strings.ToLower(errStr), "cache refresh failed (non-critical)")
-
-			if isCacheError {
-				// Font was installed successfully, only cache refresh failed
-				// This is non-critical - treat as success
-				output.GetDebug().Warning("Font cache refresh failed (non-critical on macOS 14+): %s", fontDisplayName)
-				output.GetDebug().State("Font installed successfully, cache refresh is optional. Font will be available after app restart.")
-				installed++
-				installedFiles = append(installedFiles, fontDisplayName)
-				os.Remove(fontPath) // Clean up temp file
-				continue
-			}
-
 			// Actual installation failure
 			os.Remove(fontPath) // Clean up temp file
 			failed++
@@ -1070,6 +1104,21 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 		os.Remove(fontPath)
 		installed++
 		installedFiles = append(installedFiles, fontDisplayName)
+	}
+
+	// Single cache refresh / font-change notification after all copies (avoids pkill fontd / fc-cache / WM_FONTCHANGE per file)
+	if installed > 0 {
+		if flushErr := fontManager.FlushFontCache(installScope); flushErr != nil {
+			errStr := flushErr.Error()
+			isDarwinNonCritical := strings.Contains(strings.ToLower(errStr), "failed to refresh font cache (non-critical")
+			if isDarwinNonCritical {
+				output.GetDebug().Warning("Font cache refresh failed (non-critical on macOS 14+): %v", flushErr)
+				output.GetDebug().State("Fonts installed successfully; cache refresh is optional. Fonts may appear after app restart.")
+			} else {
+				// Linux: fc-cache failure is serious for discovery; Windows: notify failure is serious
+				output.GetDebug().Error("Post-install font cache flush failed: %v", flushErr)
+			}
+		}
 	}
 
 	// Store categorized details: installed, then skipped, then failed
@@ -1118,6 +1167,7 @@ func installFont(
 	installScope platform.InstallationScope,
 	force bool,
 	fontDir string,
+	suppressVerboseDownloads bool,
 ) (*InstallResult, error) {
 	// Check if font is already installed BEFORE downloading (unless force flag is set)
 	// This saves bandwidth by skipping downloads for already-installed fonts
@@ -1157,7 +1207,11 @@ func installFont(
 		}
 	}()
 
-	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir)
+	downloadOpts := (*repo.DownloadFontOptions)(nil)
+	if suppressVerboseDownloads {
+		downloadOpts = &repo.DownloadFontOptions{SuppressVerboseProgressLine: true}
+	}
+	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir, downloadOpts)
 	if downloadErr != nil {
 		return buildInstallResult(InstallStatusFailed, "Download failed", 0, 0, len(fontFiles), nil, nil, 0), downloadErr
 	}

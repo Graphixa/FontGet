@@ -26,10 +26,20 @@ const (
 	MachineScope InstallationScope = "machine"
 )
 
+// InstallFontOptions configures InstallFont. A nil opts value keeps legacy behavior (run post-install cache/notify after each InstallFont).
+type InstallFontOptions struct {
+	// SkipPostInstallCacheRefresh skips the per-install OS font cache update / Windows WM_FONTCHANGE notification.
+	// Use with FlushFontCache(scope) once after installing multiple files in one batch.
+	SkipPostInstallCacheRefresh bool
+}
+
 // FontManager defines the interface for platform-specific font operations
 type FontManager interface {
-	// InstallFont installs a font file to the system
-	InstallFont(fontPath string, scope InstallationScope, force bool) error
+	// InstallFont installs a font file to the system. Pass opts.SkipPostInstallCacheRefresh on all but the last
+	// install in a batch, then call FlushFontCache once; or pass skip on every file in a batch and FlushFontCache after the loop.
+	InstallFont(fontPath string, scope InstallationScope, force bool, opts *InstallFontOptions) error
+	// FlushFontCache runs a single post-install font cache refresh for the scope (e.g. macOS fontd, Linux fc-cache, Windows font change broadcast).
+	FlushFontCache(scope InstallationScope) error
 	// RemoveFont removes a font from the system
 	RemoveFont(fontName string, scope InstallationScope) error
 	// GetFontDir returns the system's font directory for the given scope
