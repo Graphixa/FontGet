@@ -209,12 +209,10 @@ var configInfoCmd = &cobra.Command{
 		}
 
 		output.GetVerbose().Info("Starting configuration information display")
-		output.GetDebug().State("Config info command initiated")
 
 		// Show configuration information
 		configPath := config.GetAppConfigPath()
 		output.GetVerbose().Info("Configuration file location: %s", configPath)
-		output.GetDebug().State("Config path resolved: %s", configPath)
 
 		output.GetDebug().State("Calling config.LoadUserPreferences()")
 		appConfig, err := config.LoadUserPreferences()
@@ -274,17 +272,14 @@ var configEditCmd = &cobra.Command{
 			logger.Info("Starting config edit operation")
 		}
 
-		output.GetDebug().State("Starting config edit operation")
 		output.GetVerbose().Info("Starting configuration file edit operation")
 
 		// Open configuration file in editor
 		configPath := config.GetAppConfigPath()
 		output.GetVerbose().Info("Configuration file path: %s", configPath)
-		output.GetDebug().State("Config path resolved: %s", configPath)
 
 		// Try to load current config, but don't block if validation fails
 		output.GetVerbose().Info("Loading current configuration")
-		output.GetDebug().State("Loading user preferences from disk")
 
 		appConfig, err := config.LoadUserPreferences()
 		var editor string
@@ -357,7 +352,6 @@ var configEditCmd = &cobra.Command{
 
 			// Save config to ensure it exists on disk (only if we successfully loaded it)
 			output.GetVerbose().Info("Ensuring configuration file exists on disk")
-			output.GetDebug().State("Saving configuration to disk")
 
 			if err := config.SaveUserPreferences(appConfig); err != nil {
 				GetLogger().Error("Failed to save config: %v", err)
@@ -367,7 +361,6 @@ var configEditCmd = &cobra.Command{
 				output.GetVerbose().Info("Continuing despite save error")
 			} else {
 				output.GetVerbose().Info("Configuration file saved successfully")
-				output.GetDebug().State("Configuration file exists on disk")
 			}
 
 			// Get the editor to use
@@ -375,7 +368,6 @@ var configEditCmd = &cobra.Command{
 		}
 
 		output.GetVerbose().Info("Using editor: %s", editor)
-		output.GetDebug().State("Editor resolved: %s", editor)
 
 		output.GetVerbose().Info("Preparing to open editor with configuration file")
 		output.GetDebug().State("Operating system: %s", runtime.GOOS)
@@ -404,7 +396,6 @@ var configEditCmd = &cobra.Command{
 		}
 
 		output.GetVerbose().Success("Editor opened successfully")
-		output.GetDebug().State("Editor process started successfully")
 		if len(validationErrors) > 0 {
 			fmt.Println()
 			fmt.Printf("%s\n", ui.InfoText.Render("After fixing the issues, run 'fontget config validate' to verify your changes."))
@@ -448,14 +439,11 @@ Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore de
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration validation operation")
 
-		output.GetDebug().State("Starting config validate operation")
-
 		// Get configuration file path
 		output.GetVerbose().Info("Getting configuration file path")
 		output.GetDebug().State("Calling config.GetAppConfigPath()")
 		configPath := config.GetAppConfigPath()
 		output.GetVerbose().Info("Configuration file path: %s", configPath)
-		output.GetDebug().State("Configuration file path: %s", configPath)
 
 		// Start with a blank line for consistent spacing
 		fmt.Println()
@@ -525,7 +513,6 @@ Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore de
 
 		// Success - show validation results
 		output.GetVerbose().Success("Configuration validation completed successfully")
-		output.GetDebug().State("Configuration validation process completed")
 		fmt.Printf("  ✓ %s | %s\n", "config.yaml", ui.SuccessText.Render("Valid"))
 		fmt.Printf("\n%s\n", ui.SuccessText.Render("Configuration file is valid"))
 
@@ -546,14 +533,11 @@ Useful when the file is corrupted or you want to start fresh.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration reset operation")
 
-		output.GetDebug().State("Starting config reset operation")
-
 		// Get configuration file path
 		output.GetVerbose().Info("Getting configuration file path")
 		output.GetDebug().State("Calling config.GetAppConfigPath()")
 		configPath := config.GetAppConfigPath()
 		output.GetVerbose().Info("Configuration file path: %s", configPath)
-		output.GetDebug().State("Configuration file path: %s", configPath)
 
 		// Show confirmation dialog
 		output.GetVerbose().Info("Showing confirmation dialog")
@@ -580,7 +564,6 @@ Useful when the file is corrupted or you want to start fresh.`,
 
 		// User confirmed - proceed with reset
 		output.GetVerbose().Info("User confirmed configuration reset")
-		output.GetDebug().State("Proceeding with configuration reset")
 
 		// Create backup of existing config if it exists and is readable
 		if _, err := os.Stat(configPath); err == nil {
@@ -589,7 +572,6 @@ Useful when the file is corrupted or you want to start fresh.`,
 			if data, err := os.ReadFile(configPath); err == nil {
 				if err := os.WriteFile(backupPath, data, 0644); err == nil {
 					output.GetVerbose().Info("Created backup of existing config: %s", backupPath)
-					output.GetDebug().State("Config backup created: %s", backupPath)
 				}
 			}
 		}
@@ -629,7 +611,6 @@ Useful when the file is corrupted or you want to start fresh.`,
 
 		// Success - show reset results
 		output.GetVerbose().Success("Configuration reset completed successfully")
-		output.GetDebug().State("Configuration reset process completed")
 		fmt.Printf("%s\n", ui.SuccessText.Render("Configuration has been reset to defaults."))
 		fmt.Printf("%s\n", ui.InfoText.Render("You will be prompted to accept the license agreements the next time you run FontGet."))
 

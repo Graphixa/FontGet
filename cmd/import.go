@@ -514,7 +514,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		output.GetVerbose().Info("Force mode: %v", force)
 		output.GetVerbose().Info("Installing to: %s", fontDir)
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 
@@ -686,7 +686,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 			SuccessLabel: "Installed",
 			SkippedLabel: "Skipped",
 			FailedLabel:  "Failed",
-		}, IsVerbose())
+		}, output.IsVerboseOutputEnabled())
 
 		GetLogger().Info("Import complete - Installed: %d, Skipped: %d, Failed: %d",
 			status.Installed, status.Skipped, status.Failed)
@@ -802,7 +802,7 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 		SuccessLabel: "Installed",
 		SkippedLabel: "Skipped",
 		FailedLabel:  "Failed",
-	}, IsVerbose())
+	}, output.IsVerboseOutputEnabled())
 
 	GetLogger().Info("Import complete - Installed: %d, Skipped: %d, Failed: %d",
 		status.Installed, status.Skipped, status.Failed)

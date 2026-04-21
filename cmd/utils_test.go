@@ -101,7 +101,7 @@ func TestStatusReport(t *testing.T) {
 			// This is a bit tricky to test since it prints to stdout
 			// In a real test, you'd capture stdout or use a different approach
 			// For now, we'll just ensure it doesn't panic
-			output.PrintStatusReport(tt.report, IsVerbose())
+			output.PrintStatusReport(tt.report, output.IsVerboseOutputEnabled())
 		})
 	}
 }

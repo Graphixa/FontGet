@@ -648,7 +648,7 @@ Use --scope to set installation location:
 		output.GetVerbose().Info("Force mode: %v", force)
 		output.GetVerbose().Info("Installing %d font(s)", len(fontNames))
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 
@@ -661,27 +661,6 @@ Use --scope to set installation location:
 		var operationDetails []FontOperationDetails
 
 		// No need for separate header - the progress bar will show the title
-
-		// Log installation parameters after scope is determined (for debug mode)
-		if IsDebug() {
-			scopeDisplay := scope
-			if scopeDisplay == "" {
-				scopeDisplay = "user"
-			}
-			GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scopeDisplay, force)
-			// Format font list as a bulleted list
-			GetLogger().Info("Installing %d Font(s):", len(fontNames))
-			for _, fontName := range fontNames {
-				GetLogger().Info("  - %s", fontName)
-			}
-			// Show not found fonts in debug mode (before processing)
-			if len(notFoundFonts) > 0 {
-				GetLogger().Info("The following font(s) were not found in any source:")
-				for _, fontName := range notFoundFonts {
-					GetLogger().Info("  - %s", fontName)
-				}
-			}
-		}
 
 		// For debug mode: bypass TUI and use plain text output for easier parsing/logging
 		if IsDebug() {
@@ -699,7 +678,7 @@ Use --scope to set installation location:
 
 		// Add blank line before progress bar (per spacing guidelines)
 		// Only add if verbose mode is not enabled (verbose section already ends with blank line)
-		if !IsVerbose() {
+		if !output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 
@@ -856,7 +835,7 @@ Use --scope to set installation location:
 			SuccessLabel: "Installed",
 			SkippedLabel: "Skipped",
 			FailedLabel:  "Failed",
-		}, IsVerbose())
+		}, output.IsVerboseOutputEnabled())
 
 		GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d",
 			status.Installed, status.Skipped, status.Failed)
@@ -1000,7 +979,7 @@ func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []
 		SuccessLabel: "Installed",
 		SkippedLabel: "Skipped",
 		FailedLabel:  "Failed",
-	}, IsVerbose())
+	}, output.IsVerboseOutputEnabled())
 
 	GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d",
 		status.Installed, status.Skipped, status.Failed)

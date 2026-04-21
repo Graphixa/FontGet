@@ -1117,7 +1117,7 @@ Use --scope to set removal location:
 				} else {
 					// In normal/verbose mode, show user-friendly message with suggestions
 					// Add blank line after verbose output (if verbose was shown) before error messages
-					if IsVerbose() {
+					if output.IsVerboseOutputEnabled() {
 						fmt.Println()
 					}
 
@@ -1554,7 +1554,7 @@ Use --scope to set removal location:
 
 				// Print status report in verbose mode (like add command) even when fonts are not found
 				// Status report will add its own blank line at the end
-				if IsVerbose() {
+				if output.IsVerboseOutputEnabled() {
 					output.PrintStatusReport(output.StatusReport{
 						Success:      0,
 						Skipped:      0,
@@ -1649,7 +1649,7 @@ Use --scope to set removal location:
 				SuccessLabel: "Removed",
 				SkippedLabel: "Skipped",
 				FailedLabel:  "Failed",
-			}, IsVerbose())
+			}, output.IsVerboseOutputEnabled())
 
 			GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
 				status.Removed, status.Skipped, status.Failed)
@@ -2494,7 +2494,7 @@ Use --scope to set removal location:
 			SuccessLabel: "Removed",
 			SkippedLabel: "Skipped",
 			FailedLabel:  "Failed",
-		}, IsVerbose())
+		}, output.IsVerboseOutputEnabled())
 
 		// Don't return error for removal failures since we already show detailed status report
 		// This prevents duplicate error messages while maintaining proper exit codes

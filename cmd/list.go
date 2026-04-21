@@ -92,7 +92,7 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			output.GetVerbose().Info("Family filter: %s", familyFilter)
 		}
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 
@@ -178,7 +178,7 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 				}
 				output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
 				// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-				if IsVerbose() {
+				if output.IsVerboseOutputEnabled() {
 					fmt.Println()
 				}
 			}
@@ -417,7 +417,7 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 	if !shouldSuppressVerbose {
 		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 	}

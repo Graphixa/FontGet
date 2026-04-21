@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -46,6 +47,7 @@ type updateCompleteMsg struct {
 	source string
 	status string
 	error  error
+	url    string // configured source URL (for file log / debug)
 }
 
 // updateFinishedMsg represents completion of all updates
@@ -137,6 +139,7 @@ func (m updateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status[msg.source] = msg.status
 
 	case updateCompleteMsg:
+		logSourcesUpdateTUIPerSource(msg)
 		// Ignore completion messages if we've already quit (interrupted)
 		if m.quitting {
 			return m, nil
@@ -158,8 +161,22 @@ func (m updateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case updateFinishedMsg:
 		if msg.error != nil {
 			m.errors["system"] = msg.error.Error()
+			if lg := GetLogger(); lg != nil {
+				lg.Error("Sources update: manifest refresh after per-source downloads failed: %v", msg.error)
+			}
+			output.GetDebug().State("Sources update: GetManifest after downloads failed: %v", msg.error)
 		} else {
 			m.manifest = msg.manifest
+			n := 0
+			if msg.manifest != nil {
+				for _, s := range msg.manifest.Sources {
+					n += len(s.Fonts)
+				}
+			}
+			if lg := GetLogger(); lg != nil {
+				lg.Info("Sources update: manifest refresh completed (%d fonts across sources)", n)
+			}
+			output.GetDebug().State("Sources update: manifest refresh ok, total fonts=%d", n)
 		}
 		m.quitting = true
 		// Quit immediately - no delays
@@ -191,6 +208,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				source: source,
 				status: "Failed",
 				error:  err,
+				url:    "",
 			}
 		}
 
@@ -201,8 +219,10 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("source not found in configuration"),
+				url:    "",
 			}
 		}
+		sourceURL := sourceConfig.URL
 
 		// Create HTTP client with proper timeout and context handling
 		appConfig := config.GetUserPreferences()
@@ -217,16 +237,17 @@ func (m updateModel) updateNextSource() tea.Cmd {
 
 		// Store verbose info for display in TUI
 		if m.verbose {
-			m.status[source] = fmt.Sprintf("Checking %s...", sourceConfig.URL)
+			m.status[source] = fmt.Sprintf("Checking %s...", sourceURL)
 		}
 
 		// Create request with context for proper cancellation
-		req, err := http.NewRequestWithContext(ctx, "GET", sourceConfig.URL, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", sourceURL, nil)
 		if err != nil {
 			return updateCompleteMsg{
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("failed to create request: %w", err),
+				url:    sourceURL,
 			}
 		}
 
@@ -236,7 +257,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 
 		// Make the request
 		if m.verbose {
-			m.status[source] = fmt.Sprintf("Downloading from %s...", sourceConfig.URL)
+			m.status[source] = fmt.Sprintf("Downloading from %s...", sourceURL)
 		}
 
 		resp, err := client.Do(req)
@@ -259,6 +280,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("%s", errorMsg),
+				url:    sourceURL,
 			}
 		}
 		defer resp.Body.Close()
@@ -269,6 +291,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("source URL returned status %d: %s", resp.StatusCode, resp.Status),
+				url:    sourceURL,
 			}
 		}
 
@@ -286,6 +309,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("failed to read source content: %w", err),
+				url:    sourceURL,
 			}
 		}
 
@@ -296,6 +320,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("source file too large (max %dMB)", maxSizeMB),
+				url:    sourceURL,
 			}
 		}
 
@@ -306,6 +331,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				source: source,
 				status: "Failed",
 				error:  fmt.Errorf("source content is not valid JSON: %w", err),
+				url:    sourceURL,
 			}
 		}
 
@@ -318,6 +344,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 			source: source,
 			status: "Completed",
 			error:  nil,
+			url:    sourceURL,
 		}
 	}
 }
@@ -539,6 +566,39 @@ func (m updateModel) calculateFontCount() int {
 		totalFonts += len(sourceInfo.Fonts)
 	}
 	return totalFonts
+}
+
+func hostForSourcesLog(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	return u.Host
+}
+
+// logSourcesUpdateCLIStep records the same per-source lines as the TUI path (verbose `sources update -v`).
+func logSourcesUpdateCLIStep(sourceName, sourceURL string, err error) {
+	if lg := GetLogger(); lg != nil {
+		host := hostForSourcesLog(sourceURL)
+		if err != nil {
+			lg.Error("Sources update: source=%q status=failed host=%s err=%v", sourceName, host, err)
+		} else {
+			lg.Info("Sources update: source=%q status=ok host=%s", sourceName, host)
+		}
+	}
+	if err != nil {
+		output.GetDebug().State("Sources update: source=%q failed url=%q: %v", sourceName, sourceURL, err)
+	} else {
+		output.GetDebug().State("Sources update: source=%q ok url=%q", sourceName, sourceURL)
+	}
+}
+
+// logSourcesUpdateTUIPerSource writes one file-log line per source (and debug detail when --debug).
+func logSourcesUpdateTUIPerSource(msg updateCompleteMsg) {
+	logSourcesUpdateCLIStep(msg.source, msg.url, msg.error)
 }
 
 // RunSourcesUpdateTUI runs the sources update TUI

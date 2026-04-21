@@ -254,7 +254,7 @@ Use -s without a value to list sources.`,
 		// Verbose-level information for users - show operational details
 		output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Source: %s, Refresh: %v", query, category, source, refresh)
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', source='%s', refresh=%v", query, category, source, refresh)
@@ -388,7 +388,7 @@ Use -s without a value to list sources.`,
 
 		output.GetVerbose().Info("Search completed - found %d results", len(results))
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 		output.GetDebug().State("Search returned %d font results", len(results))
@@ -498,7 +498,7 @@ Use -s without a value to list sources.`,
 			fmt.Printf("\n%s: %s\n", ui.Text.Render("Sources Last Updated"), lastUpdated.Format("Mon, 02 Jan 2006 15:04:05 MST"))
 		}
 
-		GetLogger().Info("Font search operation completed successfully")
+		GetLogger().Info("Font search operation completed successfully - %d result(s)", len(results))
 		return nil
 	},
 }

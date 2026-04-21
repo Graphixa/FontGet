@@ -136,6 +136,7 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 				toolName, toolPath := rep.UsedTool()
 				logging.GetLogger().Info("External download succeeded using %s (%s)", toolName, toolPath)
 				output.GetVerbose().Info("Download completed using %s after HTTP %d challenge.", toolName, resp.StatusCode)
+				output.GetDebug().State("DownloadFont: %s -> %s (via %s)", font.DownloadURL, targetPath, toolName)
 				return targetPath, nil
 			}
 
@@ -145,6 +146,16 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 			return "", fmt.Errorf("HTTP %d (blocked by upstream challenge): %s", resp.StatusCode, font.DownloadURL)
 		}
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, font.DownloadURL)
+	}
+
+	displayName := font.Path
+	if displayName == "" {
+		displayName = filepath.Base(targetPath)
+	}
+	if u, parseErr := url.Parse(font.DownloadURL); parseErr == nil && u.Host != "" {
+		output.GetVerbose().Info("Downloading %s from %s", displayName, u.Host)
+	} else {
+		output.GetVerbose().Info("Downloading %s", displayName)
 	}
 
 	// Wrap response body with stall detection
@@ -184,6 +195,9 @@ func DownloadFont(font *FontFile, targetDir string) (string, error) {
 			return "", fmt.Errorf("failed to write file: %w", err)
 		}
 	}
+
+	logging.GetLogger().Info("Download complete: %s -> %s", font.Path, targetPath)
+	output.GetDebug().State("DownloadFont: %s -> %s", font.DownloadURL, targetPath)
 
 	return targetPath, nil
 }

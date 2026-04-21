@@ -60,7 +60,8 @@ type Config struct {
 	MaxAge int
 	// Compress determines if the rotated log files should be compressed
 	Compress bool
-	// ConsoleOutput determines if debug/info logs should be printed to the console
+	// ConsoleOutput mirrors timestamped file-log lines (INFO/DEBUG) to stdout. Off in normal CLI
+	// builds so file logging does not interleave with styled --verbose / --debug output.
 	ConsoleOutput bool
 }
 
@@ -204,7 +205,7 @@ func (l *Logger) log(level LogLevel, format string, args ...interface{}) {
 
 	l.currentSize += int64(len(logEntry))
 
-	// Print debug/info logs to console if ConsoleOutput is enabled
+	// Optional mirror of file-log lines to the console (disabled by default in cmd/root.go)
 	if l.ConsoleOutput && (level == DebugLevel || level == InfoLevel) {
 		fmt.Print(logEntry)
 	}

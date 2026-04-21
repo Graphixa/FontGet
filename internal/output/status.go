@@ -17,9 +17,9 @@ type StatusReport struct {
 }
 
 // PrintStatusReport prints a formatted status report if there were actual operations.
-// isVerbose should be passed from the cmd package's IsVerbose() function to avoid circular dependencies.
+// Pass output.IsVerboseOutputEnabled() (verbose && !debug) so the report stays hidden in debug mode.
 func PrintStatusReport(report StatusReport, isVerbose bool) {
-	// Only show status report in verbose mode
+	// Only show status report when styled verbose output is active
 	if isVerbose && (report.Success > 0 || report.Skipped > 0 || report.Failed > 0) {
 		// No leading blank line - previous section already ends with blank line per spacing framework
 		fmt.Printf("%s\n", ui.TextBold.Render("Status Report"))

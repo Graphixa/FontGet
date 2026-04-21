@@ -28,6 +28,13 @@ func SetVerboseChecker(checker func() bool) {
 	verboseChecker = checker
 }
 
+// IsVerboseOutputEnabled reports whether GetVerbose() would print: --verbose without --debug.
+// Use this when mirroring visibility for spacing (e.g. fmt.Println) or PrintStatusReport; actual
+// messages should still go through GetVerbose().
+func IsVerboseOutputEnabled() bool {
+	return isVerboseEnabled()
+}
+
 // isVerboseEnabled checks if verbose output should be displayed
 // Verbose output should only show when --verbose is set AND --debug is NOT set
 // This prevents verbose messages from appearing in debug mode (per logging guidelines)

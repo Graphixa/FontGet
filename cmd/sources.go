@@ -364,6 +364,7 @@ func runSourcesUpdateVerbose() error {
 			fmt.Printf("Checking for updates for %s\n", sourceName)
 			fmt.Printf("%s\n", ui.RenderError("Source not found in configuration"))
 			fmt.Println()
+			logSourcesUpdateCLIStep(sourceName, "", fmt.Errorf("source not found in configuration"))
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -394,6 +395,7 @@ func runSourcesUpdateVerbose() error {
 			}
 			fmt.Printf("%s\n", ui.RenderError(errorMsg))
 			fmt.Println()
+			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("%s", errorMsg))
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -404,6 +406,7 @@ func runSourcesUpdateVerbose() error {
 		if headResp.StatusCode >= 400 {
 			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Source URL returned status %d", headResp.StatusCode)))
 			fmt.Println()
+			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("source URL returned status %d", headResp.StatusCode))
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -416,6 +419,7 @@ func runSourcesUpdateVerbose() error {
 		if err != nil {
 			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to download source - %v", err)))
 			fmt.Println()
+			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("download failed: %w", err))
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -427,6 +431,7 @@ func runSourcesUpdateVerbose() error {
 		if err != nil {
 			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to read source content - %v", err)))
 			fmt.Println()
+			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("read body: %w", err))
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -437,6 +442,7 @@ func runSourcesUpdateVerbose() error {
 		if err := json.Unmarshal(body, &jsonData); err != nil {
 			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Source content is not valid JSON - %v", err)))
 			fmt.Println()
+			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("invalid JSON: %w", err))
 			failed++
 			continue
 		}
@@ -446,6 +452,7 @@ func runSourcesUpdateVerbose() error {
 		if err != nil {
 			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to get home directory - %v", err)))
 			fmt.Println()
+			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("home directory: %w", err))
 			failed++
 			failedSources[sourceName] = true
 			continue
@@ -456,7 +463,12 @@ func runSourcesUpdateVerbose() error {
 		cachePath := filepath.Join(homeDir, ".fontget", "sources", fmt.Sprintf("%s.json", sanitizedName))
 		fmt.Printf("%s\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to '%s' (%d bytes)", ui.InfoText.Render(cachePath), len(body))))
 		fmt.Println()
+		logSourcesUpdateCLIStep(sourceName, source.URL, nil)
 		successful++
+	}
+
+	if lg := GetLogger(); lg != nil {
+		lg.Info("Sources update: download phase complete (ok=%d failed=%d)", successful, failed)
 	}
 
 	// Temporarily disable failed sources before refresh to avoid trying to load them again

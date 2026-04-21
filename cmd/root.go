@@ -82,17 +82,15 @@ var rootCmd = &cobra.Command{
 		// Initialize logger with appropriate level based on flags
 		logConfig := logging.DefaultConfig()
 
-		// Debug flag enables full logging with timestamps to console
+		// File log always goes to fontget.log. Console mirroring of file-log lines is off by
+		// default so it does not interleave with styled output from --verbose / --debug.
 		if debug {
 			logConfig.Level = logging.DebugLevel
-			logConfig.ConsoleOutput = true // Show all logs to console in debug mode
+			logConfig.ConsoleOutput = false
 		} else if verbose {
-			// Verbose flag enables INFO level but no console logging (cleaner output)
 			logConfig.Level = logging.InfoLevel
-			logConfig.ConsoleOutput = false // Don't show regular logs in verbose mode
+			logConfig.ConsoleOutput = false
 		} else {
-			// Default mode: Log Info/Warn/Error to file (standard CLI behavior)
-			// Console output is minimal (errors only), but file has full audit trail
 			logConfig.Level = logging.InfoLevel
 			logConfig.ConsoleOutput = false
 		}
@@ -373,7 +371,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed verbose output of operations")
 
 	// Add debug flag - shows full diagnostic logs with timestamps (for developers)
-	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show debug logs with timestamps (for troubleshooting)")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show styled debug diagnostics on the terminal; detailed messages also go to fontget.log (not mirrored to the console)")
 
 	// Add logs flag (non-persistent - only available on root command)
 	rootCmd.Flags().BoolVar(&logs, "logs", false, "Open logs directory")

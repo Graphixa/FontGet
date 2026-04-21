@@ -173,7 +173,7 @@ The output file can be specified as a positional argument or using the -o flag.`
 		output.GetVerbose().Info("System fonts are always excluded")
 		output.GetVerbose().Info("Output file: %s", outputFile)
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 

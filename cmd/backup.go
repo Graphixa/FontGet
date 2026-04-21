@@ -164,7 +164,7 @@ Use --scope to specify which scopes to backup when providing an output path.`,
 		output.GetVerbose().Info("Scopes: %v", scopes)
 		output.GetVerbose().Info("System fonts are excluded")
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if IsVerbose() {
+		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
 
