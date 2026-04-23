@@ -2,6 +2,8 @@
 
 This document provides guidelines for organizing code in the FontGet codebase, explaining where different types of code should be placed and why.
 
+> For a package-by-package map of what exists today, see `docs/development/codebase.md`.
+
 ## Table of Contents
 
 - [Directory Structure Overview](#directory-structure-overview)
@@ -13,10 +15,23 @@ This document provides guidelines for organizing code in the FontGet codebase, e
 
 ---
 
+## New code checklist
+
+- **Is it a Cobra command / CLI workflow orchestration?** → `cmd/`
+- **Does it require Cobra context, CLI flags, or CLI-shaped error messages (verbose/debug)?** → `internal/cmdutils/`
+- **Is it pure and CLI-agnostic (could be used from tests or non-CLI code)?** → `internal/shared/`
+- **Is it domain/business logic tied to a subsystem?** → Put it in that domain package (e.g. `internal/repo/`, `internal/config/`, `internal/platform/`)
+- **Is it feature-specific helper logic that doesn’t clearly belong to one domain package?** → `internal/functions/` (avoid using this as a grab-bag)
+- **Is it styling/layout/theme/table rendering helpers?** → `internal/ui/`
+- **Is it a reusable Bubble Tea widget (progress, forms, dialogs, etc.)?** → `internal/components/`
+- **Is it console output formatting/state (verbose/debug/status)?** → `internal/output/`
+
+---
+
 ## Directory Structure Overview
 
 ```
-fontget/
+FontGet/
 ├── cmd/                    # CLI command implementations
 ├── internal/               # Internal packages (not exported)
 │   ├── cmdutils/          # CLI-specific utilities

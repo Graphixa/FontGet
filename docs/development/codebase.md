@@ -2,6 +2,8 @@
 
 This document provides a comprehensive overview of the FontGet codebase, explaining the purpose and functionality of each file and how they interface with other components.
 
+> For codebase rules (e.g. “where should new code go?”), see `docs/development/guidelines/codebase-layout-guidelines.md`.
+
 ## Table of Contents
 
 - [Root Files](#root-files)
@@ -647,14 +649,6 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Verbose Output Spacing**: Verbose sections use conditional `fmt.Println()` pattern (only add blank line if verbose was shown) per spacing framework guidelines
 
 **Status**: ✅ Active - Output system
-
-### `internal/functions/`
-**Purpose**: Utility functions
-**Files**:
-- `sort.go`: Source sorting utilities
-- `validation.go`: Validation utilities
-
-**Status**: ✅ Active - Utility functions
 
 ### `internal/logging/`
 **Purpose**: File logging system
