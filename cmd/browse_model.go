@@ -406,12 +406,11 @@ func browseResultFromInstall(fontName, source string, msg installFinishedMsg) (t
 	}
 }
 
-func browseResultFromUninstall(fontName, source string, msg uninstallFinishedMsg) (title string, errorTitle bool, body string) {
+func browseResultFromUninstall(fontName string, installScope platform.InstallationScope, msg uninstallFinishedMsg) (title string, errorTitle bool, body string) {
 	fontName = strings.TrimSpace(fontName)
 	if fontName == "" {
 		fontName = shared.PlaceholderNA
 	}
-	source = browseNormalizeSourceLabel(source)
 	if msg.err != nil {
 		return "Error", true, ui.RenderError(msg.err.Error())
 	}
@@ -420,7 +419,12 @@ func browseResultFromUninstall(fontName, source string, msg uninstallFinishedMsg
 	}
 	switch msg.result.Status {
 	case StatusCompleted:
-		line := fmt.Sprintf("'%s' successfully removed from %s.", fontName, source)
+		var line string
+		if installScope == platform.MachineScope {
+			line = fmt.Sprintf("'%s' has been uninstalled successfully from this machine.", fontName)
+		} else {
+			line = fmt.Sprintf("'%s' has been uninstalled successfully.", fontName)
+		}
 		return "Uninstalled", false, ui.Text.Render(line)
 	case StatusSkipped:
 		return "Skipped", false, ui.InfoText.Render(msg.result.Message)
@@ -863,12 +867,11 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case uninstallFinishedMsg:
 		fontName := m.removingFontName
-		source := m.removingSourceLabel
 		m.removing = false
 		m.removingFontName = ""
 		m.removingSourceLabel = ""
 		m.statusProgress = 0
-		title, errTitle, body := browseResultFromUninstall(fontName, source, msg)
+		title, errTitle, body := browseResultFromUninstall(fontName, m.installScope, msg)
 		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
 		return m, cmd
