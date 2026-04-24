@@ -8,6 +8,7 @@
   [![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
   [![Go Version](https://img.shields.io/github/go-mod/go-version/Graphixa/FontGet)](go.mod)
   [![CI](https://img.shields.io/github/actions/workflow/status/Graphixa/FontGet/ci.yml?label=CI)](https://github.com/Graphixa/FontGet/actions)
+  [![Security](https://img.shields.io/github/actions/workflow/status/Graphixa/FontGet/security.yml?label=Security)](https://github.com/Graphixa/FontGet/actions)
   
 
   <p>FontGet is a lightweight, cross-platform terminal font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.</p>
