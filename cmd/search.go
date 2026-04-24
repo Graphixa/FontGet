@@ -194,7 +194,6 @@ Use -s without a value to list sources.`,
 		// Get arguments (already validated by Args function)
 		category, _ := cmd.Flags().GetString("category")
 		source, _ := cmd.Flags().GetString("source")
-		refresh, _ := cmd.Flags().GetBool("refresh")
 		var query string
 		if len(args) > 0 {
 			query = args[0]
@@ -207,7 +206,7 @@ Use -s without a value to list sources.`,
 		}
 
 		// Log search parameters (always log to file)
-		GetLogger().Info("Search parameters - Query: %s, Category: %s, Source: %s, Refresh: %v", query, category, source, refresh)
+		GetLogger().Info("Search parameters - Query: %s, Category: %s, Source: %s", query, category, source)
 
 		// Handle category-only mode (show all categories) - early return
 		// Check if category flag was provided but no value was given (NoOptDefVal = "list")
@@ -252,15 +251,14 @@ Use -s without a value to list sources.`,
 		}
 
 		// Verbose-level information for users - show operational details
-		output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Source: %s, Refresh: %v", query, category, source, refresh)
+		output.GetVerbose().Info("Search parameters - Query: %s, Category: %s, Source: %s", query, category, source)
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
 		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
-		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', source='%s', refresh=%v", query, category, source, refresh)
+		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', source='%s'", query, category, source)
 
-		// Get repository with optional refresh
-		r, err := cmdutils.GetRepository(refresh, GetLogger())
+		r, err := cmdutils.GetRepository(GetLogger())
 		if err != nil {
 			return err
 		}
@@ -509,10 +507,6 @@ func init() {
 	searchCmd.Flags().Lookup("category").NoOptDefVal = "list"
 	searchCmd.Flags().StringP("source", "s", "", "Filter by source (short ID like \"google\", \"nerd\", \"squirrel\" or full name like \"Google Fonts\")")
 	searchCmd.Flags().Lookup("source").NoOptDefVal = "list"
-
-	// Hidden flag for development/testing only
-	searchCmd.Flags().Bool("refresh", false, "Force refresh of font manifest before search")
-	searchCmd.Flags().MarkHidden("refresh")
 
 	// Helper function for category completion (shared by both short and long flags)
 	categoryCompletionFunc := func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

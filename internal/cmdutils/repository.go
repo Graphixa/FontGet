@@ -7,28 +7,17 @@ import (
 	"fontget/internal/repo"
 )
 
-// GetRepository gets the font repository with optional refresh.
-// If refresh is true, forces a refresh of the font manifest.
+// GetRepository gets the font repository (standard caching/refresh policy in repo).
 // Returns standardized error handling for repository initialization.
 //
 // logger can be nil (for testing or when logging is not needed).
 //
 // NOTE: This function is tested via integration tests (see cmd/integration_test.go)
 // because it depends on package-level repo functions that are difficult to mock.
-func GetRepository(refresh bool, logger Logger) (*repo.Repository, error) {
-	var r *repo.Repository
-	var err error
-
-	if refresh {
-		// Force refresh of font manifest before use
-		output.GetVerbose().Info("Forcing refresh of font manifest")
-		output.GetDebug().State("Using GetRepositoryWithRefresh() to force source updates")
-		r, err = repo.GetRepositoryWithRefresh()
-	} else {
-		output.GetVerbose().Info("Using cached font manifest")
-		output.GetDebug().State("Using GetRepository() with cached sources")
-		r, err = repo.GetRepository()
-	}
+func GetRepository(logger Logger) (*repo.Repository, error) {
+	output.GetVerbose().Info("Loading font repository")
+	output.GetDebug().State("Calling repo.GetRepository()")
+	r, err := repo.GetRepository()
 
 	if err != nil {
 		if logger != nil {

@@ -29,8 +29,7 @@ Flags --scope (-s) and --force (-f) match fontget add (user/machine install scop
 			return err
 		}
 
-		refresh, _ := cmd.Flags().GetBool("refresh")
-		r, err := cmdutils.GetRepository(refresh, GetLogger())
+		r, err := cmdutils.GetRepository(GetLogger())
 		if err != nil {
 			return err
 		}
@@ -86,6 +85,4 @@ func init() {
 	rootCmd.AddCommand(browseCmd)
 	browseCmd.Flags().StringP("scope", "s", "", "Installation scope (user or machine)")
 	browseCmd.Flags().BoolP("force", "f", false, "Force installation even if font is already installed")
-	browseCmd.Flags().Bool("refresh", false, "Force refresh of font manifest before browse")
-	_ = browseCmd.Flags().MarkHidden("refresh")
 }

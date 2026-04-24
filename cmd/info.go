@@ -94,7 +94,7 @@ Use --license to show only license information.`,
 
 		// Get repository (using cached manifest)
 		output.GetVerbose().Info("Initializing repository for font lookup")
-		r, err := cmdutils.GetRepository(false, GetLogger())
+		r, err := cmdutils.GetRepository(GetLogger())
 		if err != nil {
 			return err
 		}

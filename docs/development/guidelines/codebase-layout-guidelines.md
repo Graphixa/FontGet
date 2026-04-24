@@ -351,7 +351,7 @@ func SortSources(sources []SourceItem) {
 
 ```go
 // internal/cmdutils/repository.go
-func GetRepository(refresh bool, logger Logger) (*repo.Repository, error) {
+func GetRepository(logger Logger) (*repo.Repository, error) {
     // CLI-specific: logging, error formatting
     r, err := repo.GetRepository() // Business logic in repo package
     if err != nil {

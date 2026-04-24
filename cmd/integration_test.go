@@ -121,43 +121,25 @@ func TestGetRepository_Integration(t *testing.T) {
 		t.Fatalf("Failed to initialize manifest: %v", err)
 	}
 
-	tests := []struct {
-		name    string
-		refresh bool
-	}{
-		{
-			name:    "get repository without refresh",
-			refresh: false,
-		},
-		{
-			name:    "get repository with refresh",
-			refresh: true,
-		},
+	repo, err := cmdutils.GetRepository(GetLogger())
+
+	if err != nil {
+		t.Errorf("getRepository() unexpected error: %v", err)
+		return
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo, err := cmdutils.GetRepository(tt.refresh, GetLogger())
+	if repo == nil {
+		t.Errorf("getRepository() returned nil repository")
+		return
+	}
 
-			if err != nil {
-				t.Errorf("getRepository() unexpected error: %v", err)
-				return
-			}
-
-			if repo == nil {
-				t.Errorf("getRepository() returned nil repository")
-				return
-			}
-
-			// Verify repository is usable
-			manifest, err := repo.GetManifest()
-			if err != nil {
-				t.Errorf("getRepository() returned repository that failed to get manifest: %v", err)
-			}
-			if manifest == nil {
-				t.Errorf("getRepository() returned repository with nil manifest")
-			}
-		})
+	// Verify repository is usable
+	manifest, err := repo.GetManifest()
+	if err != nil {
+		t.Errorf("getRepository() returned repository that failed to get manifest: %v", err)
+	}
+	if manifest == nil {
+		t.Errorf("getRepository() returned repository with nil manifest")
 	}
 }
 
