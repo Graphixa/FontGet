@@ -25,9 +25,6 @@ func NewFontManager() (FontManager, error) {
 	}
 
 	userFontDir := filepath.Join(homeDir, "Library", "Fonts")
-	if err := ensureDir(userFontDir); err != nil {
-		return nil, fmt.Errorf("failed to ensure user font directory exists: %w", err)
-	}
 
 	// System font directory
 	systemFontDir := "/Library/Fonts"
@@ -76,7 +73,7 @@ func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope
 	}
 
 	if err := ensureDir(targetDir); err != nil {
-		return fmt.Errorf("failed to ensure font directory exists: %w", err)
+		return fmt.Errorf("failed to ensure font directory exists for scope %s at %q: %w", scope, targetDir, err)
 	}
 
 	targetPath := filepath.Join(targetDir, fontName)
