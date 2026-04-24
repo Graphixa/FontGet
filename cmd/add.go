@@ -704,6 +704,31 @@ Use --scope to set installation location:
 					send(components.ProgressUpdateMsg{Percent: percent})
 
 					// Install the font using the installFont helper
+					lastStep := ""
+					lastPctBucket := -1
+					onProgress := func(step string, stepPct float64) {
+						// Avoid spamming the UI: only update on step change or ~5% within-step progress.
+						bucket := int(shared.Clamp01(stepPct) * 20.0) // 0..20
+						if step == lastStep && bucket == lastPctBucket {
+							return
+						}
+						lastStep = step
+						lastPctBucket = bucket
+
+						msg := step + "..."
+						if step == installStepDownload {
+							msg = "Downloading from " + fontGroup.SourceName
+						}
+
+						send(components.ItemUpdateMsg{
+							Index:   itemIndex,
+							Status:  "in_progress",
+							Message: msg,
+						})
+						send(components.ProgressUpdateMsg{
+							Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), step, stepPct),
+						})
+					}
 					result, err := installFont(
 						fontGroup.Fonts,
 						fontGroup.FontID,
@@ -712,6 +737,7 @@ Use --scope to set installation location:
 						force,
 						fontDir,
 						true, // suppress per-file verbose download lines while Bubble Tea owns stdout
+						onProgress,
 					)
 
 					if err != nil {
@@ -800,8 +826,7 @@ Use --scope to set installation location:
 					})
 
 					// Update progress percentage - now based on actual completion
-					percent = float64(itemIndex+1) / float64(len(fontsToInstall)) * 100
-					send(components.ProgressUpdateMsg{Percent: percent})
+					send(components.ProgressUpdateMsg{Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), installStepCompleted, 1)})
 				}
 
 				return nil
@@ -942,6 +967,7 @@ func installFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []
 			force,
 			fontDir,
 			false, // debug path: allow per-file verbose download lines
+			nil,
 		)
 
 		if err != nil {
@@ -1034,13 +1060,37 @@ func humanizeFontStyleLabel(s string) string {
 }
 
 // downloadFontVariants downloads all variants of a font family
-func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, downloadOpts *repo.DownloadFontOptions) ([]string, error) {
+func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
 	var allFontPaths []string
 
 	// Download each variant - only log errors and unusual cases
-	for _, fontFile := range fontFiles {
+	total := len(fontFiles)
+	for i, fontFile := range fontFiles {
+		if onProgress != nil && total > 0 {
+			onProgress(installStepDownload, float64(i)/float64(total))
+		}
+		opts := downloadOpts
+		if onProgress != nil {
+			// Ensure we always pass a progress-enabled options struct, while preserving suppression.
+			suppress := opts != nil && opts.SuppressVerboseProgressLine
+			opts = &repo.DownloadFontOptions{SuppressVerboseProgressLine: suppress}
+			opts.OnBytesDownloaded = func(doneBytes int64, totalBytes int64) {
+				if totalBytes > 0 {
+					onProgress(installStepDownload, float64(doneBytes)/float64(totalBytes))
+				}
+			}
+			opts.OnExtractProgress = func(done int, total int) {
+				if total > 0 {
+					onProgress(installStepExtract, float64(done)/float64(total))
+					return
+				}
+				// Unknown totals (e.g., tar streams): use a soft-saturating curve so the UI moves.
+				onProgress(installStepExtract, float64(done)/float64(done+12))
+			}
+		}
+
 		output.GetDebug().State("Calling repo.DownloadAndExtractFont() for variant: %s from %s", fontFile.Variant, fontFile.DownloadURL)
-		fontPaths, err := repo.DownloadAndExtractFont(&fontFile, tempDir, downloadOpts)
+		fontPaths, err := repo.DownloadAndExtractFont(&fontFile, tempDir, opts)
 		if err != nil {
 			output.GetDebug().State("repo.DownloadAndExtractFont() failed for variant %s: %v", fontFile.Variant, err)
 			return nil, err
@@ -1052,18 +1102,26 @@ func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, downloadOpt
 		}
 	}
 
+	if onProgress != nil {
+		onProgress(installStepDownload, 1)
+		onProgress(installStepExtract, 1)
+	}
 	return allFontPaths, nil
 }
 
 // installDownloadedFonts installs downloaded font files to system
-func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool) (installed, skipped, failed int, details []string, errors []string, downloadSize int64) {
+func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress StepProgressFunc) (installed, skipped, failed int, details []string, errors []string, downloadSize int64) {
 	var installedFiles []string
 	var skippedFiles []string
 	var failedFiles []string
 
 	batchOpts := &platform.InstallFontOptions{SkipPostInstallCacheRefresh: true}
 
-	for _, fontPath := range fontPaths {
+	total := len(fontPaths)
+	for i, fontPath := range fontPaths {
+		if onProgress != nil && total > 0 {
+			onProgress(installStepInstall, float64(i)/float64(total))
+		}
 		fontDisplayName := filepath.Base(fontPath)
 
 		// Get file size before we potentially remove it
@@ -1106,8 +1164,15 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 		installedFiles = append(installedFiles, fontDisplayName)
 	}
 
+	if onProgress != nil {
+		onProgress(installStepInstall, 1)
+	}
+
 	// Single cache refresh / font-change notification after all copies (avoids pkill fontd / fc-cache / WM_FONTCHANGE per file)
 	if installed > 0 {
+		if onProgress != nil {
+			onProgress(installStepFinalize, 0)
+		}
 		if flushErr := fontManager.FlushFontCache(installScope); flushErr != nil {
 			errStr := flushErr.Error()
 			isDarwinNonCritical := strings.Contains(strings.ToLower(errStr), "failed to refresh font cache (non-critical")
@@ -1118,6 +1183,9 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 				// Linux: fc-cache failure is serious for discovery; Windows: notify failure is serious
 				output.GetDebug().Error("Post-install font cache flush failed: %v", flushErr)
 			}
+		}
+		if onProgress != nil {
+			onProgress(installStepFinalize, 1)
 		}
 	}
 
@@ -1168,7 +1236,11 @@ func installFont(
 	force bool,
 	fontDir string,
 	suppressVerboseDownloads bool,
+	onProgress StepProgressFunc,
 ) (*InstallResult, error) {
+	if onProgress != nil {
+		onProgress(installStepPrecheck, 0)
+	}
 	// Check if font is already installed BEFORE downloading (unless force flag is set)
 	// This saves bandwidth by skipping downloads for already-installed fonts
 	if !force && fontID != "" && len(fontFiles) > 0 {
@@ -1182,6 +1254,10 @@ func installFont(
 			// Log warning but continue with installation (fail-safe behavior)
 			GetLogger().Warn("Failed to check if font is already installed (ID: %s): %v. Proceeding with installation.", fontID, checkErr)
 		} else if alreadyInstalled {
+			if onProgress != nil {
+				onProgress(installStepPrecheck, 1)
+				onProgress(installStepCompleted, 1)
+			}
 			// Font is already installed - skip download and mark all variants as skipped
 			output.GetDebug().State("Font %s (ID: %s) is already installed, skipping download", fontName, fontID)
 			var details []string
@@ -1190,6 +1266,9 @@ func installFont(
 			}
 			return buildInstallResult(InstallStatusSkipped, "Already installed", 0, len(fontFiles), 0, details, nil, 0), nil
 		}
+	}
+	if onProgress != nil {
+		onProgress(installStepPrecheck, 1)
 	}
 
 	// Download all variants of this font family
@@ -1211,14 +1290,17 @@ func installFont(
 	if suppressVerboseDownloads {
 		downloadOpts = &repo.DownloadFontOptions{SuppressVerboseProgressLine: true}
 	}
-	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir, downloadOpts)
+	if onProgress != nil {
+		onProgress(installStepDownload, 0)
+	}
+	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir, downloadOpts, onProgress)
 	if downloadErr != nil {
 		return buildInstallResult(InstallStatusFailed, "Download failed", 0, 0, len(fontFiles), nil, nil, 0), downloadErr
 	}
 
 	// Install downloaded fonts
 	installed, skipped, failed, details, errors, downloadSize := installDownloadedFonts(
-		allFontPaths, fontManager, installScope, fontDir, force)
+		allFontPaths, fontManager, installScope, fontDir, force, onProgress)
 
 	// Determine final status
 	status := InstallStatusCompleted

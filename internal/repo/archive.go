@@ -36,22 +36,34 @@ func DetectArchiveType(filename string) ArchiveType {
 	return ArchiveTypeUnknown
 }
 
-// ExtractArchive extracts an archive file to the specified directory
+// ExtractArchive extracts an archive file to the specified directory.
 func ExtractArchive(archivePath, destDir string) ([]string, error) {
+	return ExtractArchiveWithOptions(archivePath, destDir, nil)
+}
+
+// ExtractOptions configures ExtractArchiveWithOptions.
+type ExtractOptions struct {
+	// OnFontFileExtracted is called after each font file is extracted.
+	// total is the number of font files that will be extracted when known, otherwise -1.
+	OnFontFileExtracted func(done int, total int)
+}
+
+// ExtractArchiveWithOptions extracts an archive file to the specified directory, with optional progress callbacks.
+func ExtractArchiveWithOptions(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
 	archiveType := DetectArchiveType(archivePath)
 
 	switch archiveType {
 	case ArchiveTypeZIP:
-		return extractZIP(archivePath, destDir)
+		return extractZIP(archivePath, destDir, opts)
 	case ArchiveTypeTARXZ:
-		return extractTARXZ(archivePath, destDir)
+		return extractTARXZ(archivePath, destDir, opts)
 	default:
 		return nil, fmt.Errorf("unsupported archive format: %s", filepath.Ext(archivePath))
 	}
 }
 
 // extractZIP extracts a ZIP archive and returns the list of extracted font files
-func extractZIP(archivePath, destDir string) ([]string, error) {
+func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open ZIP file: %w", err)
@@ -65,6 +77,21 @@ func extractZIP(archivePath, destDir string) ([]string, error) {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
+	total := 0
+	for _, f := range reader.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		if !isFontFile(f.Name) {
+			continue
+		}
+		total++
+	}
+	if total == 0 {
+		total = -1
+	}
+
+	done := 0
 	for _, file := range reader.File {
 		// Skip directories
 		if file.FileInfo().IsDir() {
@@ -103,12 +130,16 @@ func extractZIP(archivePath, destDir string) ([]string, error) {
 		}
 
 		extractedFiles = append(extractedFiles, extractedPath)
+		done++
+		if opts != nil && opts.OnFontFileExtracted != nil {
+			opts.OnFontFileExtracted(done, total)
+		}
 	}
 	return extractedFiles, nil
 }
 
 // extractTARXZ extracts a TAR.XZ archive and returns the list of extracted font files
-func extractTARXZ(archivePath, destDir string) ([]string, error) {
+func extractTARXZ(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
 	// Open the archive file
 	file, err := os.Open(archivePath)
 	if err != nil {
@@ -132,6 +163,7 @@ func extractTARXZ(archivePath, destDir string) ([]string, error) {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
+	done := 0
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -175,6 +207,10 @@ func extractTARXZ(archivePath, destDir string) ([]string, error) {
 		}
 
 		extractedFiles = append(extractedFiles, extractedPath)
+		done++
+		if opts != nil && opts.OnFontFileExtracted != nil {
+			opts.OnFontFileExtracted(done, -1) // tar streams; total unknown without a second pass
+		}
 	}
 
 	return extractedFiles, nil

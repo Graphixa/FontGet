@@ -606,6 +606,30 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 					send(components.ProgressUpdateMsg{Percent: percent})
 
 					// Install the font
+					lastStep := ""
+					lastPctBucket := -1
+					onProgress := func(step string, stepPct float64) {
+						bucket := int(shared.Clamp01(stepPct) * 20.0)
+						if step == lastStep && bucket == lastPctBucket {
+							return
+						}
+						lastStep = step
+						lastPctBucket = bucket
+
+						msg := step + "..."
+						if step == installStepDownload {
+							msg = "Downloading from " + fontGroup.SourceName
+						}
+
+						send(components.ItemUpdateMsg{
+							Index:   itemIndex,
+							Status:  "in_progress",
+							Message: msg,
+						})
+						send(components.ProgressUpdateMsg{
+							Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), step, stepPct),
+						})
+					}
 					result, err := installFont(
 						fontGroup.Fonts,
 						fontGroup.FontID,
@@ -614,6 +638,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						force,
 						fontDir,
 						true,
+						onProgress,
 					)
 
 					if err != nil {
@@ -654,8 +679,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						Scope:        "", // Empty for single-scope operations (cleaner output)
 					})
 
-					percent = float64(itemIndex+1) / float64(len(fontsToInstall)) * 100
-					send(components.ProgressUpdateMsg{Percent: percent})
+					send(components.ProgressUpdateMsg{Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), installStepCompleted, 1)})
 				}
 
 				return nil
@@ -728,6 +752,7 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 			force,
 			fontDir,
 			false,
+			nil,
 		)
 
 		if err != nil {

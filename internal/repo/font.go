@@ -66,6 +66,15 @@ type DownloadFontOptions struct {
 	// SuppressVerboseProgressLine omits the per-file "[INFO] Downloading …" verbose line.
 	// Use true while Bubble Tea (or any other UI) owns stdout so output does not interleave.
 	SuppressVerboseProgressLine bool
+
+	// OnBytesDownloaded, when set, is called periodically as bytes are read from the response body.
+	// totalBytes is the HTTP Content-Length when known, otherwise -1.
+	// Implementations must be lightweight.
+	OnBytesDownloaded func(downloadedBytes int64, totalBytes int64)
+
+	// OnExtractProgress, when set, is called as extract progresses.
+	// totalFiles is the number of font files to be extracted when known, otherwise -1.
+	OnExtractProgress func(extractedFiles int, totalFiles int)
 }
 
 // DownloadFont downloads a font file and verifies its SHA-256 hash if available
@@ -174,6 +183,16 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	stallReader := network.WrapReaderWithStallDetection(resp.Body, downloadTimeout, 0)
 	defer stallReader.Close()
 
+	totalBytes := resp.ContentLength
+	if totalBytes <= 0 {
+		totalBytes = -1
+	}
+	// Optional byte progress callback.
+	var reader io.Reader = stallReader
+	if opts != nil && opts.OnBytesDownloaded != nil {
+		reader = newProgressReader(stallReader, totalBytes, opts.OnBytesDownloaded)
+	}
+
 	// Create target file
 	file, err := os.Create(targetPath)
 	if err != nil {
@@ -185,7 +204,7 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	if font.SHA != "" {
 		// Create SHA-256 hash
 		hash := sha256.New()
-		tee := io.TeeReader(stallReader, hash)
+		tee := io.TeeReader(reader, hash)
 
 		// Copy file content with stall detection
 		if _, err := io.Copy(file, tee); err != nil {
@@ -201,7 +220,7 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	} else {
 		// Just copy the file content if we don't have a SHA hash
 		// Use stallReader instead of resp.Body for stall detection
-		if _, err := io.Copy(file, stallReader); err != nil {
+		if _, err := io.Copy(file, reader); err != nil {
 			return "", fmt.Errorf("failed to write file: %w", err)
 		}
 	}
@@ -236,7 +255,13 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 
 	// It's an archive, extract it
 	extractDir := filepath.Join(targetDir, "extracted")
-	extractedFiles, err := ExtractArchive(downloadedPath, extractDir)
+	extractedFiles, err := ExtractArchiveWithOptions(downloadedPath, extractDir, &ExtractOptions{
+		OnFontFileExtracted: func(done int, total int) {
+			if opts != nil && opts.OnExtractProgress != nil {
+				opts.OnExtractProgress(done, total)
+			}
+		},
+	})
 	if err != nil {
 		os.Remove(downloadedPath) // Clean up the archive file
 		return nil, fmt.Errorf("failed to extract archive: %w", err)

@@ -55,7 +55,10 @@ type uninstallFinishedMsg struct {
 	fontID string
 }
 
-type statusProgressTickMsg struct{}
+type browseOpProgressMsg struct {
+	phase   string
+	percent float64 // 0..100; negative means "indeterminate"
+}
 
 type browseModalState struct {
 	fontID  string
@@ -110,6 +113,9 @@ type browseModel struct {
 
 	// Indeterminate-style progress (0–100) for install/remove status overlay.
 	statusProgress float64
+	statusPhase    string
+
+	opMsgCh <-chan tea.Msg
 
 	debounceGen int
 
@@ -477,15 +483,24 @@ func (m *browseModel) handleResultModalUpdate(msg tea.Msg) (tea.Model, tea.Cmd) 
 	return m, nil
 }
 
-func (m *browseModel) statusProgressTick() tea.Cmd {
-	return tea.Tick(90*time.Millisecond, func(time.Time) tea.Msg {
-		return statusProgressTickMsg{}
-	})
+func (m *browseModel) waitForOpMsg() tea.Cmd {
+	if m.opMsgCh == nil {
+		return nil
+	}
+	ch := m.opMsgCh
+	return func() tea.Msg {
+		msg, ok := <-ch
+		if !ok {
+			return nil
+		}
+		return msg
+	}
 }
 
 func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.installing = true
 	m.statusProgress = 0
+	m.statusPhase = "Installing"
 	m.installPopupFontName = fontName
 	if sourceLabel == "" {
 		sourceLabel = shared.PlaceholderNA
@@ -497,25 +512,34 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 	force := m.force
 	fontDir := m.fontDir
 
-	return func() tea.Msg {
+	ch := make(chan tea.Msg, 32)
+	m.opMsgCh = ch
+	go func() {
+		defer close(ch)
 		res, err := shared.ResolveFontQuery(fontID)
 		if err != nil {
-			return installFinishedMsg{err: err, fontID: fontID}
+			ch <- installFinishedMsg{err: err, fontID: fontID}
+			return
 		}
 		if res.HasMultipleMatches {
-			return installFinishedMsg{
-				err:    fmt.Errorf("multiple matches for %q", fontID),
-				fontID: fontID,
-			}
+			ch <- installFinishedMsg{err: fmt.Errorf("multiple matches for %q", fontID), fontID: fontID}
+			return
 		}
-		ir, ierr := installFont(res.Fonts, res.FontID, fm, scope, force, fontDir, true)
-		return installFinishedMsg{result: ir, err: ierr, fontID: fontID}
-	}
+
+		onProgress := func(step string, stepPct float64) {
+			ch <- browseOpProgressMsg{phase: step, percent: OverallInstallPercent(0, 1, step, stepPct)}
+		}
+
+		ir, ierr := installFont(res.Fonts, res.FontID, fm, scope, force, fontDir, true, onProgress)
+		ch <- installFinishedMsg{result: ir, err: ierr, fontID: fontID}
+	}()
+	return m.waitForOpMsg()
 }
 
 func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.removing = true
-	m.statusProgress = 0
+	m.statusProgress = -1
+	m.statusPhase = "Removing"
 	m.removingFontName = fontName
 	if sourceLabel == "" {
 		sourceLabel = shared.PlaceholderNA
@@ -527,10 +551,17 @@ func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) t
 	fontDir := m.fontDir
 	repository := m.repository
 
-	return func() tea.Msg {
-		rr, err := removeFont(fontID, fm, scope, fontDir, repository)
-		return uninstallFinishedMsg{result: rr, err: err, fontID: fontID}
-	}
+	ch := make(chan tea.Msg, 8)
+	m.opMsgCh = ch
+	go func() {
+		defer close(ch)
+		onProgress := func(step string, stepPct float64) {
+			ch <- browseOpProgressMsg{phase: step, percent: OverallRemovePercent(0, 1, step, stepPct)}
+		}
+		rr, err := removeFont(fontID, fm, scope, fontDir, repository, onProgress)
+		ch <- uninstallFinishedMsg{result: rr, err: err, fontID: fontID}
+	}()
+	return m.waitForOpMsg()
 }
 
 func (m *browseModel) handleModalUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -552,13 +583,13 @@ func (m *browseModel) handleModalUpdate(msg tea.Msg) (tea.Model, tea.Cmd) {
 			name := m.modal.font.Name
 			src := shared.GetSourceNameFromID(id)
 			m.closeModal()
-			return m, tea.Batch(m.startInstallByID(id, name, src), m.statusProgressTick())
+			return m, m.startInstallByID(id, name, src)
 		case "uninstall":
 			id := m.modal.fontID
 			name := m.modal.font.Name
 			src := shared.GetSourceNameFromID(id)
 			m.closeModal()
-			return m, tea.Batch(m.startUninstallByID(id, name, src), m.statusProgressTick())
+			return m, m.startUninstallByID(id, name, src)
 		case "view online":
 			url := strings.TrimSpace(m.modal.font.SourceURL)
 			if url == "" {
@@ -852,18 +883,15 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := m.applySearch()
 		return m, cmd
 
-	case statusProgressTickMsg:
+	case browseOpProgressMsg:
 		if !m.installing && !m.removing {
 			return m, nil
 		}
-		if m.statusProgress >= 92 {
-			return m, nil
+		if strings.TrimSpace(msg.phase) != "" {
+			m.statusPhase = msg.phase
 		}
-		m.statusProgress += 3.5
-		if m.statusProgress > 92 {
-			m.statusProgress = 92
-		}
-		return m, m.statusProgressTick()
+		m.statusProgress = msg.percent
+		return m, m.waitForOpMsg()
 
 	case uninstallFinishedMsg:
 		fontName := m.removingFontName
@@ -871,6 +899,8 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.removingFontName = ""
 		m.removingSourceLabel = ""
 		m.statusProgress = 0
+		m.statusPhase = ""
+		m.opMsgCh = nil
 		title, errTitle, body := browseResultFromUninstall(fontName, m.installScope, msg)
 		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
@@ -883,6 +913,8 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.installPopupFontName = ""
 		m.installPopupSource = ""
 		m.statusProgress = 0
+		m.statusPhase = ""
+		m.opMsgCh = nil
 		title, errTitle, body := browseResultFromInstall(fontName, source, msg)
 		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
@@ -1035,7 +1067,11 @@ func (m *browseModel) View() string {
 		if maxOuter > components.DefaultStatusPopupMaxOuter {
 			maxOuter = components.DefaultStatusPopupMaxOuter
 		}
-		popup := components.RenderStatusPopup("Installing", m.installPopupFontName, m.installPopupSource, m.statusProgress, maxOuter)
+		phase := strings.TrimSpace(m.statusPhase)
+		if phase == "" {
+			phase = "Installing"
+		}
+		popup := components.RenderStatusPopup(phase, m.installPopupFontName, m.installPopupSource, m.statusProgress, maxOuter)
 		view = components.Composite(popup, view, components.Center, components.Center, 0, 0)
 	}
 	if m.removing {
@@ -1046,7 +1082,12 @@ func (m *browseModel) View() string {
 		if maxOuter > components.DefaultStatusPopupMaxOuter {
 			maxOuter = components.DefaultStatusPopupMaxOuter
 		}
-		popup := components.RenderStatusPopup("Removing", m.removingFontName, m.removingSourceLabel, m.statusProgress, maxOuter)
+		phase := strings.TrimSpace(m.statusPhase)
+		if phase == "" {
+			phase = "Removing"
+		}
+		mid := fmt.Sprintf("'%s' from '%s'", m.removingFontName, m.removingSourceLabel)
+		popup := components.RenderStatusPopupPlain(phase, mid, m.statusProgress, maxOuter)
 		view = components.Composite(popup, view, components.Center, components.Center, 0, 0)
 	}
 	if m.toastPopup != nil {
