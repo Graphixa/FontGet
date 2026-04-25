@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
-	"time"
+	"sync"
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
@@ -25,7 +26,6 @@ type ParsedFont struct {
 	Family      string
 	Style       string
 	Type        string
-	InstallDate time.Time
 	Scope       string
 	// Repository match fields
 	FontID     string
@@ -149,16 +149,15 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 
 			// Group fonts by family first (before matching to repository)
 			families = groupByFamily(fonts)
-			var allFamilyNames []string
+			allFamilyNames := make([]string, 0, len(families))
 			for k := range families {
 				allFamilyNames = append(allFamilyNames, k)
 			}
-			sort.Slice(allFamilyNames, func(i, j int) bool {
-				return strings.ToLower(allFamilyNames[i]) < strings.ToLower(allFamilyNames[j])
-			})
 			output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
 
-			// Match installed fonts to repository BEFORE filtering (so Font IDs are available)
+			// Match installed fonts to repository BEFORE filtering (so Font IDs are available).
+			// We must match all families (not a name-prefiltered subset) because the user query can
+			// match a Font ID substring (e.g. "google" → google.roboto) without containing '.'.
 			// Use nil filter instead of IsCriticalSystemFont to allow matching user-installed fonts
 			// that happen to share names with system fonts (e.g., Ubuntu installed via FontGet)
 			output.GetVerbose().Info("Matching installed fonts to repository...")
@@ -202,13 +201,19 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			// Apply filter using helper function
 			filteredFamilies = filterFontsByFamilyAndID(families, familyFilter)
 
-			// Get sorted list of filtered family names (case-insensitive)
-			for k := range filteredFamilies {
-				names = append(names, k)
+			// Case-insensitive sort: precompute one ToLower per family (avoids O(n log n) repeated work).
+			type nameSortKey struct {
+				name, key string
 			}
-			sort.Slice(names, func(i, j int) bool {
-				return strings.ToLower(names[i]) < strings.ToLower(names[j])
-			})
+			keys := make([]nameSortKey, 0, len(filteredFamilies))
+			for k := range filteredFamilies {
+				keys = append(keys, nameSortKey{name: k, key: strings.ToLower(k)})
+			}
+			sort.SliceStable(keys, func(i, j int) bool { return keys[i].key < keys[j].key })
+			names = make([]string, len(keys))
+			for i := range keys {
+				names[i] = keys[i].name
+			}
 			output.GetDebug().State("After filtering: %d font families remaining", len(names))
 
 			return nil
@@ -340,7 +345,6 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 
 // collectFonts collects font files from the specified scopes
 func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string, suppressVerbose ...bool) ([]ParsedFont, error) {
-	var parsed []ParsedFont
 	// Normalize type filter for comparison (uppercase)
 	typeFilterUpper := ""
 	if typeFilter != "" {
@@ -351,6 +355,46 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 	shouldSuppressVerbose := false
 	if len(suppressVerbose) > 0 {
 		shouldSuppressVerbose = suppressVerbose[0]
+	}
+
+	// Bounded concurrency for metadata extraction (typically the slowest part).
+	// Keep it conservative to avoid overwhelming slow disks / networked volumes.
+	workerCount := runtime.GOMAXPROCS(0)
+	if workerCount < 2 {
+		workerCount = 2
+	}
+	if workerCount > 8 {
+		workerCount = 8
+	}
+
+	type parseJob struct {
+		fontPath string
+		fileName string
+		scope    platform.InstallationScope
+	}
+
+	// Use a single bounded jobs channel; workers write results to a mutex-guarded slice.
+	// Do NOT use a second "results" channel: the main goroutine enqueues all jobs before
+	// draining output, so a bounded results channel can deadlock (workers block on results
+	// while main is blocked on jobs when both buffers are full).
+	jobs := make(chan parseJob, workerCount*4)
+	var outMu sync.Mutex
+	parsed := make([]ParsedFont, 0, 256)
+
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				parsedFont := buildParsedFont(job.fontPath, job.fileName, job.scope)
+				if parsedFont != nil {
+					outMu.Lock()
+					parsed = append(parsed, *parsedFont)
+					outMu.Unlock()
+				}
+			}
+		}()
 	}
 
 	for _, scope := range scopes {
@@ -393,12 +437,6 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 			output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
 		}
 		for _, name := range names {
-			p := filepath.Join(fontDir, name)
-			info, err := os.Stat(p)
-			if err != nil {
-				continue
-			}
-
 			// Optimization 1: Early type filtering - check extension before expensive metadata extraction
 			fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), "."))
 			if typeFilterUpper != "" && fileExt != typeFilterUpper {
@@ -406,14 +444,17 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 				continue
 			}
 
-			// Build ParsedFont struct using extracted function
-			parsedFont := buildParsedFont(p, name, scope, info)
-			// Skip invalid font files (returns nil)
-			if parsedFont != nil {
-				parsed = append(parsed, *parsedFont)
+			jobs <- parseJob{
+				fontPath: filepath.Join(fontDir, name),
+				fileName: name,
+				scope:    scope,
 			}
 		}
 	}
+
+	close(jobs)
+	wg.Wait()
+
 	if !shouldSuppressVerbose {
 		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
@@ -426,7 +467,7 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 
 // buildParsedFont extracts font metadata from a file path and builds a ParsedFont struct
 // Returns nil if the font file is invalid and should be skipped
-func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope, fileInfo os.FileInfo) *ParsedFont {
+func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope) *ParsedFont {
 	// Extract file extension for type
 	fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
 
@@ -466,7 +507,6 @@ func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope
 		Family:      family,
 		Style:       style,
 		Type:        fileExt,
-		InstallDate: fileInfo.ModTime(),
 		Scope:       string(scope),
 	}
 }

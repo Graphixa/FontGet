@@ -2,7 +2,10 @@ package repo
 
 import (
 	"fmt"
+	"runtime"
+	"sort"
 	"strings"
+	"sync"
 
 	"fontget/internal/output"
 )
@@ -319,14 +322,9 @@ func getSourcesInPriorityOrder(manifest *FontManifest) []string {
 		})
 	}
 
-	// Sort by priority (lower number = higher priority)
-	for i := 0; i < len(sourceList)-1; i++ {
-		for j := i + 1; j < len(sourceList); j++ {
-			if sourceList[i].priority > sourceList[j].priority {
-				sourceList[i], sourceList[j] = sourceList[j], sourceList[i]
-			}
-		}
-	}
+	sort.Slice(sourceList, func(i, j int) bool {
+		return sourceList[i].priority < sourceList[j].priority
+	})
 
 	// Extract names in order
 	result := make([]string, len(sourceList))
@@ -351,24 +349,61 @@ func MatchAllInstalledFonts(familyNames []string, isProtectedFont func(string) b
 	index := buildFontIndex(manifest)
 	output.GetDebug().State("Built font matching index: %d normalized name entries, %d normalized ID entries", len(index.byName), len(index.byIDName))
 
-	matches := make(map[string]*InstalledFontMatch)
+	matches := make(map[string]*InstalledFontMatch, len(familyNames))
+	n := len(familyNames)
+	if n == 0 {
+		return matches, nil
+	}
 
-	// Match each family name using the index (O(1) lookups)
-	for _, familyName := range familyNames {
-		match, err := MatchInstalledFontToRepository(familyName, index, isProtectedFont)
-		if err != nil {
-			// Log error but continue
-			output.GetDebug().Error("Matching failed for family %s: %v", familyName, err)
-			continue
+	// Parallelize O(1) per-family index lookups. Each index slot is written once (no map contention).
+	const minParallel = 32
+	workers := runtime.GOMAXPROCS(0)
+	if workers < 1 {
+		workers = 1
+	}
+	if workers > 8 {
+		workers = 8
+	}
+	if n < minParallel || workers < 2 {
+		for _, familyName := range familyNames {
+			match, err := MatchInstalledFontToRepository(familyName, index, isProtectedFont)
+			if err != nil {
+				output.GetDebug().Error("Matching failed for family %s: %v", familyName, err)
+				continue
+			}
+			if match != nil {
+				matches[familyName] = match
+			}
 		}
-
-		if match != nil {
-			matches[familyName] = match
-			// Note: We don't log individual matches to reduce debug noise - only show summary at end
-			// Base name matches are still logged above as they're useful for debugging matching logic
+	} else {
+		ordered := make([]*InstalledFontMatch, n)
+		jobs := make(chan int, workers*4)
+		var wg sync.WaitGroup
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := range jobs {
+					familyName := familyNames[i]
+					match, err := MatchInstalledFontToRepository(familyName, index, isProtectedFont)
+					if err != nil {
+						output.GetDebug().Error("Matching failed for family %s: %v", familyName, err)
+						continue
+					}
+					ordered[i] = match
+				}
+			}()
 		}
-		// Note: We don't log "no match" cases to reduce debug noise - it's expected that many
-		// installed fonts (system fonts, custom fonts, etc.) won't be in the repository
+		for i := 0; i < n; i++ {
+			jobs <- i
+		}
+		close(jobs)
+		wg.Wait()
+		for i, familyName := range familyNames {
+			if m := ordered[i]; m != nil {
+				matches[familyName] = m
+			}
+		}
 	}
 
 	// Show summary of matching results
