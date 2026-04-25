@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"unicode/utf16"
+	"unicode/utf8"
 
 	"golang.org/x/image/font/sfnt"
 	"golang.org/x/text/cases"
@@ -436,6 +437,7 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 	var prefTypoStyle string
 	var prefLegacyFamily string
 	var prefLegacyStyle string
+	var utf16Scratch []uint16
 	for i := 0; i < count; i++ {
 		recordOffset := 6 + (i * 12)
 		if recordOffset+12 > len(nameTableData) {
@@ -455,6 +457,18 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 			continue
 		}
 
+		// Fast skip: only decode name strings we might use.
+		// Name IDs used:
+		// - 16/17: typographic family/style
+		// - 1/2: legacy family/subfamily
+		// - 4: full name (optional)
+		switch nameID {
+		case 1, 2, 4, 16, 17:
+			// continue
+		default:
+			continue
+		}
+
 		// Calculate actual string offset
 		stringStart := stringOffset + offset
 		stringEnd := stringStart + length
@@ -470,14 +484,7 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 		switch platformID {
 		case 3, 0:
 			// Unicode (UTF-16BE)
-			if len(stringData) >= 2 {
-				// Convert UTF-16BE to UTF-8
-				utf16Data := make([]uint16, len(stringData)/2)
-				for j := 0; j < len(stringData); j += 2 {
-					utf16Data[j/2] = uint16(stringData[j])<<8 | uint16(stringData[j+1])
-				}
-				name = string(utf16.Decode(utf16Data))
-			}
+			name = decodeUTF16BEToString(stringData, &utf16Scratch)
 		case 1:
 			// Macintosh Roman (single-byte); best-effort cast
 			name = string(stringData)
@@ -523,6 +530,12 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 				metadata.FullName = name
 			}
 		}
+
+		// Early-exit once we have the best possible family+style values.
+		// Preferred typographic family/style (Microsoft, English) cannot be improved by later records.
+		if prefTypoFamily != "" && prefTypoStyle != "" {
+			break
+		}
 	}
 
 	// Decide winners with absolute precedence for typographic names
@@ -539,7 +552,7 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 	}
 
 	if metadata.TypographicFamily != "" {
-		metadata.FamilyName = typographicFamily
+		metadata.FamilyName = metadata.TypographicFamily
 	} else {
 		// If we captured a preferred legacy, use it; else general legacy
 		if prefLegacyFamily != "" {
@@ -549,7 +562,7 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 		}
 	}
 	if metadata.TypographicStyle != "" {
-		metadata.StyleName = typographicStyle
+		metadata.StyleName = metadata.TypographicStyle
 	} else {
 		if prefLegacyStyle != "" {
 			metadata.StyleName = prefLegacyStyle
@@ -569,6 +582,38 @@ func parseNameTable(nameTableData []byte) (*FontMetadata, error) {
 	}
 
 	return metadata, nil
+}
+
+func decodeUTF16BEToString(b []byte, scratch *[]uint16) string {
+	// UTF-16BE requires even length; ignore trailing byte if present.
+	if len(b) < 2 {
+		return ""
+	}
+	n := len(b) / 2
+	if cap(*scratch) < n {
+		*scratch = make([]uint16, n)
+	} else {
+		*scratch = (*scratch)[:n]
+	}
+	u16 := *scratch
+	for i := 0; i < n; i++ {
+		u16[i] = uint16(b[i*2])<<8 | uint16(b[i*2+1])
+	}
+
+	// Build string without allocating a []rune.
+	out := make([]byte, 0, n*2)
+	for i := 0; i < len(u16); i++ {
+		r := rune(u16[i])
+		// Handle surrogate pairs
+		if utf16.IsSurrogate(r) && i+1 < len(u16) {
+			r = utf16.DecodeRune(r, rune(u16[i+1]))
+			i++
+		}
+		var tmp [utf8.UTFMax]byte
+		k := utf8.EncodeRune(tmp[:], r)
+		out = append(out, tmp[:k]...)
+	}
+	return string(out)
 }
 
 // parseFontNameImproved provides better font name parsing than the original

@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
@@ -133,11 +134,12 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 		var names []string
 		var filteredFamilies map[string][]ParsedFont
 
-		// Wrap the main work (collecting, grouping, matching, filtering) in a spinner
-		err = ui.RunSpinner("Loading...", "", func() error {
+		runWork := func() error {
 			var workErr error
+			t0 := time.Now()
 
 			// Collect fonts
+			tCollect := time.Now()
 			fonts, workErr = collectFonts(scopes, fm, typeFilter)
 			if workErr != nil {
 				GetLogger().Error("Failed to collect fonts: %v", workErr)
@@ -146,14 +148,17 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 				return fmt.Errorf("unable to read installed fonts: %w", workErr)
 			}
 			output.GetDebug().State("Collected %d font files before filtering", len(fonts))
+			output.GetDebug().State("Timing: collectFonts=%s", time.Since(tCollect))
 
 			// Group fonts by family first (before matching to repository)
+			tGroup := time.Now()
 			families = groupByFamily(fonts)
 			allFamilyNames := make([]string, 0, len(families))
 			for k := range families {
 				allFamilyNames = append(allFamilyNames, k)
 			}
 			output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
+			output.GetDebug().State("Timing: groupByFamily=%s", time.Since(tGroup))
 
 			// Match installed fonts to repository BEFORE filtering (so Font IDs are available).
 			// We must match all families (not a name-prefiltered subset) because the user query can
@@ -162,6 +167,7 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			// that happen to share names with system fonts (e.g., Ubuntu installed via FontGet)
 			output.GetVerbose().Info("Matching installed fonts to repository...")
 			output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
+			tMatch := time.Now()
 			matches, workErr = repo.MatchAllInstalledFonts(allFamilyNames, nil)
 			if workErr != nil {
 				output.GetVerbose().Error("%v", workErr)
@@ -181,8 +187,10 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 					fmt.Println()
 				}
 			}
+			output.GetDebug().State("Timing: MatchAllInstalledFonts=%s", time.Since(tMatch))
 
 			// Populate match data into ParsedFont structs
+			tPopulate := time.Now()
 			for familyName, fontGroup := range families {
 				if match, exists := matches[familyName]; exists && match != nil {
 					// Update all fonts in this family group with match data
@@ -195,10 +203,12 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 					families[familyName] = fontGroup
 				}
 			}
+			output.GetDebug().State("Timing: populateMatchData=%s", time.Since(tPopulate))
 
 			// Apply filters (now that Font IDs are populated)
 			// Filter by family name and Font ID (type filter already applied during collection)
 			// Apply filter using helper function
+			tFilter := time.Now()
 			filteredFamilies = filterFontsByFamilyAndID(families, familyFilter)
 
 			// Case-insensitive sort: precompute one ToLower per family (avoids O(n log n) repeated work).
@@ -214,10 +224,20 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			for i := range keys {
 				names[i] = keys[i].name
 			}
+			output.GetDebug().State("Timing: filter+sort=%s", time.Since(tFilter))
 			output.GetDebug().State("After filtering: %d font families remaining", len(names))
 
+			output.GetDebug().State("Timing: total list work=%s", time.Since(t0))
 			return nil
-		})
+		}
+
+		// Wrap the main work (collecting, grouping, matching, filtering) in a spinner.
+		// In --debug, disable the spinner so debug lines don't get mangled by \r spinner rendering.
+		if output.IsDebugOutputEnabled() {
+			err = runWork()
+		} else {
+			err = ui.RunSpinner("Loading...", "", runWork)
+		}
 
 		if err != nil {
 			// Spinner already showed the error message
@@ -412,7 +432,7 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 		}
 
 		// Check read permissions
-		if _, err := os.Open(fontDir); err != nil {
+		if f, err := os.Open(fontDir); err != nil {
 			if os.IsPermission(err) {
 				output.GetVerbose().Warning("No read permission for font directory: %s", fontDir)
 				output.GetDebug().Error("Permission denied accessing %s: %v", fontDir, err)
@@ -426,6 +446,8 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 			}
 			output.GetDebug().Error("Unable to access font directory %s: %v", fontDir, err)
 			return nil, fmt.Errorf("unable to access font directory %s: %w", fontDir, err)
+		} else {
+			_ = f.Close()
 		}
 
 		names, err := platform.ListInstalledFonts(fontDir)

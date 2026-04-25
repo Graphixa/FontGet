@@ -111,6 +111,12 @@ func (m *spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		elapsed := time.Since(m.startTime)
 		minDisplay := time.Duration(m.minDisplayMs) * time.Millisecond
+		// If we're going to clear the spinner line (doneMsg == ""), don't artificially delay
+		// fast commands like `list`. The minimum display time is only useful when we actually
+		// show a completion message.
+		if m.doneMsg == "" {
+			minDisplay = 0
+		}
 
 		if elapsed < minDisplay {
 			// Wait for minimum display time before quitting

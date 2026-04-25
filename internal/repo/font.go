@@ -247,6 +247,9 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 
 	// Check if the downloaded file is an archive
 	archiveType := DetectArchiveType(downloadedPath)
+	if archiveType == ArchiveTypeUnknown {
+		archiveType = DetectArchiveTypeFromFile(downloadedPath)
+	}
 
 	if archiveType == ArchiveTypeUnknown {
 		// Not an archive, return the single file

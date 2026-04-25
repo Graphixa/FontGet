@@ -27,6 +27,13 @@ func SetDebugChecker(checker func() bool) {
 	debugChecker = checker
 }
 
+// IsDebugOutputEnabled reports whether GetDebug() would print: --debug.
+// Use this for conditional UI behavior in commands (e.g., disabling spinners),
+// but keep actual debug messages going through GetDebug().
+func IsDebugOutputEnabled() bool {
+	return isDebugEnabled()
+}
+
 // isDebugEnabled checks if the --debug flag is set
 func isDebugEnabled() bool {
 	if debugChecker != nil {
