@@ -743,11 +743,7 @@ Use --scope to set installation location:
 					if err != nil {
 						status.Failed += result.Failed
 						GetLogger().Error("Failed to process font %s: %v", fontGroup.FontName, err)
-						// Create a brief error message from the error
 						errorMsg := err.Error()
-						if len(errorMsg) > 100 {
-							errorMsg = errorMsg[:97] + "..."
-						}
 						send(components.ItemUpdateMsg{
 							Index:        itemIndex,
 							Status:       InstallStatusFailed,
@@ -1154,6 +1150,23 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 			failedFiles = append(failedFiles, fontDisplayName)
 			output.GetDebug().Error("fontManager.InstallFont() failed for %s: %v", fontDisplayName, installErr)
 			continue
+		}
+
+		// Validate that the installed file is actually a parsable font. Font sources can occasionally return
+		// HTML/WAF challenge pages (or other non-font payloads) under a .ttf name; we don't want to claim
+		// success and leave junk in the Fonts directory that `list` will then skip as invalid.
+		installedPath := filepath.Join(fontDir, fontDisplayName)
+		if _, statErr := os.Stat(installedPath); statErr == nil {
+			if _, metaErr := platform.ExtractFontMetadata(installedPath); metaErr != nil {
+				_ = os.Remove(installedPath)
+				os.Remove(fontPath) // Clean up temp file
+				failed++
+				errorMsg := makeUserFriendlyError(fontDisplayName, fmt.Errorf("installed file is not a valid font: %w", metaErr))
+				errors = append(errors, errorMsg)
+				failedFiles = append(failedFiles, fontDisplayName)
+				output.GetDebug().Warning("Installed file failed validation and was removed: %s (%v)", fontDisplayName, metaErr)
+				continue
+			}
 		}
 
 		output.GetDebug().State("Successfully installed font: %s", fontDisplayName)
