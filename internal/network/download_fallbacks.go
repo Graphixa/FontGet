@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -176,12 +177,19 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 }
 
 func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts DownloadFallbackOptions) error {
+	// We explicitly capture the final HTTP status code because curl considers 202 a success.
+	// Some upstream WAFs respond with 202 + an empty/challenge body.
+	const writeOutStatusPrefix = "FONTGET_HTTP_STATUS="
+	reStatus := regexp.MustCompile(writeOutStatusPrefix + `(\d{3})`)
+
 	args := []string{
 		"-L",
 		// Treat 4xx/5xx as failures. (202/3xx are not failures in curl, so we validate output separately.)
 		"--fail",
 		"--silent",
 		"--show-error",
+		// Emit final status code to stdout so we can treat non-200 as failure even when curl exits 0.
+		"--write-out", writeOutStatusPrefix + "%{http_code}",
 	}
 	if opts.UserAgent != "" {
 		args = append(args, "-A", opts.UserAgent)
@@ -194,6 +202,10 @@ func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts Downlo
 	out, err := runner.CombinedOutput(curlPath, args...)
 	if err != nil {
 		return fmt.Errorf("%s", normalizeToolError(out, err))
+	}
+	m := reStatus.FindStringSubmatch(string(out))
+	if len(m) == 2 && m[1] != "200" {
+		return fmt.Errorf("unexpected HTTP status %s", m[1])
 	}
 	return nil
 }

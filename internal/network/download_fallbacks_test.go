@@ -76,7 +76,7 @@ func TestDownloadWithFallbacks_CurlSuccess(t *testing.T) {
 			"curl": "/usr/bin/curl",
 		},
 		results: map[string]fakeResult{
-			"/usr/bin/curl": {out: "", err: nil},
+			"/usr/bin/curl": {out: "FONTGET_HTTP_STATUS=200", err: nil},
 		},
 	}
 	rep, err := downloadWithFallbacks(r, "https://example.com/file.zip", "/tmp/file.zip", DownloadFallbackOptions{
