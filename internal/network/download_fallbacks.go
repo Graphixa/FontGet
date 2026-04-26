@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -89,12 +90,39 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 		})
 	}
 
+	validateDownloadedFile := func() error {
+		fi, err := os.Stat(targetPath)
+		if err != nil {
+			return fmt.Errorf("output file missing: %v", err)
+		}
+		if fi.Size() <= 0 {
+			return fmt.Errorf("output file is empty")
+		}
+		// Cheap WAF/HTML detection: many challenges return an HTML page.
+		f, err := os.Open(targetPath)
+		if err != nil {
+			return nil // can't inspect; keep it permissive
+		}
+		defer f.Close()
+		var buf [512]byte
+		n, _ := f.Read(buf[:])
+		b := bytes.TrimSpace(bytes.ToLower(buf[:n]))
+		if bytes.HasPrefix(b, []byte("<!doctype html")) || bytes.HasPrefix(b, []byte("<html")) {
+			return fmt.Errorf("output looks like HTML (likely upstream challenge page)")
+		}
+		return nil
+	}
+
 	// curl
 	if curlPath, err := runner.LookPath("curl"); err != nil || curlPath == "" {
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "curl", Result: "skipped", Detail: "not found in PATH"})
 	} else if err := runCurl(runner, curlPath, url, targetPath, opts); err == nil {
-		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "curl", Path: curlPath, Result: "ok"})
-		return rep, nil
+		if vErr := validateDownloadedFile(); vErr == nil {
+			rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "curl", Path: curlPath, Result: "ok"})
+			return rep, nil
+		} else {
+			appendFailed("curl", curlPath, vErr.Error())
+		}
 	} else {
 		appendFailed("curl", curlPath, err.Error())
 	}
@@ -103,8 +131,12 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 	if wgetPath, err := runner.LookPath("wget"); err != nil || wgetPath == "" {
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "wget", Result: "skipped", Detail: "not found in PATH"})
 	} else if err := runWget(runner, wgetPath, url, targetPath, opts); err == nil {
-		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "wget", Path: wgetPath, Result: "ok"})
-		return rep, nil
+		if vErr := validateDownloadedFile(); vErr == nil {
+			rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "wget", Path: wgetPath, Result: "ok"})
+			return rep, nil
+		} else {
+			appendFailed("wget", wgetPath, vErr.Error())
+		}
 	} else {
 		appendFailed("wget", wgetPath, err.Error())
 	}
@@ -113,8 +145,12 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 	if pwshPath, err := runner.LookPath("pwsh"); err != nil || pwshPath == "" {
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "pwsh", Result: "skipped", Detail: "not found in PATH"})
 	} else if err := runPowerShell(runner, pwshPath, url, targetPath, opts); err == nil {
-		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "pwsh", Path: pwshPath, Result: "ok"})
-		return rep, nil
+		if vErr := validateDownloadedFile(); vErr == nil {
+			rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "pwsh", Path: pwshPath, Result: "ok"})
+			return rep, nil
+		} else {
+			appendFailed("pwsh", pwshPath, vErr.Error())
+		}
 	} else {
 		appendFailed("pwsh", pwshPath, err.Error())
 	}
@@ -123,8 +159,12 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 	if psPath, err := runner.LookPath("powershell"); err != nil || psPath == "" {
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "powershell", Result: "skipped", Detail: "not found in PATH"})
 	} else if err := runPowerShell(runner, psPath, url, targetPath, opts); err == nil {
-		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "powershell", Path: psPath, Result: "ok"})
-		return rep, nil
+		if vErr := validateDownloadedFile(); vErr == nil {
+			rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "powershell", Path: psPath, Result: "ok"})
+			return rep, nil
+		} else {
+			appendFailed("powershell", psPath, vErr.Error())
+		}
 	} else {
 		appendFailed("powershell", psPath, err.Error())
 	}
@@ -138,6 +178,7 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts DownloadFallbackOptions) error {
 	args := []string{
 		"-L",
+		// Treat 4xx/5xx as failures. (202/3xx are not failures in curl, so we validate output separately.)
 		"--fail",
 		"--silent",
 		"--show-error",

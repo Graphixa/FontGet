@@ -2,6 +2,7 @@ package network
 
 import (
 	"errors"
+	"os"
 	"strings"
 	"testing"
 )
@@ -27,6 +28,26 @@ func (r *fakeRunner) LookPath(file string) (string, error) {
 func (r *fakeRunner) CombinedOutput(name string, args ...string) ([]byte, error) {
 	r.calls = append(r.calls, name+" "+strings.Join(args, " "))
 	if res, ok := r.results[name]; ok {
+		// Simulate successful tools creating the output file.
+		// Our production code validates that the targetPath exists and is non-empty.
+		if res.err == nil {
+			var outPath string
+			for i := 0; i < len(args)-1; i++ {
+				// curl: -o <path>
+				if args[i] == "-o" && i+1 < len(args) {
+					outPath = args[i+1]
+					break
+				}
+				// wget: -O <path>
+				if args[i] == "-O" && i+1 < len(args) {
+					outPath = args[i+1]
+					break
+				}
+			}
+			if outPath != "" {
+				_ = os.WriteFile(outPath, []byte("dummy payload"), 0644)
+			}
+		}
 		return []byte(res.out), res.err
 	}
 	return []byte("no result configured"), errors.New("failed")
