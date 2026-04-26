@@ -9,6 +9,7 @@ import (
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
+	"fontget/internal/normalize"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
@@ -77,55 +78,7 @@ type RemoveResult struct {
 //
 // Returns the original name if no suffix pattern is found
 func extractBaseFontName(familyName string) string {
-	lower := strings.ToLower(familyName)
-
-	// First, remove "Nerd Font" suffix patterns
-	nerdPatterns := []string{
-		" nerd font",
-		"nerdfont",
-		" nerd",
-	}
-
-	var baseName string
-	foundNerdPattern := false
-	for _, pattern := range nerdPatterns {
-		if idx := strings.Index(lower, pattern); idx > 0 {
-			// Extract the base name before the pattern
-			baseName = familyName[:idx]
-			baseName = strings.TrimSpace(baseName)
-			foundNerdPattern = true
-			break
-		}
-	}
-
-	// If no Nerd Font pattern found, use the original name
-	if !foundNerdPattern {
-		baseName = familyName
-	}
-
-	// Now remove variant suffixes that might be part of the base name
-	// These are common font variant suffixes that don't appear in repository Font IDs
-	// Note: We don't remove "Mono" because it's often part of the base font name (e.g., "JetBrainsMono")
-	variantSuffixes := []string{
-		"NL",           // No Ligatures (e.g., "JetBrainsMonoNL" -> "JetBrainsMono")
-		"Propo",        // Proportional variant
-		"Proportional", // Proportional variant (full word)
-	}
-
-	// Try removing variant suffixes from the end of the base name
-	baseLower := strings.ToLower(baseName)
-	for _, suffix := range variantSuffixes {
-		suffixLower := strings.ToLower(suffix)
-		// Check if the base name ends with this suffix (case-insensitive)
-		if strings.HasSuffix(baseLower, suffixLower) {
-			// Remove the suffix
-			baseName = baseName[:len(baseName)-len(suffix)]
-			baseName = strings.TrimSpace(baseName)
-			baseLower = strings.ToLower(baseName)
-		}
-	}
-
-	return baseName
+	return normalize.BaseFamilyName(familyName)
 }
 
 // ProgressCallback is a function type for reporting progress during font finding
@@ -248,13 +201,7 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 
 // normalizeFontName normalizes a font name for comparison
 func normalizeFontName(name string) string {
-	// Convert to lowercase
-	name = strings.ToLower(name)
-	// Remove spaces and special characters
-	name = strings.ReplaceAll(name, " ", "")
-	name = strings.ReplaceAll(name, "-", "")
-	name = strings.ReplaceAll(name, "_", "")
-	return name
+	return normalize.FontKey(name)
 }
 
 // resolveFontNameOrID resolves a Font ID to a font name, or returns the original if it's already a font name
