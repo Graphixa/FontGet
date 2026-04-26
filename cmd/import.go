@@ -645,9 +645,6 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						status.Failed += result.Failed
 						GetLogger().Error("Failed to process font %s: %v", fontGroup.FontName, err)
 						errorMsg := err.Error()
-						if len(errorMsg) > 100 {
-							errorMsg = errorMsg[:97] + "..."
-						}
 						send(components.ItemUpdateMsg{
 							Index:        itemIndex,
 							Status:       "failed",

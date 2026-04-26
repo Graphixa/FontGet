@@ -428,32 +428,9 @@ func (m ProgressBarModel) View() string {
 			// Show "Skipped... already installed" (no scope info for cleaner output)
 			statusText = "Skipped... already installed"
 		case "failed":
-			// Show brief error message in error color (if available), otherwise show generic message
+			// Show full error message in error color (if available), otherwise show generic message
 			if item.ErrorMessage != "" {
-				// Extract brief error - take first sentence or reasonable length
-				errorMsg := item.ErrorMessage
-				// Remove filename prefix if present (e.g., "Roboto-Regular.ttf could not..." -> "could not...")
-				// Look for common patterns like ".ttf could" or ".otf could"
-				if idx := strings.Index(errorMsg, " could"); idx > 0 {
-					errorMsg = errorMsg[idx+1:] // Keep the space before "could"
-				}
-				// Try to get first sentence (up to ". "), but do NOT truncate on bare "." since that
-				// breaks URLs (e.g. "https://fonts.google.com/specimen/Roboto" -> "https://www").
-				if idx := strings.Index(errorMsg, ". "); idx > 0 {
-					errorMsg = errorMsg[:idx]
-				} else if len(errorMsg) > 220 {
-					// Only truncate if extremely long (120+ chars), and try to break at word boundary
-					errorMsg = errorMsg[:220]
-					if lastSpace := strings.LastIndex(errorMsg, " "); lastSpace > 180 {
-						errorMsg = errorMsg[:lastSpace]
-					}
-				}
-				// Capitalize first letter to match other status messages
-				if len(errorMsg) > 0 {
-					errorMsg = strings.ToUpper(string(errorMsg[0])) + errorMsg[1:]
-				}
-				// Apply error color styling (no bold) - ErrorText already has the right color
-				statusText = ui.ErrorText.Render(errorMsg)
+				statusText = ui.ErrorText.Render(item.ErrorMessage)
 			} else {
 				// Fallback to generic message
 				statusText = "Installation failed"

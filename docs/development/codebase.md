@@ -140,7 +140,12 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Default scope is "all" (shows fonts from both user and machine scopes)
 - Displays columns: Name, Font ID, License, Categories, Type, Scope, Source
 - **Font ID Filtering**: Query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto")
-- **Performance Optimizations**: Early type filtering (filters by extension before metadata extraction) and cached lowercased strings for faster filtering
+- **Performance Optimizations**:
+  - Early type filtering (filters by extension before metadata extraction)
+  - Concurrent metadata extraction for faster scans on large font directories
+  - Precomputed case-insensitive sort keys to avoid repeated `strings.ToLower()` in sort comparators
+  - Avoids holding the spinner open for fast operations (no artificial 2.5s delay when spinner clears the line)
+  - Disables spinner when `--debug` is enabled to prevent carriage-return UI rendering from mangling debug output
 
 **Key Functions**:
 - `listCmd.RunE`: Main listing execution
@@ -580,6 +585,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `font_matches.go`: Font matching logic for installed fonts to repository entries
 - `metadata.go`: Font metadata handling
 - `archive.go`: Archive operations
+- `download_headers.go`: HTTP response header parsing/inference helpers for downloads (e.g., detecting ZIP archives served behind `.ttf` URLs)
 - `types.go`: Type definitions
 
 **Key Features**:
@@ -587,6 +593,11 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Font ID Resolution**: Resolves Font IDs (e.g., "google.roboto") to font names
 - **Source Priority**: Handles multiple repository matches using predefined source priority order
 - **Nerd Fonts Support**: Special handling for Nerd Fonts naming conventions and variants
+- **Robust Download/Archive Handling**:
+  - Supported archives: ZIP, TAR.XZ, TAR.GZ, 7Z
+  - Archive detection uses extension, HTTP headers (Content-Type / Content-Disposition), and file magic bytes (final truth)
+  - Prevents archives from being mis-installed as `.ttf` when upstream naming is misleading (notably Font Squirrel)
+  - **7Z extraction** uses external `7zz`/`7z` when available on PATH; otherwise extraction fails with a clear error
 
 **Status**: ✅ Active - Core repository system
 
@@ -630,6 +641,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Centralized styling**: `InitStyles()` applies theme colors across commands
 - **Unified table API**: Shared headers and column conventions
 - **Spinners**: Both simple blocking (`RunSpinner`) and full Bubble Tea model (`NewSpinnerModel`) paths, with theme-based spinner colors
+  - Spinner model enforces a minimum display time only when showing a completion message; fast operations that clear the line return immediately
 
 **Status**: ✅ Active - UI system with theme support
 
@@ -642,6 +654,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Key Features**:
 - **Consistent Formatting**: Standardized `[INFO]`, `[WARNING]`, `[ERROR]` prefixes
+- **Debug Mode Helpers**: `IsDebugOutputEnabled()` supports disabling interactive UI elements (e.g., spinners) when debug output must stay readable
 - **Operation Details Display**: `DisplayFontOperationDetails()` shows formatted installation/removal details
 - **Download Size Tracking**: Integrated file size display in verbose output
 - **Status Reporting**: Unified status report display for operations
