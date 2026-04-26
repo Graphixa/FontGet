@@ -75,6 +75,11 @@ type DownloadFontOptions struct {
 	// OnExtractProgress, when set, is called as extract progresses.
 	// totalFiles is the number of font files to be extracted when known, otherwise -1.
 	OnExtractProgress func(extractedFiles int, totalFiles int)
+
+	// OnResponseHeaders, when set, is called once after we receive an HTTP 200 response.
+	// contentType and contentDisposition are raw header values (may be empty).
+	// finalURL is the post-redirect URL when available.
+	OnResponseHeaders func(info HTTPResponseInfo)
 }
 
 // DownloadFont downloads a font file and verifies its SHA-256 hash if available
@@ -164,6 +169,19 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, font.DownloadURL)
 	}
 
+	// Best-effort response info capture for downstream archive detection.
+	if opts != nil && opts.OnResponseHeaders != nil {
+		finalURL := ""
+		if resp != nil && resp.Request != nil && resp.Request.URL != nil {
+			finalURL = resp.Request.URL.String()
+		}
+		opts.OnResponseHeaders(HTTPResponseInfo{
+			ContentType:        resp.Header.Get("Content-Type"),
+			ContentDisposition: resp.Header.Get("Content-Disposition"),
+			FinalURL:           finalURL,
+		})
+	}
+
 	suppressVerbose := opts != nil && opts.SuppressVerboseProgressLine
 	if !suppressVerbose {
 		displayName := font.Path
@@ -239,17 +257,48 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		return nil, fmt.Errorf("failed to create target directory: %w", err)
 	}
 
-	// Download the file first
-	downloadedPath, err := DownloadFont(font, targetDir, opts)
+	// Download the file first (capture response headers if available)
+	var httpInfo HTTPResponseInfo
+	downloadOpts := opts
+	if opts != nil {
+		cpy := *opts
+		prev := cpy.OnResponseHeaders
+		cpy.OnResponseHeaders = func(info HTTPResponseInfo) {
+			httpInfo = info
+			if prev != nil {
+				prev(info)
+			}
+		}
+		downloadOpts = &cpy
+	}
+
+	downloadedPath, err := DownloadFont(font, targetDir, downloadOpts)
 	if err != nil {
 		return nil, err
 	}
 
-	// Check if the downloaded file is an archive
-	archiveType := DetectArchiveType(downloadedPath)
+	// Check if the downloaded file is an archive.
+	// Decision order: extension → header guess → magic bytes (final truth).
+	archiveTypeByExt := DetectArchiveType(downloadedPath)
+	archiveTypeByHeader := InferArchiveTypeFromHeaders(httpInfo.ContentType, httpInfo.ContentDisposition)
+	archiveTypeByMagic := DetectArchiveTypeFromFile(downloadedPath)
+
+	archiveType := archiveTypeByExt
 	if archiveType == ArchiveTypeUnknown {
-		archiveType = DetectArchiveTypeFromFile(downloadedPath)
+		archiveType = archiveTypeByHeader
 	}
+	// Magic bytes are final truth. If magic indicates an archive, extract; otherwise do not.
+	// This prevents headers from forcing extraction of non-archives.
+	if archiveTypeByMagic != ArchiveTypeUnknown {
+		archiveType = archiveTypeByMagic
+	} else if archiveType != ArchiveTypeUnknown {
+		// Header/ext suggested archive but file magic did not confirm.
+		archiveType = ArchiveTypeUnknown
+	}
+
+	// Optional debug visibility into header/magic decision.
+	output.GetDebug().State("DownloadAndExtractFont headers: ext=%v header=%v magic=%v final=%v content-type=%q content-disposition=%q",
+		archiveTypeByExt, archiveTypeByHeader, archiveTypeByMagic, archiveType, httpInfo.ContentType, httpInfo.ContentDisposition)
 
 	if archiveType == ArchiveTypeUnknown {
 		// Not an archive, return the single file
