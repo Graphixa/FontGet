@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"fontget/internal/normalize"
 	"fontget/internal/output"
 )
 
@@ -37,81 +38,8 @@ type fontIndex struct {
 }
 
 // FontIndex is an exported type alias for fontIndex to allow external packages to use it
-// while maintaining internal implementation details
+// while maintaining internal implementation details.
 type FontIndex = *fontIndex
-
-// normalizeFamilyName normalizes a font family name for matching
-// - Converts to lowercase
-// - Removes spaces, hyphens, underscores
-func normalizeFamilyName(name string) string {
-	normalized := strings.ToLower(name)
-	normalized = strings.ReplaceAll(normalized, " ", "")
-	normalized = strings.ReplaceAll(normalized, "-", "")
-	normalized = strings.ReplaceAll(normalized, "_", "")
-	return normalized
-}
-
-// extractBaseFontName extracts the base font name by removing common suffixes
-// This handles cases where installed fonts have suffixes that aren't in the repository Font ID
-// Examples:
-//   - "JetBrainsMono Nerd Font" -> "JetBrainsMono"
-//   - "JetBrainsMono Nerd Font Mono" -> "JetBrainsMono"
-//   - "JetBrainsMonoNL Nerd Font" -> "JetBrainsMono" (removes both "NL" and " Nerd Font")
-//   - "FiraCode Nerd Font" -> "FiraCode"
-//   - "Roboto" -> "Roboto" (no change if no suffix)
-//
-// Returns the original name if no suffix pattern is found
-func extractBaseFontName(familyName string) string {
-	lower := strings.ToLower(familyName)
-
-	// First, remove "Nerd Font" suffix patterns
-	nerdPatterns := []string{
-		" nerd font",
-		"nerdfont",
-		" nerd",
-	}
-
-	var baseName string
-	foundNerdPattern := false
-	for _, pattern := range nerdPatterns {
-		if idx := strings.Index(lower, pattern); idx > 0 {
-			// Extract the base name before the pattern
-			baseName = familyName[:idx]
-			baseName = strings.TrimSpace(baseName)
-			foundNerdPattern = true
-			break
-		}
-	}
-
-	// If no Nerd Font pattern found, use the original name
-	if !foundNerdPattern {
-		baseName = familyName
-	}
-
-	// Now remove variant suffixes that might be part of the base name
-	// These are common font variant suffixes that don't appear in repository Font IDs
-	// Note: We don't remove "Mono" because it's often part of the base font name (e.g., "JetBrainsMono")
-	variantSuffixes := []string{
-		"NL",           // No Ligatures (e.g., "JetBrainsMonoNL" -> "JetBrainsMono")
-		"Propo",        // Proportional variant
-		"Proportional", // Proportional variant (full word)
-	}
-
-	// Try removing variant suffixes from the end of the base name
-	baseLower := strings.ToLower(baseName)
-	for _, suffix := range variantSuffixes {
-		suffixLower := strings.ToLower(suffix)
-		// Check if the base name ends with this suffix (case-insensitive)
-		if strings.HasSuffix(baseLower, suffixLower) {
-			// Remove the suffix
-			baseName = baseName[:len(baseName)-len(suffix)]
-			baseName = strings.TrimSpace(baseName)
-			baseLower = strings.ToLower(baseName)
-		}
-	}
-
-	return baseName
-}
 
 // buildFontIndex builds an optimized lookup index from the manifest
 // This allows O(1) lookups instead of O(n) iterations
@@ -148,7 +76,7 @@ func buildFontIndex(manifest *FontManifest) *fontIndex {
 			}
 
 			// Index by normalized font name
-			normalizedName := normalizeFamilyName(font.Name)
+			normalizedName := normalize.FontKey(font.Name)
 			index.byName[normalizedName] = append(index.byName[normalizedName], entry)
 
 			// Index by font ID name (without prefix)
@@ -156,12 +84,12 @@ func buildFontIndex(manifest *FontManifest) *fontIndex {
 				idParts := strings.Split(fontID, ".")
 				if len(idParts) > 1 {
 					idName := strings.Join(idParts[1:], ".")
-					normalizedIDName := normalizeFamilyName(idName)
+					normalizedIDName := normalize.FontKey(idName)
 					index.byIDName[normalizedIDName] = append(index.byIDName[normalizedIDName], entry)
 				}
 			} else {
 				// Font ID without prefix
-				normalizedFontID := normalizeFamilyName(fontID)
+				normalizedFontID := normalize.FontKey(fontID)
 				index.byIDName[normalizedFontID] = append(index.byIDName[normalizedFontID], entry)
 			}
 		}
@@ -201,12 +129,12 @@ func MatchInstalledFontToRepository(familyName string, index *fontIndex, isProte
 		return nil, nil
 	}
 
-	normalizedFamily := normalizeFamilyName(familyName)
+	normalizedFamily := normalize.FontKey(familyName)
 
 	// Extract base name (removes common suffixes like " Nerd Font")
 	// This allows matching "JetBrainsMono Nerd Font" to "nerd.jetbrains-mono"
-	baseFontName := extractBaseFontName(familyName)
-	normalizedBaseName := normalizeFamilyName(baseFontName)
+	baseFontName := normalize.BaseFamilyName(familyName)
+	normalizedBaseName := normalize.FontKey(baseFontName)
 	hasSuffix := baseFontName != familyName // True if we extracted a base name (e.g., Nerd Font pattern)
 
 	// If we detected a suffix pattern, infer the expected source name from the pattern
