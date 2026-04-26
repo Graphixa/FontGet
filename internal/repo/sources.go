@@ -15,14 +15,9 @@ import (
 	"fontget/internal/ui"
 )
 
-// useConfiguredSearchSort mirrors Search.EnablePopularitySort from user config (see syncSearchSortFromConfig).
-// When false, search uses alphabetical-style ordering and omits popularity bonuses; when true, the
-// configured popularity-aware scoring and sort tie-breakers apply.
-var useConfiguredSearchSort = true
-
-func syncSearchSortFromConfig() {
+func readSearchSortFromConfig() bool {
 	userPrefs := config.GetUserPreferences()
-	useConfiguredSearchSort = userPrefs.Search.EnablePopularitySort
+	return userPrefs.Search.EnablePopularitySort
 }
 
 // SearchConfig contains all tunable parameters for the search algorithm
@@ -188,9 +183,16 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 	// Stall detector handles inactivity detection (no overall timeout needed)
 	appConfig := config.GetUserPreferences()
 	downloadTimeout := config.ParseDuration(appConfig.Network.DownloadTimeout, 30*time.Second)
+	requestTimeout := config.ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
+	if requestTimeout < downloadTimeout {
+		requestTimeout = downloadTimeout
+	}
+	if requestTimeout < 30*time.Second {
+		requestTimeout = 30 * time.Second
+	}
 
 	transport := &http.Transport{
-		ResponseHeaderTimeout: 10 * time.Second, // Detect connection/header issues early
+		ResponseHeaderTimeout: requestTimeout, // Detect connection/header issues early (configurable)
 	}
 	client := &http.Client{
 		Transport: transport,
@@ -485,13 +487,13 @@ type ProgressCallback func(current, total int, message string)
 
 // Repository represents a font repository
 type Repository struct {
-	manifest *FontManifest
+	manifest                *FontManifest
+	useConfiguredSearchSort bool
 }
 
 // GetRepository returns a new Repository instance, showing spinner if sources need updating
 func GetRepository() (*Repository, error) {
-	// Match search sort/score behavior to user config (e.g. EnablePopularitySort).
-	syncSearchSortFromConfig()
+	useSearchSort := readSearchSortFromConfig()
 
 	// Check if sources should be refreshed
 	shouldRefresh, err := config.ShouldRefreshSources()
@@ -508,7 +510,7 @@ func GetRepository() (*Repository, error) {
 			// Update the timestamp
 			config.UpdateSourcesLastUpdated()
 		}
-		return &Repository{manifest: manifest}, nil
+		return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 	}
 
 	if shouldRefresh {
@@ -528,7 +530,7 @@ func GetRepository() (*Repository, error) {
 
 		// Update the timestamp
 		config.UpdateSourcesLastUpdated()
-		return &Repository{manifest: manifest}, nil
+		return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 	}
 
 	// Sources are fresh, use cached data
@@ -542,23 +544,23 @@ func GetRepository() (*Repository, error) {
 		// Update the timestamp
 		config.UpdateSourcesLastUpdated()
 	}
-	return &Repository{manifest: manifest}, nil
+	return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 }
 
 // GetRepositoryForShellCompletion returns a repository loaded from cache only.
 // It is used by shell completion (fontget __complete) and must not run spinners or refresh sources.
 func GetRepositoryForShellCompletion() (*Repository, error) {
-	syncSearchSortFromConfig()
+	useSearchSort := readSearchSortFromConfig()
 	manifest, err := GetCachedManifest()
 	if err != nil {
 		return nil, err
 	}
-	return &Repository{manifest: manifest}, nil
+	return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 }
 
 // GetRepositoryWithRefresh forces a refresh of sources and returns a new Repository instance
 func GetRepositoryWithRefresh() (*Repository, error) {
-	syncSearchSortFromConfig()
+	useSearchSort := readSearchSortFromConfig()
 
 	// Force refresh of sources with spinner
 	var manifest *FontManifest
@@ -576,7 +578,7 @@ func GetRepositoryWithRefresh() (*Repository, error) {
 
 	// Update the timestamp
 	config.UpdateSourcesLastUpdated()
-	return &Repository{manifest: manifest}, nil
+	return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 }
 
 // GetManifest returns the current manifest
@@ -598,15 +600,15 @@ func (r *Repository) TotalManifestFonts() int {
 
 // SearchFonts searches for fonts matching the query using advanced search logic
 func (r *Repository) SearchFonts(query string, category string) ([]SearchResult, error) {
-	// Reload Search.* sort preferences from config (e.g. EnablePopularitySort).
-	syncSearchSortFromConfig()
 	return r.SearchFontsWithOptions(query, category)
 }
 
 // SearchFontsWithOptions searches for fonts matching the query using advanced search logic.
 // Sort and score behavior follows useConfiguredSearchSort (synced from config in this function).
 func (r *Repository) SearchFontsWithOptions(query string, category string) ([]SearchResult, error) {
-	syncSearchSortFromConfig()
+	if r != nil {
+		r.useConfiguredSearchSort = readSearchSortFromConfig()
+	}
 
 	// Early return: if query is empty and no category, return no results
 	// This prevents empty queries from matching all fonts
@@ -666,7 +668,9 @@ func (r *Repository) SearchFontsWithOptions(query string, category string) ([]Se
 // category empty means all fonts. useSearchSortSettings selects sortCatalogListing behavior (config
 // vs alphabetical); browse passes the UI toggle. Used when listing the full catalog without a query.
 func (r *Repository) ListCatalogFonts(category string, useSearchSortSettings bool) ([]SearchResult, error) {
-	syncSearchSortFromConfig()
+	if r != nil {
+		r.useConfiguredSearchSort = readSearchSortFromConfig()
+	}
 	var results []SearchResult
 	for sourceID, source := range r.manifest.Sources {
 		for id, font := range source.Fonts {
@@ -723,7 +727,7 @@ func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID stri
 	}
 
 	// Phase 3: Popularity - only if enabled and font has popularity
-	if useConfiguredSearchSort && font.Popularity > 0 {
+	if r != nil && r.useConfiguredSearchSort && font.Popularity > 0 {
 		// Apply full popularity bonus (no length adjustment here)
 		popularityBonus := float64(font.Popularity) / float64(config.PopularityDivisor)
 		score += int(popularityBonus)
@@ -753,9 +757,8 @@ func (r *Repository) sortCatalogListing(results []SearchResult, useSearchSortSet
 		sortCatalogAlphabetically(results)
 		return
 	}
-	syncSearchSortFromConfig()
 	sort.Slice(results, func(i, j int) bool {
-		if useConfiguredSearchSort {
+		if r != nil && r.useConfiguredSearchSort {
 			if results[i].Popularity != results[j].Popularity {
 				return results[i].Popularity > results[j].Popularity
 			}
@@ -823,7 +826,7 @@ func (r *Repository) sortResultsByScore(results []SearchResult) {
 		}
 
 		// 5. FINAL: Popularity (highest first) when Search.EnablePopularitySort is on (see useConfiguredSearchSort)
-		if useConfiguredSearchSort {
+		if r != nil && r.useConfiguredSearchSort {
 			if results[i].Popularity != results[j].Popularity {
 				return results[i].Popularity > results[j].Popularity
 			}

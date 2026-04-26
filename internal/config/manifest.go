@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"fontget/internal/network"
 	"fontget/internal/platform"
 	"fontget/internal/sources"
 	"fontget/internal/version"
@@ -235,7 +236,31 @@ func saveManifest(manifest *Manifest) error {
 }
 
 func downloadFile(url, filepath string) error {
-	resp, err := http.Get(url)
+	// Use the same stall-detection approach as other downloads.
+	// This avoids hanging forever on dead connections while allowing slow-but-active transfers.
+	appConfig := GetUserPreferences()
+	downloadTimeout := ParseDuration(appConfig.Network.DownloadTimeout, 30*time.Second)
+	requestTimeout := ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
+	if requestTimeout < downloadTimeout {
+		requestTimeout = downloadTimeout
+	}
+	if requestTimeout < 30*time.Second {
+		requestTimeout = 30 * time.Second
+	}
+
+	transport := &http.Transport{
+		ResponseHeaderTimeout: requestTimeout,
+	}
+	client := &http.Client{
+		Transport: transport,
+		// No overall Timeout: stall detector handles inactivity
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -251,7 +276,10 @@ func downloadFile(url, filepath string) error {
 	}
 	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
+	stallReader := network.WrapReaderWithStallDetection(resp.Body, downloadTimeout, 0)
+	defer stallReader.Close()
+
+	_, err = io.Copy(out, stallReader)
 	return err
 }
 

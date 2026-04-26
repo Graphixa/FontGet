@@ -407,6 +407,23 @@ func GetUserPreferences() *AppConfig {
 
 	// Same-version or unparseable: legacy field mapping then merge with defaults
 	data = handleLegacyFieldMapping(data)
+
+	// Baseline fill: add any new keys from embedded defaults when the user's config is missing them.
+	// This keeps existing user values, but brings config.yaml back in sync with the current schema
+	// without bumping ConfigVersion for additive-only changes.
+	var mapped map[string]interface{}
+	_ = yaml.Unmarshal(data, &mapped)
+	defaults, defErr := defaultConfigMap()
+	changed := false
+	if defErr == nil && mapped != nil && defaults != nil {
+		changed = deepFillMissingKeys(mapped, defaults)
+		if changed {
+			if newData, err := yaml.Marshal(mapped); err == nil {
+				data = newData
+			}
+		}
+	}
+
 	var loadedConfig AppConfig
 	if err := yaml.Unmarshal(data, &loadedConfig); err == nil {
 		mergeConfigValues(config, &loadedConfig)
@@ -416,7 +433,37 @@ func GetUserPreferences() *AppConfig {
 			config.ConfigVersion = CurrentConfigVersion
 		}
 	}
+
+	// Persist baseline fill (best-effort) after we have a merged config. This uses the YAML node
+	// path so existing comments are preserved, and missing keys are added.
+	if changed {
+		_ = SaveUserPreferences(config)
+	}
+
 	return config
+}
+
+// deepFillMissingKeys copies keys from defaults into dst only when missing.
+// Returns true if dst was modified.
+func deepFillMissingKeys(dst map[string]interface{}, defaults map[string]interface{}) bool {
+	changed := false
+	for k, dv := range defaults {
+		v, exists := dst[k]
+		if !exists {
+			dst[k] = dv
+			changed = true
+			continue
+		}
+		// Recurse only for map sections.
+		dm, ok1 := dv.(map[string]interface{})
+		vm, ok2 := v.(map[string]interface{})
+		if ok1 && ok2 {
+			if deepFillMissingKeys(vm, dm) {
+				changed = true
+			}
+		}
+	}
+	return changed
 }
 
 // MarshalYAML marshals the AppConfig to YAML format
@@ -745,6 +792,20 @@ func updateNodeWithConfig(node *yaml.Node, config *AppConfig) error {
 		}
 	}
 
+	// Add missing sections from the baseline config (preserves existing ordering; appends new sections).
+	for sectionName, sectionData := range sections {
+		if !mappingHasKey(root, sectionName) {
+			secNode, err := buildSectionMappingNode(sectionData)
+			if err != nil {
+				return fmt.Errorf("failed to build section %s: %w", sectionName, err)
+			}
+			root.Content = append(root.Content,
+				&yaml.Node{Kind: yaml.ScalarNode, Value: sectionName},
+				secNode,
+			)
+		}
+	}
+
 	return nil
 }
 
@@ -793,7 +854,48 @@ func updateSectionNode(sectionNode *yaml.Node, sectionData interface{}) error {
 		}
 	}
 
+	// Add any missing keys from the baseline config.
+	for keyName, newValue := range sectionMap {
+		if !mappingHasKey(sectionNode, keyName) {
+			keyNode := &yaml.Node{Kind: yaml.ScalarNode, Value: keyName}
+			valNode := &yaml.Node{}
+			if err := updateValueNode(valNode, newValue); err != nil {
+				return fmt.Errorf("failed to set new value for %s: %w", keyName, err)
+			}
+			sectionNode.Content = append(sectionNode.Content, keyNode, valNode)
+		}
+	}
+
 	return nil
+}
+
+func mappingHasKey(n *yaml.Node, key string) bool {
+	if n == nil || n.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(n.Content); i += 2 {
+		if n.Content[i] != nil && n.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
+}
+
+func buildSectionMappingNode(sectionData interface{}) (*yaml.Node, error) {
+	// Marshal/unmarshal into yaml.Node to get a mapping node for the struct section.
+	data, err := yaml.Marshal(sectionData)
+	if err != nil {
+		return nil, err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Content) == 0 {
+		return &yaml.Node{Kind: yaml.MappingNode}, nil
+	}
+	// doc.Content[0] is the mapping node.
+	return doc.Content[0], nil
 }
 
 // updateValueNode updates a value node with a new value

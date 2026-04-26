@@ -13,9 +13,9 @@ type UpdateConfig struct {
 	UpdateChannel string // stable/beta/nightly
 }
 
-// ShouldCheckForUpdates determines if an update check should be performed
-// based on the configuration and last check time
-func ShouldCheckForUpdates(config *UpdateConfig) bool {
+// ShouldCheckForUpdatesConfig determines if an update check should be performed
+// based on the UpdateConfig struct values.
+func ShouldCheckForUpdatesConfig(config *UpdateConfig) bool {
 	if !config.AutoCheck {
 		return false
 	}

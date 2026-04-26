@@ -178,3 +178,8 @@ func (e *StallError) Error() string {
 func WrapReaderWithStallDetection(reader io.Reader, inactivityTimeout, overallTimeout time.Duration) *StallDetectingReader {
 	return NewStallDetectingReader(reader, inactivityTimeout, overallTimeout)
 }
+
+// WithStallDetection is a shorter alias for WrapReaderWithStallDetection.
+func WithStallDetection(reader io.Reader, inactivityTimeout, overallTimeout time.Duration) *StallDetectingReader {
+	return WrapReaderWithStallDetection(reader, inactivityTimeout, overallTimeout)
+}

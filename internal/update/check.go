@@ -20,9 +20,9 @@ type CheckResult struct {
 	Error           error
 }
 
-// ShouldCheckForUpdatesFromConfig determines if an update check should be performed
-// based on the configuration and last check time
-func ShouldCheckForUpdatesFromConfig(checkForUpdates bool, checkInterval int, lastChecked string) bool {
+// ShouldCheckForUpdates determines if an update check should be performed
+// based on the configuration and last check time.
+func ShouldCheckForUpdates(checkForUpdates bool, checkInterval int, lastChecked string) bool {
 	if !checkForUpdates {
 		return false
 	}
@@ -49,7 +49,7 @@ func ShouldCheckForUpdatesFromConfig(checkForUpdates bool, checkInterval int, la
 // Always calls callback, even on errors, to ensure timestamp is updated
 func PerformStartupCheck(checkForUpdates bool, checkInterval int, lastChecked string, callback func(*CheckResult)) {
 	// Check if we should perform the check
-	if !ShouldCheckForUpdatesFromConfig(checkForUpdates, checkInterval, lastChecked) {
+	if !ShouldCheckForUpdates(checkForUpdates, checkInterval, lastChecked) {
 		return
 	}
 
