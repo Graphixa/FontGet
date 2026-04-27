@@ -3,6 +3,7 @@ package output
 import (
 	"fmt"
 	"fontget/internal/ui"
+	"os"
 )
 
 // DebugLogger provides developer-focused debug output functionality
@@ -47,7 +48,7 @@ func isDebugEnabled() bool {
 func (d *DebugLogger) Message(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.InfoText.Render("[DEBUG]"), msg)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.InfoText.Render("[DEBUG]"), msg)
 	}
 }
 
@@ -56,7 +57,7 @@ func (d *DebugLogger) Message(format string, args ...interface{}) {
 func (d *DebugLogger) Error(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.ErrorText.Render("[DEBUG ERROR]"), msg)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.ErrorText.Render("[DEBUG ERROR]"), msg)
 	}
 }
 
@@ -65,7 +66,7 @@ func (d *DebugLogger) Error(format string, args ...interface{}) {
 func (d *DebugLogger) Warning(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.WarningText.Render("[DEBUG WARNING]"), msg)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.WarningText.Render("[DEBUG WARNING]"), msg)
 	}
 }
 
@@ -74,7 +75,7 @@ func (d *DebugLogger) Warning(format string, args ...interface{}) {
 func (d *DebugLogger) Performance(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.Text.Render("[DEBUG PERF]"), msg)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.Text.Render("[DEBUG PERF]"), msg)
 	}
 }
 
@@ -83,6 +84,6 @@ func (d *DebugLogger) Performance(format string, args ...interface{}) {
 func (d *DebugLogger) State(format string, args ...interface{}) {
 	if isDebugEnabled() {
 		msg := fmt.Sprintf(format, args...)
-		fmt.Printf("%s %s\n", ui.Text.Render("[DEBUG STATE]"), msg)
+		fmt.Fprintf(os.Stderr, "%s %s\n", ui.Text.Render("[DEBUG STATE]"), msg)
 	}
 }
