@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,6 +12,7 @@ import (
 	"fontget/internal/network"
 	"fontget/internal/output"
 	"fontget/internal/platform"
+	"fontget/internal/version"
 	"io"
 	"net"
 	"net/http"
@@ -22,9 +24,21 @@ import (
 	"time"
 )
 
-// Use a mainstream Windows Chrome UA by default. Some WAFs are more permissive to Windows+Chrome
-// than macOS or non-browser user agents.
-const browserLikeUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+func resolveDownloadUserAgent() string {
+	cfg := config.GetUserPreferences()
+	ua := strings.TrimSpace(cfg.Network.DownloadUserAgent)
+	if ua == "" {
+		ua = "FontGet/%version%"
+	}
+	return strings.ReplaceAll(ua, "%version%", version.GetVersion())
+}
+
+func isZipMagic(b []byte) bool {
+	if len(b) < 4 {
+		return false
+	}
+	return b[0] == 'P' && b[1] == 'K' && ((b[2] == 3 && b[3] == 4) || (b[2] == 5 && b[3] == 6) || (b[2] == 7 && b[3] == 8))
+}
 
 // FetchURLContent fetches content from a URL with cross-platform compatibility
 func FetchURLContent(url string) (string, error) {
@@ -117,9 +131,6 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
-	// Some upstreams will respond with WAF/bot challenges for non-browser clients.
-	// Use a browser-like UA to reduce false bot detection.
-	req.Header.Set("User-Agent", browserLikeUserAgent)
 	req.Header.Set("Accept", "*/*")
 
 	// Download file
@@ -129,8 +140,22 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	fallbackEnabled := appConfig.Network.EnableExternalDownloadFallback
 
 	host := ""
+	path := ""
 	if u, parseErr := url.Parse(font.DownloadURL); parseErr == nil && u.Host != "" {
 		host = strings.ToLower(u.Host)
+		path = u.Path
+	}
+
+	// Font Squirrel-specific headers: make the request look like a normal file download, without pretending to be a browser.
+	isFontSquirrel := strings.Contains(host, "fontsquirrel.com")
+	if isFontSquirrel {
+		req.Header.Set("User-Agent", resolveDownloadUserAgent())
+		req.Header.Set("Accept", "application/zip, application/octet-stream, */*")
+		req.Header.Set("Accept-Encoding", "identity")
+		req.Header.Set("Referer", "https://www.fontsquirrel.com/")
+	} else {
+		// Default UA for other upstreams.
+		req.Header.Set("User-Agent", resolveDownloadUserAgent())
 	}
 	// Font Squirrel often delays/challenges non-browser clients. Prefer failing fast and falling back.
 	fastHeaderTimeout := requestTimeout
@@ -148,11 +173,16 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		// Always attempt external fallbacks when enabled.
 		if fallbackEnabled {
 			dbg("DownloadFont: standard request failed: %v", err)
+			fbHeaders := map[string]string{"Accept": req.Header.Get("Accept")}
+			if ae := req.Header.Get("Accept-Encoding"); ae != "" {
+				fbHeaders["Accept-Encoding"] = ae
+			}
+			if ref := req.Header.Get("Referer"); ref != "" {
+				fbHeaders["Referer"] = ref
+			}
 			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
-				UserAgent: browserLikeUserAgent,
-				Headers: map[string]string{
-					"Accept": "*/*",
-				},
+				UserAgent: req.Header.Get("User-Agent"),
+				Headers:   fbHeaders,
 			})
 			if rep != nil {
 				for _, step := range rep.Steps {
@@ -188,11 +218,16 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 
 			output.GetVerbose().Info("Upstream returned HTTP %d (bot/WAF challenge). Retrying with external download tools if available.", resp.StatusCode)
 
+			fbHeaders := map[string]string{"Accept": req.Header.Get("Accept")}
+			if ae := req.Header.Get("Accept-Encoding"); ae != "" {
+				fbHeaders["Accept-Encoding"] = ae
+			}
+			if ref := req.Header.Get("Referer"); ref != "" {
+				fbHeaders["Referer"] = ref
+			}
 			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
-				UserAgent: browserLikeUserAgent,
-				Headers: map[string]string{
-					"Accept": "*/*",
-				},
+				UserAgent: req.Header.Get("User-Agent"),
+				Headers:   fbHeaders,
 			})
 			for _, step := range rep.Steps {
 				dbg("DownloadFont fallback step: tool=%s path=%s result=%s detail=%q", step.Tool, step.Path, step.Result, step.Detail)
@@ -215,11 +250,16 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		// Any non-200: attempt fallbacks when enabled.
 		if fallbackEnabled {
 			dbg("DownloadFont: HTTP %d from upstream, attempting fallbacks", resp.StatusCode)
+			fbHeaders := map[string]string{"Accept": req.Header.Get("Accept")}
+			if ae := req.Header.Get("Accept-Encoding"); ae != "" {
+				fbHeaders["Accept-Encoding"] = ae
+			}
+			if ref := req.Header.Get("Referer"); ref != "" {
+				fbHeaders["Referer"] = ref
+			}
 			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
-				UserAgent: browserLikeUserAgent,
-				Headers: map[string]string{
-					"Accept": "*/*",
-				},
+				UserAgent: req.Header.Get("User-Agent"),
+				Headers:   fbHeaders,
 			})
 			if rep != nil {
 				for _, step := range rep.Steps {
@@ -250,6 +290,16 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		})
 	}
 
+	// If this looks like a Font Squirrel kit download, validate we actually received a ZIP payload.
+	// This prevents saving an HTML/WAF page that happens to return HTTP 200.
+	expectZIP := isFontSquirrel && strings.Contains(path, "/fontfacekit/")
+	if !expectZIP {
+		ct := strings.ToLower(resp.Header.Get("Content-Type"))
+		if isFontSquirrel && strings.Contains(ct, "zip") {
+			expectZIP = true
+		}
+	}
+
 	suppressVerbose := opts != nil && opts.SuppressVerboseProgressLine
 	if !suppressVerbose {
 		displayName := font.Path
@@ -277,6 +327,17 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	var reader io.Reader = stallReader
 	if opts != nil && opts.OnBytesDownloaded != nil {
 		reader = newProgressReader(stallReader, totalBytes, opts.OnBytesDownloaded)
+	}
+
+	// ZIP validation (best-effort) before writing to disk.
+	if expectZIP {
+		br := bufio.NewReader(reader)
+		if hdr, peekErr := br.Peek(4); peekErr == nil {
+			if !isZipMagic(hdr) {
+				return "", fmt.Errorf("download did not return a ZIP archive (possible upstream challenge): %s", font.DownloadURL)
+			}
+		}
+		reader = br
 	}
 
 	// Create target file

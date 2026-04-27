@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type CommandRunner interface {
@@ -27,6 +30,13 @@ func (execRunner) CombinedOutput(name string, args ...string) ([]byte, error) {
 type DownloadFallbackOptions struct {
 	UserAgent string
 	Headers   map[string]string
+}
+
+func isZipMagic(b []byte) bool {
+	if len(b) < 4 {
+		return false
+	}
+	return b[0] == 'P' && b[1] == 'K' && ((b[2] == 3 && b[3] == 4) || (b[2] == 5 && b[3] == 6) || (b[2] == 7 && b[3] == 8))
 }
 
 // DownloadFallbackStep records one candidate tool in the fallback chain.
@@ -111,15 +121,31 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 		if bytes.HasPrefix(b, []byte("<!doctype html")) || bytes.HasPrefix(b, []byte("<html")) {
 			return fmt.Errorf("output looks like HTML (likely upstream challenge page)")
 		}
+		// If this download was intended to be a ZIP, require ZIP magic so a 200 HTML/challenge body
+		// can't be treated as a successful archive download.
+		expectZip := strings.HasSuffix(strings.ToLower(targetPath), ".zip")
+		if !expectZip {
+			accept := strings.ToLower(strings.TrimSpace(opts.Headers["Accept"]))
+			expectZip = strings.Contains(accept, "application/zip")
+		}
+		if expectZip {
+			if !isZipMagic(buf[:n]) {
+				return fmt.Errorf("output is not a ZIP archive (missing PK header)")
+			}
+		}
 		return nil
 	}
 
 	// curl
 	if curlPath, err := runner.LookPath("curl"); err != nil || curlPath == "" {
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "curl", Result: "skipped", Detail: "not found in PATH"})
-	} else if err := runCurl(runner, curlPath, url, targetPath, opts); err == nil {
+	} else if status, err := runCurl(runner, curlPath, url, targetPath, opts); err == nil {
 		if vErr := validateDownloadedFile(); vErr == nil {
-			rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "curl", Path: curlPath, Result: "ok"})
+			detail := ""
+			if status != "" {
+				detail = "http_status=" + status
+			}
+			rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "curl", Path: curlPath, Result: "ok", Detail: detail})
 			return rep, nil
 		} else {
 			appendFailed("curl", curlPath, vErr.Error())
@@ -176,13 +202,13 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 	return rep, &FallbackAttemptError{URL: url, Report: rep, attempt: compact}
 }
 
-func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts DownloadFallbackOptions) error {
+func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts DownloadFallbackOptions) (finalStatus string, _ error) {
 	// We explicitly capture the final HTTP status code because curl considers 202 a success.
 	// Some upstream WAFs respond with 202 + an empty/challenge body.
 	const writeOutStatusPrefix = "FONTGET_HTTP_STATUS="
 	reStatus := regexp.MustCompile(writeOutStatusPrefix + `(\d{3})`)
 
-	args := []string{
+	baseArgs := []string{
 		"-L",
 		// Treat 4xx/5xx as failures. (202/3xx are not failures in curl, so we validate output separately.)
 		"--fail",
@@ -192,22 +218,56 @@ func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts Downlo
 		"--write-out", writeOutStatusPrefix + "%{http_code}",
 	}
 	if opts.UserAgent != "" {
-		args = append(args, "-A", opts.UserAgent)
+		baseArgs = append(baseArgs, "-A", opts.UserAgent)
 	}
 	for k, v := range opts.Headers {
-		args = append(args, "-H", fmt.Sprintf("%s: %s", k, v))
+		baseArgs = append(baseArgs, "-H", fmt.Sprintf("%s: %s", k, v))
 	}
-	args = append(args, "-o", targetPath, url)
 
-	out, err := runner.CombinedOutput(curlPath, args...)
-	if err != nil {
-		return fmt.Errorf("%s", normalizeToolError(out, err))
+	// Bounded retry for transient statuses (helps with upstream WAF challenges).
+	// Keep total added time small to avoid hangs in interactive UI.
+	maxAttempts := 3
+	backoff := 250 * time.Millisecond
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		args := append([]string{}, baseArgs...)
+		args = append(args, "-o", targetPath, url)
+
+		out, err := runner.CombinedOutput(curlPath, args...)
+		if err != nil {
+			// If curl failed but still printed a status, we may be able to classify it.
+			m := reStatus.FindStringSubmatch(string(out))
+			if len(m) == 2 {
+				finalStatus = m[1]
+			}
+			return "", fmt.Errorf("%s", normalizeToolError(out, err))
+		}
+
+		m := reStatus.FindStringSubmatch(string(out))
+		if len(m) == 2 {
+			finalStatus = m[1]
+		}
+		if finalStatus == "" || finalStatus == "200" {
+			return finalStatus, nil
+		}
+
+		code, _ := strconv.Atoi(finalStatus)
+		shouldRetry := code == 202 || code == 429 || (code >= 500 && code <= 599)
+		if code == 403 {
+			return finalStatus, fmt.Errorf("unexpected HTTP status %s", finalStatus)
+		}
+		if !shouldRetry || attempt == maxAttempts {
+			return finalStatus, fmt.Errorf("unexpected HTTP status %s", finalStatus)
+		}
+
+		// jitter in [0, 200ms]
+		j := time.Duration(rng.Intn(200)) * time.Millisecond
+		time.Sleep(backoff + j)
+		backoff *= 2
 	}
-	m := reStatus.FindStringSubmatch(string(out))
-	if len(m) == 2 && m[1] != "200" {
-		return fmt.Errorf("unexpected HTTP status %s", m[1])
-	}
-	return nil
+
+	return finalStatus, fmt.Errorf("unexpected HTTP status %s", finalStatus)
 }
 
 func runWget(runner CommandRunner, wgetPath, url, targetPath string, opts DownloadFallbackOptions) error {

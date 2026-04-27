@@ -45,7 +45,8 @@ func (r *fakeRunner) CombinedOutput(name string, args ...string) ([]byte, error)
 				}
 			}
 			if outPath != "" {
-				_ = os.WriteFile(outPath, []byte("dummy payload"), 0644)
+				// Use a ZIP-like header so ZIP validation passes for kit URLs.
+				_ = os.WriteFile(outPath, []byte("PK\x03\x04dummy payload"), 0644)
 			}
 		}
 		return []byte(res.out), res.err
@@ -92,6 +93,10 @@ func TestDownloadWithFallbacks_CurlSuccess(t *testing.T) {
 	}
 	if len(r.calls) != 1 || !strings.HasPrefix(r.calls[0], "/usr/bin/curl ") {
 		t.Fatalf("expected curl call, got %#v", r.calls)
+	}
+	// Ensure HTTP status is recorded for debug visibility.
+	if rep == nil || len(rep.Steps) == 0 || rep.Steps[len(rep.Steps)-1].Detail != "http_status=200" {
+		t.Fatalf("expected curl step detail http_status=200, got %#v", rep)
 	}
 }
 
