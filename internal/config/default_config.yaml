@@ -12,6 +12,8 @@ Network:
   RequestTimeout: "10s"  # Timeout for HTTP requests
   DownloadTimeout: "30s"  # Timeout for font downloads
   EnableExternalDownloadFallback: true  # Allow optional external download tools (curl/wget/PowerShell) on bot/WAF challenge responses
+  DownloadUserAgent: "FontGet/%version%"  # User-Agent for downloads (%version% expands). If blocked by WAF, try a mainstream Chrome UA.
+  # Chrome UA Example: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
 
 Search:
   ResultLimit: 0  # Maximum search results to display (0 = unlimited)
