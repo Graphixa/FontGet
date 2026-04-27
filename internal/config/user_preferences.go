@@ -57,6 +57,7 @@ type NetworkSection struct {
 	RequestTimeout                 string `yaml:"RequestTimeout"`                 // Quick HTTP requests and checks (e.g., "10s")
 	DownloadTimeout                string `yaml:"DownloadTimeout"`                // Download timeout: max time without data transfer (stall detection) (e.g., "30s")
 	EnableExternalDownloadFallback bool   `yaml:"EnableExternalDownloadFallback"` // Allow optional external-tool fallbacks (curl/wget/PowerShell) on bot/WAF challenge responses
+	DownloadUserAgent              string `yaml:"DownloadUserAgent"`              // User-Agent used for HTTP downloads (supports %version%)
 }
 
 // SearchSection represents search configuration
@@ -139,7 +140,7 @@ func defaultUserPreferencesFallback() *AppConfig {
 		ConfigVersion: CurrentConfigVersion,
 		Configuration: ConfigurationSection{DefaultEditor: ""},
 		Logging:       LoggingSection{LogPath: "$home/.fontget/logs/fontget.log", MaxLogSize: "10MB", MaxLogFiles: 5},
-		Network:       NetworkSection{RequestTimeout: "10s", DownloadTimeout: "30s", EnableExternalDownloadFallback: true},
+		Network:       NetworkSection{RequestTimeout: "10s", DownloadTimeout: "30s", EnableExternalDownloadFallback: true, DownloadUserAgent: "FontGet/%version%"},
 		Search:        SearchSection{ResultLimit: 0, EnablePopularitySort: true},
 		Update:        UpdateSection{CheckForUpdates: true, UpdateCheckInterval: 24, LastUpdateCheck: "", NextUpdateCheck: ""},
 		Theme:         ThemeSection{Name: "catppuccin", Use256ColorSpace: false},
@@ -970,6 +971,7 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"RequestTimeout":                 config.Network.RequestTimeout,
 			"DownloadTimeout":                config.Network.DownloadTimeout,
 			"EnableExternalDownloadFallback": config.Network.EnableExternalDownloadFallback,
+			"DownloadUserAgent":              config.Network.DownloadUserAgent,
 		},
 		"Search": map[string]interface{}{
 			"ResultLimit":          config.Search.ResultLimit,
