@@ -1,4 +1,9 @@
-Version: "2.0"  # Schema version for migration tracking (replaced when writing initial config)
+# FontGet configuration file.
+# Edit values as needed, then run `fontget config validate` to check the file.
+#
+# Note: on first-run and `fontget config reset`, this file reverts back to defaults.
+
+Version: "2.0"
 
 Configuration:
   DefaultEditor: ""  # Default editor command (e.g., 'code', 'notepad.exe', 'nano')
@@ -12,8 +17,9 @@ Network:
   RequestTimeout: "10s"  # Timeout for HTTP requests
   DownloadTimeout: "30s"  # Timeout for font downloads
   EnableExternalDownloadFallback: true  # Allow optional external download tools (curl/wget/PowerShell) on bot/WAF challenge responses
-  DownloadUserAgent: "FontGet/%version%"  # User-Agent for downloads (%version% expands). If blocked by WAF, try a mainstream Chrome UA.
-  # Chrome UA Example: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+  DownloadUserAgent: "FontGet/%version%"  # User-Agent for downloads (the %version% value expands to the current FontGet version).
+  # Replace DownloadUserAgent value with the following or something similar if you need to use a mainstream browser User-Agent for downloads:
+  # "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
 
 Search:
   ResultLimit: 0  # Maximum search results to display (0 = unlimited)
