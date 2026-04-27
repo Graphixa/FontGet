@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	"fontget/internal/ui"
 	"fontget/internal/version"
@@ -23,21 +22,9 @@ Use --release-notes to get a link to the release notes for this version.`,
 	Example: `  fontget version`,
 	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		v := version.GetVersion()
-		display := v
-		// Dev builds: no "v" prefix (dev, dev+hash, dev-YYYYMMDDHHMMSS-commit)
-		if v == "dev" || strings.HasPrefix(v, "dev+") || strings.HasPrefix(v, "dev-") {
-			display = v
-		} else if strings.Contains(v, "-dev+") {
-			// Release with build metadata (e.g., "2.0.0-dev+ae04b20")
-			display = "v" + v
-		} else {
-			display = "v" + v
-		}
-
-		// Primary version line - styled with main info color
-		versionLine := ui.InfoText.Render("FontGet " + display)
-		fmt.Println(versionLine)
+		// Primary version line - styled with main info color.
+		// Uses GetFullVersion() so dev builds include build metadata (commit/dirty).
+		fmt.Println(ui.InfoText.Render(version.GetFullVersion()))
 
 		// When debug is enabled, show detailed build information
 		if IsDebug() {
@@ -54,8 +41,9 @@ Use --release-notes to get a link to the release notes for this version.`,
 		}
 
 		if versionReleaseNotes {
+			v := version.GetVersion()
 			// Check if it's a dev build (dev, dev+hash, dev-date-commit)
-			if v == "dev" || strings.HasPrefix(v, "dev+") || strings.HasPrefix(v, "dev-") {
+			if v == "dev" {
 				fmt.Println(ui.Text.Render("Release notes are only available for tagged releases."))
 				return
 			}
