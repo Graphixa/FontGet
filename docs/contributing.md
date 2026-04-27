@@ -5,7 +5,7 @@ If you're interested in contributing to FontGet! This guide will help you get st
 ## Getting Started
 
 ### Prerequisites
-- Go 1.24.4 or later
+- Go 1.26.0 or later
 - Git
 - Basic understanding of Go and CLI development
 

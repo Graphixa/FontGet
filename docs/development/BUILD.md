@@ -4,7 +4,7 @@ This guide covers how to build FontGet for local testing. **For releases, GitHub
 
 ## Prerequisites
 
-- **Go 1.24+** (see `go.mod`). Install: [go.dev/dl](https://go.dev/dl), or `brew install go` on macOS.
+- **Go 1.26+** (see `go.mod`). Install: [go.dev/dl](https://go.dev/dl), or `brew install go` on macOS.
 - **Git** (for clone and build metadata).
 
 From the repo root, dependencies are fetched automatically on first build. Optionally run `go mod download` once.
@@ -59,7 +59,7 @@ For version/commit/date in the binary, use the same ldflags as in `scripts/build
 
 ## Troubleshooting
 
-- **Build fails:** Ensure Go 1.24+ (`go version`), you’re in the repo root (where `go.mod` is), and run `go mod tidy` if needed.
+- **Build fails:** Ensure Go 1.26+ (`go version`), you’re in the repo root (where `go.mod` is), and run `go mod tidy` if needed.
 - **Permission denied on script:** Run with `sh scripts/build.sh` (or `bash scripts/build.sh`), not `./scripts/build.sh`.
 - **Binary won’t run (e.g. on pCloud):** Default output is already `/tmp/fontget-dev`; run `/tmp/fontget-dev`. If you used `FONTGET_OUTPUT=./fontget`, the filesystem may not allow execute — use the default or build to another local path.
 - **Windows:** Use the PowerShell script; Make is optional (e.g. via WSL or Chocolatey).

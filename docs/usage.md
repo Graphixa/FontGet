@@ -292,7 +292,7 @@ fontget config reset
 ### Notes
 - `config validate`: checks config integrity. If it fails, edit with `fontget config edit` or reset with `fontget config reset`.
 - `config reset`: replaces the config with defaults while preserving log files.
-- **Network** (in `~/.fontget/config.yaml`): `RequestTimeout` and `DownloadTimeout` control HTTP and stall-based download behavior. `EnableExternalDownloadFallback` (default `true`) allows optional use of system tools (`curl`, `wget`, or PowerShell) when an upstream responds with a bot/WAF challenge instead of the file; set to `false` if you must avoid invoking external programs. With `--verbose`, successful retries report which external tool completed the download; with `--debug`, each candidate tool (skipped, failed, or ok) is listed in order.
+- **Network** (in `~/.fontget/config.yaml`): `RequestTimeout` and `DownloadTimeout` control HTTP and stall-based download behavior. `EnableExternalDownloadFallback` (default `true`) allows optional use of system tools (`curl`, `wget`, or PowerShell) when an upstream responds with a bot/WAF challenge instead of the file; set to `false` if you must avoid invoking external programs. `DownloadUserAgent` controls the `User-Agent` string used for downloads (supports `%version%`, which expands to the clean FontGet version like `1.2.3` or `dev`). If a source is blocking downloads via a WAF challenge (e.g. HTTP 202 with `x-amzn-waf-action: challenge`), setting `DownloadUserAgent` to a mainstream browser UA may improve success rate. With `--verbose`, successful retries report which external tool completed the download; with `--debug`, each candidate tool (skipped, failed, or ok) is listed in order.
 
 ## Export
 
