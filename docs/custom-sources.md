@@ -10,7 +10,7 @@ That JSON has two main parts:
 - `source_info` (metadata about your source)
 - `fonts` (font IDs, variants, and download URLs)
 
-Once your file is publicly accessible, add it with `fontget sources add`.
+Once your file is publicly accessible, add it with `fontget sources manage`.
 
 This example uses a custom GitHub repo, but you can host your source file and fonts anywhere public on the internet.
 
@@ -18,18 +18,16 @@ This example uses a custom GitHub repo, but you can host your source file and fo
 
 ## Step 1: Create a new GitHub repository
 
-Create a **public** repository on your GitHub account (example name: `fontget-source`).
+1. Create a **public** repository (empty is fine).
+2. Add a manifest file — call it `fonts.json` or anything you like; the name only matters for your own sanity.
+3. Optionally add font binaries under something like `fonts/` in the same repo.
+4. Push to your default branch (`main` or `master`).
 
-Suggested structure:
+**Manifest URL:** open the file on GitHub → **Raw** → copy the address. It looks like:
 
-```text
-fontget-source/
-  fonts.json
-  fonts/
-    Iosevka-Regular.ttf
-```
+`https://raw.githubusercontent.com/<you>/<repo>/<branch>/fonts.json`
 
-The `fonts/` folder is optional. You can also point to font files hosted elsewhere.
+Paste that into a browser tab with **private/incognito** off any VPN: if you see raw JSON, FontGet can fetch it.
 
 ---
 
@@ -58,7 +56,7 @@ Create a file named `fonts.json` in the repo root and paste this template:
           "weight": 400,
           "style": "normal",
           "files": {
-            "ttf": "REPLACE_WITH_FONT_URL"
+            "ttf": "https://github.com/<username>/<repo>/main/fonts/CoolFont-Regular.ttf"
           }
         }
       ]
@@ -129,7 +127,7 @@ Example:
 
 ---
 
-## Step 4: Commit and publish
+## Register the source in FontGet
 
 1. Commit `fonts.json` (and optional `fonts/` files).
 2. Push to your default branch.
@@ -174,25 +172,25 @@ fontget add "gh.iosevka"
 
 ## Common mistakes
 
-- Source URL is private or requires login.
-- `files` uses `zip` key instead of `ttf`/`otf`.
-- Using `.tar.gz` archive URLs.
+- Using a URL that only works when you're logged in (private repo, cookies, “Sign in to view” pages).
+- Copying the GitHub *file page* URL instead of the **Raw** URL.
+- Pointing `files` at a webpage (HTML) instead of a direct font file or archive.
 - `source_info.total_fonts` does not match entries in `fonts`.
+- Changing font IDs over time (breaks scripts and saved installs).
 
 ## Troubleshooting checklist
 
-- Source URL is valid JSON and publicly reachable.
-- `files` URLs are publicly reachable.
-- `files` keys are `ttf` or `otf`.
-- Archive URLs use supported formats (`.zip` or `.tar.xz`).
-- `source_info.total_fonts` matches the number of font entries.
-- Font IDs are unique and stable.
+- Open the manifest URL in a fresh browser session (no login, no VPN) and confirm it returns JSON.
+- Run `fontget sources update` and `fontget sources validate`.
+- If installs fail, run `fontget add <prefix>.<font-id> --debug` and look for the exact URL it tried.
+- Open that URL in a browser and confirm it downloads a real file (not HTML, not a 302-to-login, not a blocked 202/403/404).
+- Keep `files` keys as `ttf` / `otf`.
+- Archive URLs can be `.zip`, `.tar.xz`, `.tar.gz`/`.tgz`, or `.7z` (7z extraction needs `7zz`/`7z` available).
 
 
 ## Notes
 
-- Use trusted URLs only.
+- Your manifest must be public. FontGet can't log in to fetch it.
+- Use stable URLs. If you publish “latest.zip” and later replace it, old installs can break.
 - Ensure font licensing allows redistribution and installation.
 - Keep `source_info.total_fonts` in sync with your `fonts` entries.
-- Use stable URLs for font files to avoid broken installs.
-- Confirm links are publicly accessible (no auth required), otherwise installs will fail.
