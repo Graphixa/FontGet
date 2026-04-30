@@ -124,7 +124,7 @@ For contributors or users who prefer to build from source. See the [Contributing
 
 ### Prerequisites
 
-- [Go](https://go.dev/) 1.24 or later
+- [Go](https://go.dev/) 1.26 or later
 - Git
 
 ### Build Instructions
