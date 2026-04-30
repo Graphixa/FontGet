@@ -18,8 +18,9 @@ Network:
   DownloadTimeout: "30s"  # Timeout for font downloads
   EnableExternalDownloadFallback: true  # Allow optional external download tools (curl/wget/PowerShell) on bot/WAF challenge responses
   DownloadUserAgent: "FontGet/%version% (+https://github.com/Graphixa/FontGet)"  # User-Agent for downloads (the %version% value expands to the current FontGet version).
-  # Replace DownloadUserAgent value with the following or something similar if you need to use a mainstream browser User-Agent for downloads:
-  # "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+  # If you are having problems with downloads, you can try adding a compatible browser User-Agent like the one below.
+  # DownloadUserAgent: "Mozilla/5.0 (compatible; FontGet/%version%; +https://github.com/Graphixa/FontGet)"
+  
 
 Search:
   ResultLimit: 0  # Maximum search results to display (0 = unlimited)
