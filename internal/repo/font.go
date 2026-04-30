@@ -14,6 +14,7 @@ import (
 	"fontget/internal/platform"
 	"fontget/internal/version"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -21,6 +22,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -28,7 +30,7 @@ func resolveDownloadUserAgent() string {
 	cfg := config.GetUserPreferences()
 	ua := strings.TrimSpace(cfg.Network.DownloadUserAgent)
 	if ua == "" {
-		ua = "FontGet/%version%"
+		ua = "FontGet/%version% (+https://github.com/Graphixa/FontGet)"
 	}
 	return strings.ReplaceAll(ua, "%version%", version.GetVersion())
 }
@@ -38,6 +40,47 @@ func isZipMagic(b []byte) bool {
 		return false
 	}
 	return b[0] == 'P' && b[1] == 'K' && ((b[2] == 3 && b[3] == 4) || (b[2] == 5 && b[3] == 6) || (b[2] == 7 && b[3] == 8))
+}
+
+var (
+	downloadHostMu    sync.Mutex
+	downloadHostSlots = map[string]chan struct{}{}
+)
+
+func acquireDownloadHostSlot(host string) func() {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "" {
+		return func() {}
+	}
+
+	downloadHostMu.Lock()
+	ch, ok := downloadHostSlots[host]
+	if !ok {
+		// Serialize downloads per-host by default (reduces “parallel bot” traffic patterns).
+		ch = make(chan struct{}, 1)
+		downloadHostSlots[host] = ch
+	}
+	downloadHostMu.Unlock()
+
+	ch <- struct{}{}
+	return func() { <-ch }
+}
+
+func fallbackHeadersFromRequest(req *http.Request) map[string]string {
+	if req == nil {
+		return nil
+	}
+	fb := map[string]string{"Accept": req.Header.Get("Accept")}
+	if ae := req.Header.Get("Accept-Encoding"); ae != "" {
+		fb["Accept-Encoding"] = ae
+	}
+	if ref := req.Header.Get("Referer"); ref != "" {
+		fb["Referer"] = ref
+	}
+	if al := req.Header.Get("Accept-Language"); al != "" {
+		fb["Accept-Language"] = al
+	}
+	return fb
 }
 
 // FetchURLContent fetches content from a URL with cross-platform compatibility
@@ -132,6 +175,8 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Accept", "*/*")
+	// Many CDNs behave more predictably when Accept-Language is present (still honest; not browser spoofing).
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	// Download file
 	appConfig := config.GetUserPreferences()
@@ -165,6 +210,9 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		}
 	}
 
+	releaseHost := acquireDownloadHostSlot(host)
+	defer releaseHost()
+
 	// Don't use http.Client.Timeout for downloads - it times out even during active transfers
 	// Instead, use ResponseHeaderTimeout to detect connection issues early
 	// The stall detector handles inactivity detection (no overall timeout needed)
@@ -173,16 +221,9 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		// Always attempt external fallbacks when enabled.
 		if fallbackEnabled {
 			dbg("DownloadFont: standard request failed: %v", err)
-			fbHeaders := map[string]string{"Accept": req.Header.Get("Accept")}
-			if ae := req.Header.Get("Accept-Encoding"); ae != "" {
-				fbHeaders["Accept-Encoding"] = ae
-			}
-			if ref := req.Header.Get("Referer"); ref != "" {
-				fbHeaders["Referer"] = ref
-			}
 			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
 				UserAgent: req.Header.Get("User-Agent"),
-				Headers:   fbHeaders,
+				Headers:   fallbackHeadersFromRequest(req),
 			})
 			if rep != nil {
 				for _, step := range rep.Steps {
@@ -218,16 +259,9 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 
 			output.GetVerbose().Info("Upstream returned HTTP %d (bot/WAF challenge). Retrying with external download tools if available.", resp.StatusCode)
 
-			fbHeaders := map[string]string{"Accept": req.Header.Get("Accept")}
-			if ae := req.Header.Get("Accept-Encoding"); ae != "" {
-				fbHeaders["Accept-Encoding"] = ae
-			}
-			if ref := req.Header.Get("Referer"); ref != "" {
-				fbHeaders["Referer"] = ref
-			}
 			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
 				UserAgent: req.Header.Get("User-Agent"),
-				Headers:   fbHeaders,
+				Headers:   fallbackHeadersFromRequest(req),
 			})
 			for _, step := range rep.Steps {
 				dbg("DownloadFont fallback step: tool=%s path=%s result=%s detail=%q", step.Tool, step.Path, step.Result, step.Detail)
@@ -250,16 +284,9 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		// Any non-200: attempt fallbacks when enabled.
 		if fallbackEnabled {
 			dbg("DownloadFont: HTTP %d from upstream, attempting fallbacks", resp.StatusCode)
-			fbHeaders := map[string]string{"Accept": req.Header.Get("Accept")}
-			if ae := req.Header.Get("Accept-Encoding"); ae != "" {
-				fbHeaders["Accept-Encoding"] = ae
-			}
-			if ref := req.Header.Get("Referer"); ref != "" {
-				fbHeaders["Referer"] = ref
-			}
 			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
 				UserAgent: req.Header.Get("User-Agent"),
-				Headers:   fbHeaders,
+				Headers:   fallbackHeadersFromRequest(req),
 			})
 			if rep != nil {
 				for _, step := range rep.Steps {
@@ -387,34 +414,60 @@ func doDownloadRequestWithHeaderTimeout(req *http.Request, fastHeaderTimeout tim
 		slowHeaderTimeout = fastHeaderTimeout
 	}
 
+	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	onRedirect := func(from *url.URL, to *url.URL, viaCount int) {
+		if dbg == nil || from == nil || to == nil {
+			return
+		}
+		dbg("DownloadFont: redirect %d %s -> %s", viaCount, from.String(), to.String())
+	}
+
 	doOnce := func(timeout time.Duration, forceHTTP1 bool) (*http.Response, error) {
-		transport := &http.Transport{
-			ResponseHeaderTimeout: timeout,
-		}
-		if forceHTTP1 {
-			transport.ForceAttemptHTTP2 = false
-		}
-		client := &http.Client{Transport: transport}
+		client := network.NewDownloadHTTPClient(timeout, forceHTTP1, onRedirect)
 		return client.Do(req)
 	}
 
-	resp, err := doOnce(fastHeaderTimeout, false)
-	if err == nil {
+	const maxTransientAttempts = 3
+	backoff := 150 * time.Millisecond
+
+	forceHTTP1 := false
+	timeout := fastHeaderTimeout
+
+	for attempt := 1; attempt <= maxTransientAttempts; attempt++ {
+		resp, err := doOnce(timeout, forceHTTP1)
+		if err != nil {
+			// Retry only on the specific slow-header case seen with Font Squirrel.
+			// First retry: longer timeout and force HTTP/1.1 (some sites behave better without HTTP/2).
+			if isHTTP2HeaderTimeout(err) && slowHeaderTimeout > fastHeaderTimeout && !forceHTTP1 {
+				if dbg != nil {
+					dbg("DownloadFont: header timeout hit (%v), retrying with %v (http1)", fastHeaderTimeout, slowHeaderTimeout)
+				} else {
+					output.GetDebug().State("DownloadFont: header timeout hit (%v), retrying with %v (http1) (%dms)", fastHeaderTimeout, slowHeaderTimeout, time.Since(start).Milliseconds())
+				}
+				forceHTTP1 = true
+				timeout = slowHeaderTimeout
+				continue
+			}
+			return nil, err
+		}
+
+		if resp != nil && network.ShouldRetryGoDownloadStatus(resp.StatusCode) && attempt < maxTransientAttempts {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			if dbg != nil {
+				dbg("DownloadFont: transient HTTP %d, retrying (attempt %d/%d) hdr=%s", resp.StatusCode, attempt, maxTransientAttempts, network.FormatHTTPHeadersForDebug(resp.Header))
+			}
+			j := time.Duration(rng.Intn(120)) * time.Millisecond
+			time.Sleep(backoff + j)
+			backoff *= 2
+			continue
+		}
+
 		return resp, nil
 	}
 
-	// Retry only on the specific slow-header case seen with Font Squirrel.
-	// First retry: longer timeout and force HTTP/1.1 (some sites behave better without HTTP/2).
-	if isHTTP2HeaderTimeout(err) && slowHeaderTimeout > fastHeaderTimeout {
-		if dbg != nil {
-			dbg("DownloadFont: header timeout hit (%v), retrying with %v (http1)", fastHeaderTimeout, slowHeaderTimeout)
-		} else {
-			output.GetDebug().State("DownloadFont: header timeout hit (%v), retrying with %v (http1) (%dms)", fastHeaderTimeout, slowHeaderTimeout, time.Since(start).Milliseconds())
-		}
-		return doOnce(slowHeaderTimeout, true)
-	}
-
-	return nil, err
+	return nil, fmt.Errorf("download request failed after %d attempts", maxTransientAttempts)
 }
 
 func doDownloadRequestOnce(req *http.Request, headerTimeout time.Duration, forceHTTP1 bool) (*http.Response, error) {
@@ -678,6 +731,20 @@ func GetFontByID(fontID string) ([]FontFile, error) {
 	return nil, fmt.Errorf("font not found: %s", fontID)
 }
 
+// pickDownloadURLFromFileMap chooses a download URL from FontGet-Sources variant or top-level files.
+// Order: direct fonts first (ttf, otf), then archives (zip, 7z) used e.g. by Font Squirrel fontface kits.
+func pickDownloadURLFromFileMap(files map[string]string) string {
+	if len(files) == 0 {
+		return ""
+	}
+	for _, key := range []string{"ttf", "otf", "zip", "7z"} {
+		if u := strings.TrimSpace(files[key]); u != "" {
+			return u
+		}
+	}
+	return ""
+}
+
 // convertFontInfoToFontFiles converts FontInfo to []FontFile
 func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error) {
 	var fonts []FontFile
@@ -690,25 +757,13 @@ func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error
 		// Use variant-specific files if available
 		if font.VariantFiles != nil {
 			if variantFiles, exists := font.VariantFiles[variantName]; exists {
-				for fileType, url := range variantFiles {
-					// Accept both individual font files and archive files
-					if fileType == "ttf" || fileType == "otf" {
-						downloadURL = url
-						break
-					}
-				}
+				downloadURL = pickDownloadURLFromFileMap(variantFiles)
 			}
 		}
 
 		// Fallback to general files if variant-specific not found
 		if downloadURL == "" {
-			for fileType, url := range font.Files {
-				// Accept both individual font files and archive files
-				if fileType == "ttf" || fileType == "otf" {
-					downloadURL = url
-					break
-				}
-			}
+			downloadURL = pickDownloadURLFromFileMap(font.Files)
 		}
 
 		if downloadURL != "" {
@@ -743,9 +798,16 @@ func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error
 }
 
 // isArchiveFile checks if a URL points to an archive file
-func isArchiveFile(url string) bool {
-	ext := strings.ToLower(filepath.Ext(url))
-	return ext == ".zip" || ext == ".xz" || strings.HasSuffix(strings.ToLower(url), ".tar.xz")
+func isArchiveFile(downloadURL string) bool {
+	ext := strings.ToLower(filepath.Ext(downloadURL))
+	if ext == ".zip" || ext == ".xz" || ext == ".7z" || strings.HasSuffix(strings.ToLower(downloadURL), ".tar.xz") {
+		return true
+	}
+	if u, err := url.Parse(downloadURL); err == nil && strings.Contains(strings.ToLower(u.Path), "/fontfacekit/") {
+		// Font Squirrel kits are ZIPs; URLs often have no file extension.
+		return true
+	}
+	return false
 }
 
 // createFontFileName creates a proper filename for a font file

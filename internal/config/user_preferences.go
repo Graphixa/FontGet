@@ -140,7 +140,7 @@ func defaultUserPreferencesFallback() *AppConfig {
 		ConfigVersion: CurrentConfigVersion,
 		Configuration: ConfigurationSection{DefaultEditor: ""},
 		Logging:       LoggingSection{LogPath: "$home/.fontget/logs/fontget.log", MaxLogSize: "10MB", MaxLogFiles: 5},
-		Network:       NetworkSection{RequestTimeout: "10s", DownloadTimeout: "30s", EnableExternalDownloadFallback: true, DownloadUserAgent: "FontGet/%version%"},
+		Network:       NetworkSection{RequestTimeout: "10s", DownloadTimeout: "30s", EnableExternalDownloadFallback: true, DownloadUserAgent: "FontGet/%version% (+https://github.com/Graphixa/FontGet)"},
 		Search:        SearchSection{ResultLimit: 0, EnablePopularitySort: true},
 		Update:        UpdateSection{CheckForUpdates: true, UpdateCheckInterval: 24, LastUpdateCheck: "", NextUpdateCheck: ""},
 		Theme:         ThemeSection{Name: "catppuccin", Use256ColorSpace: false},

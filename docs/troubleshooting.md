@@ -9,7 +9,9 @@
 **What you can try:**
 
 - Run with **`--verbose`** or **`--debug`** to see whether the standard downloader or an external tool ran, and to see the full HTTP status message that was returned.
-- In **`~/.fontget/config.yaml`**, adjust **`Network.DownloadUserAgent`**. The default is `FontGet/%version%`; some hosts expect a mainstream browser User-Agent (see the example in the generated config).
+- In **`~/.fontget/config.yaml`**, adjust **`Network.DownloadUserAgent`**. The default is `FontGet/%version% (+https://github.com/Graphixa/FontGet)`; you can override it if a host is picky about User-Agents (see the example in the generated config).
+- FontGet’s standard downloader follows redirects and stores cookies for the request (closer to how browsers behave on some CDNs).
+- FontGet **serializes downloads per host** by default to avoid looking like parallel “bot” traffic.
 - Keep **`Network.EnableExternalDownloadFallback: true`** if you want FontGet to try **`curl` / `wget` / PowerShell`** when the plain HTTP path fails. FontGet only runs what is installed.
 - **Retry later** or try another network — blocking rules can change by IP and time.
 - See if the font is available from another source: `fontget search <font-name>`. 
