@@ -15,8 +15,9 @@ import (
 )
 
 var infoCmd = &cobra.Command{
-	Use:   "info <font-id>",
-	Short: "Display detailed information about a font",
+	Use:          "info <font-id>",
+	Short:        "Display detailed information about a font",
+	SilenceUsage: true,
 	Long: `Display detailed information about a font.
 
 Shows font metadata including name, ID, source, variants, license, and categories.

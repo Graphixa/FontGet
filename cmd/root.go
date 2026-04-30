@@ -38,7 +38,9 @@ var rootCmd = &cobra.Command{
 	Use:   "fontget <command> [options]",
 	Short: "A command-line tool for managing fonts",
 	Long:  `FontGet is a powerful command-line font manager for installing and managing fonts on your system.`,
-	Args:  cobra.NoArgs,
+	Example: `  fontget --wizard
+  fontget --logs`,
+	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if wizard {
 			// Run the wizard
@@ -400,11 +402,10 @@ Usage: {{replaceFlags .UseLine}}
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
-{{end}}{{end}}{{end}}{{if or .HasAvailableLocalFlags .HasAvailableInheritedFlags}}
+{{end}}{{end}}{{end}}{{if .HasAvailableFlags}}
 Options:
-{{if .HasAvailableLocalFlags}}{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
-{{end}}{{if .HasAvailableInheritedFlags}}{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
-{{end}}{{end}}{{if .HasExample}}
+{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasExample}}
 Examples:
 {{.Example}}
 {{end}}
@@ -417,11 +418,10 @@ Usage: {{replaceFlags .UseLine}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
 {{end}}{{end}}
-{{end}}{{if or .HasAvailableLocalFlags .HasAvailableInheritedFlags}}
+{{end}}{{if .HasAvailableFlags}}
 Options:
-{{if .HasAvailableLocalFlags}}{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
-{{end}}{{if .HasAvailableInheritedFlags}}{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
-{{end}}{{end}}{{if .HasExample}}
+{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasExample}}
 Examples:
 {{.Example}}
 {{end}}`)

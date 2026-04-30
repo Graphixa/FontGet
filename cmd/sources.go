@@ -540,7 +540,7 @@ func runSourcesUpdateVerbose() error {
 // sourcesUpdateCmd handles updating sources and refreshing cache
 var sourcesUpdateCmd = &cobra.Command{
 	Use:   "update",
-	Short: "Update source configuration and refresh cache",
+	Short: "Update source configurations and refresh cache",
 	Long: `Update source configurations and refresh the font database.
 
 Downloads the latest font data from all enabled sources and updates the local cache.`,

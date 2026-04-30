@@ -34,9 +34,9 @@ var updateCmd = &cobra.Command{
 By default, checks for updates and prompts for confirmation before installing.
 Use --check to only check without installing, or -y to auto-confirm updates.
 Verifies checksums and handles binary replacement safely.`,
-	Example: `  fontget update              # Check and prompt for update
-  fontget update --check      # Only check, don't install
-  fontget update -y            # Auto-confirm update
+	Example: `  fontget update                # Check and prompt for update
+  fontget update --check        # Only check, don't install
+  fontget update -y             # Auto-confirm update
   fontget update --version 1.2.3  # Update to specific version`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {

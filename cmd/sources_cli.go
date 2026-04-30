@@ -21,11 +21,9 @@ var sourcesAddCmd = &cobra.Command{
 	Long: `Add a custom font source. Name and URL are required; prefix and priority are optional.
 Prefix defaults to a slug from the name (lowercase, spaces to hyphens). Priority defaults to the next available (custom sources start after built-in).
 
-Example:
-  fontget sources add --name "My Fonts" --url https://example.com/fonts.json
-  fontget sources add --name "Custom" --url https://example.com/sources.json --prefix custom --priority 10`,
+Use 'fontget sources add --help' to see all flags.`,
 	Example: `  fontget sources add --name "My Source" --url https://example.com/fonts.json
-  fontget sources add --name "Custom" --url https://example.com/sources.json --prefix custom`,
+  fontget sources add --name "My Source" --url https://example.com/sources.json --prefix my-source --priority 10`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE:          runSourcesAdd,

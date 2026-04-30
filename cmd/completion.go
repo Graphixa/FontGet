@@ -18,19 +18,12 @@ var completionCmd = &cobra.Command{
 	Short: "Generate or install shell completion scripts",
 	Long: `Generate or install shell completion scripts.
 
-Supports bash, zsh, fish, and PowerShell. Use --install to auto-install to your shell config.
-
-Examples:
-  # Generate completion script (output to stdout)
-  fontget completion bash
-
-  # Auto-detect shell and install
+Supports bash, zsh, fish, and PowerShell.
+Use --install to auto-install completion for your shell.
+When no shell is provided with --install, FontGet auto-detects your current shell.`,
+	Example: `  fontget completion bash
   fontget completion --install
-
-  # Install for specific shell
-  fontget completion bash --install
-
-See documentation for more details.`,
+  fontget completion bash --install`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If --install flag is set
 		if completionInstallFlag {

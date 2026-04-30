@@ -440,8 +440,9 @@ func createImportOperationItems(fontsToInstall []FontToInstall) []components.Ope
 }
 
 var importCmd = &cobra.Command{
-	Use:   "import <manifest-file>",
-	Short: "Import fonts from an export manifest file",
+	Use:          "import <manifest-file>",
+	Short:        "Import fonts from an export manifest file",
+	SilenceUsage: true,
 	Long: `Import fonts from a FontGet export manifest file.
 
 The manifest file should be a JSON file created by the 'export' command.
