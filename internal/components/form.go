@@ -162,6 +162,9 @@ func (m FormModel) View() string {
 	helpText := strings.Join(commands, "  ")
 	out += "\n" + helpText
 
+	if m.Width > 0 && m.Height > 0 {
+		return ui.FillTerminalArea(out, m.Width, m.Height)
+	}
 	return out
 }
 

@@ -124,7 +124,11 @@ func (m EnhancedOnboardingModel) View() string {
 	}
 
 	if m.currentStep >= 0 && m.currentStep < len(m.steps) {
-		return m.steps[m.currentStep].View(&m)
+		stepView := m.steps[m.currentStep].View(&m)
+		if m.width > 0 && m.height > 0 {
+			return ui.FillTerminalArea(stepView, m.width, m.height)
+		}
+		return stepView
 	}
 
 	return ""
@@ -478,7 +482,11 @@ func (m *termsOnlyModel) View() string {
 	}
 	result.WriteString(m.buttonGroup.Render())
 	result.WriteString("\n")
-	return result.String()
+	out := result.String()
+	if m.width > 0 && m.height > 0 {
+		return ui.FillTerminalArea(out, m.width, m.height)
+	}
+	return out
 }
 
 // RunLicenseAgreementOnly runs only the terms-of-use TUI. On accept it marks agreements accepted, creates default config and manifest, marks first run completed, and returns nil. On decline it returns ErrOnboardingCancelled.

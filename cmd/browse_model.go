@@ -1108,5 +1108,8 @@ func (m *browseModel) View() string {
 			view = components.Composite(rg, view, components.Center, components.Center, 0, 0)
 		}
 	}
+	if m.width > 0 && m.height > 0 {
+		return ui.FillTerminalArea(view, m.width, m.height)
+	}
 	return view
 }

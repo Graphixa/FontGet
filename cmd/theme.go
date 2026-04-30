@@ -21,9 +21,10 @@ const (
 )
 
 var themeCmd = &cobra.Command{
-	Use:   "theme",
-	Short: "Interactive theme selector",
-	Long:  "Launch an interactive TUI to select and preview themes with live preview.",
+	Use:     "theme",
+	Short:   "Interactive theme selector",
+	Long:    `Launch an interactive TUI to select and preview themes with live preview.`,
+	Example: `  fontget theme`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Initialize theme manager if not already done
 		if err := ui.InitThemeManager(); err != nil {
@@ -313,10 +314,14 @@ func (m themeSelectionModel) View() string {
 	content.WriteString("\n")
 	content.WriteString(footer)
 
+	out := content.String()
+	if m.width > 0 && m.height > 0 {
+		return ui.FillTerminalArea(out, m.width, m.height)
+	}
 	return lipgloss.NewStyle().
 		Width(m.width).
 		MaxWidth(m.width).
-		Render(content.String())
+		Render(out)
 }
 
 // buildAllMenuLines builds a complete array of all menu lines (headers + themes)

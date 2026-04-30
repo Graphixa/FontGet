@@ -11,6 +11,21 @@ import (
 
 // Utility functions for consistent UI rendering
 
+// FillTerminalArea pads or truncates the view to exactly width×height cells.
+// Use for full-screen alternate-buffer TUIs so a shorter frame after resize does not
+// leave prior lines visible at the bottom of the terminal.
+func FillTerminalArea(view string, width, height int) string {
+	if width <= 0 || height <= 0 {
+		return view
+	}
+	return lipgloss.NewStyle().
+		Width(width).
+		MaxWidth(width).
+		Height(height).
+		MaxHeight(height).
+		Render(view)
+}
+
 // RenderTitleWithSubtitle renders a title with optional subtitle
 func RenderTitleWithSubtitle(title, subtitle string) string {
 	if subtitle == "" {

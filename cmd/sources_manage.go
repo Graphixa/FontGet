@@ -719,19 +719,25 @@ type errorMsg struct {
 
 // View renders the UI
 func (m sourcesModel) View() string {
+	var view string
 	switch m.state {
 	case "list":
-		return m.listView()
+		view = m.listView()
 	case "add", "edit":
-		return m.formView()
+		view = m.formView()
 	case "confirm":
-		return m.confirmView()
+		view = m.confirmView()
 	case "save_confirm":
-		return m.saveConfirmView()
+		view = m.saveConfirmView()
 	case "builtin_warning":
-		return m.builtinWarningView()
+		view = m.builtinWarningView()
+	default:
+		view = m.listView()
 	}
-	return m.listView()
+	if m.width > 0 && m.height > 0 {
+		return ui.FillTerminalArea(view, m.width, m.height)
+	}
+	return view
 }
 
 // listView renders the main list view
@@ -992,6 +998,7 @@ var sourcesManageCmd = &cobra.Command{
 
 Enable or disable sources, add custom sources, edit source details, and delete custom sources.
 Built-in sources can be viewed but not deleted.`,
+	Example:      `  fontget sources manage`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
