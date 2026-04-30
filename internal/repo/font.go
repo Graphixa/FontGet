@@ -12,7 +12,6 @@ import (
 	"fontget/internal/network"
 	"fontget/internal/output"
 	"fontget/internal/platform"
-	"fontget/internal/version"
 	"io"
 	"math/rand"
 	"net"
@@ -26,14 +25,32 @@ import (
 	"time"
 )
 
+const downloadUserAgentFallback = "Mozilla/5.0 (compatible; FontGet/1.0; +https://github.com/Graphixa/FontGet)"
+
+func isValidHeaderValue(s string) bool {
+	if strings.ContainsAny(s, "\r\n") {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		// Reject ASCII control chars and DEL.
+		if s[i] < 0x20 || s[i] == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
 func resolveDownloadUserAgent() string {
 	cfg := config.GetUserPreferences()
 	ua := strings.TrimSpace(cfg.Network.DownloadUserAgent)
-	if ua == "" {
-		ua = "FontGet/%version% (+https://github.com/Graphixa/FontGet)"
+	if ua != "" && isValidHeaderValue(ua) {
+		return ua
 	}
-	return strings.ReplaceAll(ua, "%version%", version.GetVersion())
+	return downloadUserAgentFallback
 }
+
+// DownloadUserAgent is Network.DownloadUserAgent from preferences (embedded default if unset).
+func DownloadUserAgent() string { return resolveDownloadUserAgent() }
 
 func isZipMagic(b []byte) bool {
 	if len(b) < 4 {

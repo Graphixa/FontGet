@@ -57,7 +57,7 @@ type NetworkSection struct {
 	RequestTimeout                 string `yaml:"RequestTimeout"`                 // Quick HTTP requests and checks (e.g., "10s")
 	DownloadTimeout                string `yaml:"DownloadTimeout"`                // Download timeout: max time without data transfer (stall detection) (e.g., "30s")
 	EnableExternalDownloadFallback bool   `yaml:"EnableExternalDownloadFallback"` // Allow optional external-tool fallbacks (curl/wget/PowerShell) on bot/WAF challenge responses
-	DownloadUserAgent              string `yaml:"DownloadUserAgent"`              // User-Agent used for HTTP downloads (supports %version%)
+	DownloadUserAgent              string `yaml:"DownloadUserAgent"`              // User-Agent for HTTP font downloads (and external fallback tools)
 }
 
 // SearchSection represents search configuration
@@ -140,10 +140,11 @@ func defaultUserPreferencesFallback() *AppConfig {
 		ConfigVersion: CurrentConfigVersion,
 		Configuration: ConfigurationSection{DefaultEditor: ""},
 		Logging:       LoggingSection{LogPath: "$home/.fontget/logs/fontget.log", MaxLogSize: "10MB", MaxLogFiles: 5},
-		Network:       NetworkSection{RequestTimeout: "10s", DownloadTimeout: "30s", EnableExternalDownloadFallback: true, DownloadUserAgent: "FontGet/%version% (+https://github.com/Graphixa/FontGet)"},
-		Search:        SearchSection{ResultLimit: 0, EnablePopularitySort: true},
-		Update:        UpdateSection{CheckForUpdates: true, UpdateCheckInterval: 24, LastUpdateCheck: "", NextUpdateCheck: ""},
-		Theme:         ThemeSection{Name: "catppuccin", Use256ColorSpace: false},
+		// DownloadUserAgent must match embedded default_config.yaml Network.DownloadUserAgent.
+		Network: NetworkSection{RequestTimeout: "10s", DownloadTimeout: "30s", EnableExternalDownloadFallback: true, DownloadUserAgent: "Mozilla/5.0 (compatible; FontGet/1.0; +https://github.com/Graphixa/FontGet)"},
+		Search:  SearchSection{ResultLimit: 0, EnablePopularitySort: true},
+		Update:  UpdateSection{CheckForUpdates: true, UpdateCheckInterval: 24, LastUpdateCheck: "", NextUpdateCheck: ""},
+		Theme:   ThemeSection{Name: "catppuccin", Use256ColorSpace: false},
 	}
 }
 
@@ -365,7 +366,7 @@ func handleLegacyFieldMapping(data []byte) []byte {
 	if themeVal, ok := configMap["Theme"]; ok {
 		if themeStr, ok := themeVal.(string); ok {
 			configMap["Theme"] = map[string]interface{}{
-				"Name":              themeStr,
+				"Name":             themeStr,
 				"Use256ColorSpace": false,
 			}
 		}
@@ -983,7 +984,7 @@ func ValidateUserPreferences(config *AppConfig) error {
 			"LastUpdateCheck":     config.Update.LastUpdateCheck,
 		},
 		"Theme": map[string]interface{}{
-			"Name":              config.Theme.Name,
+			"Name":             config.Theme.Name,
 			"Use256ColorSpace": config.Theme.Use256ColorSpace,
 		},
 	}

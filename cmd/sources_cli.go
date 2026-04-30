@@ -23,7 +23,7 @@ Prefix defaults to a slug from the name (lowercase, spaces to hyphens). Priority
 
 Use 'fontget sources add --help' to see all flags.`,
 	Example: `  fontget sources add --name "My Source" --url https://example.com/fonts.json
-  fontget sources add --name "My Source" --url https://example.com/sources.json --prefix my-source --priority 10`,
+  fontget sources add --name "My Source" --url https://example.com/sources.json --prefix mysrc --priority 10`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE:          runSourcesAdd,

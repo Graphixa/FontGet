@@ -252,7 +252,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		}
 
 		// Add proper headers
-		req.Header.Set("User-Agent", "FontGet/1.0")
+		req.Header.Set("User-Agent", repo.DownloadUserAgent())
 		req.Header.Set("Accept", "application/json")
 
 		// Make the request

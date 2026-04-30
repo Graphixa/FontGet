@@ -143,11 +143,13 @@ func newBrowseModel(
 
 	tc := components.TableConfig{
 		Columns: []components.ColumnConfig{
-			{Header: "Name", Truncatable: true, MinWidth: 6},
-			{Header: "Font ID", Truncatable: false, MinWidth: 8},
-			{Header: "License", MaxWidth: 18, Truncatable: true, MinWidth: 6},
-			{Header: "Categories", Truncatable: true, MinWidth: 6},
-			{Header: "Source", Truncatable: false, MinWidth: 6},
+			// Prefer keeping font names readable as the terminal narrows.
+			// Lower Priority number = preserved more by calculateColumnWidths.
+			{Header: "Name", Truncatable: true, MinWidth: 22, PercentWidth: 32, Priority: 1},
+			{Header: "Font ID", Truncatable: true, MinWidth: 10, PercentWidth: 28, Priority: 4},
+			{Header: "License", MaxWidth: 18, Truncatable: true, MinWidth: 6, PercentWidth: 8, Priority: 6},
+			{Header: "Categories", Truncatable: true, MinWidth: 6, PercentWidth: 18, Priority: 7},
+			{Header: "Source", Truncatable: true, MinWidth: 6, PercentWidth: 14, Priority: 8},
 		},
 		Padding: 0,
 		Rows:    [][]string{},
@@ -819,19 +821,33 @@ func (m *browseModel) helpLineView() string {
 	return "\n" + line
 }
 
-func (m *browseModel) topSectionHeight() int {
+// browseHeightTitleAndSearchPrefix matches baseView through the spacer before the table:
+// title + browseApplyHorizontalMargins(searchAndFilter+"\n\n", …).
+// Using margined(search)+"\\n\\n" here underestimates/overestimates vs real layout and
+// wastes terminal rows under the help bar.
+func (m *browseModel) browseHeightTitleAndSearchPrefix() int {
 	title := ui.PageTitle.Render(browsePageTitle) + "\n\n"
-	search := browseApplyHorizontalMargins(m.searchAndFilterRow(), m.width, browseWindowHMargin)
-	return lipgloss.Height(title + search + "\n\n")
+	prefixBody := m.searchAndFilterRow() + "\n\n"
+	margined := browseApplyHorizontalMargins(prefixBody, m.width, browseWindowHMargin)
+	return lipgloss.Height(title + margined)
+}
+
+func (m *browseModel) browseHeightHelpSection() int {
+	return lipgloss.Height(browseApplyHorizontalMargins(m.helpLineView(), m.width, browseWindowHMargin))
 }
 
 func (m *browseModel) calcTableHeight() int {
-	topH := m.topSectionHeight()
-	helpH := lipgloss.Height(browseApplyHorizontalMargins(m.helpLineView(), m.width, browseWindowHMargin))
-	pad := 2
-	avail := m.height - topH - helpH - pad
+	above := m.browseHeightTitleAndSearchPrefix()
+	help := m.browseHeightHelpSection()
+	// lipgloss.Height counts "\n". When we measure vertical slices separately
+	// (title+search, table, help) we effectively double-count the seam lines
+	// versus the final merged frame, so give the table back those rows.
+	avail := m.height - above - help + 2
 	if avail < 4 {
 		avail = 4
+	}
+	if avail > m.height {
+		avail = m.height
 	}
 	return avail
 }
@@ -840,12 +856,46 @@ func (m *browseModel) syncTableDimensions() tea.Cmd {
 	if m.table == nil || m.width == 0 || m.height == 0 {
 		return nil
 	}
-	m.tableViewportH = m.calcTableHeight()
 	ws := tea.WindowSizeMsg{Width: m.contentInnerWidth(), Height: m.height}
-	updated, cmd := m.table.UpdateWithHeight(ws, m.tableViewportH)
-	if updated != nil {
-		m.table = updated
+
+	apply := func(totalLines int) tea.Cmd {
+		if totalLines < 4 {
+			totalLines = 4
+		}
+		if totalLines > m.height {
+			totalLines = m.height
+		}
+		updated, cmd := m.table.UpdateWithHeight(ws, totalLines)
+		if updated != nil {
+			m.table = updated
+		}
+		return cmd
 	}
+
+	target := m.height
+	baseH := func() int { return lipgloss.Height(m.baseView()) }
+
+	startEst := m.calcTableHeight()
+	startEst = max(4, min(startEst, m.height))
+
+	best := 4
+	var cmd tea.Cmd
+	for a := startEst; a <= m.height; a++ {
+		cmd = apply(a)
+		h := baseH()
+		if h <= target {
+			best = a
+		}
+		if h >= target {
+			break
+		}
+	}
+	for baseH() > target && best > 4 {
+		best--
+		cmd = apply(best)
+	}
+
+	m.tableViewportH = best
 	return cmd
 }
 

@@ -11,19 +11,23 @@ import (
 
 // Utility functions for consistent UI rendering
 
-// FillTerminalArea pads or truncates the view to exactly width×height cells.
-// Use for full-screen alternate-buffer TUIs so a shorter frame after resize does not
-// leave prior lines visible at the bottom of the terminal.
+// CSI ED default (0): erase from cursor through end of display.
+// Appended after the frame so a shorter view clears leftover rows from a prior resize
+// without padding blank lines below content (lipgloss Height would add those).
+const eraseDisplayBelowCursor = "\x1b[J"
+
+// FillTerminalArea constrains the view to the terminal width, truncates if taller than
+// height, and clears everything below the drawn frame on the alternate screen.
 func FillTerminalArea(view string, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return view
 	}
-	return lipgloss.NewStyle().
+	out := lipgloss.NewStyle().
 		Width(width).
 		MaxWidth(width).
-		Height(height).
 		MaxHeight(height).
 		Render(view)
+	return out + eraseDisplayBelowCursor
 }
 
 // RenderTitleWithSubtitle renders a title with optional subtitle

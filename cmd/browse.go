@@ -14,7 +14,7 @@ import (
 var browseCmd = &cobra.Command{
 	Use:   "browse",
 	Short: "Interactive font catalog: search, filter by category, install or remove",
-	Long: `Browse the font catalog in the terminal: search, view details, open source pages, and
+	Long: `Browse the font catalog in the terminal: search, view font license and source details, and
 install or remove fonts. Installation behavior matches fontget add (scope, force).
 
 In the TUI, use Tab / Shift+Tab to cycle the category filter (All, then each category from your manifest,

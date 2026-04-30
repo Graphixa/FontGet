@@ -373,7 +373,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed verbose output of operations")
 
 	// Add debug flag - shows full diagnostic logs with timestamps (for developers)
-	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show styled debug diagnostics on the terminal; detailed messages also go to fontget.log (not mirrored to the console)")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show styled debug diagnostics in the output")
 
 	// Add logs flag (non-persistent - only available on root command)
 	rootCmd.Flags().BoolVar(&logs, "logs", false, "Open logs directory")
@@ -383,7 +383,7 @@ func init() {
 
 	// Automation / CI: available on all commands (e.g. fontget add X --accept-agreements --accept-defaults)
 	rootCmd.PersistentFlags().BoolVar(&acceptAgreements, "accept-agreements", false, "Accept the FontGet terms of use without showing the prompt (for scripts/CI)")
-	rootCmd.PersistentFlags().BoolVar(&acceptDefaults, "accept-defaults", false, "Use default configuration and skip the setup wizard; use with --accept-agreements for fully non-interactive use")
+	rootCmd.PersistentFlags().BoolVar(&acceptDefaults, "accept-defaults", false, "Use defaults and skip setup wizard (for scripts/CI; pair with --accept-agreements)")
 
 	// Inject flag checkers into output package to avoid circular imports
 	output.SetVerboseChecker(IsVerbose)
