@@ -926,7 +926,7 @@ Use --scope to set removal location:
 	Example: `  fontget remove "Roboto"
   fontget remove "google.roboto"
   fontget remove "Open Sans" "Fira Sans" "Noto Sans"
-  fontget remove "roboto, firasans, notosans"
+  fontget remove "roboto" "firasans" "notosans"
   fontget remove "Open Sans" -s machine
   fontget remove "Roboto" -s user`,
 	Args: func(cmd *cobra.Command, args []string) error {
