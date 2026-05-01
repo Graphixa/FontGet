@@ -5,6 +5,8 @@
   <h1>FontGet - CLI Font Manager</h1>
 
   [![Version](https://img.shields.io/github/v/release/Graphixa/FontGet)](https://github.com/Graphixa/FontGet/releases)
+  [![Downloads (all releases)](https://img.shields.io/github/downloads/Graphixa/FontGet/total)](https://github.com/Graphixa/FontGet/releases)
+  [![Downloads (latest release)](https://img.shields.io/github/downloads/Graphixa/FontGet/latest/total)](https://github.com/Graphixa/FontGet/releases/latest)
   [![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
   [![Go Version](https://img.shields.io/github/go-mod/go-version/Graphixa/FontGet)](go.mod)
   [![CI](https://img.shields.io/github/actions/workflow/status/Graphixa/FontGet/ci.yml?label=CI)](https://github.com/Graphixa/FontGet/actions)
