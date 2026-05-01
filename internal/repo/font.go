@@ -487,20 +487,6 @@ func doDownloadRequestWithHeaderTimeout(req *http.Request, fastHeaderTimeout tim
 	return nil, fmt.Errorf("download request failed after %d attempts", maxTransientAttempts)
 }
 
-func doDownloadRequestOnce(req *http.Request, headerTimeout time.Duration, forceHTTP1 bool) (*http.Response, error) {
-	if headerTimeout <= 0 {
-		headerTimeout = 10 * time.Second
-	}
-	transport := &http.Transport{
-		ResponseHeaderTimeout: headerTimeout,
-	}
-	if forceHTTP1 {
-		transport.ForceAttemptHTTP2 = false
-	}
-	client := &http.Client{Transport: transport}
-	return client.Do(req)
-}
-
 func isHTTP2HeaderTimeout(err error) bool {
 	if err == nil {
 		return false

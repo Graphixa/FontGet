@@ -236,11 +236,6 @@ func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts Downlo
 
 		out, err := runner.CombinedOutput(curlPath, args...)
 		if err != nil {
-			// If curl failed but still printed a status, we may be able to classify it.
-			m := reStatus.FindStringSubmatch(string(out))
-			if len(m) == 2 {
-				finalStatus = m[1]
-			}
 			return "", fmt.Errorf("%s", normalizeToolError(out, err))
 		}
 
