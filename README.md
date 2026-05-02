@@ -5,15 +5,21 @@
   <h1>FontGet - CLI Font Manager</h1>
 
   [![Version](https://img.shields.io/github/v/release/Graphixa/FontGet)](https://github.com/Graphixa/FontGet/releases)
-  [![Downloads (all releases)](https://img.shields.io/github/downloads/Graphixa/FontGet/total)](https://github.com/Graphixa/FontGet/releases)
-  [![Downloads (latest release)](https://img.shields.io/github/downloads/Graphixa/FontGet/latest/total)](https://github.com/Graphixa/FontGet/releases/latest)
-  [![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
   [![Go Version](https://img.shields.io/github/go-mod/go-version/Graphixa/FontGet)](go.mod)
+  [![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
   [![CI](https://img.shields.io/github/actions/workflow/status/Graphixa/FontGet/ci.yml?label=CI)](https://github.com/Graphixa/FontGet/actions)
   [![Security](https://img.shields.io/github/actions/workflow/status/Graphixa/FontGet/security.yml?label=Security)](https://github.com/Graphixa/FontGet/actions)
-  
 
-  <p>FontGet is a lightweight, cross-platform terminal font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.</p>
+  <div align="center" style="margin-bottom: 10px;">
+    <a href="https://github.com/Graphixa/FontGet/releases">
+      <img src="https://img.shields.io/github/downloads/Graphixa/FontGet/total" alt="Downloads (all releases)" />
+    </a>
+    <a href="https://github.com/Graphixa/FontGet/releases/latest">
+      <img src="https://img.shields.io/github/downloads/Graphixa/FontGet/latest/total" alt="Downloads (latest release)" />
+    </a>
+  </div>
+
+  <p>FontGet is a tiny, cross-platform CLI font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.</p>
 
 <strong>Fontget supports installing fonts from the following sources:</strong>
 

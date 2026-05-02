@@ -9,24 +9,30 @@ This document provides complete installation instructions for FontGet on all sup
 | Install script | Mac, Linux, Windows | [Install latest version](#install-latest-version) |
 | Package manager | Windows, macOS, Linux | [Install via package manager](#install-via-package-manager) |
 | Build from source | All | [Build from source](#build-and-install-from-source) |
+| Automation / CI | All | [Automation / CI](#automation--ci) |
 
 ---
 
 ## Install Latest Version
 
-The recommended way to install FontGet. Downloads the latest release and installs to your user directory.
+Official installers pull a release binary from GitHub and verify it against **`checksums.txt`** before writing to disk. Default paths are per-user and do not require administrator privileges.
 
-### Shell (Mac, Linux)
+### Shell (macOS, Linux)
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.sh | sh
 ```
+
+Flags (after `sh -s --`), environment variables, and CI behaviour: [Automation / CI](#automation--ci). 
+To pin a release, see [Install specific version](#install-specific-version).
 
 ### PowerShell (Windows)
 
 ```powershell
 irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 | iex
 ```
+
+To pin a release, see [Install specific version](#install-specific-version).
 
 ## Install Specific Version
 
@@ -64,14 +70,11 @@ scoop install fontget
 > [!NOTE]
 > Add the bucket first; FontGet is not in the main Scoop repository.
 
-**[Chocolatey](https://chocolatey.org/)** (coming soon)
+**[Chocolatey](https://chocolatey.org/)**
 
 ```powershell
 choco install fontget
 ```
-
-> [!NOTE]
-> Chocolatey package is coming soon. Use the [PowerShell install script](#powershell-windows) for now.
 
 ### macOS
 
@@ -120,7 +123,7 @@ The AUR package builds FontGet from source. You need an [AUR helper](https://wik
 
 ## Build and Install from Source
 
-For contributors or users who prefer to build from source. See the [Contributing guide](contributing.md) for detailed development setup.
+For instructions on building FontGet from source, see the [Build Guide](development/BUILD.md).
 
 ### Prerequisites
 
@@ -340,6 +343,39 @@ If you see permission errors:
 
 - **macOS/Linux:** Ensure the installation directory is writable, or use `sudo` for system-wide installation
 - **Windows:** Run PowerShell as Administrator if installing to a system directory
+
+## Automation / CI
+
+## Install Script (Linux / Mac OS)
+
+**`install.sh`:** with `curl … | sh`, stdin is not a TTY, so **Continue?** is skipped by default. Pass script flags after **`sh -s --`**.
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run`, `--dryrun` | Show what would happen: displays the download and install details, but does not install anything. Exits after displaying information. |
+| `-h`, `--help` | Prints usage information for the installer. |
+
+| Variable | Description |
+|----------|-------------|
+| `FONTGET_VERSION` | Specifies which FontGet version to install (e.g. `2.2.0`). Defaults to `latest`. The `v` prefix is optional. |
+| `FONTGET_INSTALL_DIR` | Custom installation location for the binary. Defaults to `$HOME/.local/bin`. |
+| `FONTGET_NONINTERACTIVE=1` | Disables interactive prompts (e.g. confirmation to continue) for scripting or automation purposes. |
+| `FONTGET_DRY_RUN=1` | Activates dry-run mode, behaving the same as `--dry-run`. |
+| `CI` | If set to any non-empty value, disables confirmation prompts, suitable for CI pipelines. |
+| `NO_COLOR=1` | Disables colored output in installer messages. |
+
+[!NOTE] User prompts are only shown when both stdin and stdout are terminals, `CI` is not set, and `FONTGET_NONINTERACTIVE` is not `1`.
+
+**`install.ps1` (Windows):** Only the **`FONTGET_VERSION`** environment variable is supported (default: `latest`). There are no flags. The installer places the binary in **`%USERPROFILE%\AppData\Local\Programs\FontGet`** and automatically adds this directory to your user **PATH** if not already present.
+
+Common environment variables for non-interactive automation:
+
+| Flag | Environment Variable | Description |
+|------|---------------------|-------------|
+| `--accept-agreements` | `FONTGET_ACCEPT_AGREEMENTS=1` | Automatically accepts the license/terms without prompting the user. |
+| `--accept-defaults` | `FONTGET_ACCEPT_DEFAULTS=1` | Skips setup wizard or prompts, using all default options. |
+
+Examples: **[Usage — Automation & CI](usage.md#automation--ci)**.
 
 ## Additional Resources
 

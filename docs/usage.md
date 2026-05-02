@@ -102,6 +102,7 @@ Install fonts from configured sources. You can install one or multiple fonts in 
 - Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
 - Names with spaces must be quoted: "Open Sans".
 - You can pass multiple font names or IDs in one command.
+- **Scope (`--scope`):** By default, fonts are installed for your user only. With `sudo` or from an elevated terminal, FontGet will install fonts system-wide unless you add `--scope user`. Use `--scope machine` to specifically install fonts system-wide (so long as you have the write permissions).
 
 ### Examples
 ```bash
@@ -116,6 +117,9 @@ fontget add "google.roboto" "google.open-sans" "nerd.jetbrains-mono"
 
 # Force reinstall existing font
 fontget add "roboto" --force
+
+# User scope only (e.g. you used sudo but want fonts under your account, not system-wide)
+sudo fontget add "roboto" --scope user
 ```
 
 ## Remove
@@ -566,13 +570,20 @@ These flags are available on all commands. For a concise list, run `fontget --he
 
 ## Automation & CI
 
+[!NOTE] For automated CI runs for installing FontGet, see: [Installation — Automation / CI](installation.md#automation--ci).
+
 Use FontGet in scripts, CI (e.g. GitHub Actions), or automation (e.g. Ansible) without interactive prompts:
 
 - **`--accept-agreements`** – Accept the FontGet terms of use (no prompt).
 - **`--accept-defaults`** – Use default configuration and skip the setup wizard. On first run without a config, creates default config and manifest so the command can proceed.
 - **Both together** – Fully non-interactive: no terms prompt, no wizard, default config created if needed. Ideal for CI.
 
-Environment variables (optional): `FONTGET_ACCEPT_AGREEMENTS=1`, `FONTGET_ACCEPT_DEFAULTS=1` (same effect as the flags). `FONTGET_SKIP_ONBOARDING=1` is still supported for backward compatibility.
+### Optional Environment Variables
+
+| Variable                      | Purpose                                                                         |
+|-------------------------------|---------------------------------------------------------------------------------|
+| `FONTGET_ACCEPT_AGREEMENTS=1` | Accept the FontGet terms of use automatically (no prompt)                       |
+| `FONTGET_ACCEPT_DEFAULTS=1`   | Use default configuration, skip setup wizard, and create default config/manifest |
 
 ### Examples
 

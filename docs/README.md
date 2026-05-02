@@ -1,23 +1,23 @@
 # FontGet Documentation
 
-## For users
+## For Users
 
-| Doc | What’s in it |
-|-----|----------------|
-| [Installation](installation.md) | Install on Windows, macOS, Linux (scripts, package managers, from source) |
-| [Usage / Commands](usage.md) | Full command reference: search, browse, add, remove, list, sources, config, export/import, backup, update, completion |
-| [Troubleshooting](troubleshooting.md) | Common issues: blocked downloads (HTTP 202), config, debug/TUI, PATH |
-| [Custom sources](custom-sources.md) | Build and host your own font source JSON, then add it to FontGet |
-| [Terminal setup](terminal-setup.md) | Terminal and font display tips |
-| [Automation & CI](usage.md#automation--ci) | Use FontGet in scripts, Ansible, GitHub Actions |
+| Doc                | Description                                                                                                 |
+|--------------------|-------------------------------------------------------------------------------------------------------------|
+| [Installation](installation.md)         | How to install FontGet on Windows, macOS, and Linux (script, package manager, source). |
+| [Automation & CI](installation.md#automation--ci) | Installing FontGet in CI and automated workflows. |
+| [Usage](usage.md)                      | Command overview: search, add/remove, list, sources, config, and more.|
+| [Troubleshooting](troubleshooting.md)  | Solutions for common issues (downloads, config, PATH, debug).|
+| [Custom sources](custom-sources.md)    | Adding your own custom font sources. |
+| [Terminal setup](terminal-setup.md)    | Tips for terminal setup and completion display. |
 
-*(A dedicated Automation & CI page is planned; until then see [Usage – Automation & CI](usage.md#automation--ci).)*
+
 
 ---
 
-## For contributors and developers
+## For Contributors and Developers
 
-| Doc | What’s in it |
+| Doc | Description |
 |-----|----------------|
 | [Contributing](contributing.md) | How to contribute, build from source, run tests |
 | [Build](development/BUILD.md) | Build and release steps |
@@ -25,7 +25,10 @@
 | [Style guide](development/style-guide.md) | Theming, UI styles, theme config |
 | [Theming](development/theming.md) | Theme files, structure, and configuration |
 | [Component architecture](development/component-architecture.md) | TUI components and patterns |
-| **Guidelines** | |
+
+### Development Guidelines
+| Doc | Description |
+|-----|-------------|
 | [Codebase layout](development/guidelines/codebase-layout-guidelines.md) | An overview of the entire codebase and layout |
 | [Logging](development/guidelines/logging-guidelines.md) | Logging and levels |
 | [Verbose/Debug](development/guidelines/verbose-debug-guidelines.md) | `-v` / `--debug` behavior |
