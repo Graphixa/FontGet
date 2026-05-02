@@ -824,7 +824,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `docs/`
 **Purpose**: User-facing documentation
 **Files**:
-- `installation.md`: Installation guide
+- `installation.md`: Installation guide (includes Automation / CI for install scripts)
 - `terminal-setup.md`: Terminal setup instructions (includes shell completions)
 - `contributing.md`: Contributing guidelines
 
