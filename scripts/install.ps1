@@ -6,10 +6,38 @@
 #   # Or with a specific version:
 #   $env:FONTGET_VERSION="1.0.0"; irm https://raw.githubusercontent.com/Graphixa/FontGet/main/scripts/install.ps1 | iex
 #
+# Environment:
+#   FONTGET_VERSION          Version or latest (default: latest)
+#   FONTGET_NONINTERACTIVE=1 Skip "Continue?" (non-interactive install)
+#   CI                       When non-empty, prompt is skipped (common on CI runners)
+#   NO_COLOR=1               Disable ANSI colors / subdued styling where supported
+#
 
 # Set error handling
 $ErrorActionPreference = "Stop"
 $ProgressPreference = 'SilentlyContinue'
+
+function Write-InstallDimLine {
+    param([Parameter(Mandatory)][string]$Message)
+    if ($env:NO_COLOR -eq '1') {
+        Write-Host $Message
+    } else {
+        Write-Host $Message -ForegroundColor DarkGray
+    }
+}
+
+function Write-InstallOsLine {
+    param([Parameter(Mandatory)][string]$OsName, [Parameter(Mandatory)][string]$ArchName)
+    if ($env:NO_COLOR -eq '1') {
+        Write-Host "OS: $OsName | ARCH: $ArchName"
+        return
+    }
+    Write-Host -NoNewline -ForegroundColor Blue "OS: "
+    Write-Host -NoNewline "$OsName "
+    Write-Host -NoNewline -ForegroundColor Blue "| "
+    Write-Host -NoNewline -ForegroundColor Blue "ARCH: "
+    Write-Host $ArchName
+}
 
 # Repository information
 $Repo = "Graphixa/FontGet"
@@ -34,13 +62,13 @@ if (-not $Version -or $Version -eq "") {
 
 if ($Version -eq "latest") {
     $BaseUrl = "$RepoUrl/releases/latest/download"
-    Write-Host "Installing latest version of FontGet..." -ForegroundColor Blue
 } else {
     # Remove 'v' prefix if present
     $Version = $Version -replace '^v', ''
     $BaseUrl = "$RepoUrl/releases/download/v$Version"
-    Write-Host "Installing FontGet v$Version..." -ForegroundColor Blue
 }
+
+$DisplayVersion = $Version
 
 # Binary name (with .exe extension for Windows)
 $BinaryName = "fontget-windows-$Arch.exe"
@@ -50,17 +78,91 @@ $DownloadUrl = "$BaseUrl/$BinaryName"
 $InstallDir = "$env:USERPROFILE\AppData\Local\Programs\FontGet"
 $InstalledBin = Join-Path $InstallDir "fontget.exe"
 
-# Check if fontget is already installed
+# --- splash (default terminal foreground — no accent color on banner); aligned with install.sh ---
+$SplashBanner = @'
+
+███████╗░█████╗░███╗░░██╗████████╗░██████╗░███████╗████████╗
+██╔════╝██╔══██╗████╗░██║╚══██╔══╝██╔════╝░██╔════╝╚══██╔══╝
+█████╗░░██║░░██║██╔██╗██║░░░██║░░░██║░░██╗░█████╗░░░░░██║░░░
+██╔══╝░░██║░░██║██║╚████║░░░██║░░░██║░░╚██╗██╔══╝░░░░░██║░░░
+██║░░░░░╚█████╔╝██║░╚███║░░░██║░░░╚██████╔╝███████╗░░░██║░░░
+╚═╝░░░░░░╚════╝░╚═╝░░╚══╝░░░╚═╝░░░░╚═════╝░╚══════╝░░░╚═╝░░░
+
+'@
+Write-Host $SplashBanner
+
+$Tagline = "Discover, install & manage fonts from the command line."
+$SplashW = 60
+if ($Tagline.Length -gt $SplashW) {
+    Write-InstallDimLine $Tagline
+} else {
+    $padL = [math]::Floor(($SplashW - $Tagline.Length) / 2)
+    $padR = $SplashW - $Tagline.Length - $padL
+    Write-InstallDimLine ((" " * $padL) + $Tagline + (" " * $padR))
+}
+Write-Host ""
+
+Write-InstallOsLine -OsName "windows" -ArchName $Arch
+Write-Host ""
+
+Write-Host "This will install FontGet $DisplayVersion to $InstalledBin"
+Write-Host ""
+
+# Existing install notice before prompt (aligned with install.sh)
 if (Test-Path $InstalledBin) {
     try {
         $CurrentVersion = & $InstalledBin version 2>$null | Select-Object -First 1
-        Write-Host "FontGet is already installed at: $InstalledBin" -ForegroundColor Yellow
-        Write-Host "Current version: $CurrentVersion" -ForegroundColor Yellow
-        Write-Host "This will be overwritten." -ForegroundColor Yellow
+        if ($env:NO_COLOR -eq '1') {
+            Write-Host "FontGet is already installed at: $InstalledBin"
+            Write-Host "Current version: $CurrentVersion"
+            Write-Host "This will be overwritten."
+        } else {
+            Write-Host "FontGet is already installed at: $InstalledBin" -ForegroundColor Yellow
+            Write-Host "Current version: $CurrentVersion" -ForegroundColor Yellow
+            Write-Host "This will be overwritten." -ForegroundColor Yellow
+        }
         Write-Host ""
     } catch {
         # Ignore errors when checking version
     }
+}
+
+# Continue prompt: only when interactive; CI / non-TTY / NONINTERACTIVE skip (aligned with install.sh)
+$ShouldPrompt = $true
+if ($env:FONTGET_NONINTERACTIVE -eq '1') {
+    $ShouldPrompt = $false
+} elseif ($env:CI) {
+    $ShouldPrompt = $false
+} else {
+    try {
+        if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
+            $ShouldPrompt = $false
+        }
+    } catch {
+        $ShouldPrompt = $false
+    }
+}
+
+if ($ShouldPrompt) {
+    Write-Host -NoNewline "Continue? [y/N] "
+    try {
+        $reply = [Console]::ReadLine()
+    } catch {
+        $reply = "n"
+    }
+    if ([string]::IsNullOrWhiteSpace($reply)) {
+        $reply = "n"
+    }
+    $replyNorm = $reply.Trim().ToLowerInvariant()
+    if ($replyNorm -ne "y" -and $replyNorm -ne "yes") {
+        if ($env:NO_COLOR -eq '1') {
+            Write-Host "Cancelled."
+        } else {
+            Write-Host "Cancelled." -ForegroundColor Yellow
+        }
+        exit 0
+    }
+    Write-Host ""
 }
 
 # Create installation directory
@@ -88,6 +190,45 @@ if (-not (Test-Path $TempFile)) {
     Write-Error "Downloaded file not found"
     exit 1
 }
+
+# Verify SHA256 against release checksums.txt (GoReleaser)
+$ChecksumsUrl = "$BaseUrl/checksums.txt"
+$ChecksumsTemp = Join-Path $env:TEMP "fontget-checksums-$Arch.txt"
+Write-Host "Downloading checksums..." -ForegroundColor Blue
+try {
+    Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $ChecksumsTemp -UseBasicParsing
+} catch {
+    Write-Error "Failed to download checksums.txt"
+    Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+    exit 1
+}
+
+$expectedHash = $null
+Get-Content -LiteralPath $ChecksumsTemp -ErrorAction SilentlyContinue | ForEach-Object {
+    $line = $_.TrimEnd("`r")
+    if ($line -match '^\s*([A-Fa-f0-9]{64})\s+[\*]?\s*(.+)$') {
+        $name = $Matches[2].Trim()
+        if ($name -eq $BinaryName) {
+            $expectedHash = $Matches[1].ToLowerInvariant()
+        }
+    }
+}
+Remove-Item $ChecksumsTemp -Force -ErrorAction SilentlyContinue
+
+if (-not $expectedHash) {
+    Write-Error "No checksum line for $BinaryName in checksums.txt"
+    Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+    exit 1
+}
+
+$actualHash = (Get-FileHash -LiteralPath $TempFile -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actualHash -ne $expectedHash) {
+    Write-Error "Checksum mismatch for $BinaryName"
+    Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+    exit 1
+}
+
+Write-Host "✓ Checksum verified" -ForegroundColor Green
 
 # Verify binary works (basic check)
 try {
