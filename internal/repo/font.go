@@ -12,6 +12,7 @@ import (
 	"fontget/internal/network"
 	"fontget/internal/output"
 	"fontget/internal/platform"
+	"fontget/internal/sources"
 	"io"
 	"math/rand"
 	"net"
@@ -158,6 +159,11 @@ type DownloadFontOptions struct {
 	// contentType and contentDisposition are raw header values (may be empty).
 	// finalURL is the post-redirect URL when available.
 	OnResponseHeaders func(info HTTPResponseInfo)
+
+	// ArchiveSourcePrefix is the lowercase source segment before the first '.' in a FontGet font ID
+	// (e.g. "fontshare", "league"). When set, archive extraction may use explicit path rules for
+	// that upstream before generic bucket/score selection.
+	ArchiveSourcePrefix string
 }
 
 // DownloadFont downloads a font file and verifies its SHA-256 hash if available
@@ -621,6 +627,16 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 	if len(valid) == 0 {
 		return nil, fmt.Errorf("no valid font files found after extraction (archive contents were not parseable as fonts)")
 	}
+
+	prefix := ""
+	if opts != nil {
+		prefix = strings.ToLower(strings.TrimSpace(opts.ArchiveSourcePrefix))
+	}
+	valid = PickInstallableFontPathsFromArchive(valid, prefix)
+	if len(valid) == 0 {
+		return nil, fmt.Errorf("no font files selected for installation from archive")
+	}
+
 	return valid, nil
 }
 
@@ -648,7 +664,7 @@ func FindFontMatches(fontName string) ([]FontMatch, error) {
 	var matches []FontMatch
 
 	// Search through all sources in source priority order
-	sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+	sourceOrder := sources.DefaultSourceNamesInPriorityOrder()
 
 	// First check predefined sources in priority order
 	for _, sourceName := range sourceOrder {

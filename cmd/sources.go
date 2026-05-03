@@ -17,6 +17,7 @@ import (
 	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/shared"
+	"fontget/internal/sources"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -176,32 +177,58 @@ var sourcesInfoCmd = &cobra.Command{
 		// Unified Sources table without headings, includes Status
 		fmt.Println()
 
-		// Build rows and sort: built-in first, then enabled, then name
+		// Build rows: built-ins in DefaultSourceNamesInPriorityOrder(); then other sources
+		// (enabled before disabled, then priority, then name) to align with sources manage / search tie-breaks.
 		type row struct {
 			name  string
 			src   config.SourceConfig
 			built bool
 		}
 		var rows []row
-		if def, _ := config.GetDefaultManifest(); def != nil {
-			for n, s := range configManifest.Sources {
-				_, built := def.Sources[n]
-				rows = append(rows, row{name: n, src: s, built: built})
+		def, _ := config.GetDefaultManifest()
+		if def != nil {
+			seen := make(map[string]struct{})
+			for _, n := range sources.DefaultSourceNamesInPriorityOrder() {
+				if s, ok := configManifest.Sources[n]; ok {
+					rows = append(rows, row{name: n, src: s, built: true})
+					seen[n] = struct{}{}
+				}
 			}
+			var tail []row
+			for n, s := range configManifest.Sources {
+				if _, ok := seen[n]; ok {
+					continue
+				}
+				_, built := def.Sources[n]
+				tail = append(tail, row{name: n, src: s, built: built})
+			}
+			sort.Slice(tail, func(i, j int) bool {
+				if tail[i].built != tail[j].built {
+					return tail[i].built
+				}
+				if tail[i].src.Enabled != tail[j].src.Enabled {
+					return tail[i].src.Enabled
+				}
+				if tail[i].src.Priority != tail[j].src.Priority {
+					return tail[i].src.Priority < tail[j].src.Priority
+				}
+				return strings.ToLower(tail[i].name) < strings.ToLower(tail[j].name)
+			})
+			rows = append(rows, tail...)
 		} else {
 			for n, s := range configManifest.Sources {
 				rows = append(rows, row{name: n, src: s, built: false})
 			}
+			sort.Slice(rows, func(i, j int) bool {
+				if rows[i].src.Enabled != rows[j].src.Enabled {
+					return rows[i].src.Enabled
+				}
+				if rows[i].src.Priority != rows[j].src.Priority {
+					return rows[i].src.Priority < rows[j].src.Priority
+				}
+				return strings.ToLower(rows[i].name) < strings.ToLower(rows[j].name)
+			})
 		}
-		sort.Slice(rows, func(i, j int) bool {
-			if rows[i].built != rows[j].built {
-				return rows[i].built
-			}
-			if rows[i].src.Enabled != rows[j].src.Enabled {
-				return rows[i].src.Enabled
-			}
-			return strings.ToLower(rows[i].name) < strings.ToLower(rows[j].name)
-		})
 
 		// Build table rows
 		var tableRows [][]string
@@ -224,7 +251,7 @@ var sourcesInfoCmd = &cobra.Command{
 
 			// Determine Type (plain text, no styling)
 			isBuiltIn := false
-			if def, _ := config.GetDefaultManifest(); def != nil {
+			if def != nil {
 				if _, ok := def.Sources[sourceName]; ok {
 					isBuiltIn = true
 				}

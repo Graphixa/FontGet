@@ -32,7 +32,7 @@ Use 'fontget sources add --help' to see all flags.`,
 var sourcesRemoveCmd = &cobra.Command{
 	Use:   "remove",
 	Short: "Remove a custom font source",
-	Long: `Remove a custom font source by name or prefix. Built-in sources (Google Fonts, Nerd Fonts, Font Squirrel) cannot be removed.
+	Long: `Remove a custom font source by name or prefix. Built-in sources cannot be removed.
 Use --force or --yes to skip the confirmation prompt (for scripts).`,
 	Example: `  fontget sources remove --name "My Source"
   fontget sources remove --name mysource --force`,

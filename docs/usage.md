@@ -42,7 +42,7 @@ Search for available fonts.
 
 ### Flags
 - `--category, -c` - Filter by category (e.g., Sans Serif, Serif, Monospace). Use `-c` alone to list categories.
-- `--source, -s` - Filter by source (short ID like "google", "nerd", "squirrel" or full name like "Google Fonts")
+- `--source, -s` - Filter by source (short ID like "google", "nerd", etc. or full name like "Google Fonts")
 
 ### Examples
 ```bash
@@ -228,11 +228,11 @@ Manage font sources.
 
 ### Notes
 - Only add sources from trusted locations.
-- Built-in sources (Google Fonts, Nerd Fonts, Font Squirrel) cannot be removed or modified with `remove` or `set`; use `enable`/`disable` to change their availability.
+- Built-in sources cannot be removed or modified with `remove` or `set`; use `enable`/`disable` to change their availability.
 - Need to create your own source file? See the [Custom Sources Guide](custom-sources.md).
 
 ### Sources management (CLI)
-For scripts and CI, use the non-interactive subcommands instead of the TUI. For `remove`, `enable`, `disable`, and `set`, the `--name` value can be either the full source name (e.g. "Google Fonts") or the source prefix (e.g. google, nerd, squirrel).
+For scripts and CI, use the non-interactive subcommands instead of the TUI. For `remove`, `enable`, `disable`, and `set`, the `--name` value can be either the full source name (e.g. "Google Fonts") or the source prefix (e.g. google, nerd, league, fontshare, fontsource, squirrel etc.).
 
 ```bash
 # Add a custom source (prefix and priority optional)
@@ -306,7 +306,7 @@ Export installed fonts to a JSON manifest file that can be used to restore fonts
 ### Flags
 - `--output, -o` - Output file path (default: fonts-export.json). Can specify directory or full file path
 - `--match, -m` - Export only fonts that match the specified string (name or family)
-- `--source, -s` - Export only fonts from the given source (e.g., "Google Fonts", "Nerd Fonts")
+- `--source, -s` - Export only fonts from the given source (e.g., "Google Fonts", "Nerd Fonts", "Fontsource" etc.)
 - `--all, -a` - Export all installed fonts, including those without Font IDs (cannot be used with `--matched`)
 - `--matched` - Export only fonts that match repository entries (default; cannot be used with `--all`)
 - `--force, -f` - Overwrite existing file without confirmation

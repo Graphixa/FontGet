@@ -117,7 +117,7 @@ var searchCmd = &cobra.Command{
 	Long: `Search for fonts from all configured sources.
 
 Use --category to filter by category (e.g., "Sans Serif", "Serif", "Monospace").
-Use --source to filter by source (short ID like "google", "nerd", or full name like "Google Fonts").
+Use --source to filter by source (short ID like "google", "nerd", "league", "fontshare", "fontsource", "squirrel", or full name like "Google Fonts").
 Use -c without a value to list categories.
 Use -s without a value to list sources.`,
 	Example: `  fontget search fira
@@ -505,7 +505,7 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 	searchCmd.Flags().StringP("category", "c", "", "Filter by font category (use without value to see all available categories)")
 	searchCmd.Flags().Lookup("category").NoOptDefVal = "list"
-	searchCmd.Flags().StringP("source", "s", "", "Filter by source (short ID like \"google\", \"nerd\", \"squirrel\" or full name like \"Google Fonts\")")
+	searchCmd.Flags().StringP("source", "s", "", "Filter by source (short ID like \"google\", \"nerd\", \"league\", \"fontshare\", \"fontsource\", \"squirrel\" or full name like \"Google Fonts\")")
 	searchCmd.Flags().Lookup("source").NoOptDefVal = "list"
 
 	// Helper function for category completion (shared by both short and long flags)

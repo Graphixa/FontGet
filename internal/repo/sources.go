@@ -12,6 +12,7 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/network"
+	"fontget/internal/sources"
 	"fontget/internal/ui"
 )
 
@@ -61,9 +62,12 @@ func DefaultSearchConfig() SearchConfig {
 // Source priority order for consistent sorting across all commands
 // Lower numbers = higher priority
 var sourcePriority = map[string]int{
-	"Google Fonts":  1,
-	"Nerd Fonts":    2,
-	"Font Squirrel": 3,
+	"Google Fonts":                1,
+	"Nerd Fonts":                  2,
+	"The League of Moveable Type": 3,
+	"Fontshare":                   4,
+	"Fontsource":                  5,
+	"Font Squirrel":               6,
 	// Custom sources will have priority 999 (default)
 }
 
@@ -79,18 +83,16 @@ func getSourcePriority(sourceName string) int {
 const (
 	// Directory structure
 	updateInterval = 24 * time.Hour
-
-	// FontGet-Sources URLs
-	googleFontsURL  = "https://raw.githubusercontent.com/Graphixa/FontGet-Sources/main/sources/google-fonts.json"
-	nerdFontsURL    = "https://raw.githubusercontent.com/Graphixa/FontGet-Sources/main/sources/nerd-fonts.json"
-	fontSquirrelURL = "https://raw.githubusercontent.com/Graphixa/FontGet-Sources/main/sources/font-squirrel.json"
 )
 
-// SourceURLs maps source names to their FontGet-Sources URLs
+// SourceURLs maps source ID prefixes to their FontGet-Sources JSON URLs
 var SourceURLs = map[string]string{
-	"google":   googleFontsURL,
-	"nerd":     nerdFontsURL,
-	"squirrel": fontSquirrelURL,
+	"google":     sources.GoogleFontsURL,
+	"nerd":       sources.NerdFontsURL,
+	"league":     sources.LeagueOfMoveableTypeURL,
+	"fontshare":  sources.FontshareURL,
+	"fontsource": sources.FontsourceURL,
+	"squirrel":   sources.FontSquirrelURL,
 }
 
 // GoogleFontsResponse represents the response from Google Fonts API

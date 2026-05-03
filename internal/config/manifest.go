@@ -142,6 +142,17 @@ func LoadManifest() (*Manifest, error) {
 		return nil, fmt.Errorf("failed to parse manifest: %v", err)
 	}
 
+	merged, err := mergeBuiltInSourcesFromDefaults(&manifest)
+	if err != nil {
+		return nil, fmt.Errorf("failed to merge built-in sources: %w", err)
+	}
+	if merged {
+		manifest.LastUpdated = time.Now()
+		if err := saveManifest(&manifest); err != nil {
+			return nil, fmt.Errorf("failed to save manifest after merge: %w", err)
+		}
+	}
+
 	// Note: Source files are downloaded on-demand by the repo system
 	// No need for self-healing here as it causes unwanted warnings
 
@@ -320,7 +331,35 @@ func GetSourceByName(manifest *Manifest, name string) (*SourceConfig, bool) {
 }
 
 // BuiltInSourceNames is the list of source names that are built-in and cannot be removed or have their URL/prefix/priority modified via CLI.
-var BuiltInSourceNames = []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+// Order matches default priority (highest first).
+var BuiltInSourceNames = []string{
+	"Google Fonts",
+	"Nerd Fonts",
+	"The League of Moveable Type",
+	"Fontshare",
+	"Fontsource",
+	"Font Squirrel",
+}
+
+// mergeBuiltInSourcesFromDefaults inserts any missing built-in source rows from the current defaults
+// (enabled, URL, prefix, priority). Returns true if the manifest was modified.
+func mergeBuiltInSourcesFromDefaults(m *Manifest) (bool, error) {
+	def, err := createDefaultManifest()
+	if err != nil {
+		return false, err
+	}
+	if m.Sources == nil {
+		m.Sources = make(map[string]SourceConfig)
+	}
+	changed := false
+	for name, cfg := range def.Sources {
+		if _, exists := m.Sources[name]; !exists {
+			m.Sources[name] = cfg
+			changed = true
+		}
+	}
+	return changed, nil
+}
 
 // IsBuiltInSource returns true if name is a built-in source. Built-in sources cannot be removed or modified (except enabled/disabled) via sources remove/set.
 func IsBuiltInSource(name string) bool {

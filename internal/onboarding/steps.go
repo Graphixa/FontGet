@@ -322,7 +322,8 @@ func renderSourcesInfo(sourcesMap map[string]sources.SourceInfo, width int) stri
 	result.WriteString("\n\n")
 
 	// Introduction text - plain text, wrapped
-	introText := "Sources are how FontGet finds and installs fonts. FontGet has the following 3 default sources built-in:"
+	n := len(sourcesMap)
+	introText := fmt.Sprintf("Sources are how FontGet finds and installs fonts. FontGet has the following %d default sources built-in:", n)
 	introLines := shared.WrapText(introText, availableWidth)
 	for _, line := range introLines {
 		result.WriteString(line)
@@ -332,13 +333,16 @@ func renderSourcesInfo(sourcesMap map[string]sources.SourceInfo, width int) stri
 
 	// Source URL mapping to website URLs
 	sourceURLs := map[string]string{
-		"Google Fonts":  "https://fonts.google.com/",
-		"Nerd Fonts":    "https://www.nerdfonts.com/",
-		"Font Squirrel": "https://www.fontsquirrel.com/",
+		"Google Fonts":                "https://fonts.google.com/",
+		"Nerd Fonts":                  "https://www.nerdfonts.com/",
+		"The League of Moveable Type": "https://www.theleagueofmoveabletype.com/",
+		"Fontshare":                   "https://www.fontshare.com/",
+		"Fontsource":                  "https://fontsource.org/",
+		"Font Squirrel":               "https://www.fontsquirrel.com/",
 	}
 
 	// Display all default sources with website URLs on same line, no space between
-	sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+	sourceOrder := sources.DefaultSourceNamesInPriorityOrder()
 	for _, sourceName := range sourceOrder {
 		if _, exists := sourcesMap[sourceName]; exists {
 			websiteURL := sourceURLs[sourceName]

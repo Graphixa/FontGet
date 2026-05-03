@@ -708,7 +708,7 @@ func (s *SourcesStepEnhanced) View(model *EnhancedOnboardingModel) string {
 	// Initialize checkbox list if not already done
 	if s.checkboxList == nil {
 		defaultSources := sources.DefaultSources()
-		sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+		sourceOrder := sources.DefaultSourceNamesInPriorityOrder()
 		items := make([]components.CheckboxItem, 0, len(sourceOrder))
 
 		for _, sourceName := range sourceOrder {
@@ -772,7 +772,7 @@ func (s *SourcesStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Msg
 	if s.checkboxList == nil {
 		// Initialize if needed
 		defaultSources := sources.DefaultSources()
-		sourceOrder := []string{"Google Fonts", "Nerd Fonts", "Font Squirrel"}
+		sourceOrder := sources.DefaultSourceNamesInPriorityOrder()
 		items := make([]components.CheckboxItem, 0, len(sourceOrder))
 
 		for _, sourceName := range sourceOrder {

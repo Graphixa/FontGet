@@ -81,9 +81,12 @@ func loadAndValidateManifest(manifestFile string) (*ExportManifest, error) {
 
 // BuiltInSources is a map of built-in font sources that are always available
 var BuiltInSources = map[string]bool{
-	"Google Fonts":  true,
-	"Nerd Fonts":    true,
-	"Font Squirrel": true,
+	"Google Fonts":                true,
+	"Nerd Fonts":                  true,
+	"The League of Moveable Type": true,
+	"Fontshare":                   true,
+	"Fontsource":                  true,
+	"Font Squirrel":               true,
 }
 
 // fontCollectionResult contains the results of collecting fonts from a manifest
