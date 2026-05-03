@@ -20,7 +20,8 @@ This document provides guidelines for organizing code in the FontGet codebase, e
 - **Is it a Cobra command / CLI workflow orchestration?** → `cmd/`
 - **Does it require Cobra context, CLI flags, or CLI-shaped error messages (verbose/debug)?** → `internal/cmdutils/`
 - **Is it pure and CLI-agnostic (could be used from tests or non-CLI code)?** → `internal/shared/`
-- **Is it domain/business logic tied to a subsystem?** → Put it in that domain package (e.g. `internal/repo/`, `internal/config/`, `internal/platform/`)
+- **Is it domain/business logic tied to a subsystem?** → Put it in that domain package (e.g. `internal/repo/`, `internal/config/`, `internal/platform/`, `internal/network/`)
+- **Is it built-in FontGet-Sources URLs, default source rows, or priority-ordered source names?** → `internal/sources/` (keep in sync with `internal/config` built-in names and `internal/repo` priority maps when adding a source)
 - **Is it feature-specific helper logic that doesn’t clearly belong to one domain package?** → `internal/functions/` (avoid using this as a grab-bag)
 - **Is it styling/layout/theme/table rendering helpers?** → `internal/ui/`
 - **Is it a reusable Bubble Tea widget (progress, forms, dialogs, etc.)?** → `internal/components/`
@@ -39,7 +40,10 @@ FontGet/
 │   ├── functions/         # Domain-specific utilities
 │   ├── platform/          # Platform abstraction layer
 │   ├── repo/              # Font repository management
+│   ├── sources/           # Built-in source URLs and default manifest rows
 │   ├── config/            # Configuration management
+│   ├── network/           # HTTP download client and resilience helpers (used by repo)
+│   ├── normalize/         # Font name / family string normalization for matching
 │   ├── ui/                # User interface components
 │   ├── output/            # Output management (verbose/debug)
 │   ├── components/        # Reusable UI components
@@ -285,6 +289,7 @@ func SortSources(sources []SourceItem) {
 - Platform abstraction (`platform.go`)
 - Platform-specific implementations (`windows.go`, `darwin.go`, `linux.go`)
 - Platform utilities (`scope.go`, `temp.go`, `windows_utils.go`)
+- Font binary introspection helpers used by repo policy (e.g. `opentype_tables.go` for OpenType table tags such as `fvar`)
 
 **Guidelines**:
 - ✅ Platform-specific code
@@ -304,6 +309,7 @@ func SortSources(sources []SourceItem) {
 - Font data structures
 - Font matching logic
 - Source management
+- Archive download/extract and post-extract install path selection (`archive.go`, `archive_extract_selection.go`, `archive_install_pick.go`, etc.)
 
 **Guidelines**:
 - ✅ Repository data access
@@ -311,6 +317,39 @@ func SortSources(sources []SourceItem) {
 - ✅ Repository-specific business logic
 - ❌ General utilities (use `internal/shared/` instead)
 - ❌ CLI-specific wrappers (use `internal/cmdutils/` instead)
+
+---
+
+### `internal/sources/` - Built-in source definitions
+
+**Purpose**: Single place for FontGet-Sources JSON URLs and default built-in source metadata (names, prefixes, priorities, filenames) shared by config defaults, `internal/repo`, onboarding, and CLI
+
+**Contains**:
+- `urls.go` — constants, `DefaultSources()`, `DefaultSourceNamesInPriorityOrder()`
+
+**Guidelines**:
+- ✅ Add or change built-in source definitions here first, then align `internal/config` built-in lists, `cmd/import` built-in maps, and `internal/repo` priority / URL wiring
+- ❌ CLI orchestration (stays in `cmd/`)
+
+---
+
+### `internal/network/` - HTTP downloads
+
+**Purpose**: Shared HTTP client behavior, download fallbacks, and related helpers used by `internal/repo` (not CLI-facing)
+
+**Guidelines**:
+- ✅ Transport-level concerns (timeouts, headers, bot/WAF handling patterns)
+- ❌ Cobra or user-visible messaging (use `cmd/` + `internal/output/`)
+
+---
+
+### `internal/normalize/` - Name normalization
+
+**Purpose**: Small, pure string transforms for font matching (`FontKey`, family suffix stripping)
+
+**Guidelines**:
+- ✅ Matching-oriented normalization with no I/O
+- ❌ Repository orchestration (stays in `internal/repo/`)
 
 ---
 
@@ -342,6 +381,15 @@ func SortSources(sources []SourceItem) {
 
 ### Is it repository/data access related?
 → **`internal/repo/`**
+
+### Is it built-in source URLs or default source ordering metadata?
+→ **`internal/sources/`**
+
+### Is it HTTP download transport / CDN edge behavior shared by the repo?
+→ **`internal/network/`**
+
+### Is it font-name normalization for matching only?
+→ **`internal/normalize/`**
 
 ---
 
@@ -429,6 +477,9 @@ func SortSources(sources []SourceItem) {
 | `internal/output/` | Output management | Verbose/debug/status output |
 | `internal/platform/` | Platform abstraction | Cross-platform or platform-specific code |
 | `internal/repo/` | Repository | Font repository and data access |
+| `internal/sources/` | Built-in sources | FontGet-Sources URLs and default source rows / ordering |
+| `internal/network/` | HTTP downloads | Transport and resilience helpers for repo downloads |
+| `internal/normalize/` | Matching helpers | Pure font name / family string normalization |
 
 **Key Principle**: When in doubt, ask: "Could this code be used outside of a CLI context?" If yes → `shared`, if no → `cmdutils`.
 

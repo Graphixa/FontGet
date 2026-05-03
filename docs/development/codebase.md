@@ -70,7 +70,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `add.go`
 **Purpose**: Font installation command
 **Functionality**:
-- Installs fonts from various sources (Google Fonts, Nerd Fonts, Font Squirrel)
+- Installs fonts from enabled built-in sources (see `internal/sources` defaults) and custom sources
 - Supports both font names (e.g., "Roboto") and Font IDs (e.g., "google.roboto")
 - Handles font search and fuzzy matching
 - Manages font installation with progress tracking
@@ -107,7 +107,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Supports various search options and filters
 - **Source-Only Search**: Supports searching by source alone (e.g., `fontget search -s google`) to show all fonts from a specific source
 - **Result Limiting**: Configurable result limit via `config.yaml` Search.ResultLimit (0 = unlimited, default)
-- **Source Filtering**: Supports filtering by source ID, full name, or short prefix (e.g., "google", "nerd", "squirrel")
+- **Source Filtering**: Supports filtering by source ID, full name, or short prefix (e.g. `google`, `nerd`, `league`, `fontshare`, `fontsource`, `squirrel`)
 - **Refactored Code**: Extracted constants, helper functions, and removed code duplication for better maintainability
 
 **Key Functions**:
@@ -227,7 +227,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Font backup command
 **Functionality**:
 - Backs up installed font files to a zip archive
-- Organizes fonts by source (e.g., Google Fonts, Nerd Fonts) and then by family name
+- Organizes fonts by source (repository source name) and then by family name
 - Auto-detects accessible scopes based on elevation (user vs admin/sudo)
 - Fonts are deduplicated across scopes - if the same font exists in both scopes, only one copy is included
 - System fonts are always excluded from backups
@@ -345,7 +345,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `sources.go`
 **Purpose**: Sources management command
 **Functionality**:
-- Manages font sources (Google Fonts, Nerd Fonts, Font Squirrel)
+- Manages font sources (built-ins from `internal/sources` defaults plus custom entries in the manifest)
 - Provides subcommands for info, update, management, and validation
 - Handles source configuration and updates
 - Validates cached source integrity
@@ -367,9 +367,16 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/config` for manifest management
 - Uses `internal/functions` for source sorting
 - Uses `internal/repo` for font data
+- Uses `internal/sources` for default source name ordering in `sources info`
 - Uses `internal/output` for verbose/debug output
 
 **Status**: ✅ Active - Core functionality
+
+### `sources_cli.go`
+**Purpose**: Non-interactive sources subcommands (`add`, `remove`, `enable`, `disable`, `set`, `list`) for scripts and CI
+**Functionality**: Cobra wiring and flags for manifest-backed source changes without the TUI
+**Interfaces**: Uses `internal/config`, `internal/repo`, and related packages as appropriate per subcommand
+**Status**: ✅ Active
 
 ### `sources_manage.go`
 **Purpose**: Interactive sources management TUI
@@ -470,6 +477,26 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Status**: ✅ Active - Core functionality
 
+### `browse.go` / `browse_model.go`
+**Purpose**: Interactive font browser TUI (Bubble Tea) over repository data
+**Status**: ✅ Active
+
+### `theme.go` / `theme_layout.go`
+**Purpose**: `fontget theme` — inspect and change the active terminal theme (non-TUI and layout helpers)
+**Status**: ✅ Active
+
+### `update.go`
+**Purpose**: `fontget update` — check and apply self-updates via `internal/update`
+**Status**: ✅ Active
+
+### `completion.go`
+**Purpose**: Shell completion generation for Cobra commands
+**Status**: ✅ Active
+
+### `progress_steps.go`
+**Purpose**: Shared install progress step identifiers used by add/import flows and UI
+**Status**: ✅ Active
+
 ---
 
 ## Internal Packages
@@ -533,6 +560,13 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Status**: ✅ Active - Domain utilities
 
+### `internal/normalize/`
+**Purpose**: Small string normalizers for font family matching (e.g. `FontKey`, `BaseFamilyName` for Nerd Fonts-style suffixes)
+**Files**:
+- `normalize.go`: Normalization helpers consumed by repository matching
+
+**Status**: ✅ Active
+
 ### `internal/config/`
 **Purpose**: Configuration management
 **Files**:
@@ -553,7 +587,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `app_state.go`: Core application state types and functions
   - First-run state management
   - Source acceptance tracking
-- `manifest.go`: Font sources manifest management
+- `manifest.go`: Font sources manifest management; on load, merges any **missing built-in** source rows from current defaults (URL, prefix, priority, enabled) and persists when the manifest was updated
 - `validation.go`: Configuration validation
 
 **Key Features**:
@@ -578,13 +612,15 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ### `internal/repo/`
 **Purpose**: Font repository management
 **Files**:
-- `sources.go`: Source data loading and caching
+- `sources.go`: Source data loading and caching; `SourceURLs` and search tie-break priority align with `internal/sources` constants and default source order
 - `manifest.go`: Font manifest operations
 - `search.go`: Font search functionality
-- `font.go`: Font data structures and Font ID resolution
+- `font.go`: Font data structures, Font ID resolution, downloads, and `DownloadAndExtractFont` (including `DownloadFontOptions` such as `ArchiveSourcePrefix` for archive layout selection after extract)
 - `font_matches.go`: Font matching logic for installed fonts to repository entries
 - `metadata.go`: Font metadata handling
 - `archive.go`: Archive operations
+- `archive_extract_selection.go`: Webfont-path filtering and static vs variable font install policy on extracted paths
+- `archive_install_pick.go`: Choosing installable paths inside archives (known upstream layouts when prefix matches, otherwise agnostic directory scoring with fallback)
 - `download_headers.go`: HTTP response header parsing/inference helpers for downloads (e.g., detecting ZIP archives served behind `.ttf` URLs)
 - `types.go`: Type definitions
 
@@ -598,6 +634,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Archive detection uses extension, HTTP headers (Content-Type / Content-Disposition), and file magic bytes (final truth)
   - Prevents archives from being mis-installed as `.ttf` when upstream naming is misleading (notably Font Squirrel)
   - **7Z extraction** uses external `7zz`/`7z` when available on PATH; otherwise extraction fails with a clear error
+  - **Post-extract selection**: Validated font paths may be narrowed by `PickInstallableFontPathsFromArchive` (invoked from `DownloadAndExtractFont`) when an archive contains both desktop and web-kit trees or mixed static/variable layouts
 
 **Status**: ✅ Active - Core repository system
 
@@ -605,6 +642,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Cross-platform operations
 **Files**:
 - `platform.go`: Platform abstraction and font metadata extraction
+- `opentype_tables.go`: Lightweight SFNT table directory checks (e.g. `fvar` for variable fonts) used by repository archive install policy
 - `windows.go`: Windows-specific operations
 - `darwin.go`: macOS-specific operations
 - `linux.go`: Linux-specific operations
@@ -694,9 +732,9 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Status**: ✅ Active - Logging system with config.yaml integration
 
 ### `internal/sources/`
-**Purpose**: Source definitions
+**Purpose**: Built-in FontGet-Sources definitions shared across config defaults, repository URL maps, and ordering helpers
 **Files**:
-- `urls.go`: Source URLs and configuration
+- `urls.go`: Base URL constants, per-source JSON URLs, `DefaultSources()` (name → URL, prefix, filename, priority, enabled), and `DefaultSourceNamesInPriorityOrder()` for consistent ordering in search, repo, onboarding, and CLI
 
 **Status**: ✅ Active - Source definitions
 
@@ -798,6 +836,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 
 **Interfaces**:
 - Uses `internal/config` for configuration management
+- Uses `internal/sources` for default source ordering and metadata in source steps
 - Uses `internal/ui` for TUI components and styling
 - Uses `internal/components` for reusable UI components (CheckboxList, ButtonGroup)
 - Uses Bubble Tea for TUI framework
@@ -858,11 +897,9 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ## Configuration Files
 
 ### `sources/`
-**Purpose**: Source data storage
-**Files**:
-- `google-fonts.json`: Google Fonts data
+**Purpose**: Local cache directory for FontGet-Sources JSON snapshots downloaded by the repo layer (filenames correspond to built-in `Filename` fields in `internal/sources.DefaultSources()`)
 
-**Status**: ✅ Active - Source data
+**Status**: ✅ Active - Source data cache
 
 ---
 
@@ -880,5 +917,3 @@ This document provides a comprehensive overview of the FontGet codebase, explain
    - **Features**: Includes verbose/debug scaffolding, error handling patterns, and best practices
 
 ---
-
-## Recent Architectural Changes
