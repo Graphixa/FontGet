@@ -7,6 +7,7 @@ import (
 	"fontget/internal/cmdutils"
 	"fontget/internal/output"
 	"fontget/internal/platform"
+	"fontget/internal/repo"
 	"fontget/internal/shared"
 )
 
@@ -415,5 +416,52 @@ func TestAutoDetectScope(t *testing.T) {
 				t.Errorf("autoDetectScope() = %q, expected %q", result, tt.expected)
 			}
 		})
+	}
+}
+
+func TestArchiveSourcePrefixFromFontID(t *testing.T) {
+	if got := archiveSourcePrefixFromFontID("fontshare.foo.bar"); got != "fontshare" {
+		t.Fatalf("got %q want fontshare", got)
+	}
+	if got := archiveSourcePrefixFromFontID("  League.Something  "); got != "league" {
+		t.Fatalf("got %q want league", got)
+	}
+	if got := archiveSourcePrefixFromFontID("nosegment"); got != "" {
+		t.Fatalf("got %q want empty", got)
+	}
+	if got := archiveSourcePrefixFromFontID(".onlytail"); got != "" {
+		t.Fatalf("got %q want empty", got)
+	}
+}
+
+func TestCloneDownloadOptsForProgress_preservesOnResponseHeaders(t *testing.T) {
+	called := false
+	in := &repo.DownloadFontOptions{
+		SuppressVerboseProgressLine: true,
+		OnResponseHeaders:           func(repo.HTTPResponseInfo) { called = true },
+	}
+	out := cloneDownloadOptsForProgress(in, "fontshare")
+	if out.ArchiveSourcePrefix != "fontshare" {
+		t.Fatalf("ArchiveSourcePrefix: got %q", out.ArchiveSourcePrefix)
+	}
+	if !out.SuppressVerboseProgressLine {
+		t.Fatal("SuppressVerboseProgressLine lost")
+	}
+	if out.OnResponseHeaders == nil {
+		t.Fatal("OnResponseHeaders dropped")
+	}
+	out.OnResponseHeaders(repo.HTTPResponseInfo{})
+	if !called {
+		t.Fatal("OnResponseHeaders should be the same callback")
+	}
+}
+
+func TestCloneDownloadOptsForProgress_nilIncoming(t *testing.T) {
+	out := cloneDownloadOptsForProgress(nil, "league")
+	if out.ArchiveSourcePrefix != "league" {
+		t.Fatalf("got %q", out.ArchiveSourcePrefix)
+	}
+	if out.OnResponseHeaders != nil {
+		t.Fatal("expected nil OnResponseHeaders")
 	}
 }

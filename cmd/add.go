@@ -1055,8 +1055,29 @@ func humanizeFontStyleLabel(s string) string {
 	return strings.Join(fields, " ")
 }
 
+func archiveSourcePrefixFromFontID(fontID string) string {
+	fontID = strings.TrimSpace(fontID)
+	i := strings.IndexByte(fontID, '.')
+	if i <= 0 || i >= len(fontID)-1 {
+		return ""
+	}
+	return strings.ToLower(fontID[:i])
+}
+
+// cloneDownloadOptsForProgress returns a shallow copy of downloadOpts (or zero)
+// with ArchiveSourcePrefix set from archiveSourcePrefix so progress callbacks
+// can be attached without dropping fields like OnResponseHeaders.
+func cloneDownloadOptsForProgress(downloadOpts *repo.DownloadFontOptions, archiveSourcePrefix string) *repo.DownloadFontOptions {
+	var base repo.DownloadFontOptions
+	if downloadOpts != nil {
+		base = *downloadOpts
+	}
+	base.ArchiveSourcePrefix = archiveSourcePrefix
+	return &base
+}
+
 // downloadFontVariants downloads all variants of a font family
-func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
+func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, archiveSourcePrefix string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
 	var allFontPaths []string
 
 	// Download each variant - only log errors and unusual cases
@@ -1067,9 +1088,7 @@ func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, downloadOpt
 		}
 		opts := downloadOpts
 		if onProgress != nil {
-			// Ensure we always pass a progress-enabled options struct, while preserving suppression.
-			suppress := opts != nil && opts.SuppressVerboseProgressLine
-			opts = &repo.DownloadFontOptions{SuppressVerboseProgressLine: suppress}
+			opts = cloneDownloadOptsForProgress(downloadOpts, archiveSourcePrefix)
 			opts.OnBytesDownloaded = func(doneBytes int64, totalBytes int64) {
 				if totalBytes > 0 {
 					onProgress(installStepDownload, float64(doneBytes)/float64(totalBytes))
@@ -1082,6 +1101,12 @@ func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, downloadOpt
 				}
 				// Unknown totals (e.g., tar streams): use a soft-saturating curve so the UI moves.
 				onProgress(installStepExtract, float64(done)/float64(done+12))
+			}
+		} else if archiveSourcePrefix != "" {
+			if opts == nil {
+				opts = &repo.DownloadFontOptions{ArchiveSourcePrefix: archiveSourcePrefix}
+			} else {
+				opts.ArchiveSourcePrefix = archiveSourcePrefix
 			}
 		}
 
@@ -1303,10 +1328,18 @@ func installFont(
 	if suppressVerboseDownloads {
 		downloadOpts = &repo.DownloadFontOptions{SuppressVerboseProgressLine: true}
 	}
+	archivePrefix := archiveSourcePrefixFromFontID(fontID)
+	if archivePrefix != "" {
+		if downloadOpts == nil {
+			downloadOpts = &repo.DownloadFontOptions{ArchiveSourcePrefix: archivePrefix}
+		} else {
+			downloadOpts.ArchiveSourcePrefix = archivePrefix
+		}
+	}
 	if onProgress != nil {
 		onProgress(installStepDownload, 0)
 	}
-	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir, downloadOpts, onProgress)
+	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir, archivePrefix, downloadOpts, onProgress)
 	if downloadErr != nil {
 		return buildInstallResult(InstallStatusFailed, "Download failed", 0, 0, len(fontFiles), nil, nil, 0), downloadErr
 	}

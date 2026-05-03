@@ -45,15 +45,21 @@ func tryKnownSourcePaths(prefixLower string, paths []string) ([]string, bool) {
 }
 
 func tryFontshareKnownPaths(paths []string) ([]string, bool) {
-	var otfTree []string
+	var otfTree, ttfTree []string
 	for _, p := range paths {
 		s := strings.ToLower(filepath.ToSlash(p))
-		if strings.Contains(s, "/fonts/otf/") {
+		switch {
+		case strings.Contains(s, "/fonts/otf/"):
 			otfTree = append(otfTree, p)
+		case strings.Contains(s, "/fonts/ttf/"):
+			ttfTree = append(ttfTree, p)
 		}
 	}
 	if len(otfTree) > 0 {
 		return otfTree, true
+	}
+	if len(ttfTree) > 0 {
+		return ttfTree, true
 	}
 	return nil, false
 }
@@ -73,6 +79,10 @@ func tryLeagueKnownPaths(paths []string) ([]string, bool) {
 	return nil, false
 }
 
+// Agnostic bucket scoring: if the best directory's average score is below
+// agnosticBucketWinningScoreMin, or too close to the runner-up (see
+// agnosticBucketScoreSeparationMin), we return the full path set instead of
+// only the best bucket.
 const (
 	agnosticBucketScoreSeparationMin = 8.0
 	agnosticBucketWinningScoreMin    = 0.0

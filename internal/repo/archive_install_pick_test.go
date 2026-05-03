@@ -19,6 +19,24 @@ func TestTryKnownSourcePaths_fontshare(t *testing.T) {
 	}
 }
 
+func TestTryKnownSourcePaths_fontshare_ttfOnly(t *testing.T) {
+	web := filepath.Join("X", "Fonts", "WEB", "fonts", "X-Regular.ttf")
+	ttf := filepath.Join("X", "Fonts", "TTF", "X-Regular.ttf")
+	got, ok := tryKnownSourcePaths("fontshare", []string{web, ttf})
+	if !ok || len(got) != 1 || got[0] != ttf {
+		t.Fatalf("fontshare TTF tree: got %#v ok=%v want [%q]", got, ok, ttf)
+	}
+}
+
+func TestTryKnownSourcePaths_fontshare_otfPreferredOverTtf(t *testing.T) {
+	ttf := filepath.Join("Y", "Fonts", "TTF", "Y-Regular.ttf")
+	otf := filepath.Join("Y", "Fonts", "OTF", "Y-Regular.otf")
+	got, ok := tryKnownSourcePaths("fontshare", []string{ttf, otf})
+	if !ok || len(got) != 1 || got[0] != otf {
+		t.Fatalf("fontshare OTF over TTF: got %#v ok=%v want [%q]", got, ok, otf)
+	}
+}
+
 func TestTryKnownSourcePaths_league(t *testing.T) {
 	root := filepath.Join("fanwood-master", "Fanwood.otf")
 	web := filepath.Join("fanwood-master", "webfonts", "fanwood-webfont.ttf")
