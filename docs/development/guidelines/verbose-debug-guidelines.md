@@ -30,7 +30,7 @@ Use when the reader needs **technical** detail to diagnose behavior.
 
 ## Relationship to file log
 
-- **`GetLogger()`**: required for persistent log file content (start, parameters, errors, completion). Not controlled by `--verbose` / `--debug`.
+- **`logging.GetLogger()`** (and **`cmd.GetLogger()`**, same instance): required for persistent log file content (start, parameters, errors, completion). Not controlled by `--verbose` / `--debug`.
 - **`GetVerbose()` / `GetDebug()`**: required for styled CLI output. Not a replacement for the log file.
 
 In the standard CLI, file-log lines are **not** mirrored to the console (`ConsoleOutput` is off), so timestamped `[date] INFO: …` text does not interleave with `[DEBUG STATE]` / `[INFO]` verbose lines.

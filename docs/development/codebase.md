@@ -726,24 +726,26 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - `logger.go`: Logger implementation with file rotation and level management
   - `New()`: Creates logger with default OS-specific log directory
   - `NewWithPath()`: Creates logger with custom log file path (used for config.yaml LogPath)
+  - `SetGlobal()` / `CloseGlobal()`: Register and tear down the single process-wide logger (called from `cmd/root.go` after resolving `Logging.LogPath`)
+  - `GetLogger()`: Returns the active logger set by `SetGlobal()` (nil before CLI init, e.g. in isolated tests unless they register a logger)
+  - `ActiveLogDir()`: Directory containing the active `fontget.log` (used by `fontget --logs`)
 - `config.go`: Logging configuration
 
 **Key Features**:
-- **File-based logging**: All logs written to `fontget.log` in platform-specific log directory OR custom path from config
+- **Single log file**: `cmd` resolves `Logging.LogPath` from `config.yaml` (with `$home` expansion) and falls back to the OS default log directory when unset or invalid; one `fontget.log` path is registered for the whole process (older builds may have left stray files under the OS-only path, e.g. `~/Library/Logs/fontget` on macOS; they are no longer written by current versions when `LogPath` is set)
 - **Config Integration**: LogPath, MaxSize, and MaxFiles from `config.yaml` are connected
   - LogPath supports `$home` variable expansion (e.g., `$home/.fontget/logs/fontget.log`)
   - MaxSize parses string format (e.g., "10MB") to integer megabytes
   - MaxFiles controls number of rotated log files to keep
 - **Log rotation**: Automatic rotation based on size, age, and backup count
-- **Level management**: Log levels (ErrorLevel, InfoLevel, DebugLevel) controlled by verbose/debug flags
-- **Always active**: GetLogger() calls should always log to file regardless of verbose/debug flags
-  - Logger level is controlled by config (ErrorLevel by default, InfoLevel with --verbose, DebugLevel with --debug)
-  - GetLogger() calls should NOT be conditional on `IsVerbose()` or `IsDebug()`
+- **Level management**: Log levels (ErrorLevel, InfoLevel, DebugLevel) are set from CLI flags and config in `cmd/root.go`
+- **Always active (after init)**: `logging.GetLogger()` (and `cmd.GetLogger()`, which delegates to it) writes to the same file regardless of verbose/debug flags
+  - `GetLogger()` calls should NOT be conditional on `IsVerbose()` or `IsDebug()`
   - Logger writes to file, not console (console output is handled by verbose/debug output system)
 
 **Usage Pattern**:
 - All commands should log: operation start, parameters, errors, and completion
-- Use `GetLogger().Info()` for operations and parameters
+- In `cmd/`, use `GetLogger().Info()` (delegates to `logging.GetLogger()`); in `internal/` packages, use `logging.GetLogger()` directly
 - Use `GetLogger().Error()` for all error cases
 - Use `GetLogger().Warn()` for warnings
 - Use `GetLogger().Debug()` for detailed debugging information
