@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -11,9 +12,9 @@ import (
 // excludedKeys lists dotted paths (normalized lowercase) that are not settable.
 // All other section.field paths on AppConfig are settable.
 var excludedKeys = map[string]bool{
-	"version":                  true, // top-level schema version
-	"update.lastupdatecheck":   true,
-	"update.nextupdatecheck":   true,
+	"version":                true, // top-level schema version
+	"update.lastupdatecheck": true,
+	"update.nextupdatecheck": true,
 }
 
 // getYAMLTagName returns the lowercase name for matching (yaml tag first part, or struct field name).
@@ -53,6 +54,9 @@ func parseValueByKind(s string, k reflect.Kind) (reflect.Value, error) {
 		case reflect.Int:
 			return reflect.ValueOf(int(n)), nil
 		case reflect.Int32:
+			if n > math.MaxInt32 || n < math.MinInt32 {
+				return reflect.Value{}, fmt.Errorf("value out of range for int32: %d", n)
+			}
 			return reflect.ValueOf(int32(n)), nil
 		case reflect.Int64:
 			return reflect.ValueOf(n), nil

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -12,9 +13,9 @@ func TestSetConfigKey_Success(t *testing.T) {
 	}
 
 	tests := []struct {
-		key    string
-		value  string
-		check  func(t *testing.T, c *AppConfig)
+		key   string
+		value string
+		check func(t *testing.T, c *AppConfig)
 	}{
 		{"theme.name", "catppuccin", func(t *testing.T, c *AppConfig) {
 			if c.Theme.Name != "catppuccin" {
@@ -98,6 +99,23 @@ func TestSetConfigKey_InvalidKeyFormat(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "section.field") {
 		t.Errorf("error = %v, want message containing 'section.field'", err)
+	}
+}
+
+func TestParseValueByKind_Int32Range(t *testing.T) {
+	_, err := parseValueByKind("2147483648", reflect.Int32)
+	if err == nil {
+		t.Fatal("parseValueByKind: expected error above int32 max")
+	}
+	if !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("error = %v, want out of range", err)
+	}
+	_, err = parseValueByKind("-2147483649", reflect.Int32)
+	if err == nil {
+		t.Fatal("parseValueByKind: expected error below int32 min")
+	}
+	if !strings.Contains(err.Error(), "out of range") {
+		t.Fatalf("error = %v, want out of range", err)
 	}
 }
 
