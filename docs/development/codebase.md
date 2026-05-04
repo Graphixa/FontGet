@@ -79,6 +79,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses in-command types and helpers (`FontOperationDetails`, `installFont`, progress integration) together with shared internal packages for consistent behavior
 - **Architecture**: Installation orchestration lives in this file and `internal/*` packages; there are no `cmd/operations.go` or `cmd/handlers.go` sources
 - **Pre-installation Check**: Checks if fonts are already installed before downloading to save bandwidth and time
+- **Installation registry**: After a fully successful install, writes provenance to **`~/.fontget/installation_registry.json`** via **`internal/installations.RecordInstallation`** (grouped families/files, optional **`installation_source`** from cached manifest lookup)
 
 **Key Functions**:
 - `addCmd.RunE`: Main command execution
@@ -90,6 +91,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Interfaces**:
 - Uses `internal/cmdutils` for CLI helpers (manifest checks, elevation, file existence, argument handling)
 - Uses `internal/repo` for font data
+- Uses `internal/installations` for **`installation_registry.json`** (record after successful install)
 - Uses `internal/platform` for OS-specific operations
 - Uses `internal/output` for verbose/debug output
 - Uses `internal/ui` for user interface styling and spinners
@@ -160,6 +162,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - **Optimized Filtering**: Caches lowercased strings to avoid repeated ToLower() calls
 - **Verbose Output Suppression**: `collectFonts` accepts optional `suppressVerbose` parameter to suppress verbose output when called from internal/helper functions (e.g., `checkFontsAlreadyInstalled`, `backup.go`, `export.go`)
 - **Standardized Structure**: File follows Go best practices with imports → types → command → helpers structure
+- **Installation registry**: Merges **`internal/installations.Load`** into listed families when repository matching left **`FontID`** empty (path index, then family index; **`repo.MatchRepositoryFontByID`**)
 
 **Flags**:
 - `--scope, -s`: Filter by installation scope (user or machine)
@@ -170,6 +173,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Uses `internal/platform` for OS-specific font detection
 - Uses `internal/output` for verbose/debug output
 - Uses `internal/repo` for font matching and repository access
+- Uses `internal/installations` for **`installation_registry.json`** (merge into list results)
 - Uses `internal/shared` for protected font checking and font utilities
 
 **Status**: ✅ Active - Core functionality
@@ -199,6 +203,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Handles different removal scopes (user, machine, all)
 - When removing from "all" scopes, shows separate progress entries for each scope
 - Extracts font names from installed font metadata (SFNT name table)
+- **Installation registry**: For Font IDs, prefers registry-resolved basenames in scope when present; drops the registry entry after a full successful registry-backed removal
 - Protects critical system fonts from removal
 - Provides consistent verbose/debug output matching add command
 - Auto-detects scope based on elevation (admin/sudo defaults to "all", user defaults to "user")
@@ -215,6 +220,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Interfaces**:
 - Uses `internal/cmdutils` for CLI helpers (elevation, manifest checks, and related command utilities)
 - Uses `internal/platform` for OS-specific operations and font metadata extraction
+- Uses `internal/installations` for **`installation_registry.json`** (resolve/remove Font ID paths; preflight helpers)
 - Uses `internal/repo` for font repository access and Font ID resolution
 - Uses `internal/output` for verbose/debug output and status reporting
 - Uses `internal/components` for progress bar display
@@ -637,6 +643,19 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - **Post-extract selection**: Validated font paths may be narrowed by `PickInstallableFontPathsFromArchive` (invoked from `DownloadAndExtractFont`) when an archive contains both desktop and web-kit trees or mixed static/variable layouts
 
 **Status**: ✅ Active - Core repository system
+
+### `internal/installations/`
+**Purpose**: Persist FontGet install provenance beside the sources manifest (`installation_registry.json` under **`~/.fontget/`**, basename **`installations.FileName`**).
+**Files**:
+- `registry.go`: Types, **`Load`** / **`Save`**, **`RecordInstallation`** / **`RemoveInstallation`**, **`PathIndex`** / **`FamilyInstallationsIndex`**, **`BasenamesForDir`**, **`NormalizePathKey`**, **`RegistryPath`**
+- `registry_migrate.go`: **`schema_version`** migration — **`buildRegistryMigrations()`** lists allowed one-hop transitions from older on-disk labels to the current constant in **`registry.go`**; **`Load`** runs migrations after JSON decode and rewrites the file when any step applied; unknown versions fail **`Load`**
+- `registry_test.go`: Registry and migration tests
+
+**Key Features**:
+- **`schema_version`** uses semver-style strings (e.g. **`1.0`**); bump **`schemaVersion`** and extend **`buildRegistryMigrations()`** when the persisted JSON contract changes
+- **`CurrentRegistrySchemaVersion()`** exposes the schema string for this binary
+
+**Status**: ✅ Active
 
 ### `internal/platform/`
 **Purpose**: Cross-platform operations
