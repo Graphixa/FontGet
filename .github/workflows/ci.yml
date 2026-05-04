@@ -37,6 +37,9 @@ jobs:
       - name: Staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 
+      - name: Gosec
+        run: go run github.com/securego/gosec/v2/cmd/gosec@latest -conf=.gosec.json ./...
+
       - name: Run tests
         run: go test ./...
 
