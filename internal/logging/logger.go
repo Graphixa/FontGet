@@ -38,6 +38,8 @@ type Logger struct {
 	level         LogLevel
 	output        io.Writer
 	file          *os.File
+	// logFilePath is the absolute path to the primary log file; empty for non-file loggers.
+	logFilePath   string
 	maxSize       int64
 	maxBackups    int
 	maxAge        int
@@ -66,32 +68,77 @@ type Config struct {
 }
 
 var (
+	globalMu     sync.RWMutex
 	globalLogger *Logger
-	loggerOnce   sync.Once
 )
 
-// GetLogger returns the global logger instance
+// SetGlobal registers the process-wide logger. If a different non-nil logger was already set,
+// the previous instance is closed. Pass nil to clear without closing (caller must Close).
+func SetGlobal(l *Logger) {
+	globalMu.Lock()
+	defer globalMu.Unlock()
+	if prev := globalLogger; prev != nil && prev != l {
+		_ = prev.Close()
+	}
+	globalLogger = l
+}
+
+// GetLogger returns the logger set by SetGlobal, or nil if the CLI has not initialized logging yet.
 func GetLogger() *Logger {
-	loggerOnce.Do(func() {
-		config := Config{
-			Level:      InfoLevel,
-			MaxSize:    10, // 10MB (restored to original)
-			MaxBackups: 3,  // Reduced for testing cleanup
-			MaxAge:     30, // 30 days
-			Compress:   true,
-		}
-		var err error
-		globalLogger, err = New(config)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
-			// Create a fallback logger that writes to stderr
-			globalLogger = &Logger{
-				level:  config.Level,
-				output: os.Stderr,
-			}
-		}
-	})
+	globalMu.RLock()
+	defer globalMu.RUnlock()
 	return globalLogger
+}
+
+// CloseGlobal closes the current global logger and clears it. Safe to call multiple times.
+func CloseGlobal() error {
+	globalMu.Lock()
+	defer globalMu.Unlock()
+	if globalLogger == nil {
+		return nil
+	}
+	err := globalLogger.Close()
+	globalLogger = nil
+	return err
+}
+
+// ActiveLogDir returns the directory containing the active log file (from the global logger).
+// It returns an error if no global logger is set or the logger is not file-backed.
+func ActiveLogDir() (string, error) {
+	globalMu.RLock()
+	l := globalLogger
+	globalMu.RUnlock()
+	if l == nil {
+		return "", fmt.Errorf("logger not initialized")
+	}
+	dir, err := l.activeLogDir()
+	if err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// LogFilePath returns the absolute path to the active log file, or empty string if not file-backed.
+func LogFilePath() string {
+	globalMu.RLock()
+	l := globalLogger
+	globalMu.RUnlock()
+	if l == nil {
+		return ""
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.logFilePath
+}
+
+func (l *Logger) activeLogDir() (string, error) {
+	l.mu.Lock()
+	path := l.logFilePath
+	l.mu.Unlock()
+	if path == "" {
+		return "", fmt.Errorf("no file-based log directory")
+	}
+	return filepath.Dir(path), nil
 }
 
 // New creates a new logger instance using the default log directory
@@ -130,10 +177,16 @@ func NewWithPath(config Config, logFilePath string) (*Logger, error) {
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
+	absPath := logFilePath
+	if a, absErr := filepath.Abs(logFilePath); absErr == nil {
+		absPath = a
+	}
+
 	return &Logger{
 		level:         config.Level,
 		output:        file,
 		file:          file,
+		logFilePath:   absPath,
 		maxSize:       int64(config.MaxSize * 1024 * 1024), // Convert MB to bytes
 		maxBackups:    config.MaxBackups,
 		maxAge:        config.MaxAge,
@@ -353,7 +406,9 @@ func getLogDirectory() (string, error) {
 	}
 }
 
-// GetLogDirectory returns the appropriate log directory for the current OS
+// GetLogDirectory returns the OS-default log directory for FontGet (used when LogPath is unset
+// or as a fallback when constructing the logger). Prefer ActiveLogDir() for the directory that
+// actually contains the current log file after the CLI has initialized logging.
 func GetLogDirectory() (string, error) {
 	return getLogDirectory()
 }

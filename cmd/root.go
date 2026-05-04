@@ -30,7 +30,6 @@ var (
 	wizard           bool
 	acceptAgreements bool
 	acceptDefaults   bool
-	logger           *logging.Logger
 	pendingUpdate    *update.CheckResult // Stores update check result for post-command prompt
 )
 
@@ -55,8 +54,8 @@ var rootCmd = &cobra.Command{
 		}
 
 		if logs {
-			// Open logs directory
-			logDir, err := logging.GetLogDirectory()
+			// Open logs directory (same directory as the active log file from config / fallback)
+			logDir, err := logging.ActiveLogDir()
 			if err != nil {
 				return fmt.Errorf("failed to get log directory: %w", err)
 			}
@@ -114,27 +113,35 @@ var rootCmd = &cobra.Command{
 		}
 
 		var err error
+		var cliLog *logging.Logger
 		// Use LogPath from config if available, otherwise use default
 		if appConfig != nil && appConfig.Logging.LogPath != "" {
 			expandedLogPath, expandErr := config.ExpandLogPath(appConfig.Logging.LogPath)
 			if expandErr == nil {
-				logger, err = logging.NewWithPath(logConfig, expandedLogPath)
+				cliLog, err = logging.NewWithPath(logConfig, expandedLogPath)
 				if err != nil {
 					// Fallback to default if NewWithPath fails
-					logger, err = logging.New(logConfig)
+					cliLog, err = logging.New(logConfig)
 				}
 			} else {
 				// Fallback to default if expansion fails
-				logger, err = logging.New(logConfig)
+				cliLog, err = logging.New(logConfig)
 			}
 		} else {
 			// Use default log path
-			logger, err = logging.New(logConfig)
+			cliLog, err = logging.New(logConfig)
 		}
 
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger: %w", err)
 		}
+		logging.SetGlobal(cliLog)
+		preRunComplete := false
+		defer func() {
+			if !preRunComplete {
+				_ = logging.CloseGlobal()
+			}
+		}()
 
 		// Initialize theme system (non-blocking - uses fast timeout)
 		// Theme detection happens quickly and doesn't delay command execution
@@ -257,6 +264,7 @@ var rootCmd = &cobra.Command{
 			"update":                        true, // Don't check for updates when running update command
 		}
 
+		preRunComplete = true
 		if !skipUpdateCheckCommands[cmd.Name()] {
 			go performStartupUpdateCheck()
 		}
@@ -271,24 +279,18 @@ var rootCmd = &cobra.Command{
 			if appConfig == nil {
 				// If we can't load config, clear pending update and continue
 				pendingUpdate = nil
-				if logger != nil {
-					return logger.Close()
-				}
-				return nil
+				return logging.CloseGlobal()
 			}
 
 			// Check if we should show the prompt based on grace period
 			if !update.ShouldShowUpdatePrompt(appConfig.Update.NextUpdateCheck) {
 				// Still in grace period - don't show prompt
-				if logger != nil {
-					logger.Info("Update prompt skipped - still in grace period")
+				if lg := logging.GetLogger(); lg != nil {
+					lg.Info("Update prompt skipped - still in grace period")
 				}
 				// Clear pending update
 				pendingUpdate = nil
-				if logger != nil {
-					return logger.Close()
-				}
-				return nil
+				return logging.CloseGlobal()
 			}
 
 			// Show confirmation prompt
@@ -298,28 +300,25 @@ var rootCmd = &cobra.Command{
 					pendingUpdate.LatestVersion, pendingUpdate.CurrentVersion),
 			)
 			if err != nil {
-				if logger != nil {
-					logger.Error("Confirmation dialog failed: %v", err)
+				if lg := logging.GetLogger(); lg != nil {
+					lg.Error("Confirmation dialog failed: %v", err)
 				}
 				// Clear pending update and continue
 				pendingUpdate = nil
-				if logger != nil {
-					return logger.Close()
-				}
-				return nil
+				return logging.CloseGlobal()
 			}
 
 			if confirmed {
 				// User confirmed - perform update
-				if logger != nil {
-					logger.Info("User confirmed update from %s to %s", pendingUpdate.CurrentVersion, pendingUpdate.LatestVersion)
+				if lg := logging.GetLogger(); lg != nil {
+					lg.Info("User confirmed update from %s to %s", pendingUpdate.CurrentVersion, pendingUpdate.LatestVersion)
 				}
 
 				// Clear the grace period since user accepted
 				appConfig.Update.NextUpdateCheck = ""
 				if err := config.SaveUserPreferences(appConfig); err != nil {
-					if logger != nil {
-						logger.Warn("Failed to clear NextUpdateCheck: %v", err)
+					if lg := logging.GetLogger(); lg != nil {
+						lg.Warn("Failed to clear NextUpdateCheck: %v", err)
 					}
 				}
 
@@ -332,13 +331,13 @@ var rootCmd = &cobra.Command{
 					},
 				)
 				if err != nil {
-					if logger != nil {
-						logger.Error("Update failed: %v", err)
+					if lg := logging.GetLogger(); lg != nil {
+						lg.Error("Update failed: %v", err)
 					}
 					fmt.Printf("%s\n", ui.ErrorText.Render(fmt.Sprintf("Update failed: %v. Run 'fontget update' manually.", err)))
 				} else {
-					if logger != nil {
-						logger.Info("Update successful - updated to %s", pendingUpdate.LatestVersion)
+					if lg := logging.GetLogger(); lg != nil {
+						lg.Info("Update successful - updated to %s", pendingUpdate.LatestVersion)
 					}
 
 					// Config migration is handled automatically by update.UpdateToLatest() after binary update
@@ -346,13 +345,13 @@ var rootCmd = &cobra.Command{
 				}
 			} else {
 				// User declined - set grace period so we don't prompt again until next interval
-				if logger != nil {
-					logger.Info("User declined update - setting grace period")
+				if lg := logging.GetLogger(); lg != nil {
+					lg.Info("User declined update - setting grace period")
 				}
 				appConfig.Update.NextUpdateCheck = update.GetUpdateDeclinedUntilTimestamp(appConfig.Update.UpdateCheckInterval)
 				if err := config.SaveUserPreferences(appConfig); err != nil {
-					if logger != nil {
-						logger.Warn("Failed to save NextUpdateCheck: %v", err)
+					if lg := logging.GetLogger(); lg != nil {
+						lg.Warn("Failed to save NextUpdateCheck: %v", err)
 					}
 				}
 			}
@@ -361,10 +360,7 @@ var rootCmd = &cobra.Command{
 			pendingUpdate = nil
 		}
 
-		if logger != nil {
-			return logger.Close()
-		}
-		return nil
+		return logging.CloseGlobal()
 	},
 }
 
@@ -454,9 +450,9 @@ func Execute() error {
 	return nil
 }
 
-// GetLogger returns the global logger instance
+// GetLogger returns the process-wide file logger (alias for logging.GetLogger).
 func GetLogger() *logging.Logger {
-	return logger
+	return logging.GetLogger()
 }
 
 // IsVerbose returns true if verbose mode is enabled
@@ -488,15 +484,15 @@ func performStartupUpdateCheck() {
 			appConfig.Update.LastUpdateCheck = update.GetLastCheckedTimestamp()
 			if err := config.SaveUserPreferences(appConfig); err != nil {
 				// Log error but don't interrupt user experience
-				if logger != nil {
-					logger.Error("Failed to save LastUpdateCheck timestamp: %v", err)
+				if lg := logging.GetLogger(); lg != nil {
+					lg.Error("Failed to save LastUpdateCheck timestamp: %v", err)
 				}
 			}
 
 			// Log errors if any
 			if result.Error != nil {
-				if logger != nil {
-					logger.Warn("Update check failed: %v", result.Error)
+				if lg := logging.GetLogger(); lg != nil {
+					lg.Warn("Update check failed: %v", result.Error)
 				}
 				// Don't show error to user during startup - will be visible in logs
 				// Timestamp is updated so we won't keep retrying
@@ -512,8 +508,8 @@ func performStartupUpdateCheck() {
 					// This ensures prompt appears after command output
 				} else {
 					// Still in grace period - don't set pending update
-					if logger != nil {
-						logger.Info("Update available but grace period active - skipping prompt")
+					if lg := logging.GetLogger(); lg != nil {
+						lg.Info("Update available but grace period active - skipping prompt")
 					}
 				}
 			}
