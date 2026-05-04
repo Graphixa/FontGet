@@ -13,6 +13,7 @@ import (
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
+	"fontget/internal/installations"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
@@ -23,11 +24,13 @@ import (
 
 // ParsedFont represents a parsed font file with metadata
 type ParsedFont struct {
-	Name        string
-	Family      string
-	Style       string
-	Type        string
-	Scope       string
+	Name   string
+	Family string
+	Style  string
+	Type   string
+	Scope  string
+	// Path is the absolute path to the font file on disk (used for installation registry merge; not shown in tables).
+	Path string
 	// Repository match fields
 	FontID     string
 	License    string
@@ -204,6 +207,14 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 				}
 			}
 			output.GetDebug().State("Timing: populateMatchData=%s", time.Since(tPopulate))
+
+			tReg := time.Now()
+			if reg, regErr := installations.Load(); regErr != nil {
+				output.GetDebug().Error("installation registry: %v", regErr)
+			} else {
+				mergeInstallationRegistryIntoFamilies(families, reg)
+			}
+			output.GetDebug().State("Timing: mergeInstallationRegistry=%s", time.Since(tReg))
 
 			// Apply filters (now that Font IDs are populated)
 			// Filter by family name and Font ID (type filter already applied during collection)
@@ -525,12 +536,57 @@ func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope
 	}
 
 	return &ParsedFont{
-		Name:        fileName,
-		Family:      family,
-		Style:       style,
-		Type:        fileExt,
-		Scope:       string(scope),
+		Name:   fileName,
+		Family: family,
+		Style:  style,
+		Type:   fileExt,
+		Scope:  string(scope),
+		Path:   fontPath,
 	}
+}
+
+// parsedFontMergeAdapter bridges ParsedFont to installations.RegistryMergeMutableRow without copying merge fields.
+type parsedFontMergeAdapter struct {
+	p *ParsedFont
+}
+
+func (a *parsedFontMergeAdapter) BlankFontID() bool {
+	return strings.TrimSpace(a.p.FontID) == ""
+}
+func (a *parsedFontMergeAdapter) PathForMerge() string {
+	return strings.TrimSpace(a.p.Path)
+}
+func (a *parsedFontMergeAdapter) FamilyForMerge() string {
+	return strings.TrimSpace(a.p.Family)
+}
+func (a *parsedFontMergeAdapter) ApplyRepoCatalog(fontID, license string, categories []string, source string) {
+	a.p.FontID = fontID
+	a.p.License = license
+	a.p.Categories = append([]string(nil), categories...)
+	a.p.Source = source
+}
+
+// mergeInstallationRegistryIntoFamilies fills Font ID / source / license / categories from the
+// installation registry when repository matching left them empty (e.g. Nerd patched family names).
+func mergeInstallationRegistryIntoFamilies(families map[string][]ParsedFont, reg *installations.Registry) {
+	if reg == nil {
+		return
+	}
+	wrapped := make(map[string][]installations.RegistryMergeMutableRow, len(families))
+	for k, g := range families {
+		slots := make([]installations.RegistryMergeMutableRow, len(g))
+		for i := range g {
+			slots[i] = &parsedFontMergeAdapter{p: &families[k][i]}
+		}
+		wrapped[k] = slots
+	}
+	installations.MergeInstallationRegistryIntoFamilyGroups(wrapped, reg, func(instFontID string) (string, string, []string, string, bool) {
+		match, err := repo.MatchRepositoryFontByID(instFontID)
+		if err != nil || match == nil {
+			return "", "", nil, "", false
+		}
+		return match.FontID, match.License, append([]string(nil), match.Categories...), match.Source, true
+	})
 }
 
 // groupByFamily groups fonts by family name

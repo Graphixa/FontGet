@@ -9,11 +9,13 @@ import (
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
+	"fontget/internal/installations"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/shared"
 	"fontget/internal/ui"
+	"fontget/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -1359,7 +1361,97 @@ func installFont(
 		message = "Already installed"
 	}
 
-	return buildInstallResult(status, message, installed, skipped, failed, details, errors, downloadSize), nil
+	res := buildInstallResult(status, message, installed, skipped, failed, details, errors, downloadSize)
+	tryRecordInstallationRegistry(fontID, fontFiles, installScope, fontDir, res)
+	return res, nil
+}
+
+// tryRecordInstallationRegistry writes install provenance after a fully successful install.
+func tryRecordInstallationRegistry(fontID string, fontFiles []repo.FontFile, installScope platform.InstallationScope, fontDir string, result *InstallResult) {
+	if fontID == "" || result == nil {
+		return
+	}
+	if result.Status != InstallStatusCompleted || result.Success <= 0 || result.Failed != 0 {
+		return
+	}
+	if result.Success > len(result.Details) {
+		output.GetDebug().Warning("installation registry: details shorter than success count, skipping record")
+		return
+	}
+	catalogName := ""
+	variantByBasename := make(map[string]string)
+	for _, ff := range fontFiles {
+		b := filepath.Base(strings.TrimSpace(ff.Path))
+		if b == "" {
+			continue
+		}
+		variantByBasename[b] = strings.TrimSpace(ff.Variant)
+	}
+	if len(fontFiles) > 0 {
+		catalogName = strings.TrimSpace(fontFiles[0].Name)
+	}
+	installedBasenames := result.Details[:result.Success]
+	nonEmptyBasenames := 0
+	for _, base := range installedBasenames {
+		if strings.TrimSpace(base) != "" {
+			nonEmptyBasenames++
+		}
+	}
+	var files []installations.InstalledFontFile
+	for _, base := range installedBasenames {
+		base = strings.TrimSpace(base)
+		if base == "" {
+			continue
+		}
+		full := filepath.Join(fontDir, base)
+		md, err := platform.ExtractFontMetadata(full)
+		if err != nil {
+			output.GetDebug().Warning("installation registry: skipping %s (metadata: %v)", full, err)
+			continue
+		}
+		fam := strings.TrimSpace(md.TypographicFamily)
+		if fam == "" {
+			fam = strings.TrimSpace(md.FamilyName)
+		}
+		style := strings.TrimSpace(md.TypographicStyle)
+		if style == "" {
+			style = strings.TrimSpace(md.StyleName)
+		}
+		fullName := strings.TrimSpace(md.FullName)
+		files = append(files, installations.InstalledFontFile{
+			Path:           full,
+			CatalogVariant: variantByBasename[base],
+			SFNT: installations.SFNTSnapshot{
+				Family:   fam,
+				Style:    style,
+				FullName: fullName,
+			},
+		})
+	}
+	if len(files) != nonEmptyBasenames {
+		output.GetDebug().Error("installation registry: incomplete metadata (%d/%d faces); not updating registry for %q", len(files), nonEmptyBasenames, fontID)
+		return
+	}
+	if len(files) == 0 {
+		return
+	}
+	installSrc := ""
+	if meta, metaErr := repo.MatchRepositoryFontByID(fontID); metaErr == nil && meta != nil {
+		installSrc = strings.TrimSpace(meta.Source)
+	} else if metaErr != nil {
+		output.GetDebug().Warning("installation registry: catalog lookup for installation_source failed: %v", metaErr)
+	}
+	err := installations.RecordInstallation(installations.RecordParams{
+		FontID:               fontID,
+		CatalogName:          catalogName,
+		InstallationSource:   installSrc,
+		Scope:                string(installScope),
+		FontGetVersion:       version.GetVersion(),
+		Files:                files,
+	})
+	if err != nil {
+		output.GetDebug().Error("installation registry record failed: %v", err)
+	}
 }
 
 // makeUserFriendlyError converts technical error messages to user-friendly explanations

@@ -733,21 +733,32 @@ func FindFontMatches(fontName string) ([]FontMatch, error) {
 
 // GetFontByID retrieves font information using a specific font ID (e.g., "google.roboto")
 func GetFontByID(fontID string) ([]FontFile, error) {
-	// Get repository (same as FindFontMatches)
 	r, err := GetRepository()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get repository: %w", err)
 	}
-	manifest := r.manifest
-
-	// Search through all sources for the specific ID
-	for _, source := range manifest.Sources {
-		if font, exists := source.Fonts[fontID]; exists {
-			return convertFontInfoToFontFiles(font, fontID)
-		}
+	id, info, _, ok := lookupFontByIDInManifest(r.manifest, fontID)
+	if !ok {
+		return nil, fmt.Errorf("font not found: %s", fontID)
 	}
+	return convertFontInfoToFontFiles(info, id)
+}
 
-	return nil, fmt.Errorf("font not found: %s", fontID)
+// GetFontByIDCached returns font files for a Font ID using only the on-disk manifest cache (no network refresh, no UI).
+// Resolution order matches MatchRepositoryFontByID (source priority, deterministic duplicate-ID winner).
+func GetFontByIDCached(fontID string) ([]FontFile, error) {
+	if strings.TrimSpace(fontID) == "" {
+		return nil, fmt.Errorf("empty font id")
+	}
+	manifest, err := GetCachedManifest()
+	if err != nil {
+		return nil, err
+	}
+	id, info, _, ok := lookupFontByIDInManifest(manifest, fontID)
+	if !ok {
+		return nil, fmt.Errorf("font not found: %s", fontID)
+	}
+	return convertFontInfoToFontFiles(info, id)
 }
 
 // pickDownloadURLFromFileMap chooses a download URL from FontGet-Sources variant or top-level files.

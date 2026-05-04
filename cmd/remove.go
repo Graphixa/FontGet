@@ -9,6 +9,7 @@ import (
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
+	"fontget/internal/installations"
 	"fontget/internal/normalize"
 	"fontget/internal/output"
 	"fontget/internal/platform"
@@ -83,6 +84,17 @@ func extractBaseFontName(familyName string) string {
 
 // ProgressCallback is a function type for reporting progress during font finding
 type ProgressCallback func(percent float64)
+
+// newRemovalManifestFontIDProbe uses one cached manifest read when available so pre-eval and
+// registry checks do not re-read the manifest per argument.
+func newRemovalManifestFontIDProbe() installations.ManifestFontIDProbe {
+	if m, err := repo.GetCachedManifest(); err == nil && m != nil {
+		return func(id string) bool {
+			return repo.IsFontIDInManifest(m, id)
+		}
+	}
+	return repo.IsFontIDInCachedManifest
+}
 
 // findFontFamilyFiles returns a list of font files that belong to the given font family
 // If progressCallback is provided, it will be called periodically with progress (0-50% range)
@@ -328,8 +340,20 @@ func updateRemovalStatus(status *RemovalStatus, result *RemoveResult) {
 	status.Failed += result.Failed
 }
 
-// findFontFilesForRemoval finds all font files matching the font name
-func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, scope platform.InstallationScope, repository *repo.Repository) ([]string, error) {
+// findFontFilesForRemoval finds all font files matching the font name.
+// The bool is true when paths came from the installation registry (exact FontGet provenance).
+func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, scope platform.InstallationScope, repository *repo.Repository, installReg *installations.Registry, manifestProbe installations.ManifestFontIDProbe) ([]string, bool, error) {
+	if installations.ShouldConsultRegistryForRemoval(fontName, installReg, manifestProbe) && installReg != nil {
+		fontDir := fontManager.GetFontDir(scope)
+		if inst := installReg.FindByFontID(fontName); inst != nil {
+			bases := inst.BasenamesForDir(fontDir)
+			if len(bases) > 0 {
+				output.GetDebug().State("Removal: using installation registry for font ID %q (%d file(s))", fontName, len(bases))
+				return bases, true, nil
+			}
+		}
+	}
+
 	// Resolve Font ID to font name if needed (supports both Font IDs and font names)
 	searchName := resolveFontNameOrID(fontName, repository)
 	if searchName != fontName {
@@ -355,10 +379,10 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 	}
 
 	if len(matchingFonts) == 0 {
-		return nil, fmt.Errorf("font not found: %s", fontName)
+		return nil, false, fmt.Errorf("font not found: %s", fontName)
 	}
 
-	return matchingFonts, nil
+	return matchingFonts, false, nil
 }
 
 // RemoveFontFilesParams contains parameters for removeFontFiles function
@@ -493,13 +517,15 @@ func removeFont(
 	scope platform.InstallationScope,
 	fontDir string,
 	repository *repo.Repository,
+	installReg *installations.Registry,
+	manifestProbe installations.ManifestFontIDProbe,
 	onProgress StepProgressFunc,
 ) (*RemoveResult, error) {
 	// Find font files for removal
 	if onProgress != nil {
 		onProgress(removeStepScan, 0)
 	}
-	matchingFonts, err := findFontFilesForRemoval(fontName, fontManager, scope, repository)
+	matchingFonts, usedRegistry, err := findFontFilesForRemoval(fontName, fontManager, scope, repository, installReg, manifestProbe)
 	if err != nil {
 		// Font not found - return result with failed status
 		result := buildRemoveResult(0, 0, 0, nil, nil)
@@ -521,8 +547,13 @@ func removeFont(
 		OnProgress:           onProgress,
 	})
 
-	// Build and return result
-	return buildRemoveResult(removed, skipped, failed, details, errors), nil
+	res := buildRemoveResult(removed, skipped, failed, details, errors)
+	if usedRegistry && failed == 0 && removed == len(matchingFonts) && removed > 0 {
+		if rmErr := installations.RemoveInstallation(fontName); rmErr != nil {
+			output.GetDebug().Error("remove installation registry entry: %v", rmErr)
+		}
+	}
+	return res, nil
 }
 
 // FontInfo represents a font found during pre-evaluation
@@ -538,6 +569,23 @@ func checkFontMatchesFontID(fontFamilyName string, targetFontID string, fontInde
 	return repo.MatchFontFamilyToFontID(fontFamilyName, targetFontID, fontIndex)
 }
 
+// fontResolvableViaInstallationRegistry returns true when the install registry lists files for
+// this Font ID under one of the requested scopes' font directories. This must align with
+// findFontFilesForRemoval's registry branch so pre-eval does not filter out Nerd-style IDs.
+func fontResolvableViaInstallationRegistry(fontName string, scopes []platform.InstallationScope, fontManager platform.FontManager, installReg *installations.Registry, manifestProbe installations.ManifestFontIDProbe) (bool, string) {
+	return installations.InstallationRegistryResolvable(fontName, installReg, scopes, fontManager.GetFontDir, manifestProbe)
+}
+
+// installationRegistryHasFilesInScope reports whether the installation registry lists at least one
+// file path under fontManager's directory for the given scope (used to bypass heuristic find gaps).
+func installationRegistryHasFilesInScope(fontID string, fontManager platform.FontManager, scope platform.InstallationScope, installReg *installations.Registry, manifestProbe installations.ManifestFontIDProbe) bool {
+	if installReg == nil || !installations.ShouldConsultRegistryForRemoval(fontID, installReg, manifestProbe) {
+		return false
+	}
+	dir := fontManager.GetFontDir(scope)
+	return installations.InstallationHasBasenamesUnderDir(installReg, fontID, dir)
+}
+
 // preEvaluateFontsForRemoval pre-evaluates all fonts to separate found fonts from not found fonts.
 // This ensures we only show found fonts in the progress bar.
 func preEvaluateFontsForRemoval(
@@ -545,6 +593,8 @@ func preEvaluateFontsForRemoval(
 	scopes []platform.InstallationScope,
 	fontManager platform.FontManager,
 	repository *repo.Repository,
+	installReg *installations.Registry,
+	manifestProbe installations.ManifestFontIDProbe,
 ) (foundFonts []FontInfo, notFoundFonts []string, fontNameMap map[string]string) {
 	fontNameMap = make(map[string]string) // Maps search name to proper name for found fonts
 
@@ -553,7 +603,8 @@ func preEvaluateFontsForRemoval(
 	var fontIndex repo.FontIndex
 	hasFontIDs := false
 	for _, fontName := range fontNames {
-		if strings.Contains(fontName, ".") {
+		fn := strings.TrimSpace(fontName)
+		if strings.Contains(fn, ".") || manifestProbe(fn) {
 			hasFontIDs = true
 			break
 		}
@@ -571,12 +622,18 @@ func preEvaluateFontsForRemoval(
 		properName := ""
 		fontFound := false
 
+		if ok, pn := fontResolvableViaInstallationRegistry(fontName, scopes, fontManager, installReg, manifestProbe); ok {
+			foundFonts = append(foundFonts, FontInfo{SearchName: fontName, ProperName: pn})
+			fontNameMap[fontName] = pn
+			continue
+		}
+
 		// Resolve Font ID to font name if needed (supports both Font IDs and font names)
 		searchName := resolveFontNameOrID(fontName, repository)
-		isFontID := strings.Contains(fontName, ".")
+		isFontID := strings.Contains(strings.TrimSpace(fontName), ".") || manifestProbe(fontName)
 		targetFontID := ""
 		if isFontID {
-			targetFontID = strings.ToLower(fontName)
+			targetFontID = strings.ToLower(strings.TrimSpace(fontName))
 		}
 
 		// Try to find the font and extract its proper name
@@ -820,6 +877,8 @@ func setupRemovalOperationItems(
 	scopeLabel []string,
 	fontManager platform.FontManager,
 	repository *repo.Repository,
+	installReg *installations.Registry,
+	manifestProbe installations.ManifestFontIDProbe,
 ) (operationItems []components.OperationItem, fontScopeItems []FontScopeItem) {
 	if len(scopes) > 1 {
 		// "all" scope - check each font in each scope individually
@@ -828,6 +887,7 @@ func setupRemovalOperationItems(
 			searchName := resolveFontNameOrID(fontInfo.SearchName, repository)
 			for j, scopeType := range scopes {
 				scopeLabelName := scopeLabel[j]
+				fontDir := fontManager.GetFontDir(scopeType)
 				// Check if font exists in this scope
 				matchingFonts := findFontFamilyFiles(searchName, fontManager, scopeType)
 				if len(matchingFonts) == 0 {
@@ -838,12 +898,17 @@ func setupRemovalOperationItems(
 						matchingFonts = findFontFamilyFiles(repoSearchName, fontManager, scopeType)
 					}
 				}
+				// Installation registry (e.g. Nerd): catalog name may not match on-disk filenames.
+				if len(matchingFonts) == 0 && installations.ShouldConsultRegistryForRemoval(fontInfo.SearchName, installReg, manifestProbe) && installReg != nil {
+					if inst := installReg.FindByFontID(fontInfo.SearchName); inst != nil {
+						matchingFonts = inst.BasenamesForDir(fontDir)
+					}
+				}
 				// Only create item if font exists in this scope
 				if len(matchingFonts) > 0 {
 					// Extract proper name if not already set
 					properName := fontInfo.ProperName
 					if properName == "" {
-						fontDir := fontManager.GetFontDir(scopeType)
 						firstFontPath := filepath.Join(fontDir, matchingFonts[0])
 						properName = extractFontFamilyNameFromPath(firstFontPath)
 					}
@@ -1028,12 +1093,20 @@ Use --scope to set removal location:
 		// Process font names from arguments
 		fontNames := cmdutils.ParseFontNames(args)
 
+		installReg, regErr := installations.Load()
+		if regErr != nil {
+			output.GetDebug().Error("installation registry: %v", regErr)
+			installReg = nil
+		}
+
+		manifestProbe := newRemovalManifestFontIDProbe()
+
 		// Note: Header will be shown only for successful operations, not for not found cases
 		// This matches the add command behavior
 
 		// Pre-evaluate all fonts: separate found fonts from not found fonts
 		// This ensures we only show found fonts in the progress bar
-		foundFonts, notFoundFonts, _ := preEvaluateFontsForRemoval(fontNames, scopes, fontManager, r)
+		foundFonts, notFoundFonts, _ := preEvaluateFontsForRemoval(fontNames, scopes, fontManager, r, installReg, manifestProbe)
 
 		// Filter out protected system fonts before removal
 		// This prevents users from accidentally removing critical system fonts on their platform
@@ -1557,7 +1630,7 @@ Use --scope to set removal location:
 		// Handle single scope operations (user or machine) - use TUI like add command
 		// For "all" scope: Check each font in each scope individually and only create items
 		// for scopes where the font actually exists (using existing detection logic)
-		operationItems, fontScopeItems := setupRemovalOperationItems(foundFonts, scopes, scopeLabel, fontManager, r)
+		operationItems, fontScopeItems := setupRemovalOperationItems(foundFonts, scopes, scopeLabel, fontManager, r, installReg, manifestProbe)
 
 		// Check if flags are set
 		verbose, _ := cmd.Flags().GetBool("verbose")
@@ -1585,6 +1658,8 @@ Use --scope to set removal location:
 						scopeType,
 						fontDir,
 						r,
+						installReg,
+						manifestProbe,
 						nil,
 					)
 
@@ -1688,6 +1763,8 @@ Use --scope to set removal location:
 							item.ScopeType,
 							fontDir,
 							r,
+							installReg,
+							manifestProbe,
 							onProgress,
 						)
 
@@ -1817,7 +1894,11 @@ Use --scope to set removal location:
 							send(components.ProgressUpdateMsg{Percent: totalProgress})
 
 							// Handle different scenarios
-							if len(userFonts) == 0 && len(machineFonts) == 0 {
+							// Heuristic filename walk often misses Nerd-style installs; installation registry
+							// may still have exact paths (removeFont consults it). Do not fail preflight here.
+							regHasFiles := installationRegistryHasFilesInScope(fontName, fontManager, platform.UserScope, installReg, manifestProbe) ||
+								installationRegistryHasFilesInScope(fontName, fontManager, platform.MachineScope, installReg, manifestProbe)
+							if len(userFonts) == 0 && len(machineFonts) == 0 && !regHasFiles {
 								// Font not found in either scope - mark as failed and continue
 								fontStatus = StatusFailed
 								statusMessage = "Font not found"
@@ -1875,6 +1956,8 @@ Use --scope to set removal location:
 								platform.UserScope,
 								fontDir,
 								r,
+								installReg,
+								manifestProbe,
 								onProgress,
 							)
 
@@ -1983,6 +2066,8 @@ Use --scope to set removal location:
 								scopeType,
 								fontDir,
 								r,
+								installReg,
+								manifestProbe,
 								onProgress,
 							)
 

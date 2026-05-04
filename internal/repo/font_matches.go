@@ -352,6 +352,74 @@ func BuildFontIndexForMatching() (FontIndex, error) {
 	return buildFontIndex(manifest), nil
 }
 
+// IsFontIDInCachedManifest reports whether fontID matches a font entry in the on-disk manifest (exact ID, case-insensitive).
+func IsFontIDInCachedManifest(fontID string) bool {
+	fontID = strings.TrimSpace(fontID)
+	if fontID == "" {
+		return false
+	}
+	manifest, err := GetCachedManifest()
+	if err != nil || manifest == nil {
+		return false
+	}
+	_, _, _, ok := lookupFontByIDInManifest(manifest, fontID)
+	return ok
+}
+
+// lookupFontByIDInManifest resolves font ID across sources using getSourcesInPriorityOrder:
+// higher-priority sources (lower priority number) win when duplicate IDs exist across sources.
+func lookupFontByIDInManifest(manifest *FontManifest, fontID string) (canonicalID string, font FontInfo, sourceName string, ok bool) {
+	want := strings.ToLower(strings.TrimSpace(fontID))
+	if manifest == nil || manifest.Sources == nil || want == "" {
+		return "", FontInfo{}, "", false
+	}
+	for _, sn := range getSourcesInPriorityOrder(manifest) {
+		source, exists := manifest.Sources[sn]
+		if !exists || source.Fonts == nil {
+			continue
+		}
+		for id, f := range source.Fonts {
+			if strings.ToLower(strings.TrimSpace(id)) != want {
+				continue
+			}
+			return id, f, sn, true
+		}
+	}
+	return "", FontInfo{}, "", false
+}
+
+// IsFontIDInManifest reports whether fontID exists in manifest using the same resolution rules as lookupFontByIDInManifest (no extra manifest load).
+func IsFontIDInManifest(manifest *FontManifest, fontID string) bool {
+	if manifest == nil {
+		return false
+	}
+	_, _, _, ok := lookupFontByIDInManifest(manifest, fontID)
+	return ok
+}
+
+// MatchRepositoryFontByID returns repository metadata for an exact font ID if it exists in the cached manifest.
+// Returns (nil, nil) when the ID is not found (not an error).
+// Uses GetCachedManifest only (no network / refresh) so it is safe for list-time merges.
+func MatchRepositoryFontByID(fontID string) (*InstalledFontMatch, error) {
+	if strings.TrimSpace(fontID) == "" {
+		return nil, nil
+	}
+	manifest, err := GetCachedManifest()
+	if err != nil {
+		return nil, err
+	}
+	id, info, sn, ok := lookupFontByIDInManifest(manifest, fontID)
+	if !ok {
+		return nil, nil
+	}
+	return &InstalledFontMatch{
+		FontID:     id,
+		License:    info.License,
+		Categories: info.Categories,
+		Source:     sn,
+	}, nil
+}
+
 // MatchFontFamilyToFontID checks if an installed font family name matches a specific Font ID.
 // This is more accurate than string matching and works for all Font ID variants.
 // Returns true if the font's Font ID matches the target Font ID.

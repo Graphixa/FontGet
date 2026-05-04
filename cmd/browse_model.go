@@ -3,9 +3,11 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"fontget/internal/components"
+	"fontget/internal/installations"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/shared"
@@ -123,6 +125,33 @@ type browseModel struct {
 
 	// Cached total fonts in the manifest (for footer “shown / total”).
 	browseManifestFontCount int
+
+	installRegOnce sync.Once
+	installReg     *installations.Registry
+	installRegErr  error
+
+	manifestProbeOnce       sync.Once
+	cachedManifestFontProbe installations.ManifestFontIDProbe
+}
+
+func (m *browseModel) cachedInstallRegistry() (*installations.Registry, error) {
+	m.installRegOnce.Do(func() {
+		m.installReg, m.installRegErr = installations.Load()
+	})
+	return m.installReg, m.installRegErr
+}
+
+func (m *browseModel) cachedManifestFontIDProbe() installations.ManifestFontIDProbe {
+	m.manifestProbeOnce.Do(func() {
+		if man, err := repo.GetCachedManifest(); err == nil && man != nil {
+			m.cachedManifestFontProbe = func(id string) bool {
+				return repo.IsFontIDInManifest(man, id)
+			}
+			return
+		}
+		m.cachedManifestFontProbe = repo.IsFontIDInCachedManifest
+	})
+	return m.cachedManifestFontProbe
 }
 
 func newBrowseModel(
@@ -357,7 +386,8 @@ func (m *browseModel) openModal() tea.Cmd {
 		m.showToastPopup(ui.RenderError("Could not load font details"))
 		return nil
 	}
-	_, findErr := findFontFilesForRemoval(id, m.fontManager, m.installScope, m.repository)
+	installReg, _ := m.cachedInstallRegistry()
+	_, _, findErr := findFontFilesForRemoval(id, m.fontManager, m.installScope, m.repository, installReg, m.cachedManifestFontIDProbe())
 	installed := findErr == nil
 	primary := "Install"
 	if installed {
@@ -560,7 +590,8 @@ func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) t
 		onProgress := func(step string, stepPct float64) {
 			ch <- browseOpProgressMsg{phase: step, percent: OverallRemovePercent(0, 1, step, stepPct)}
 		}
-		rr, err := removeFont(fontID, fm, scope, fontDir, repository, onProgress)
+		installReg, _ := m.cachedInstallRegistry()
+		rr, err := removeFont(fontID, fm, scope, fontDir, repository, installReg, m.cachedManifestFontIDProbe(), onProgress)
 		ch <- uninstallFinishedMsg{result: rr, err: err, fontID: fontID}
 	}()
 	return m.waitForOpMsg()
