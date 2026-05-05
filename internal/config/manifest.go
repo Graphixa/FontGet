@@ -111,7 +111,7 @@ func downloadAndParseSource(url, filename string) (*SourceData, error) {
 	sourcePath := filepath.Join(getSourcesDir(), filename)
 
 	// Ensure sources directory exists (as hidden directory)
-	if err := platform.CreateHiddenDirectory(getSourcesDir(), 0755); err != nil {
+	if err := platform.CreateHiddenDirectory(getSourcesDir(), 0750); err != nil {
 		return nil, fmt.Errorf("failed to create sources directory: %v", err)
 	}
 
@@ -230,7 +230,7 @@ func saveManifest(manifest *Manifest) error {
 	manifestPath := getManifestPath()
 
 	// Ensure config directory exists (as hidden directory)
-	if err := platform.CreateHiddenDirectory(filepath.Dir(manifestPath), 0755); err != nil {
+	if err := platform.CreateHiddenDirectory(filepath.Dir(manifestPath), 0750); err != nil {
 		return fmt.Errorf("failed to create config directory: %v", err)
 	}
 
@@ -239,7 +239,7 @@ func saveManifest(manifest *Manifest) error {
 		return fmt.Errorf("failed to marshal manifest: %v", err)
 	}
 
-	if err := os.WriteFile(manifestPath, data, 0644); err != nil {
+	if err := os.WriteFile(manifestPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write manifest: %v", err)
 	}
 

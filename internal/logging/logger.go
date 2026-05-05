@@ -160,12 +160,12 @@ func NewWithPath(config Config, logFilePath string) (*Logger, error) {
 	logDir := filepath.Dir(logFilePath)
 
 	// Create log directory if it doesn't exist
-	if err := os.MkdirAll(logDir, 0755); err != nil {
+	if err := os.MkdirAll(logDir, 0750); err != nil {
 		return nil, fmt.Errorf("failed to create log directory: %w", err)
 	}
 
 	// Create the log file
-	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open log file: %w", err)
 	}
@@ -173,7 +173,10 @@ func NewWithPath(config Config, logFilePath string) (*Logger, error) {
 	// Get current file size
 	fileInfo, err := file.Stat()
 	if err != nil {
-		file.Close()
+		closeErr := file.Close()
+		if closeErr != nil {
+			return nil, fmt.Errorf("failed to get file info: %w (close: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("failed to get file info: %w", err)
 	}
 
@@ -298,7 +301,7 @@ func (l *Logger) rotate() error {
 	}
 
 	// Create a new file
-	file, err := os.OpenFile(l.file.Name(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	file, err := os.OpenFile(l.file.Name(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
 	if err != nil {
 		return fmt.Errorf("failed to create new log file: %w", err)
 	}

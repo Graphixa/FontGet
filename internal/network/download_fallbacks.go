@@ -228,6 +228,7 @@ func runCurl(runner CommandRunner, curlPath, url, targetPath string, opts Downlo
 	// Keep total added time small to avoid hangs in interactive UI.
 	maxAttempts := 3
 	backoff := 250 * time.Millisecond
+	// #nosec G404 -- non-cryptographic jitter for download retry backoff only (not security-sensitive).
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {

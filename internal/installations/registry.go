@@ -212,7 +212,7 @@ func saveUnlocked(reg *Registry) error {
 	}
 	reg.SchemaVersion = schemaVersion
 	path := RegistryPath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("mkdir for installation registry: %w", err)
 	}
 	payload, err := json.MarshalIndent(reg, "", "  ")
@@ -220,11 +220,13 @@ func saveUnlocked(reg *Registry) error {
 		return fmt.Errorf("marshal installation registry: %w", err)
 	}
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, payload, 0o644); err != nil {
+	if err := os.WriteFile(tmp, payload, 0o600); err != nil {
 		return fmt.Errorf("write installation registry temp: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		if remErr := os.Remove(tmp); remErr != nil && !os.IsNotExist(remErr) {
+			return fmt.Errorf("rename installation registry: %w (temp file cleanup: %v)", err, remErr)
+		}
 		return fmt.Errorf("rename installation registry: %w", err)
 	}
 	return nil

@@ -361,8 +361,13 @@ func InitThemeManager() error {
 // GetThemeManager returns the global theme manager
 func GetThemeManager() *ThemeManager {
 	if globalThemeManager == nil {
-		// Initialize with default if not already initialized
-		InitThemeManager()
+		_ = InitThemeManager()
+	}
+	if globalThemeManager == nil {
+		globalThemeManager = NewThemeManager(config.GetAppConfigDir())
+	}
+	if globalThemeManager.GetCurrentTheme() == nil {
+		globalThemeManager.SetTheme(LoadSystemTheme())
 	}
 	return globalThemeManager
 }

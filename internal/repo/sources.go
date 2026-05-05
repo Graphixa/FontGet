@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"fontget/internal/config"
+	"fontget/internal/logging"
 	"fontget/internal/network"
 	"fontget/internal/sources"
 	"fontget/internal/ui"
@@ -223,7 +224,13 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 
 	// Save to cache
 	if data, err := json.MarshalIndent(sourceData, "", "  "); err == nil {
-		os.WriteFile(cacheFile, data, 0644)
+		if werr := os.WriteFile(cacheFile, data, 0600); werr != nil {
+			if log := logging.GetLogger(); log != nil {
+				log.Warn("failed to write sources cache %q: %v", cacheFile, werr)
+			} else {
+				fmt.Fprintf(os.Stderr, "fontget: warning: failed to write sources cache %q: %v\n", cacheFile, werr)
+			}
+		}
 	}
 
 	if progress != nil {
@@ -510,7 +517,13 @@ func GetRepository() (*Repository, error) {
 			}
 
 			// Update the timestamp
-			config.UpdateSourcesLastUpdated()
+			if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
+				if log := logging.GetLogger(); log != nil {
+					log.Warn("UpdateSourcesLastUpdated: %v", uerr)
+				} else {
+					fmt.Fprintf(os.Stderr, "fontget: warning: UpdateSourcesLastUpdated: %v\n", uerr)
+				}
+			}
 		}
 		return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 	}
@@ -531,7 +544,13 @@ func GetRepository() (*Repository, error) {
 		}
 
 		// Update the timestamp
-		config.UpdateSourcesLastUpdated()
+		if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
+			if log := logging.GetLogger(); log != nil {
+				log.Warn("UpdateSourcesLastUpdated: %v", uerr)
+			} else {
+				fmt.Fprintf(os.Stderr, "fontget: warning: UpdateSourcesLastUpdated: %v\n", uerr)
+			}
+		}
 		return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 	}
 
@@ -544,7 +563,13 @@ func GetRepository() (*Repository, error) {
 			return nil, err
 		}
 		// Update the timestamp
-		config.UpdateSourcesLastUpdated()
+		if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
+			if log := logging.GetLogger(); log != nil {
+				log.Warn("UpdateSourcesLastUpdated: %v", uerr)
+			} else {
+				fmt.Fprintf(os.Stderr, "fontget: warning: UpdateSourcesLastUpdated: %v\n", uerr)
+			}
+		}
 	}
 	return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 }
@@ -579,7 +604,13 @@ func GetRepositoryWithRefresh() (*Repository, error) {
 	}
 
 	// Update the timestamp
-	config.UpdateSourcesLastUpdated()
+	if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
+		if log := logging.GetLogger(); log != nil {
+			log.Warn("UpdateSourcesLastUpdated: %v", uerr)
+		} else {
+			fmt.Fprintf(os.Stderr, "fontget: warning: UpdateSourcesLastUpdated: %v\n", uerr)
+		}
+	}
 	return &Repository{manifest: manifest, useConfiguredSearchSort: useSearchSort}, nil
 }
 

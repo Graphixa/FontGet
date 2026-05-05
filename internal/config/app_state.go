@@ -52,7 +52,7 @@ func GetConfigDir() (string, error) {
 	}
 
 	// Create config directory if it doesn't exist (as hidden directory)
-	if err := platform.CreateHiddenDirectory(configDir, 0755); err != nil {
+	if err := platform.CreateHiddenDirectory(configDir, 0750); err != nil {
 		return "", fmt.Errorf("failed to create config directory: %w", err)
 	}
 
@@ -113,7 +113,7 @@ func SaveAppState(config *UserConfig) error {
 	}
 
 	// Write config file
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 

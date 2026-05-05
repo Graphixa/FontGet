@@ -98,7 +98,7 @@ func newRemovalManifestFontIDProbe() installations.ManifestFontIDProbe {
 
 // findFontFamilyFiles returns a list of font files that belong to the given font family
 // If progressCallback is provided, it will be called periodically with progress (0-50% range)
-func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, scope platform.InstallationScope, progressCallback ...ProgressCallback) []string {
+func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, scope platform.InstallationScope, progressCallback ...ProgressCallback) ([]string, error) {
 	// Get the font directory
 	fontDir := fontManager.GetFontDir(scope)
 
@@ -110,7 +110,7 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 	// Count total font files first for progress calculation
 	var totalFiles int
 	var fontFiles []string
-	filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -123,11 +123,13 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("scan font directory %q: %w", fontDir, err)
+	}
 
 	// If no files found, return early
 	if totalFiles == 0 {
-		return []string{}
+		return []string{}, nil
 	}
 
 	// Get progress callback if provided
@@ -141,7 +143,7 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 	filesScanned := 0
 	lastProgressUpdate := 0.0
 
-	filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
+	if err := filepath.Walk(fontDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -201,14 +203,16 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 			}
 		}
 		return nil
-	})
+	}); err != nil {
+		return nil, fmt.Errorf("scan font directory %q: %w", fontDir, err)
+	}
 
 	// Send final progress update (50%) if callback provided
 	if progressCb != nil {
 		progressCb(50.0)
 	}
 
-	return matchingFonts
+	return matchingFonts, nil
 }
 
 // normalizeFontName normalizes a font name for comparison
@@ -362,7 +366,10 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 
 	// Find font files in the specified scope
 	output.GetDebug().State("Calling findFontFamilyFiles(%s, %s)", searchName, scope)
-	matchingFonts := findFontFamilyFiles(searchName, fontManager, scope)
+	matchingFonts, walkErr := findFontFamilyFiles(searchName, fontManager, scope)
+	if walkErr != nil {
+		return nil, false, walkErr
+	}
 	output.GetDebug().State("Found %d matching font file(s)", len(matchingFonts))
 
 	// If no direct matches, try repository search
@@ -371,7 +378,10 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 		results, err := repository.SearchFonts(searchName, "false")
 		if err == nil && len(results) > 0 {
 			output.GetDebug().State("Repository search found: %s, searching for matching files", results[0].Name)
-			matchingFonts = findFontFamilyFiles(results[0].Name, fontManager, scope)
+			matchingFonts, walkErr = findFontFamilyFiles(results[0].Name, fontManager, scope)
+			if walkErr != nil {
+				return nil, false, walkErr
+			}
 			output.GetDebug().State("Found %d matching font file(s) after repository search", len(matchingFonts))
 		} else if err != nil {
 			output.GetDebug().State("Repository search failed: %v", err)
@@ -595,7 +605,7 @@ func preEvaluateFontsForRemoval(
 	repository *repo.Repository,
 	installReg *installations.Registry,
 	manifestProbe installations.ManifestFontIDProbe,
-) (foundFonts []FontInfo, notFoundFonts []string, fontNameMap map[string]string) {
+) (foundFonts []FontInfo, notFoundFonts []string, fontNameMap map[string]string, err error) {
 	fontNameMap = make(map[string]string) // Maps search name to proper name for found fonts
 
 	// Build font index once for all Font ID matching (optimization)
@@ -640,7 +650,10 @@ func preEvaluateFontsForRemoval(
 		// For "all" scope, check all scopes to find the font (don't break early)
 		// For single scope, break after first match
 		for _, scopeType := range scopes {
-			matchingFonts := findFontFamilyFiles(searchName, fontManager, scopeType)
+			matchingFonts, walkErr := findFontFamilyFiles(searchName, fontManager, scopeType)
+			if walkErr != nil {
+				return nil, nil, nil, walkErr
+			}
 			if len(matchingFonts) > 0 {
 				fontDir := fontManager.GetFontDir(scopeType)
 
@@ -689,7 +702,10 @@ func preEvaluateFontsForRemoval(
 			if err == nil && len(results) > 0 {
 				repoSearchName := results[0].Name
 				for _, scopeType := range scopes {
-					matchingFonts := findFontFamilyFiles(repoSearchName, fontManager, scopeType)
+					matchingFonts, walkErr := findFontFamilyFiles(repoSearchName, fontManager, scopeType)
+					if walkErr != nil {
+						return nil, nil, nil, walkErr
+					}
 					if len(matchingFonts) > 0 {
 						fontDir := fontManager.GetFontDir(scopeType)
 
@@ -753,7 +769,10 @@ func preEvaluateFontsForRemoval(
 				// not the base font that might exist in machine scope
 				if isFontID && fontIndex != nil {
 					// Re-check the specified scope more carefully with Font ID matching
-					specifiedScopeMatchingFonts := findFontFamilyFiles(searchName, fontManager, scopes[0])
+					specifiedScopeMatchingFonts, walkErr := findFontFamilyFiles(searchName, fontManager, scopes[0])
+					if walkErr != nil {
+						return nil, nil, nil, walkErr
+					}
 					if len(specifiedScopeMatchingFonts) > 0 {
 						fontDir := fontManager.GetFontDir(scopes[0])
 						// Check all matching fonts to find one that matches the Font ID
@@ -772,7 +791,10 @@ func preEvaluateFontsForRemoval(
 
 				// If still not found, check opposite scope
 				if !fontFound {
-					oppositeMatchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+					oppositeMatchingFonts, walkErr := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+					if walkErr != nil {
+						return nil, nil, nil, walkErr
+					}
 					if len(oppositeMatchingFonts) > 0 {
 						oppositeFontDir := fontManager.GetFontDir(oppositeScope)
 
@@ -856,7 +878,7 @@ func preEvaluateFontsForRemoval(
 		}
 	}
 
-	return foundFonts, notFoundFonts, fontNameMap
+	return foundFonts, notFoundFonts, fontNameMap, nil
 }
 
 // FontScopeItem represents a font+scope combination for multi-scope operations
@@ -879,7 +901,7 @@ func setupRemovalOperationItems(
 	repository *repo.Repository,
 	installReg *installations.Registry,
 	manifestProbe installations.ManifestFontIDProbe,
-) (operationItems []components.OperationItem, fontScopeItems []FontScopeItem) {
+) (operationItems []components.OperationItem, fontScopeItems []FontScopeItem, err error) {
 	if len(scopes) > 1 {
 		// "all" scope - check each font in each scope individually
 		itemIndex := 0
@@ -889,13 +911,19 @@ func setupRemovalOperationItems(
 				scopeLabelName := scopeLabel[j]
 				fontDir := fontManager.GetFontDir(scopeType)
 				// Check if font exists in this scope
-				matchingFonts := findFontFamilyFiles(searchName, fontManager, scopeType)
+				matchingFonts, walkErr := findFontFamilyFiles(searchName, fontManager, scopeType)
+				if walkErr != nil {
+					return nil, nil, walkErr
+				}
 				if len(matchingFonts) == 0 {
 					// Try repository search
 					results, err := repository.SearchFonts(searchName, "false")
 					if err == nil && len(results) > 0 {
 						repoSearchName := results[0].Name
-						matchingFonts = findFontFamilyFiles(repoSearchName, fontManager, scopeType)
+						matchingFonts, walkErr = findFontFamilyFiles(repoSearchName, fontManager, scopeType)
+						if walkErr != nil {
+							return nil, nil, walkErr
+						}
 					}
 				}
 				// Installation registry (e.g. Nerd): catalog name may not match on-disk filenames.
@@ -942,7 +970,7 @@ func setupRemovalOperationItems(
 			})
 		}
 	}
-	return operationItems, fontScopeItems
+	return operationItems, fontScopeItems, nil
 }
 
 // containsAny checks if a string contains any of the given substrings (case-insensitive)
@@ -1106,7 +1134,10 @@ Use --scope to set removal location:
 
 		// Pre-evaluate all fonts: separate found fonts from not found fonts
 		// This ensures we only show found fonts in the progress bar
-		foundFonts, notFoundFonts, _ := preEvaluateFontsForRemoval(fontNames, scopes, fontManager, r, installReg, manifestProbe)
+		foundFonts, notFoundFonts, _, preErr := preEvaluateFontsForRemoval(fontNames, scopes, fontManager, r, installReg, manifestProbe)
+		if preErr != nil {
+			return preErr
+		}
 
 		// Filter out protected system fonts before removal
 		// This prevents users from accidentally removing critical system fonts on their platform
@@ -1204,13 +1235,25 @@ Use --scope to set removal location:
 								// Resolve Font ID to font name if needed
 								searchName := resolveFontNameOrID(fontName, r)
 								// Try direct match first
-								matchingFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+								matchingFonts, walkErr := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+								if walkErr != nil {
+									if log := GetLogger(); log != nil {
+										log.Warn("scan opposite scope font dir: %v", walkErr)
+									}
+									matchingFonts = nil
+								}
 								if len(matchingFonts) == 0 {
 									// Try repository search
 									results, err := r.SearchFonts(searchName, "false")
 									if err == nil && len(results) > 0 {
 										repoSearchName := results[0].Name
-										matchingFonts = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
+										matchingFonts, walkErr = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
+										if walkErr != nil {
+											if log := GetLogger(); log != nil {
+												log.Warn("scan opposite scope font dir: %v", walkErr)
+											}
+											matchingFonts = nil
+										}
 									}
 								}
 								if len(matchingFonts) > 0 {
@@ -1630,7 +1673,10 @@ Use --scope to set removal location:
 		// Handle single scope operations (user or machine) - use TUI like add command
 		// For "all" scope: Check each font in each scope individually and only create items
 		// for scopes where the font actually exists (using existing detection logic)
-		operationItems, fontScopeItems := setupRemovalOperationItems(foundFonts, scopes, scopeLabel, fontManager, r, installReg, manifestProbe)
+		operationItems, fontScopeItems, setupErr := setupRemovalOperationItems(foundFonts, scopes, scopeLabel, fontManager, r, installReg, manifestProbe)
+		if setupErr != nil {
+			return setupErr
+		}
 
 		// Check if flags are set
 		verbose, _ := cmd.Flags().GetBool("verbose")
@@ -1873,18 +1919,42 @@ Use --scope to set removal location:
 								send(components.ProgressUpdateMsg{Percent: totalProgress})
 							}
 							// Check both scopes efficiently with progress updates
-							machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope, progressCb)
+							machineFonts, werr := findFontFamilyFiles(searchName, fontManager, platform.MachineScope, progressCb)
+							if werr != nil {
+								if log := GetLogger(); log != nil {
+									log.Warn("scan machine font dir: %v", werr)
+								}
+								machineFonts = nil
+							}
 							findingProgress = 25.0 // Set to 25% after machine scope completes
-							userFonts := findFontFamilyFiles(searchName, fontManager, platform.UserScope, progressCb)
+							userFonts, werr2 := findFontFamilyFiles(searchName, fontManager, platform.UserScope, progressCb)
+							if werr2 != nil {
+								if log := GetLogger(); log != nil {
+									log.Warn("scan user font dir: %v", werr2)
+								}
+								userFonts = nil
+							}
 
 							// If no direct matches, try repository search to find the font
 							if len(machineFonts) == 0 && len(userFonts) == 0 {
 								results, err := r.SearchFonts(searchName, "false")
 								if err == nil && len(results) > 0 {
 									repoSearchName := results[0].Name
-									machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope, progressCb)
+									machineFonts, werr = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope, progressCb)
+									if werr != nil {
+										if log := GetLogger(); log != nil {
+											log.Warn("scan machine font dir: %v", werr)
+										}
+										machineFonts = nil
+									}
 									findingProgress = 25.0
-									userFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.UserScope, progressCb)
+									userFonts, werr2 = findFontFamilyFiles(repoSearchName, fontManager, platform.UserScope, progressCb)
+									if werr2 != nil {
+										if log := GetLogger(); log != nil {
+											log.Warn("scan user font dir: %v", werr2)
+										}
+										userFonts = nil
+									}
 								}
 							}
 							// Finding phase complete - ensure we're at 50% for this font
@@ -2004,13 +2074,25 @@ Use --scope to set removal location:
 									// After successful removal from user scope, check if font still exists in machine scope
 									// Resolve Font ID to font name if needed
 									searchName := resolveFontNameOrID(fontName, r)
-									machineFonts := findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
+									machineFonts, werr := findFontFamilyFiles(searchName, fontManager, platform.MachineScope)
+									if werr != nil {
+										if log := GetLogger(); log != nil {
+											log.Warn("scan machine font dir: %v", werr)
+										}
+										machineFonts = nil
+									}
 									if len(machineFonts) == 0 {
 										// Try repository search
 										results, err := r.SearchFonts(searchName, "false")
 										if err == nil && len(results) > 0 {
 											repoSearchName := results[0].Name
-											machineFonts = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope)
+											machineFonts, werr = findFontFamilyFiles(repoSearchName, fontManager, platform.MachineScope)
+											if werr != nil {
+												if log := GetLogger(); log != nil {
+													log.Warn("scan machine font dir: %v", werr)
+												}
+												machineFonts = nil
+											}
 										}
 									}
 									if len(machineFonts) > 0 {
@@ -2119,13 +2201,25 @@ Use --scope to set removal location:
 									if oppositeScope != "" {
 										// Resolve Font ID to font name if needed
 										searchName := resolveFontNameOrID(fontName, r)
-										oppositeFonts := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+										oppositeFonts, werr := findFontFamilyFiles(searchName, fontManager, oppositeScope)
+										if werr != nil {
+											if log := GetLogger(); log != nil {
+												log.Warn("scan opposite font dir: %v", werr)
+											}
+											oppositeFonts = nil
+										}
 										if len(oppositeFonts) == 0 {
 											// Try repository search
 											results, err := r.SearchFonts(searchName, "false")
 											if err == nil && len(results) > 0 {
 												repoSearchName := results[0].Name
-												oppositeFonts = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
+												oppositeFonts, werr = findFontFamilyFiles(repoSearchName, fontManager, oppositeScope)
+												if werr != nil {
+													if log := GetLogger(); log != nil {
+														log.Warn("scan opposite font dir: %v", werr)
+													}
+													oppositeFonts = nil
+												}
 											}
 										}
 										if len(oppositeFonts) > 0 {

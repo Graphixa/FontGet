@@ -160,7 +160,9 @@ func DisplayLicenseText(content string) error {
 		if (i+1)%20 == 0 && i < len(lines)-1 {
 			fmt.Print("\nPress Enter to continue...")
 			reader := bufio.NewReader(os.Stdin)
-			reader.ReadString('\n') // Wait for Enter key
+			if _, err := reader.ReadString('\n'); err != nil {
+				return fmt.Errorf("read pagination input: %w", err)
+			}
 		}
 	}
 

@@ -89,12 +89,9 @@ func GetAppConfigDir() string {
 
 	configDir := filepath.Join(homeDir, ".fontget")
 
-	// Create config directory if it doesn't exist
-	// We ignore the error here because:
-	// 1. If directory creation fails, subsequent file operations will catch it
-	// 2. This keeps the API simple and allows graceful degradation
-	// 3. Create as hidden directory for better UX
-	platform.CreateHiddenDirectory(configDir, 0755)
+	if err := platform.CreateHiddenDirectory(configDir, 0750); err != nil {
+		fmt.Fprintf(os.Stderr, "fontget: warning: could not create config directory %q: %v\n", configDir, err)
+	}
 
 	return configDir
 }
@@ -728,7 +725,7 @@ func saveUserPreferencesWithoutComments(configPath string, config *AppConfig) er
 	}
 
 	// Write config file
-	if err := os.WriteFile(configPath, data, 0644); err != nil {
+	if err := os.WriteFile(configPath, data, 0600); err != nil {
 		return fmt.Errorf("failed to write app config file: %w", err)
 	}
 
@@ -949,7 +946,7 @@ func saveDefaultAppConfigWithComments(configPath string) error {
 			content = content[:start] + CurrentConfigVersion + content[start+end:]
 		}
 	}
-	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
 		return fmt.Errorf("failed to write app config file: %w", err)
 	}
 	return nil

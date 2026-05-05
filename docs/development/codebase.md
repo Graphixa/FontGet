@@ -7,6 +7,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 ## Table of Contents
 
 - [Root Files](#root-files)
+- [Static analysis and security scanning](#static-analysis-and-security-scanning)
 - [Command Files (`cmd/`)](#command-files-cmd)
 - [Internal Packages](#internal-packages)
 - [Documentation Files](#documentation-files)
@@ -44,6 +45,27 @@ This document provides a comprehensive overview of the FontGet codebase, explain
   - Various other utilities
 
 **Status**: ✅ Active - Essential for Go module system
+
+---
+
+## Static analysis and security scanning
+
+CI (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)) runs:
+
+- **`staticcheck ./...`** — must be clean; no project-wide suppressions.
+- **`gosec -conf=.gosec.json ./...`** — gosec with the repo’s configuration, not default rules only.
+
+Configuration lives in [`.gosec.json`](../../.gosec.json) at the repository root. It **excludes** several high-noise rules that are weak fits for a local CLI (`G104`, `G304`, `G204`, `G122`, `G703`). **`G404`** (weak RNG) is not globally excluded: intentional `math/rand` use for **non-cryptographic** retry jitter is marked with **`#nosec G404`** at those call sites. The config also sets **permission thresholds** (`G301`/`G302`/`G306`/`G307`) so some directory and file modes used for caches or platform conventions do not fail the build. That is intentional: the gate matches product tradeoffs (shell completion paths, shared dirs, argv-only subprocesses) rather than “strictest possible” default gosec output.
+
+**Stricter local audit:** To see what default rules report (useful before tightening config), run from the repo root without `-conf`:
+
+```bash
+go run github.com/securego/gosec/v2/cmd/gosec@latest ./...
+```
+
+Treat that output as **informational triage**, not as the same bar as CI.
+
+**Subprocess and archive handling (invariants):** FontGet invokes external programs only with **`exec.Command` (or `CommandContext`) and discrete arguments**—not through a shell—so URLs and paths are passed as argv elements (e.g. download fallbacks in `internal/network/download_fallbacks.go`, 7z in `internal/repo/archive.go`, platform helpers in `internal/platform/platform.go`). User-supplied strings must not be concatenated into a single shell command line. Archive extraction applies **path safety** (e.g. `safeArchiveRelPath`, symlink skipping where applicable in `internal/repo/archive.go`) so extracted files stay under the intended destination tree; keep those checks when changing extraction code.
 
 ---
 

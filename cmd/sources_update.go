@@ -387,8 +387,11 @@ func (m updateModel) finishUpdate() tea.Cmd {
 		case <-done:
 			// Manifest loaded successfully or with error
 			if err == nil {
-				// Update the sources last updated timestamp
-				config.UpdateSourcesLastUpdated()
+				if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
+					if log := GetLogger(); log != nil {
+						log.Warn("UpdateSourcesLastUpdated: %v", uerr)
+					}
+				}
 			}
 		case <-ctx.Done():
 			// Timeout occurred - ensure goroutine cleanup

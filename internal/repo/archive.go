@@ -233,16 +233,23 @@ func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, er
 
 		// Copy the file contents
 		limit := maxExtractFileBytes + 1
-		n, err := io.Copy(destFile, io.LimitReader(rc, limit))
-		rc.Close()
-		destFile.Close()
+		n, copyErr := io.Copy(destFile, io.LimitReader(rc, limit))
+		rcCloseErr := rc.Close()
+		dstCloseErr := destFile.Close()
+		extractErr := copyErr
+		if extractErr == nil && rcCloseErr != nil {
+			extractErr = rcCloseErr
+		}
+		if extractErr == nil && dstCloseErr != nil {
+			extractErr = dstCloseErr
+		}
 
-		if err != nil {
-			os.Remove(extractedPath) // Clean up on error
-			return nil, fmt.Errorf("failed to extract file %s: %w", file.Name, err)
+		if extractErr != nil {
+			_ = os.Remove(extractedPath) // best-effort cleanup
+			return nil, fmt.Errorf("failed to extract file %s: %w", file.Name, extractErr)
 		}
 		if n > maxExtractFileBytes {
-			os.Remove(extractedPath)
+			_ = os.Remove(extractedPath)
 			return nil, fmt.Errorf("zip entry exceeded per-file limit: %q", file.Name)
 		}
 		totalWritten += n
@@ -330,12 +337,16 @@ func extractTARXZ(archivePath, destDir string, opts *ExtractOptions) ([]string, 
 
 		// Copy the file contents
 		limit := maxExtractFileBytes + 1
-		n, err := io.Copy(destFile, io.LimitReader(tarReader, limit))
-		destFile.Close()
+		n, copyErr := io.Copy(destFile, io.LimitReader(tarReader, limit))
+		dstCloseErr := destFile.Close()
+		extractErr := copyErr
+		if extractErr == nil && dstCloseErr != nil {
+			extractErr = dstCloseErr
+		}
 
-		if err != nil {
-			os.Remove(extractedPath) // Clean up on error
-			return nil, fmt.Errorf("failed to extract file %s: %w", header.Name, err)
+		if extractErr != nil {
+			_ = os.Remove(extractedPath) // best-effort cleanup
+			return nil, fmt.Errorf("failed to extract file %s: %w", header.Name, extractErr)
 		}
 		if n > maxExtractFileBytes {
 			_ = os.Remove(extractedPath)
@@ -415,11 +426,15 @@ func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, 
 			return nil, fmt.Errorf("failed to create destination file %s: %w", extractedPath, err)
 		}
 		limit := maxExtractFileBytes + 1
-		n, err := io.Copy(destFile, io.LimitReader(tarReader, limit))
-		destFile.Close()
-		if err != nil {
+		n, copyErr := io.Copy(destFile, io.LimitReader(tarReader, limit))
+		dstCloseErr := destFile.Close()
+		extractErr := copyErr
+		if extractErr == nil && dstCloseErr != nil {
+			extractErr = dstCloseErr
+		}
+		if extractErr != nil {
 			_ = os.Remove(extractedPath)
-			return nil, fmt.Errorf("failed to extract file %s: %w", header.Name, err)
+			return nil, fmt.Errorf("failed to extract file %s: %w", header.Name, extractErr)
 		}
 		if n > maxExtractFileBytes {
 			_ = os.Remove(extractedPath)

@@ -411,7 +411,9 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		// Calculate SHA-256
 		calculatedHash := hex.EncodeToString(hash.Sum(nil))
 		if calculatedHash != font.SHA {
-			os.Remove(targetPath) // Clean up the file if hash doesn't match
+			if rerr := os.Remove(targetPath); rerr != nil && !os.IsNotExist(rerr) {
+				return "", fmt.Errorf("SHA-256 verification failed: expected %s, got %s (remove partial file: %v)", font.SHA, calculatedHash, rerr)
+			}
 			return "", fmt.Errorf("SHA-256 verification failed: expected %s, got %s", font.SHA, calculatedHash)
 		}
 	} else {
@@ -437,6 +439,7 @@ func doDownloadRequestWithHeaderTimeout(req *http.Request, fastHeaderTimeout tim
 		slowHeaderTimeout = fastHeaderTimeout
 	}
 
+	// #nosec G404 -- non-cryptographic jitter for HTTP retry backoff only (not security-sensitive).
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	onRedirect := func(from *url.URL, to *url.URL, viaCount int) {
@@ -604,12 +607,15 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		},
 	})
 	if err != nil {
-		os.Remove(downloadedPath) // Clean up the archive file
+		if rerr := os.Remove(downloadedPath); rerr != nil && !os.IsNotExist(rerr) {
+			return nil, fmt.Errorf("failed to extract archive: %w (remove archive: %v)", err, rerr)
+		}
 		return nil, fmt.Errorf("failed to extract archive: %w", err)
 	}
 
-	// Clean up the archive file
-	os.Remove(downloadedPath)
+	if rerr := os.Remove(downloadedPath); rerr != nil && !os.IsNotExist(rerr) {
+		return nil, fmt.Errorf("remove archive after extract: %w", rerr)
+	}
 
 	if len(extractedFiles) == 0 {
 		return nil, fmt.Errorf("no font files found in archive")
