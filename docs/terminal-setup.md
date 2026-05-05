@@ -67,7 +67,7 @@ fontget completion zsh --install
 source <(fontget completion zsh)
 ```
 
-**Zsh note:** The installer appends a line that adds `~/.zsh/completions` to `fpath`. That line must run **before** `compinit` in `~/.zshrc`, or completions may not load until you run `compinit` again (or remove `~/.zcompdump` and restart the shell). If completions are missing after install, move the FontGet `fpath` block above your `compinit` call.
+**Zsh note:** The installer **prepends** a short block to `~/.zshrc` so `~/.zsh/completions` is added to `fpath` **before** `compinit` (including Oh My Zsh, which runs `compinit` when `oh-my-zsh.sh` is sourced). If you installed an older FontGet that appended `fpath` at the end of `.zshrc`, remove that old block or run `compinit` again after fixing order.
 
 ### Fish {#fish}
 
@@ -173,7 +173,7 @@ If completions are not working:
    echo "autoload -Uz compinit && compinit" >> ~/.zshrc
    ```
 
-2. **`fpath` after `compinit`:** Ensure `fpath=(~/.zsh/completions $fpath)` runs before `compinit`, or run `compinit` again after fixing order (see [Zsh](#zsh) above).
+2. **`fpath` after `compinit`:** Current FontGet installs prepend a block tagged `fontget: zsh completion fpath` at the **top** of `~/.zshrc`. If you still see no completions, remove any **old** `fpath` line FontGet appended at the **bottom** of the file, open a new terminal, or run `rm -f ~/.zcompdump* && compinit` once.
 
 ### Fish-specific issues
 

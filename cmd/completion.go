@@ -2,16 +2,26 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 
+	"fontget/internal/cmdutils"
+	"fontget/internal/ui"
+
 	"github.com/spf13/cobra"
 )
 
 var completionInstallFlag bool
+
+// Markers for idempotent installs (avoid broad substring checks like "_fontget").
+const (
+	zshFpathMarker       = "# fontget: zsh completion fpath (managed by fontget install)"
+	bashCompletionMarker = "# fontget: bash completion source (managed by fontget install)"
+)
 
 var completionCmd = &cobra.Command{
 	Use:   "completion [shell]",
@@ -20,7 +30,9 @@ var completionCmd = &cobra.Command{
 
 Supports bash, zsh, fish, and PowerShell.
 Use --install to auto-install completion for your shell.
-When no shell is provided with --install, FontGet auto-detects your current shell.`,
+When no shell is provided with --install, FontGet auto-detects your current shell.
+
+For zsh, --install prepends a small fpath block to the top of ~/.zshrc so completions load before compinit (required for Oh My Zsh and similar setups on macOS).`,
 	Example: `  fontget completion bash
   fontget completion --install
   fontget completion bash --install`,
@@ -34,24 +46,22 @@ When no shell is provided with --install, FontGet auto-detects your current shel
 					return fmt.Errorf("failed to detect shell: %w\n\nPlease specify shell: fontget completion <shell> --install", err)
 				}
 
-				fmt.Printf("Detected shell: %s\n", detectedShell)
-				if err := installCompletion(detectedShell); err != nil {
+				cmdutils.PrintInfof("Detected shell: %s", detectedShell)
+				completionFile, shellConfig, err := installCompletion(detectedShell)
+				if err != nil {
 					return fmt.Errorf("failed to install completion: %w", err)
 				}
-
-				fmt.Printf("✓ Completion installed successfully for %s!\n", detectedShell)
-				fmt.Println("Please restart your terminal or reload your shell configuration.")
+				printCompletionInstallSummary(cmd.OutOrStdout(), detectedShell, completionFile, shellConfig)
 				return nil
 			}
 
 			// Shell specified, install for that shell
 			shell := args[0]
-			if err := installCompletion(shell); err != nil {
+			completionFile, shellConfig, err := installCompletion(shell)
+			if err != nil {
 				return fmt.Errorf("failed to install completion: %w", err)
 			}
-
-			fmt.Printf("✓ Completion installed successfully for %s!\n", shell)
-			fmt.Println("Please restart your terminal or reload your shell configuration.")
+			printCompletionInstallSummary(cmd.OutOrStdout(), shell, completionFile, shellConfig)
 			return nil
 		}
 
@@ -83,6 +93,28 @@ When no shell is provided with --install, FontGet auto-detects your current shel
 func init() {
 	completionCmd.Flags().BoolVar(&completionInstallFlag, "install", false, "Install completion script to shell configuration file")
 	rootCmd.AddCommand(completionCmd)
+}
+
+// printCompletionInstallSummary prints human-readable paths after --install.
+// Raw completion script output (without --install) must stay machine-parseable; only this path uses styling.
+func printCompletionInstallSummary(out io.Writer, shell, completionFile, shellConfig string) {
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "  %s %s\n",
+		ui.SuccessText.Render("✓"),
+		ui.Text.Render(fmt.Sprintf("Shell completion installed for %s.", shell)))
+	if completionFile != "" {
+		fmt.Fprintf(out, "  %s %s\n", ui.TextBold.Render("Completion file:"), ui.InfoText.Render(completionFile))
+	}
+	if shellConfig != "" {
+		label := "Shell config:"
+		if shell == "powershell" {
+			label = "PowerShell profile:"
+		}
+		fmt.Fprintf(out, "  %s %s\n", ui.TextBold.Render(label), ui.InfoText.Render(shellConfig))
+	} else if shell == "fish" {
+		fmt.Fprintf(out, "  %s\n", ui.Text.Render("Fish loads completions from that path automatically; config.fish was not modified."))
+	}
+	fmt.Fprintf(out, "\n%s\n", ui.Text.Render("Open a new terminal tab or reload your shell configuration for tab completion to take effect."))
 }
 
 // detectShell attempts to detect the current shell
@@ -239,11 +271,12 @@ func expandPath(path string) (string, error) {
 	return path, nil
 }
 
-// installCompletion installs completion for the specified shell
-func installCompletion(shellName string) error {
+// installCompletion installs completion for the specified shell.
+// It returns absolute paths: completion script file (if any), and shell rc/profile updated (if any).
+func installCompletion(shellName string) (completionFile, shellConfig string, err error) {
 	// Validate shell
 	if !isValidShell(shellName) {
-		return fmt.Errorf("unsupported shell: %s. Supported shells: bash, zsh, fish, powershell", shellName)
+		return "", "", fmt.Errorf("unsupported shell: %s. Supported shells: bash, zsh, fish, powershell", shellName)
 	}
 
 	// PowerShell is handled differently (inline in profile)
@@ -258,7 +291,7 @@ func installCompletion(shellName string) error {
 	// Generate completion script for bash/zsh
 	script, err := generateCompletionScript(shellName)
 	if err != nil {
-		return fmt.Errorf("failed to generate completion script: %w", err)
+		return "", "", fmt.Errorf("failed to generate completion script: %w", err)
 	}
 
 	// Get shell-specific paths
@@ -271,39 +304,39 @@ func installCompletion(shellName string) error {
 	case "zsh":
 		completionPath = "~/.zsh/completions/_fontget"
 		configPath = "~/.zshrc"
-		sourceLine = "fpath=(~/.zsh/completions $fpath)"
+		sourceLine = "" // zsh: fpath block is injected via prependZshFpathBlock
 	}
 
 	// Expand paths
 	completionPathExpanded, err := expandPath(completionPath)
 	if err != nil {
-		return fmt.Errorf("failed to expand completion file path: %w", err)
+		return "", "", fmt.Errorf("failed to expand completion file path: %w", err)
 	}
 
 	configPathExpanded, err := expandPath(configPath)
 	if err != nil {
-		return fmt.Errorf("failed to expand config file path: %w", err)
+		return "", "", fmt.Errorf("failed to expand config file path: %w", err)
 	}
 
 	// Create directory for completion file if needed
 	if shellName == "zsh" {
 		completionDir := filepath.Dir(completionPathExpanded)
 		if err := os.MkdirAll(completionDir, 0755); err != nil {
-			return fmt.Errorf("failed to create completion directory: %w", err)
+			return "", "", fmt.Errorf("failed to create completion directory: %w", err)
 		}
 	}
 
 	// Write completion script
 	if err := os.WriteFile(completionPathExpanded, script, 0644); err != nil {
-		return fmt.Errorf("failed to write completion file: %w", err)
+		return "", "", fmt.Errorf("failed to write completion file: %w", err)
 	}
 
-	// Update shell config file
+	// Update shell config file (zsh prepends fpath so it runs before compinit / oh-my-zsh)
 	if err := updateShellConfig(configPathExpanded, sourceLine, shellName); err != nil {
-		return fmt.Errorf("failed to update shell config: %w", err)
+		return "", "", fmt.Errorf("failed to update shell config: %w", err)
 	}
 
-	return nil
+	return completionPathExpanded, configPathExpanded, nil
 }
 
 // generateCompletionScript generates the completion script for a shell
@@ -348,40 +381,41 @@ func generateCompletionScript(shellName string) ([]byte, error) {
 }
 
 // installFishCompletion writes the fish completion script; Fish loads ~/.config/fish/completions/*.fish automatically.
-func installFishCompletion() error {
+func installFishCompletion() (completionFile, shellConfig string, err error) {
 	completionPath := "~/.config/fish/completions/fontget.fish"
 	completionPathExpanded, err := expandPath(completionPath)
 	if err != nil {
-		return fmt.Errorf("failed to expand completion file path: %w", err)
+		return "", "", fmt.Errorf("failed to expand completion file path: %w", err)
 	}
 
 	if data, err := os.ReadFile(completionPathExpanded); err == nil {
 		if len(data) > 0 && strings.Contains(string(data), "fish completion for fontget") {
-			return fmt.Errorf("completion already installed at %s", completionPathExpanded)
+			return "", "", fmt.Errorf("completion already installed at %s", completionPathExpanded)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("failed to read existing fish completion file: %w", err)
+		return "", "", fmt.Errorf("failed to read existing fish completion file: %w", err)
 	}
 
 	completionDir := filepath.Dir(completionPathExpanded)
 	if err := os.MkdirAll(completionDir, 0755); err != nil {
-		return fmt.Errorf("failed to create fish completions directory: %w", err)
+		return "", "", fmt.Errorf("failed to create fish completions directory: %w", err)
 	}
 
 	script, err := generateCompletionScript("fish")
 	if err != nil {
-		return fmt.Errorf("failed to generate completion script: %w", err)
+		return "", "", fmt.Errorf("failed to generate completion script: %w", err)
 	}
 
 	if err := os.WriteFile(completionPathExpanded, script, 0644); err != nil {
-		return fmt.Errorf("failed to write fish completion file: %w", err)
+		return "", "", fmt.Errorf("failed to write fish completion file: %w", err)
 	}
 
-	return nil
+	return completionPathExpanded, "", nil
 }
 
-// installPowerShellCompletion installs PowerShell completion (inline in profile)
-func installPowerShellCompletion() error {
+// installPowerShellCompletion installs PowerShell completion (inline in profile).
+// Returns ("", profilePath) because there is no separate completion script file.
+func installPowerShellCompletion() (completionFile, shellConfig string, err error) {
 	// Get PowerShell profile path
 	profilePath := os.ExpandEnv("$PROFILE")
 	if profilePath == "$PROFILE" {
@@ -394,7 +428,7 @@ func installPowerShellCompletion() error {
 			output, err = cmd.Output()
 		}
 		if err != nil {
-			return fmt.Errorf("failed to get PowerShell profile path: %w", err)
+			return "", "", fmt.Errorf("failed to get PowerShell profile path: %w", err)
 		}
 		profilePath = strings.TrimSpace(string(output))
 	}
@@ -402,13 +436,13 @@ func installPowerShellCompletion() error {
 	// Create profile directory if it doesn't exist
 	profileDir := filepath.Dir(profilePath)
 	if err := os.MkdirAll(profileDir, 0755); err != nil {
-		return fmt.Errorf("failed to create profile directory: %w", err)
+		return "", "", fmt.Errorf("failed to create profile directory: %w", err)
 	}
 
 	// Check if already installed
 	existingContent, _ := os.ReadFile(profilePath)
 	if strings.Contains(string(existingContent), "fontget completion powershell") {
-		return fmt.Errorf("completion already installed in PowerShell profile")
+		return "", "", fmt.Errorf("completion already installed in PowerShell profile")
 	}
 
 	// Add completion line to profile
@@ -421,15 +455,15 @@ func installPowerShellCompletion() error {
 	content += sourceLine + "\n"
 
 	if err := os.WriteFile(profilePath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write PowerShell profile: %w", err)
+		return "", "", fmt.Errorf("failed to write PowerShell profile: %w", err)
 	}
 
-	return nil
+	return "", profilePath, nil
 }
 
-// updateShellConfig adds the source line to the shell config file if not already present
+// updateShellConfig adds completion hooks to the shell config file.
+// For zsh, the fpath snippet is prepended so it runs before compinit (required on macOS with Oh My Zsh, etc.).
 func updateShellConfig(configPath, sourceLine, shellName string) error {
-	// Read existing config
 	existingContent, err := os.ReadFile(configPath)
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read config file: %w", err)
@@ -437,32 +471,44 @@ func updateShellConfig(configPath, sourceLine, shellName string) error {
 
 	content := string(existingContent)
 
-	// Check if already installed
-	if strings.Contains(content, "fontget completion") || strings.Contains(content, "_fontget") {
-		return fmt.Errorf("completion already installed in %s", configPath)
-	}
-
-	// For zsh, check if fpath line already exists
-	if shellName == "zsh" {
-		// Check if fpath for our completions directory already exists
-		if strings.Contains(content, "~/.zsh/completions") || strings.Contains(content, "$HOME/.zsh/completions") {
-			// Already configured, don't add duplicate
-			return nil
+	switch shellName {
+	case "zsh":
+		if strings.Contains(content, zshFpathMarker) {
+			return fmt.Errorf("completion already installed in %s", configPath)
 		}
+		newContent := prependZshFpathBlock(content)
+		if err := os.WriteFile(configPath, []byte(newContent), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+		return nil
+	case "bash":
+		if strings.Contains(content, bashCompletionMarker) {
+			return fmt.Errorf("completion already installed in %s", configPath)
+		}
+		if content != "" && !strings.HasSuffix(content, "\n") {
+			content += "\n"
+		}
+		content += "\n" + bashCompletionMarker + "\n"
+		content += sourceLine + "\n"
+		if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("updateShellConfig: unsupported shell %q", shellName)
 	}
+}
 
-	// Add source line
-	if content != "" && !strings.HasSuffix(content, "\n") {
-		content += "\n"
+// prependZshFpathBlock prepends the completions directory to fpath before the rest of .zshrc.
+// If fpath is only extended after compinit has run, zsh will not load _fontget until compinit is re-run.
+func prependZshFpathBlock(existingZshrc string) string {
+	block := zshFpathMarker + "\n" +
+		`# Must run before compinit / oh-my-zsh (see fontget completion zsh --help).` + "\n" +
+		`fpath=("${HOME}/.zsh/completions" $fpath)` + "\n" +
+		"\n"
+
+	if existingZshrc == "" {
+		return block
 	}
-
-	content += "\n# FontGet completion\n"
-	content += sourceLine + "\n"
-
-	// Write updated config
-	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write config file: %w", err)
-	}
-
-	return nil
+	return block + existingZshrc
 }
