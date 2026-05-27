@@ -364,12 +364,15 @@ After the CI/CD pipeline completes:
 - [ ] Release exists on GitHub Releases page
 - [ ] Release title matches tag: `v1.3.0`
 - [ ] Release description is present
-- [ ] Binaries are uploaded for all platforms:
-  - `fontget-windows-amd64.exe`
-  - `fontget-linux-amd64`
-  - `fontget-darwin-amd64` (macOS)
-  - `fontget-darwin-arm64` (macOS Apple Silicon)
+- [ ] Archives are uploaded for all platforms (GoReleaser `archives`):
+  - `fontget_<version>_linux_amd64.tar.gz`
+  - `fontget_<version>_linux_arm64.tar.gz`
+  - `fontget_<version>_darwin_amd64.tar.gz`
+  - `fontget_<version>_darwin_arm64.tar.gz`
+  - `fontget_<version>_windows_amd64.zip`
+  - `fontget_<version>_windows_arm64.zip`
 - [ ] `checksums.txt` file is present
+- [ ] Source tarball is present (AUR)
 
 ### **2. Test Self-Update**
 

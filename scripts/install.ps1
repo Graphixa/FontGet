@@ -70,9 +70,19 @@ if ($Version -eq "latest") {
 
 $DisplayVersion = $Version
 
-# Binary name (with .exe extension for Windows)
-$BinaryName = "fontget-windows-$Arch.exe"
-$DownloadUrl = "$BaseUrl/$BinaryName"
+# GoReleaser archive: fontget_<version>_windows_<arch>.zip (see .goreleaser.yaml)
+if ($Version -eq "latest") {
+    $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest"
+    $ArchiveName = ($release.assets | Where-Object { $_.name -match "^fontget_.+_windows_$Arch\.zip$" } | Select-Object -First 1).name
+    if (-not $ArchiveName) {
+        Write-Error "Could not find release archive for windows/$Arch"
+        exit 1
+    }
+} else {
+    $ArchiveName = "fontget_${Version}_windows_${Arch}.zip"
+}
+
+$DownloadUrl = "$BaseUrl/$ArchiveName"
 
 # Installation directory (user-local, no admin required)
 $InstallDir = "$env:USERPROFILE\AppData\Local\Programs\FontGet"
@@ -169,13 +179,14 @@ if ($ShouldPrompt) {
 Write-Host "Creating installation directory..." -ForegroundColor Blue
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
-# Create temporary file for download
-$TempFile = Join-Path $env:TEMP "fontget-installer-$Arch.exe"
+# Download archive, extract fontget.exe
+$TempZip = Join-Path $env:TEMP "fontget-install-$Arch.zip"
+$ExtractDir = Join-Path $env:TEMP "fontget-install-extract-$Arch"
+$TempFile = Join-Path $ExtractDir "fontget.exe"
 
-# Download binary
 Write-Host "Downloading FontGet..." -ForegroundColor Blue
 try {
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempFile -UseBasicParsing
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $TempZip -UseBasicParsing
 } catch {
     Write-Error "Failed to download FontGet"
     if ($Version -ne "latest") {
@@ -185,9 +196,8 @@ try {
     exit 1
 }
 
-# Verify file was downloaded
-if (-not (Test-Path $TempFile)) {
-    Write-Error "Downloaded file not found"
+if (-not (Test-Path $TempZip)) {
+    Write-Error "Downloaded archive not found"
     exit 1
 }
 
@@ -199,7 +209,7 @@ try {
     Invoke-WebRequest -Uri $ChecksumsUrl -OutFile $ChecksumsTemp -UseBasicParsing
 } catch {
     Write-Error "Failed to download checksums.txt"
-    Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+    Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
     exit 1
 }
 
@@ -208,7 +218,7 @@ Get-Content -LiteralPath $ChecksumsTemp -ErrorAction SilentlyContinue | ForEach-
     $line = $_.TrimEnd("`r")
     if ($line -match '^\s*([A-Fa-f0-9]{64})\s+[\*]?\s*(.+)$') {
         $name = $Matches[2].Trim()
-        if ($name -eq $BinaryName) {
+        if ($name -eq $ArchiveName) {
             $expectedHash = $Matches[1].ToLowerInvariant()
         }
     }
@@ -216,19 +226,31 @@ Get-Content -LiteralPath $ChecksumsTemp -ErrorAction SilentlyContinue | ForEach-
 Remove-Item $ChecksumsTemp -Force -ErrorAction SilentlyContinue
 
 if (-not $expectedHash) {
-    Write-Error "No checksum line for $BinaryName in checksums.txt"
-    Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+    Write-Error "No checksum line for $ArchiveName in checksums.txt"
+    Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
     exit 1
 }
 
-$actualHash = (Get-FileHash -LiteralPath $TempFile -Algorithm SHA256).Hash.ToLowerInvariant()
+$actualHash = (Get-FileHash -LiteralPath $TempZip -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualHash -ne $expectedHash) {
-    Write-Error "Checksum mismatch for $BinaryName"
-    Remove-Item $TempFile -Force -ErrorAction SilentlyContinue
+    Write-Error "Checksum mismatch for $ArchiveName"
+    Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
     exit 1
 }
 
 Write-Host "✓ Checksum verified" -ForegroundColor Green
+
+if (Test-Path $ExtractDir) {
+    Remove-Item $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+Expand-Archive -Path $TempZip -DestinationPath $ExtractDir -Force
+Remove-Item $TempZip -Force -ErrorAction SilentlyContinue
+
+if (-not (Test-Path $TempFile)) {
+    Write-Error "fontget.exe not found in $ArchiveName"
+    Remove-Item $ExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+    exit 1
+}
 
 # Verify binary works (basic check)
 try {

@@ -18,6 +18,10 @@ const (
 	githubSlug = "Graphixa/FontGet" // owner/repo format
 )
 
+// Self-update uses go-github-selfupdate, which selects GoReleaser release archives
+// (e.g. fontget_1.2.3_linux_amd64.tar.gz) by suffix _{goos}_{goarch}.{zip|tar.gz}.
+// See internal/update/archive.go and archives.name_template in .goreleaser.yaml.
+
 // UpdateResult represents the result of checking for updates
 type UpdateResult struct {
 	Available   bool

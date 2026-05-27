@@ -341,7 +341,7 @@ GoReleaser automatically:
 2. **Extracts version**: Strips `v` prefix → `1.2.3`
 3. **Injects version**: Uses `ldflags` to set `version.Version=1.2.3`
 4. **Creates release**: GitHub Release titled "v1.2.3"
-5. **Names binaries**: `fontget-windows-amd64.exe` (for self-update compatibility, version is in the binary, not filename)
+5. **Names archives**: `fontget_1.2.3_linux_amd64.tar.gz` (Windows: `.zip`; see `archives.name_template` in `.goreleaser.yaml`)
 
 ### **Version in Build Process**
 
@@ -369,7 +369,7 @@ The self-update system (`rhysd/go-github-selfupdate`) uses versions to:
 
 1. **Check for updates**: Compares current version vs. latest GitHub release
 2. **Version comparison**: Uses semantic versioning to determine if update is available
-3. **Download correct binary**: Finds binary matching current platform and version
+3. **Download correct archive**: Finds the GoReleaser archive for the current platform (suffix `_linux_amd64.tar.gz`, `_windows_amd64.zip`, etc.)
 
 ### **Version Comparison**
 
@@ -390,9 +390,11 @@ latestVersion := "1.2.4"
 For self-update to work, GitHub releases must:
 
 1. ✅ Use semantic version tags: `v1.2.3`
-2. ✅ Include binaries named: `fontget-{os}-{arch}{.ext}`
+2. ✅ Include GoReleaser archives per platform (e.g. `fontget_1.2.3_linux_amd64.tar.gz`, `fontget_1.2.3_windows_amd64.zip`)
 3. ✅ Include `checksums.txt` file
 4. ✅ Release title matches tag: `v1.2.3`
+
+Raw standalone binaries (`fontget-linux-amd64`, etc.) are **not** required; self-update extracts `fontget` from the archive.
 
 ---
 

@@ -104,8 +104,19 @@ else
     BASE_URL="${REPO_URL}/releases/download/v${VERSION}"
 fi
 
-BINARY_NAME="fontget-${OS}-${ARCH}"
-DOWNLOAD_URL="${BASE_URL}/${BINARY_NAME}"
+# GoReleaser archives: fontget_<version>_<os>_<arch>.tar.gz (see .goreleaser.yaml)
+if [ "$VERSION" = "latest" ]; then
+    ARCHIVE_NAME=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | \
+        grep -oE "fontget_[^\"[:space:]]+_${OS}_${ARCH}\\.tar\\.gz" | head -n1)
+    if [ -z "$ARCHIVE_NAME" ]; then
+        echo "${RED}Error: Could not find release archive for ${OS}/${ARCH}${NC}" >&2
+        exit 1
+    fi
+else
+    ARCHIVE_NAME="fontget_${VERSION}_${OS}_${ARCH}.tar.gz"
+fi
+
+DOWNLOAD_URL="${BASE_URL}/${ARCHIVE_NAME}"
 CHECKSUMS_URL="${BASE_URL}/checksums.txt"
 INSTALL_DIR="${FONTGET_INSTALL_DIR:-${HOME}/.local/bin}"
 INSTALLED_BIN="${INSTALL_DIR}/fontget"
@@ -184,10 +195,12 @@ mkdir -p "$INSTALL_DIR"
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-LOCAL_BIN="${TMP_DIR}/${BINARY_NAME}"
+LOCAL_ARCHIVE="${TMP_DIR}/${ARCHIVE_NAME}"
+EXTRACT_DIR="${TMP_DIR}/extract"
+LOCAL_BIN="${EXTRACT_DIR}/fontget"
 
 echo "${BLUE}Downloading FontGet...${NC}"
-if ! curl -fsSL "$DOWNLOAD_URL" -o "$LOCAL_BIN"; then
+if ! curl -fsSL "$DOWNLOAD_URL" -o "$LOCAL_ARCHIVE"; then
     echo "${RED}Error: Failed to download FontGet${NC}" >&2
     if [ "${DISPLAY_VERSION}" != "latest" ]; then
         echo "${YELLOW}Version v${DISPLAY_VERSION} may not exist. Check available versions at:${NC}"
@@ -203,29 +216,39 @@ if ! curl -fsSL "$CHECKSUMS_URL" -o "${TMP_DIR}/checksums.txt"; then
 fi
 
 EXPECTED=""
-EXPECTED=$(tr -d '\r' < "${TMP_DIR}/checksums.txt" | grep -E "[[:space:]]${BINARY_NAME}\$" 2>/dev/null | head -n1 | awk '{print $1}' || true)
+EXPECTED=$(tr -d '\r' < "${TMP_DIR}/checksums.txt" | grep -E "[[:space:]]${ARCHIVE_NAME}\$" 2>/dev/null | head -n1 | awk '{print $1}' || true)
 if [ -z "$EXPECTED" ]; then
-    echo "${RED}Error: No checksum line for ${BINARY_NAME} in checksums.txt${NC}" >&2
+    echo "${RED}Error: No checksum line for ${ARCHIVE_NAME} in checksums.txt${NC}" >&2
     exit 1
 fi
 
 ACTUAL=""
 if command -v sha256sum >/dev/null 2>&1; then
-    ACTUAL=$(sha256sum "$LOCAL_BIN" | awk '{print $1}')
+    ACTUAL=$(sha256sum "$LOCAL_ARCHIVE" | awk '{print $1}')
 elif command -v shasum >/dev/null 2>&1; then
-    ACTUAL=$(shasum -a 256 "$LOCAL_BIN" | awk '{print $1}')
+    ACTUAL=$(shasum -a 256 "$LOCAL_ARCHIVE" | awk '{print $1}')
 else
-    ACTUAL=$(openssl dgst -sha256 "$LOCAL_BIN" | awk '{print $NF}')
+    ACTUAL=$(openssl dgst -sha256 "$LOCAL_ARCHIVE" | awk '{print $NF}')
 fi
 
 EXL=$(printf '%s' "$EXPECTED" | tr '[:upper:]' '[:lower:]')
 ACL=$(printf '%s' "$ACTUAL" | tr '[:upper:]' '[:lower:]')
 if [ "$EXL" != "$ACL" ]; then
-    echo "${RED}Error: Checksum mismatch for ${BINARY_NAME}${NC}" >&2
+    echo "${RED}Error: Checksum mismatch for ${ARCHIVE_NAME}${NC}" >&2
     exit 1
 fi
 
 echo "${GREEN}✓ Checksum verified${NC}"
+
+mkdir -p "$EXTRACT_DIR"
+if ! tar -xzf "$LOCAL_ARCHIVE" -C "$EXTRACT_DIR"; then
+    echo "${RED}Error: Failed to extract ${ARCHIVE_NAME}${NC}" >&2
+    exit 1
+fi
+if [ ! -f "$LOCAL_BIN" ]; then
+    echo "${RED}Error: fontget binary not found in archive${NC}" >&2
+    exit 1
+fi
 
 chmod +x "$LOCAL_BIN"
 
