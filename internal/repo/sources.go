@@ -668,7 +668,7 @@ func (r *Repository) SearchFontsWithOptions(query string, category string) ([]Se
 		// Search through each source in the repository's manifest using advanced scoring
 		for sourceID, source := range r.manifest.Sources {
 			for id, font := range source.Fonts {
-				// Check both the font name and ID
+				// Match the display name, then the ID slug (or the full ID when the query contains '.').
 				fontName := strings.ToLower(font.Name)
 				fontID := strings.ToLower(id)
 
@@ -720,6 +720,16 @@ func (r *Repository) ListCatalogFonts(category string, useSearchSortSettings boo
 	return results, nil
 }
 
+// fontIDSlug returns the name portion of a FontGet ID (everything after the first '.').
+// IDs are "{source}.{slug}" (e.g. "fontshare.satoshi" → "satoshi"). If there is no
+// source prefix, the full ID is returned.
+func fontIDSlug(fontID string) string {
+	if i := strings.IndexByte(fontID, '.'); i >= 0 && i+1 < len(fontID) {
+		return fontID[i+1:]
+	}
+	return fontID
+}
+
 // calculateMatchScoreWithOptions calculates a score for how well a font matches the query
 // using the new configurable algorithm with base score, source priority, and match bonuses
 // Returns both the score and the match type for debugging
@@ -743,12 +753,18 @@ func (r *Repository) calculateMatchScoreWithOptions(query, fontName, fontID stri
 			score += config.MatchBonuses.ContainsMatch
 			matchType = "contains"
 		}
-	} else if strings.HasPrefix(fontID, query) {
-		score += config.MatchBonuses.IDPrefixMatch
-		matchType = "id-prefix"
-	} else if strings.Contains(fontID, query) {
-		// Only apply ID contains match if query is substantial (4+ chars)
-		if len(query) >= 4 {
+	} else {
+		// Queries with '.' are treated as font IDs and match the full ID
+		// (e.g. "google.roboto"). Otherwise only the slug after the source
+		// prefix is searchable, so "fon" does not dump every fontshare.* font.
+		idTarget := fontID
+		if !strings.Contains(query, ".") {
+			idTarget = fontIDSlug(fontID)
+		}
+		if strings.HasPrefix(idTarget, query) {
+			score += config.MatchBonuses.IDPrefixMatch
+			matchType = "id-prefix"
+		} else if len(query) >= 4 && strings.Contains(idTarget, query) {
 			score += config.MatchBonuses.IDContainsMatch
 			matchType = "id-contains"
 		}
