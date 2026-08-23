@@ -1,6 +1,8 @@
 package update
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,263 +12,192 @@ import (
 	"fontget/internal/version"
 
 	"github.com/blang/semver"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
-const (
-	// GitHub repository information
-	githubSlug = "Graphixa/FontGet" // owner/repo format
-)
+// executablePath resolves the current binary. Tests override this.
+var executablePath = os.Executable
 
-// Self-update uses go-github-selfupdate, which selects GoReleaser release archives
-// (e.g. fontget_1.2.3_linux_amd64.tar.gz) by suffix _{goos}_{goarch}.{zip|tar.gz}.
-// See internal/update/archive.go and archives.name_template in .goreleaser.yaml.
+// migrateAfterUpdate is called after a successful binary replace. Tests stub this
+// so they do not touch the real user config.
+var migrateAfterUpdate = config.MigrateConfigAfterUpdate
 
 // UpdateResult represents the result of checking for updates
 type UpdateResult struct {
 	Available   bool
 	Current     string
 	Latest      string
-	Release     *selfupdate.Release
 	NeedsUpdate bool
 }
 
 // CheckForUpdates checks if updates are available from GitHub Releases
 func CheckForUpdates() (*UpdateResult, error) {
-	updater, err := selfupdate.NewUpdater(selfupdate.Config{})
+	currentVersionStr := version.GetVersion()
+	client, err := newReleaseClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize updater: %w", err)
 	}
-
-	currentVersionStr := version.GetVersion()
-	latest, found, err := updater.DetectLatest(githubSlug)
+	latestVersion, err := client.latestVersion(context.Background())
 	if err != nil {
-		return nil, fmt.Errorf("failed to check for updates: %w", err)
+		if errors.Is(err, errReleaseNotFound) {
+			return &UpdateResult{
+				Available:   false,
+				Current:     currentVersionStr,
+				Latest:      "",
+				NeedsUpdate: false,
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to check for updates: %w", mapLibraryError(err))
 	}
 
-	if !found {
-		return &UpdateResult{
-			Available:   false,
-			Current:     currentVersionStr,
-			Latest:      "",
-			Release:     nil,
-			NeedsUpdate: false,
-		}, nil
-	}
-
-	// Convert current version to semver for comparison
 	currentVersion, err := parseVersion(currentVersionStr)
 	if err != nil {
-		// If we can't parse current version, assume update is needed if versions differ as strings
-		needsUpdate := latest.Version.String() != currentVersionStr
+		needsUpdate := latestVersion.String() != currentVersionStr
 		return &UpdateResult{
 			Available:   true,
 			Current:     currentVersionStr,
-			Latest:      latest.Version.String(),
-			Release:     latest,
+			Latest:      latestVersion.String(),
 			NeedsUpdate: needsUpdate,
 		}, nil
 	}
 
-	// Compare versions using semver
-	needsUpdate := latest.Version.GT(currentVersion)
-
 	return &UpdateResult{
 		Available:   true,
 		Current:     currentVersionStr,
-		Latest:      latest.Version.String(),
-		Release:     latest,
-		NeedsUpdate: needsUpdate,
+		Latest:      latestVersion.String(),
+		NeedsUpdate: latestVersion.GT(currentVersion),
 	}, nil
 }
 
 // UpdateToLatest updates FontGet to the latest version
 func UpdateToLatest() error {
-	updater, err := selfupdate.NewUpdater(selfupdate.Config{})
+	client, err := newReleaseClient()
 	if err != nil {
 		return fmt.Errorf("failed to initialize updater: %w", err)
 	}
-
-	currentVersionStr := version.GetVersion()
-	currentVersion, err := parseVersion(currentVersionStr)
+	latestVersion, err := client.latestVersion(context.Background())
 	if err != nil {
-		return fmt.Errorf("failed to parse current version '%s': %w", currentVersionStr, err)
+		return fmt.Errorf("failed to check for updates: %w", mapLibraryError(err))
 	}
-
-	// Get executable path
-	cmdPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
-	}
-
-	// Library handles: download, checksum verification, binary replacement, rollback
-	_, err = updater.UpdateCommand(cmdPath, currentVersion, githubSlug)
-	if err != nil {
-		return mapLibraryError(err)
-	}
-
-	// Clean up old binary backup file after successful update
-	// The library may create a .old file on Windows during the update process
-	cleanupOldBinary(cmdPath)
-
-	// Migrate config after successful update
-	// This merges old config with new defaults, preserving user customizations
-	if err := config.MigrateConfigAfterUpdate(); err != nil {
-		// Log error but don't fail the update - config migration will happen on next command
-		// This is non-fatal since GetUserPreferences() handles migration automatically
-		logging.GetLogger().Warn("Config migration after update failed: %v (will migrate on next command)", err)
-	}
-
-	return nil
+	return applyVersion(client, latestVersion)
 }
 
 // UpdateToVersion updates FontGet to a specific version
 func UpdateToVersion(targetVersion string) error {
-	updater, err := selfupdate.NewUpdater(selfupdate.Config{})
-	if err != nil {
-		return fmt.Errorf("failed to initialize updater: %w", err)
-	}
-
-	// Parse target version
-	targetSemver, err := semver.Parse(targetVersion)
+	targetSemver, err := parseVersion(targetVersion)
 	if err != nil {
 		return fmt.Errorf("invalid version format '%s': %w", targetVersion, err)
 	}
 
-	// Find the release with the target version
-	// The library handles both "1.0.4" and "v1.0.4" formats automatically,
-	// but we'll try both to be safe
-	release, found, err := updater.DetectVersion(githubSlug, targetVersion)
+	client, err := newReleaseClient()
 	if err != nil {
-		return fmt.Errorf("failed to check for version '%s': %w", targetVersion, err)
+		return fmt.Errorf("failed to initialize updater: %w", err)
 	}
+	return applyVersion(client, targetSemver)
+}
 
-	// If not found, try with "v" prefix (common GitHub tag format)
-	if !found {
-		release, found, err = updater.DetectVersion(githubSlug, "v"+targetVersion)
-		if err != nil {
-			return fmt.Errorf("failed to check for version 'v%s': %w", targetVersion, err)
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("version %s not found on GitHub. The release may not exist, may be a pre-release (which are ignored), or may not have assets for your platform", targetVersion)
-	}
-
-	// Verify the found version matches target
-	if !release.Version.EQ(targetSemver) {
-		return fmt.Errorf("version mismatch: found %s, expected %s", release.Version.String(), targetVersion)
-	}
-
-	// Get executable path
-	cmdPath, err := os.Executable()
+func applyVersion(client *releaseClient, releaseVersion semver.Version) error {
+	archiveName := currentArchiveName(releaseVersion.String())
+	ctx := context.Background()
+	checksumBytes, err := client.checksums(ctx, releaseVersion)
 	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
+		return mapLibraryError(fmt.Errorf("failed to download checksums.txt: %w", err))
 	}
-
-	// Find the asset URL for the current platform
-	assetURL := release.AssetURL
-	if assetURL == "" {
-		return fmt.Errorf("no asset URL found for version %s", targetVersion)
-	}
-
-	// Update to the specific release using UpdateTo
-	// This handles: download, checksum verification, binary replacement, rollback
-	err = selfupdate.UpdateTo(assetURL, cmdPath)
+	expected, err := checksumForFile(checksumBytes, archiveName)
 	if err != nil {
+		return err
+	}
+
+	archiveBytes, err := client.archive(ctx, releaseVersion, archiveName)
+	if err != nil {
+		return mapLibraryError(fmt.Errorf("failed to download %s: %w", archiveName, err))
+	}
+	if err := verifySHA256(archiveBytes, expected); err != nil {
 		return mapLibraryError(err)
 	}
 
-	// Clean up old binary backup file after successful update
-	// The library may create a .old file on Windows during the update process
+	binary, err := extractBinary(archiveBytes, archiveName)
+	if err != nil {
+		return fmt.Errorf("failed to extract binary from %s: %w", archiveName, err)
+	}
+
+	cmdPath, err := executablePath()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+	if err := replaceExecutable(cmdPath, binary); err != nil {
+		return mapLibraryError(err)
+	}
+
 	cleanupOldBinary(cmdPath)
 
-	// Migrate config after successful update
-	// This merges old config with new defaults, preserving user customizations
-	if err := config.MigrateConfigAfterUpdate(); err != nil {
-		// Log error but don't fail the update - config migration will happen on next command
-		// This is non-fatal since GetUserPreferences() handles migration automatically
-		logging.GetLogger().Warn("Config migration after update failed: %v (will migrate on next command)", err)
+	if err := migrateAfterUpdate(); err != nil {
+		if logger := logging.GetLogger(); logger != nil {
+			logger.Warn("Config migration after update failed: %v (will migrate on next command)", err)
+		}
 	}
 
 	return nil
 }
 
-// cleanupOldBinary removes the .old backup file created during updates
-// On Windows, the self-update library renames the old binary to .old before replacing it
-// This function cleans up that backup file after a successful update
-// Errors during cleanup are silently ignored to avoid failing the update process
+// cleanupOldBinary removes the .old backup file created during updates.
+// On Windows the updater renames the old binary to .old before replacing it.
+// Errors during cleanup are ignored so a successful update is not failed.
 func cleanupOldBinary(execPath string) {
-	// Construct the .old backup file path
 	oldPath := execPath + ".old"
-
-	// Check if the backup file exists
 	if _, err := os.Stat(oldPath); err == nil {
-		// File exists, try to remove it
-		if err := os.Remove(oldPath); err != nil {
-			// Silently ignore cleanup errors - the .old file is just a backup
-			// and can be manually removed if needed. We don't want to fail the
-			// update process if cleanup fails, as the update itself was successful.
-			_ = err
-		}
+		_ = os.Remove(oldPath)
 	}
 }
 
-// parseVersion parses a version string to semver.Version
-// Handles "dev" and version strings with or without "v" prefix.
+// parseVersion parses a version string to semver.Version.
+// Handles "dev" (and other dev-prefixed strings) and versions with or without a "v" prefix.
 func parseVersion(versionStr string) (semver.Version, error) {
-	// Handle "dev" version
-	if versionStr == "dev" {
-		// Return a very old version so updates are always available
+	trimmed := strings.TrimSpace(versionStr)
+	if trimmed == "" {
+		return semver.Version{}, fmt.Errorf("empty version")
+	}
+	if trimmed == "dev" || strings.HasPrefix(trimmed, "dev-") || strings.HasPrefix(trimmed, "dev+") {
 		return semver.MustParse("0.0.0"), nil
 	}
-
-	// Remove "v" prefix if present
-	versionStr = strings.TrimPrefix(versionStr, "v")
-
-	// Parse semver
-	return semver.Parse(versionStr)
+	trimmed = strings.TrimPrefix(trimmed, "v")
+	return semver.Parse(trimmed)
 }
 
-// mapLibraryError converts library errors to user-friendly messages
+// mapLibraryError converts update errors to user-friendly messages
 func mapLibraryError(err error) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, errReleaseNotFound) {
+		return fmt.Errorf("release not found: the specified version may not exist")
+	}
 
 	errStr := err.Error()
 
-	// Check for common error patterns
 	switch {
 	case strings.Contains(errStr, "permission denied") || strings.Contains(errStr, "Access is denied"):
 		return fmt.Errorf("insufficient permissions: try running as administrator/sudo")
 	case strings.Contains(errStr, "file is locked") || strings.Contains(errStr, "being used by another process"):
 		return fmt.Errorf("FontGet is currently running: please close other instances and try again")
-	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection") || strings.Contains(errStr, "timeout"):
-		return fmt.Errorf("network error: check your internet connection and try again")
-	case strings.Contains(errStr, "checksum") || strings.Contains(errStr, "verification"):
+	case strings.Contains(errStr, "checksum verification failed"):
 		return fmt.Errorf("download verification failed: the downloaded file may be corrupted")
-	case strings.Contains(errStr, "404") || strings.Contains(errStr, "not found"):
-		return fmt.Errorf("release not found: the specified version may not exist")
 	case strings.Contains(errStr, "403") || strings.Contains(errStr, "forbidden"):
-		return fmt.Errorf("access denied: GitHub API may be rate-limited or unavailable")
+		return fmt.Errorf("access denied: GitHub releases may be unavailable")
+	case strings.Contains(errStr, "network") || strings.Contains(errStr, "connection") || strings.Contains(errStr, "timeout") || strings.Contains(errStr, "DeadlineExceeded"):
+		return fmt.Errorf("network error: check your internet connection and try again")
 	}
 
-	// Return original error if no pattern matches
 	return fmt.Errorf("update failed: %w", err)
 }
 
 // IsUpdateInProgress checks if an update is currently in progress
-// This can be used to prevent multiple update attempts
 func IsUpdateInProgress() bool {
-	// Check if a lock file exists (library may create one during update)
-	// For now, we'll rely on the library's internal locking
 	return false
 }
 
 // GetBinaryPath returns the path to the current FontGet binary
 func GetBinaryPath() (string, error) {
-	execPath, err := os.Executable()
+	execPath, err := executablePath()
 	if err != nil {
 		return "", fmt.Errorf("failed to get executable path: %w", err)
 	}

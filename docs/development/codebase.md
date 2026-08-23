@@ -35,7 +35,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Go module definition and dependency management
 **Functionality**:
 - Defines module name as `fontget`
-- Specifies Go version 1.26.0 (toolchain `go1.26.2`)
+- Specifies Go version 1.26.0 (toolchain `go1.26.6`)
 - Lists all required dependencies including:
   - Cobra (CLI framework)
   - Bubble Tea (TUI framework)
@@ -54,6 +54,10 @@ CI (see [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)) runs:
 
 - **`staticcheck ./...`** — must be clean; no project-wide suppressions.
 - **`gosec -conf=.gosec.json ./...`** — gosec with the repo’s configuration, not default rules only.
+
+The Security workflow ([`.github/workflows/security.yml`](../../.github/workflows/security.yml)) runs:
+
+- **`govulncheck ./...`** — reports only vulnerabilities that are reachable from this module (stdlib and dependencies). It must be clean.
 
 Configuration lives in [`.gosec.json`](../../.gosec.json) at the repository root. It **excludes** several high-noise rules that are weak fits for a local CLI (`G104`, `G304`, `G204`, `G122`, `G703`). **`G404`** (weak RNG) is not globally excluded: intentional `math/rand` use for **non-cryptographic** retry jitter is marked with **`#nosec G404`** at those call sites. The config also sets **permission thresholds** (`G301`/`G302`/`G306`/`G307`) so some directory and file modes used for caches or platform conventions do not fail the build. That is intentional: the gate matches product tradeoffs (shell completion paths, shared dirs, argv-only subprocesses) rather than “strictest possible” default gosec output.
 
@@ -791,11 +795,19 @@ Treat that output as **informational triage**, not as the same bar as CI.
 ### `internal/update/`
 **Purpose**: Self-update system
 **Files**:
-- `update.go`: Update implementation (UpdateToLatest, UpdateToVersion)
-- `check.go`: Update checking logic (CheckForUpdates, PerformStartupCheck)
+- `update.go`: Update implementation (CheckForUpdates, UpdateToLatest, UpdateToVersion)
+- `release.go`: Latest-release permalink discovery and immutable tagged asset downloads
+- `checksum.go`: SHA-256 verification against GoReleaser `checksums.txt`
+- `extract.go`: Extract `fontget` / `fontget.exe` from zip or tar.gz
+- `apply.go`: Atomic binary replace with `.old` rollback
+- `archive.go`: GoReleaser archive naming for the current platform
+- `check.go`: Update checking logic (ShouldCheckForUpdates, PerformStartupCheck)
 - `config.go`: Update configuration types (UpdateConfig)
 
 **Key Features**:
+- **GitHub Releases**: Resolves the public `/releases/latest` redirect, validates its version tag, then uses immutable tagged download URLs
+- **No runtime credentials**: Public release downloads do not use the GitHub API, `GITHUB_TOKEN`, or `GH_TOKEN`
+- **Checksum verification**: Downloads `checksums.txt` and verifies the archive SHA-256 before install
 - **Auto-check on startup**: Checks config.yaml `AutoCheck` and `CheckInterval` settings
 - **Auto-update**: When `AutoUpdate: true` and update is available, automatically installs in background
 - **UTC timestamps**: `LastChecked` uses UTC timezone for consistency across timezones

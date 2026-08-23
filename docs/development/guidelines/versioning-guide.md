@@ -365,7 +365,7 @@ GoReleaser automatically fills in:
 
 ### **How Self-Update Uses Versions**
 
-The self-update system (`rhysd/go-github-selfupdate`) uses versions to:
+The self-update system uses versions to:
 
 1. **Check for updates**: Compares current version vs. latest GitHub release
 2. **Version comparison**: Uses semantic versioning to determine if update is available
@@ -374,14 +374,14 @@ The self-update system (`rhysd/go-github-selfupdate`) uses versions to:
 ### **Version Comparison**
 
 ```go
-// Library automatically compares:
+// Self-update compares:
 currentVersion := "1.2.3"
 latestVersion := "1.2.4"
 
-// Library determines: 1.2.4 > 1.2.3 → Update available
+// 1.2.4 > 1.2.3 → Update available
 
 // Special handling for dev builds:
-// "dev" and "dev+{hash}" are treated as 0.0.0 for comparison
+// "dev" and "dev-{timestamp}-{hash}" are treated as 0.0.0 for comparison
 // This ensures dev builds always see updates as available
 ```
 
@@ -616,7 +616,7 @@ git push origin v<MAJOR>.<MINOR>.<PATCH>
 - [Semantic Versioning Specification](https://semver.org/)
 - [GoReleaser Documentation](https://goreleaser.com/)
 - [Git Tagging Best Practices](https://git-scm.com/book/en/v2/Git-Basics-Tagging)
-- [GitHub Releases API](https://docs.github.com/en/rest/releases/releases)
+- [About GitHub Releases](https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases)
 
 ---
 

@@ -31,8 +31,8 @@ builds:
       - -X fontget/internal/version.BuildDate={{.Date}}
 
 archives:
-  # Per-platform archives (zip on Windows, tar.gz elsewhere). Consumed by self-update
-  # (go-github-selfupdate), winget, homebrew, chocolatey, and install scripts.
+  # Per-platform archives (zip on Windows, tar.gz elsewhere). Consumed by self-update,
+  # winget, homebrew, chocolatey, and install scripts.
   - id: default
     ids:
       - fontget
