@@ -16,13 +16,6 @@ import (
 	"github.com/xi2/xz"
 )
 
-const (
-	// Safety limits for archive extraction.
-	// Fonts are typically small; these are generous to avoid false positives while preventing bombs.
-	maxExtractFileBytes  int64 = 200 << 20 // 200 MiB per file
-	maxExtractTotalBytes int64 = 1 << 30   // 1 GiB total
-)
-
 // ArchiveType represents the type of archive file
 type ArchiveType int
 
@@ -114,6 +107,13 @@ type ExtractOptions struct {
 	// OnFontFileExtracted is called after each font file is extracted.
 	// total is the number of font files that will be extracted when known, otherwise -1.
 	OnFontFileExtracted func(done int, total int)
+
+	// Policy overrides default extraction limits when non-nil.
+	Policy *ExtractionPolicy
+
+	// Selection, when set, enables source-aware / agnostic selection before ZIP extraction.
+	// TAR/7Z still stream-extract font candidates under the same hard budgets.
+	Selection *ArchiveSelectionContext
 }
 
 // ExtractArchiveWithOptions extracts an archive file to the specified directory, with optional progress callbacks.
@@ -138,14 +138,34 @@ func ExtractArchiveWithOptions(archivePath, destDir string, opts *ExtractOptions
 }
 
 func safeArchiveRelPath(name string) (string, bool) {
-	// Archive formats typically use forward slashes regardless of OS.
-	rel := path.Clean("/" + strings.TrimSpace(name))
+	raw := strings.TrimSpace(name)
+	if raw == "" {
+		return "", false
+	}
+	// Normalize separators for inspection; reject absolutes and traversal before Clean
+	// collapses them into seemingly-safe relative paths.
+	slash := strings.ReplaceAll(raw, "\\", "/")
+	if strings.HasPrefix(slash, "/") || strings.HasPrefix(slash, "~") {
+		return "", false
+	}
+	if len(slash) >= 2 && slash[1] == ':' {
+		return "", false
+	}
+	for _, part := range strings.Split(slash, "/") {
+		if part == ".." {
+			return "", false
+		}
+	}
+
+	rel := path.Clean("/" + slash)
 	rel = strings.TrimPrefix(rel, "/")
 	if rel == "" || rel == "." {
 		return "", false
 	}
-	// Reject traversal and absolute paths.
 	if strings.HasPrefix(rel, "..") || strings.Contains(rel, "/../") {
+		return "", false
+	}
+	if len(rel) >= 2 && rel[1] == ':' {
 		return "", false
 	}
 	return rel, true
@@ -159,98 +179,75 @@ func ensureParentDir(filePath string) error {
 	return os.MkdirAll(parent, 0755)
 }
 
-// extractZIP extracts a ZIP archive and returns the list of extracted font files
+// extractZIP inspects the central directory, selects install candidates, then extracts only those entries.
+// The archive is opened twice on purpose: inspect/select must finish before any bytes are written.
 func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
+	policy := resolveExtractionPolicy(opts)
+
+	entries, err := InspectZIPWithPolicy(archivePath, policy)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx := ArchiveSelectionContext{}
+	if opts != nil && opts.Selection != nil {
+		ctx = *opts.Selection
+	}
+
+	selected, err := SelectArchiveFontEntries(entries, ctx, policy)
+	if err != nil {
+		return nil, err
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("no font files selected from archive")
+	}
+
+	want := make(map[string]ArchiveEntry, len(selected))
+	for _, e := range selected {
+		want[e.NormalizedPath] = e
+		want[filepath.ToSlash(e.Name)] = e
+	}
+
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open ZIP file: %w", err)
 	}
 	defer reader.Close()
 
-	var extractedFiles []string
-
-	// Create destination directory if it doesn't exist
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
+	var extractedFiles []string
 	var totalWritten int64
-
-	total := 0
-	for _, f := range reader.File {
-		if f.FileInfo().IsDir() {
-			continue
-		}
-		if !isFontFile(f.Name) {
-			continue
-		}
-		total++
-	}
-	if total == 0 {
-		total = -1
-	}
-
+	total := len(selected)
 	done := 0
+
 	for _, file := range reader.File {
-		// Skip directories
-		if file.FileInfo().IsDir() {
+		if file.FileInfo().IsDir() || strings.HasSuffix(file.Name, "/") {
 			continue
 		}
-
-		// Check if it's a font file
-		if !isFontFile(file.Name) {
-			continue
-		}
-
 		rel, ok := safeArchiveRelPath(file.Name)
 		if !ok {
-			return nil, fmt.Errorf("unsafe zip entry path: %q", file.Name)
+			continue // unselected / non-candidate; unsafe paths among selected already rejected
 		}
+		if _, ok := want[rel]; !ok {
+			continue
+		}
+
 		extractedPath := filepath.Join(destDir, filepath.FromSlash(rel))
 		if err := ensureParentDir(extractedPath); err != nil {
 			return nil, fmt.Errorf("failed to create destination directory for %s: %w", extractedPath, err)
 		}
 
-		if file.UncompressedSize64 > uint64(maxExtractFileBytes) {
-			return nil, fmt.Errorf("zip entry too large: %q (%d bytes)", file.Name, file.UncompressedSize64)
-		}
-		if totalWritten > maxExtractTotalBytes {
-			return nil, fmt.Errorf("archive extraction exceeded total limit (%d bytes)", maxExtractTotalBytes)
-		}
-
-		// Open the file from the archive
 		rc, err := file.Open()
 		if err != nil {
 			return nil, fmt.Errorf("failed to open file %s from archive: %w", file.Name, err)
 		}
-
-		// Create the destination file (no silent overwrite)
-		destFile, err := os.OpenFile(extractedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-		if err != nil {
-			rc.Close()
-			return nil, fmt.Errorf("failed to create destination file %s: %w", extractedPath, err)
-		}
-
-		// Copy the file contents
-		limit := maxExtractFileBytes + 1
-		n, copyErr := io.Copy(destFile, io.LimitReader(rc, limit))
-		rcCloseErr := rc.Close()
-		dstCloseErr := destFile.Close()
-		extractErr := copyErr
-		if extractErr == nil && rcCloseErr != nil {
-			extractErr = rcCloseErr
-		}
-		if extractErr == nil && dstCloseErr != nil {
-			extractErr = dstCloseErr
-		}
-
+		n, extractErr := copyExtractedFileWithDeclaredSize(extractedPath, rc, file.Name, file.UncompressedSize64, policy, totalWritten)
+		_ = rc.Close()
 		if extractErr != nil {
-			_ = os.Remove(extractedPath) // best-effort cleanup
-			return nil, fmt.Errorf("failed to extract file %s: %w", file.Name, extractErr)
-		}
-		if n > maxExtractFileBytes {
-			_ = os.Remove(extractedPath)
-			return nil, fmt.Errorf("zip entry exceeded per-file limit: %q", file.Name)
+			return nil, extractErr
 		}
 		totalWritten += n
 
@@ -260,112 +257,37 @@ func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, er
 			opts.OnFontFileExtracted(done, total)
 		}
 	}
+
+	if len(extractedFiles) == 0 {
+		return nil, fmt.Errorf("no font files extracted from archive")
+	}
 	return extractedFiles, nil
 }
 
-// extractTARXZ extracts a TAR.XZ archive and returns the list of extracted font files
+// extractTARXZ extracts a TAR.XZ archive and returns the list of extracted font files.
+// Selection before extract is not practical for single-pass streams; hard budgets still apply.
 func extractTARXZ(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
-	// Open the archive file
+	policy := resolveExtractionPolicy(opts)
+
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open TAR.XZ file: %w", err)
 	}
 	defer file.Close()
 
-	// Create XZ reader
 	xzReader, err := xz.NewReader(file, 0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create XZ reader: %w", err)
 	}
 
-	// Create TAR reader
 	tarReader := tar.NewReader(xzReader)
-
-	var extractedFiles []string
-
-	// Create destination directory if it doesn't exist
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create destination directory: %w", err)
-	}
-
-	var totalWritten int64
-	done := 0
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to read TAR header: %w", err)
-		}
-
-		// Skip directories
-		if header.Typeflag == tar.TypeDir {
-			continue
-		}
-
-		// Only process regular files
-		if header.Typeflag != tar.TypeReg {
-			continue
-		}
-
-		// Check if it's a font file
-		if !isFontFile(header.Name) {
-			continue
-		}
-
-		rel, ok := safeArchiveRelPath(header.Name)
-		if !ok {
-			return nil, fmt.Errorf("unsafe tar entry path: %q", header.Name)
-		}
-		extractedPath := filepath.Join(destDir, filepath.FromSlash(rel))
-		if err := ensureParentDir(extractedPath); err != nil {
-			return nil, fmt.Errorf("failed to create destination directory for %s: %w", extractedPath, err)
-		}
-		if header.Size < 0 || header.Size > maxExtractFileBytes {
-			return nil, fmt.Errorf("tar entry too large: %q (%d bytes)", header.Name, header.Size)
-		}
-		if totalWritten > maxExtractTotalBytes {
-			return nil, fmt.Errorf("archive extraction exceeded total limit (%d bytes)", maxExtractTotalBytes)
-		}
-
-		// Create the destination file
-		destFile, err := os.OpenFile(extractedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create destination file %s: %w", extractedPath, err)
-		}
-
-		// Copy the file contents
-		limit := maxExtractFileBytes + 1
-		n, copyErr := io.Copy(destFile, io.LimitReader(tarReader, limit))
-		dstCloseErr := destFile.Close()
-		extractErr := copyErr
-		if extractErr == nil && dstCloseErr != nil {
-			extractErr = dstCloseErr
-		}
-
-		if extractErr != nil {
-			_ = os.Remove(extractedPath) // best-effort cleanup
-			return nil, fmt.Errorf("failed to extract file %s: %w", header.Name, extractErr)
-		}
-		if n > maxExtractFileBytes {
-			_ = os.Remove(extractedPath)
-			return nil, fmt.Errorf("tar entry exceeded per-file limit: %q", header.Name)
-		}
-		totalWritten += n
-
-		extractedFiles = append(extractedFiles, extractedPath)
-		done++
-		if opts != nil && opts.OnFontFileExtracted != nil {
-			opts.OnFontFileExtracted(done, -1) // tar streams; total unknown without a second pass
-		}
-	}
-
-	return extractedFiles, nil
+	return extractTARStream(tarReader, destDir, opts, policy)
 }
 
-// extractTARGZ extracts a TAR.GZ archive and returns the list of extracted font files
+// extractTARGZ extracts a TAR.GZ archive and returns the list of extracted font files.
 func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
+	policy := resolveExtractionPolicy(opts)
+
 	file, err := os.Open(archivePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open TAR.GZ file: %w", err)
@@ -379,14 +301,20 @@ func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, 
 	defer gzReader.Close()
 
 	tarReader := tar.NewReader(gzReader)
+	return extractTARStream(tarReader, destDir, opts, policy)
+}
 
+func extractTARStream(tarReader *tar.Reader, destDir string, opts *ExtractOptions, policy ExtractionPolicy) ([]string, error) {
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	var extractedFiles []string
 	var totalWritten int64
+	entryCount := 0
 	done := 0
+	seenDest := make(map[string]string)
+
 	for {
 		header, err := tarReader.Next()
 		if err == io.EOF {
@@ -394,6 +322,11 @@ func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, 
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to read TAR header: %w", err)
+		}
+
+		entryCount++
+		if policy.MaxArchiveEntries > 0 && entryCount > policy.MaxArchiveEntries {
+			return nil, fmt.Errorf("%w: exceeded %d entries", ErrArchiveEntryCountLimit, policy.MaxArchiveEntries)
 		}
 
 		if header.Typeflag == tar.TypeDir {
@@ -408,37 +341,30 @@ func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, 
 
 		rel, ok := safeArchiveRelPath(header.Name)
 		if !ok {
-			return nil, fmt.Errorf("unsafe tar entry path: %q", header.Name)
+			return nil, fmt.Errorf("%w: %q", ErrArchiveUnsafePath, header.Name)
 		}
+		key := destinationCollisionKey(rel)
+		if prev, exists := seenDest[key]; exists {
+			return nil, fmt.Errorf("%w: %q and %q", ErrArchivePathCollision, prev, rel)
+		}
+		seenDest[key] = rel
+
+		if policy.MaxSelectedFiles > 0 && done >= policy.MaxSelectedFiles {
+			return nil, fmt.Errorf("%w: selected %d (limit %d)", ErrArchiveSelectedFileLimit, done+1, policy.MaxSelectedFiles)
+		}
+
 		extractedPath := filepath.Join(destDir, filepath.FromSlash(rel))
 		if err := ensureParentDir(extractedPath); err != nil {
 			return nil, fmt.Errorf("failed to create destination directory for %s: %w", extractedPath, err)
 		}
-		if header.Size < 0 || header.Size > maxExtractFileBytes {
-			return nil, fmt.Errorf("tar entry too large: %q (%d bytes)", header.Name, header.Size)
-		}
-		if totalWritten > maxExtractTotalBytes {
-			return nil, fmt.Errorf("archive extraction exceeded total limit (%d bytes)", maxExtractTotalBytes)
-		}
 
-		destFile, err := os.OpenFile(extractedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create destination file %s: %w", extractedPath, err)
+		var declared uint64
+		if header.Size > 0 {
+			declared = uint64(header.Size)
 		}
-		limit := maxExtractFileBytes + 1
-		n, copyErr := io.Copy(destFile, io.LimitReader(tarReader, limit))
-		dstCloseErr := destFile.Close()
-		extractErr := copyErr
-		if extractErr == nil && dstCloseErr != nil {
-			extractErr = dstCloseErr
-		}
+		n, extractErr := copyExtractedFileWithDeclaredSize(extractedPath, tarReader, header.Name, declared, policy, totalWritten)
 		if extractErr != nil {
-			_ = os.Remove(extractedPath)
-			return nil, fmt.Errorf("failed to extract file %s: %w", header.Name, extractErr)
-		}
-		if n > maxExtractFileBytes {
-			_ = os.Remove(extractedPath)
-			return nil, fmt.Errorf("tar entry exceeded per-file limit: %q", header.Name)
+			return nil, extractErr
 		}
 		totalWritten += n
 
@@ -453,20 +379,21 @@ func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, 
 }
 
 // extract7Z extracts a 7Z archive using an external tool (7zz/7z) and returns extracted font files.
+// Full inspect-before-extract parity is not available via the CLI; hard output budgets still apply.
 func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
+	policy := resolveExtractionPolicy(opts)
+
 	tool, err := find7zTool()
 	if err != nil {
 		return nil, err
 	}
 
-	// Extract into a temp dir first so we can validate paths before copying into destDir.
 	tmp, err := os.MkdirTemp("", "fontget-7z-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp extraction directory: %w", err)
 	}
 	defer os.RemoveAll(tmp)
 
-	// 7z x -y -o<dir> <archive>
 	cmd := exec.Command(tool, "x", "-y", "-o"+tmp, archivePath)
 	out, runErr := cmd.CombinedOutput()
 	if runErr != nil {
@@ -480,6 +407,9 @@ func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, err
 	var extractedFiles []string
 	done := 0
 	var totalWritten int64
+	entryCount := 0
+	seenDest := make(map[string]string)
+
 	walkErr := filepath.WalkDir(tmp, func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -487,7 +417,10 @@ func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, err
 		if d.IsDir() {
 			return nil
 		}
-		// Skip symlinks for safety.
+		entryCount++
+		if policy.MaxArchiveEntries > 0 && entryCount > policy.MaxArchiveEntries {
+			return fmt.Errorf("%w: exceeded %d entries", ErrArchiveEntryCountLimit, policy.MaxArchiveEntries)
+		}
 		if d.Type()&os.ModeSymlink != 0 {
 			return nil
 		}
@@ -502,7 +435,16 @@ func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, err
 		rel = filepath.ToSlash(rel)
 		relSafe, ok := safeArchiveRelPath(rel)
 		if !ok {
-			return fmt.Errorf("unsafe 7z extracted path: %q", rel)
+			return fmt.Errorf("%w: %q", ErrArchiveUnsafePath, rel)
+		}
+		key := destinationCollisionKey(relSafe)
+		if prev, exists := seenDest[key]; exists {
+			return fmt.Errorf("%w: %q and %q", ErrArchivePathCollision, prev, relSafe)
+		}
+		seenDest[key] = relSafe
+
+		if policy.MaxSelectedFiles > 0 && done >= policy.MaxSelectedFiles {
+			return fmt.Errorf("%w: selected %d (limit %d)", ErrArchiveSelectedFileLimit, done+1, policy.MaxSelectedFiles)
 		}
 
 		dst := filepath.Join(destDir, filepath.FromSlash(relSafe))
@@ -510,33 +452,20 @@ func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, err
 			return err
 		}
 
+		info, err := os.Stat(p)
+		if err != nil {
+			return err
+		}
 		srcFile, err := os.Open(p)
 		if err != nil {
 			return err
 		}
-		defer srcFile.Close()
-
-		dstFile, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+		n, err := copyExtractedFileWithDeclaredSize(dst, srcFile, relSafe, uint64(info.Size()), policy, totalWritten)
+		_ = srcFile.Close()
 		if err != nil {
-			_ = srcFile.Close()
 			return err
-		}
-
-		limit := maxExtractFileBytes + 1
-		n, err := io.Copy(dstFile, io.LimitReader(srcFile, limit))
-		_ = dstFile.Close()
-		if err != nil {
-			_ = os.Remove(dst)
-			return err
-		}
-		if n > maxExtractFileBytes {
-			_ = os.Remove(dst)
-			return fmt.Errorf("7z entry exceeded per-file limit: %q", relSafe)
 		}
 		totalWritten += n
-		if totalWritten > maxExtractTotalBytes {
-			return fmt.Errorf("archive extraction exceeded total limit (%d bytes)", maxExtractTotalBytes)
-		}
 
 		extractedFiles = append(extractedFiles, dst)
 		done++

@@ -440,9 +440,12 @@ func TestCloneDownloadOptsForProgress_preservesOnResponseHeaders(t *testing.T) {
 		SuppressVerboseProgressLine: true,
 		OnResponseHeaders:           func(repo.HTTPResponseInfo) { called = true },
 	}
-	out := cloneDownloadOptsForProgress(in, "fontshare")
+	out := cloneDownloadOptsForProgress(in, "fontshare", "fontshare.foo")
 	if out.ArchiveSourcePrefix != "fontshare" {
 		t.Fatalf("ArchiveSourcePrefix: got %q", out.ArchiveSourcePrefix)
+	}
+	if out.ArchiveFontID != "fontshare.foo" {
+		t.Fatalf("ArchiveFontID: got %q", out.ArchiveFontID)
 	}
 	if !out.SuppressVerboseProgressLine {
 		t.Fatal("SuppressVerboseProgressLine lost")
@@ -457,9 +460,12 @@ func TestCloneDownloadOptsForProgress_preservesOnResponseHeaders(t *testing.T) {
 }
 
 func TestCloneDownloadOptsForProgress_nilIncoming(t *testing.T) {
-	out := cloneDownloadOptsForProgress(nil, "league")
+	out := cloneDownloadOptsForProgress(nil, "league", "league.fanwood")
 	if out.ArchiveSourcePrefix != "league" {
 		t.Fatalf("got %q", out.ArchiveSourcePrefix)
+	}
+	if out.ArchiveFontID != "league.fanwood" {
+		t.Fatalf("ArchiveFontID: got %q", out.ArchiveFontID)
 	}
 	if out.OnResponseHeaders != nil {
 		t.Fatal("expected nil OnResponseHeaders")

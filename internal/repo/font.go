@@ -161,9 +161,13 @@ type DownloadFontOptions struct {
 	OnResponseHeaders func(info HTTPResponseInfo)
 
 	// ArchiveSourcePrefix is the lowercase source segment before the first '.' in a FontGet font ID
-	// (e.g. "fontshare", "league"). When set, archive extraction may use explicit path rules for
+	// (e.g. "fontshare", "league", "nerd"). When set, archive extraction may use explicit path rules for
 	// that upstream before generic bucket/score selection.
 	ArchiveSourcePrefix string
+
+	// ArchiveFontID is the full FontGet font ID (e.g. "nerd.noto-sans-mono") used by source-specific
+	// archive selectors when FontFile.Name alone is insufficient.
+	ArchiveFontID string
 }
 
 // DownloadFont downloads a font file and verifies its SHA-256 hash if available
@@ -526,15 +530,6 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		return bytes.HasPrefix(b, []byte("<!doctype html")) || bytes.HasPrefix(b, []byte("<html"))
 	}
 
-	validateFontFile := func(path string) error {
-		// Ensure it's parseable as a font (TTF/OTF/collections supported by sfnt).
-		_, err := platform.ExtractFontMetadata(path)
-		if err != nil {
-			return err
-		}
-		return nil
-	}
-
 	// Create target directory if it doesn't exist
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create target directory: %w", err)
@@ -584,12 +579,30 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		archiveTypeByExt, archiveTypeByHeader, archiveTypeByMagic, archiveType, httpInfo.ContentType, httpInfo.ContentDisposition)
 	output.GetDebug().State("DownloadAndExtractFont timing: total=%dms", time.Since(start).Milliseconds())
 
+	selCtx := ArchiveSelectionContext{}
+	if opts != nil {
+		selCtx.SourcePrefix = strings.ToLower(strings.TrimSpace(opts.ArchiveSourcePrefix))
+		selCtx.FontID = strings.TrimSpace(opts.ArchiveFontID)
+	}
+	if font != nil {
+		selCtx.FontName = font.Name
+	}
+
 	if archiveType == ArchiveTypeUnknown {
 		// Not an archive: validate it's a real font before returning. This prevents HTML/WAF payloads
 		// (or empty/garbage files) being treated as installed fonts later.
-		if err := validateFontFile(downloadedPath); err != nil {
+		htmlPayload := isProbablyHTML(downloadedPath)
+		if err := ValidateFontFile(downloadedPath); err != nil {
 			_ = os.Remove(downloadedPath)
-			if isProbablyHTML(downloadedPath) {
+			if htmlPayload {
+				return nil, fmt.Errorf("download did not return a font file (received HTML; upstream likely served a challenge page): %w", err)
+			}
+			return nil, fmt.Errorf("download did not return a valid font file: %w", err)
+		}
+		// Also require sfnt parseability for install.
+		if _, err := platform.ExtractFontMetadata(downloadedPath); err != nil {
+			_ = os.Remove(downloadedPath)
+			if htmlPayload {
 				return nil, fmt.Errorf("download did not return a font file (received HTML; upstream likely served a challenge page): %w", err)
 			}
 			return nil, fmt.Errorf("download did not return a valid font file: %w", err)
@@ -597,7 +610,7 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		return []string{downloadedPath}, nil
 	}
 
-	// It's an archive, extract it
+	// It's an archive: ZIP selects before extract; other formats stream with hard budgets.
 	extractDir := filepath.Join(targetDir, "extracted")
 	extractedFiles, err := ExtractArchiveWithOptions(downloadedPath, extractDir, &ExtractOptions{
 		OnFontFileExtracted: func(done int, total int) {
@@ -605,6 +618,7 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 				opts.OnExtractProgress(done, total)
 			}
 		},
+		Selection: &selCtx,
 	})
 	if err != nil {
 		if rerr := os.Remove(downloadedPath); rerr != nil && !os.IsNotExist(rerr) {
@@ -621,10 +635,14 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		return nil, fmt.Errorf("no font files found in archive")
 	}
 
-	// Validate extracted files; drop garbage so we never "install" it.
+	// Validate extracted files (header + sfnt); drop garbage so we never "install" it.
 	valid := make([]string, 0, len(extractedFiles))
 	for _, p := range extractedFiles {
-		if err := validateFontFile(p); err != nil {
+		if err := ValidateFontFile(p); err != nil {
+			_ = os.Remove(p)
+			continue
+		}
+		if _, err := platform.ExtractFontMetadata(p); err != nil {
 			_ = os.Remove(p)
 			continue
 		}
@@ -634,11 +652,9 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		return nil, fmt.Errorf("no valid font files found after extraction (archive contents were not parseable as fonts)")
 	}
 
-	prefix := ""
-	if opts != nil {
-		prefix = strings.ToLower(strings.TrimSpace(opts.ArchiveSourcePrefix))
-	}
-	valid = PickInstallableFontPathsFromArchive(valid, prefix)
+	// Post-extract policy: static vs variable preference (needs files on disk).
+	// Path/source selection already ran before ZIP extract.
+	valid = applyArchiveInstallPolicy(valid)
 	if len(valid) == 0 {
 		return nil, fmt.Errorf("no font files selected for installation from archive")
 	}
@@ -882,10 +898,13 @@ func createFontFileName(fontName, variant, url string) string {
 	return cleanName + ext
 }
 
-// isFontFile checks if a file is a font file
+// isFontFile checks if a file is a font file (desktop containers FontGet may install).
 func isFontFile(filename string) bool {
-	return strings.HasSuffix(strings.ToLower(filename), ".ttf") ||
-		strings.HasSuffix(strings.ToLower(filename), ".otf")
+	lower := strings.ToLower(filename)
+	return strings.HasSuffix(lower, ".ttf") ||
+		strings.HasSuffix(lower, ".otf") ||
+		strings.HasSuffix(lower, ".ttc") ||
+		strings.HasSuffix(lower, ".otc")
 }
 
 // GetAllFontsCached returns a list of all fonts from the cached manifest (fast)

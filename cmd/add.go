@@ -1069,17 +1069,18 @@ func archiveSourcePrefixFromFontID(fontID string) string {
 // cloneDownloadOptsForProgress returns a shallow copy of downloadOpts (or zero)
 // with ArchiveSourcePrefix set from archiveSourcePrefix so progress callbacks
 // can be attached without dropping fields like OnResponseHeaders.
-func cloneDownloadOptsForProgress(downloadOpts *repo.DownloadFontOptions, archiveSourcePrefix string) *repo.DownloadFontOptions {
+func cloneDownloadOptsForProgress(downloadOpts *repo.DownloadFontOptions, archiveSourcePrefix, archiveFontID string) *repo.DownloadFontOptions {
 	var base repo.DownloadFontOptions
 	if downloadOpts != nil {
 		base = *downloadOpts
 	}
 	base.ArchiveSourcePrefix = archiveSourcePrefix
+	base.ArchiveFontID = archiveFontID
 	return &base
 }
 
 // downloadFontVariants downloads all variants of a font family
-func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, archiveSourcePrefix string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
+func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, archiveSourcePrefix, archiveFontID string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
 	var allFontPaths []string
 
 	// Download each variant - only log errors and unusual cases
@@ -1090,7 +1091,7 @@ func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, archiveSour
 		}
 		opts := downloadOpts
 		if onProgress != nil {
-			opts = cloneDownloadOptsForProgress(downloadOpts, archiveSourcePrefix)
+			opts = cloneDownloadOptsForProgress(downloadOpts, archiveSourcePrefix, archiveFontID)
 			opts.OnBytesDownloaded = func(doneBytes int64, totalBytes int64) {
 				if totalBytes > 0 {
 					onProgress(installStepDownload, float64(doneBytes)/float64(totalBytes))
@@ -1104,11 +1105,15 @@ func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, archiveSour
 				// Unknown totals (e.g., tar streams): use a soft-saturating curve so the UI moves.
 				onProgress(installStepExtract, float64(done)/float64(done+12))
 			}
-		} else if archiveSourcePrefix != "" {
+		} else if archiveSourcePrefix != "" || archiveFontID != "" {
 			if opts == nil {
-				opts = &repo.DownloadFontOptions{ArchiveSourcePrefix: archiveSourcePrefix}
+				opts = &repo.DownloadFontOptions{
+					ArchiveSourcePrefix: archiveSourcePrefix,
+					ArchiveFontID:       archiveFontID,
+				}
 			} else {
 				opts.ArchiveSourcePrefix = archiveSourcePrefix
+				opts.ArchiveFontID = archiveFontID
 			}
 		}
 
@@ -1331,17 +1336,21 @@ func installFont(
 		downloadOpts = &repo.DownloadFontOptions{SuppressVerboseProgressLine: true}
 	}
 	archivePrefix := archiveSourcePrefixFromFontID(fontID)
-	if archivePrefix != "" {
+	if archivePrefix != "" || fontID != "" {
 		if downloadOpts == nil {
-			downloadOpts = &repo.DownloadFontOptions{ArchiveSourcePrefix: archivePrefix}
+			downloadOpts = &repo.DownloadFontOptions{
+				ArchiveSourcePrefix: archivePrefix,
+				ArchiveFontID:       fontID,
+			}
 		} else {
 			downloadOpts.ArchiveSourcePrefix = archivePrefix
+			downloadOpts.ArchiveFontID = fontID
 		}
 	}
 	if onProgress != nil {
 		onProgress(installStepDownload, 0)
 	}
-	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir, archivePrefix, downloadOpts, onProgress)
+	allFontPaths, downloadErr := downloadFontVariants(fontFiles, tempDir, archivePrefix, fontID, downloadOpts, onProgress)
 	if downloadErr != nil {
 		return buildInstallResult(InstallStatusFailed, "Download failed", 0, 0, len(fontFiles), nil, nil, 0), downloadErr
 	}
