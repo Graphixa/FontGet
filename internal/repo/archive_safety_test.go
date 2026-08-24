@@ -4,11 +4,33 @@ import (
 	"archive/zip"
 	"bytes"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestSizeExceedsLimit(t *testing.T) {
+	cases := []struct {
+		size  uint64
+		limit int64
+		want  bool
+	}{
+		{0, 0, false},
+		{1, 0, true},
+		{100, 100, false},
+		{101, 100, true},
+		{0, -1, true},
+		{math.MaxInt64, math.MaxInt64, false},
+		{math.MaxInt64 + 1, math.MaxInt64, true},
+	}
+	for _, tc := range cases {
+		if got := sizeExceedsLimit(tc.size, tc.limit); got != tc.want {
+			t.Errorf("sizeExceedsLimit(%d, %d)=%v want %v", tc.size, tc.limit, got, tc.want)
+		}
+	}
+}
 
 func TestSafeArchiveRelPath(t *testing.T) {
 	cases := []struct {

@@ -460,7 +460,11 @@ func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, err
 		if err != nil {
 			return err
 		}
-		n, err := copyExtractedFileWithDeclaredSize(dst, srcFile, relSafe, uint64(info.Size()), policy, totalWritten)
+		var declared uint64
+		if sz := info.Size(); sz > 0 {
+			declared = uint64(sz)
+		}
+		n, err := copyExtractedFileWithDeclaredSize(dst, srcFile, relSafe, declared, policy, totalWritten)
 		_ = srcFile.Close()
 		if err != nil {
 			return err

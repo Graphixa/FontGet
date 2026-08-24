@@ -3,6 +3,7 @@ package repo
 import (
 	"fmt"
 	"io"
+	"math"
 	"os"
 )
 
@@ -18,14 +19,25 @@ func remainingBudget(policy ExtractionPolicy, totalWritten int64) int64 {
 // checkEntryFitsBudget rejects an entry whose declared uncompressed size exceeds
 // the per-file limit or the remaining aggregate budget.
 func checkEntryFitsBudget(name string, uncompressed uint64, policy ExtractionPolicy, totalWritten int64) error {
-	if uncompressed > uint64(policy.MaxFileBytes) {
+	if sizeExceedsLimit(uncompressed, policy.MaxFileBytes) {
 		return fmt.Errorf("%w: %q (%d bytes)", ErrArchiveEntryTooLarge, name, uncompressed)
 	}
 	rem := remainingBudget(policy, totalWritten)
-	if uncompressed > uint64(rem) {
+	if sizeExceedsLimit(uncompressed, rem) {
 		return fmt.Errorf("%w: %q needs %d bytes, %d remaining", ErrArchiveTotalLimit, name, uncompressed, rem)
 	}
 	return nil
+}
+
+// sizeExceedsLimit reports whether size is larger than an int64 budget limit.
+func sizeExceedsLimit(size uint64, limit int64) bool {
+	if limit < 0 {
+		return true
+	}
+	if size > math.MaxInt64 {
+		return true
+	}
+	return int64(size) > limit
 }
 
 // streamLimit returns LimitReader size (max allowed bytes + 1) so callers can detect overshoot.
