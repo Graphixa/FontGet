@@ -262,10 +262,18 @@ aur_sources:
     depends:
       - glibc
     prepare: |-
-      cd "${pkgname}_${pkgver}"
+      cd "${srcdir}" || exit 1
+      if [ ! -f "go.mod" ]; then
+        echo "go.mod not found in ${PWD}"
+        exit 1
+      fi
       go mod download
     build: |-
-      cd "${pkgname}_${pkgver}"
+      cd "${srcdir}" || exit 1
+      if [ ! -f "go.mod" ]; then
+        echo "go.mod not found in ${PWD}"
+        exit 1
+      fi
       export CGO_CPPFLAGS="${CPPFLAGS}"
       export CGO_CFLAGS="${CFLAGS}"
       export CGO_CXXFLAGS="${CXXFLAGS}"
@@ -273,6 +281,10 @@ aur_sources:
       export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
       go build -ldflags="-w -s -buildid='' -linkmode=external -X fontget/internal/version.Version=${pkgver}" -o fontget .
     package: |-
-      cd "${pkgname}_${pkgver}"
+      cd "${srcdir}" || exit 1
+      if [ ! -f "go.mod" ]; then
+        echo "go.mod not found in ${PWD}"
+        exit 1
+      fi
       install -Dm755 ./fontget "${pkgdir}/usr/bin/fontget"
     commit_msg_template: "Update to {{ .Tag }}"
