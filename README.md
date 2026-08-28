@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="assets/icons/banner.svg" alt="FontGet" width="120" />
+  <img src="assets/banner.svg" alt="FontGet" width="120" />
   <br>
   <h3>FontGet - CLI Font Manager</h1>
 
