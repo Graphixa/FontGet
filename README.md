@@ -1,9 +1,8 @@
 <div align="center">
 
-  <img src="assets/banner.svg" alt="FontGet" width="120" />
+  <img src="assets/banner.svg" alt="FontGet" width="480" />
   <br>
-  <h3>FontGet - CLI Font Manager</h1>
-
+  <br>
   [![Version](https://img.shields.io/github/v/release/Graphixa/FontGet)](https://github.com/Graphixa/FontGet/releases)
   [![Go Version](https://img.shields.io/github/go-mod/go-version/Graphixa/FontGet)](go.mod)
   [![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
