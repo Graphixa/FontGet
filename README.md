@@ -1,8 +1,10 @@
 <div align="center">
 
-  <img src="assets/banner.svg" alt="FontGet" width="480" />
-  <br>
-  <br>
+  <img src="assets/banner.svg" alt="FontGet" width="420" />
+
+### A tiny, cross-platform, terminal based font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.</p>
+<br>
+
   [![Version](https://img.shields.io/github/v/release/Graphixa/FontGet)](https://github.com/Graphixa/FontGet/releases)
   [![Go Version](https://img.shields.io/github/go-mod/go-version/Graphixa/FontGet)](go.mod)
   [![License](https://img.shields.io/github/license/Graphixa/Fontget)](LICENSE)
@@ -18,13 +20,18 @@
     </a>
   </div>
 
-  <p>FontGet is a tiny, cross-platform CLI font manager that can discover, install, and manage fonts across Windows, Mac OS & Linux.</p>
-
+---
 <strong>Fontget supports installing fonts from the following sources:</strong>
 
 <a href="https://fonts.google.com/">Google Fonts</a>
 |
 <a href="https://www.nerdfonts.com/">Nerd Fonts</a>
+|
+<a href="https://www.theleagueofmoveabletype.com/">The League of Moveable Type</a>
+|
+<a href="https://fontsource.org/">FontSource</a>
+|
+<a href="https://www.fontshare.com/">FontShare</a>
 |
 <a href="https://www.fontsquirrel.com/">Font Squirrel</a>
 
@@ -32,12 +39,11 @@
 
 <div>
 <br>
-<p>If this project is useful, feel free to buy me a cuppa.</p>
+<p>If this project is useful to you, feel free to buy me a cuppa.</p>
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51V2JIV)
 
 </div>
-
 </div>
 
 ## Installation
