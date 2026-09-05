@@ -36,6 +36,9 @@ plans/*
 # Dependency directories (vendor/)
 vendor/
 
+# VHS throwaway HOME and linux binary used while recording
+vhs/.work/
+
 # Build directories
 dist/
 bin/
