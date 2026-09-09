@@ -1,3 +1,0 @@
-# Keep POSIX scripts and VHS tapes LF so Docker/WSL can run them on Windows checkouts.
-*.sh text eol=lf
-*.tape text eol=lf
