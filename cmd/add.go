@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
@@ -1081,6 +1082,7 @@ func cloneDownloadOptsForProgress(downloadOpts *repo.DownloadFontOptions, archiv
 
 // downloadFontVariants downloads all variants of a font family
 func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, archiveSourcePrefix, archiveFontID string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
+	start := time.Now()
 	var allFontPaths []string
 
 	// Download each variant - only log errors and unusual cases
@@ -1134,11 +1136,13 @@ func downloadFontVariants(fontFiles []repo.FontFile, tempDir string, archiveSour
 		onProgress(installStepDownload, 1)
 		onProgress(installStepExtract, 1)
 	}
+	output.GetDebug().State("downloadFontVariants: files=%d extracted=%d total=%dms", len(fontFiles), len(allFontPaths), time.Since(start).Milliseconds())
 	return allFontPaths, nil
 }
 
 // installDownloadedFonts installs downloaded font files to system
 func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress StepProgressFunc) (installed, skipped, failed int, details []string, errors []string, downloadSize int64) {
+	start := time.Now()
 	var installedFiles []string
 	var skippedFiles []string
 	var failedFiles []string
@@ -1239,6 +1243,7 @@ func installDownloadedFonts(fontPaths []string, fontManager platform.FontManager
 	details = append(details, skippedFiles...)
 	details = append(details, failedFiles...)
 
+	output.GetDebug().State("installDownloadedFonts: installed=%d skipped=%d failed=%d total=%dms", installed, skipped, failed, time.Since(start).Milliseconds())
 	return installed, skipped, failed, details, errors, downloadSize
 }
 

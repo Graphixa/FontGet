@@ -6,17 +6,50 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
-// NewDownloadHTTPClient returns an http.Client suitable for large/binary downloads.
-// It uses a cookie jar so redirects that set cookies behave closer to browsers.
-func NewDownloadHTTPClient(headerTimeout time.Duration, forceHTTP1 bool, onRedirect func(from *url.URL, to *url.URL, viaCount int)) *http.Client {
+type downloadTransportKey struct {
+	forceHTTP1 bool
+	timeoutNs  int64
+}
+
+var (
+	downloadTransportMu sync.Mutex
+	downloadTransports  = map[downloadTransportKey]*http.Transport{}
+)
+
+func sharedDownloadTransport(headerTimeout time.Duration, forceHTTP1 bool) *http.Transport {
+	if headerTimeout <= 0 {
+		headerTimeout = 10 * time.Second
+	}
+	key := downloadTransportKey{forceHTTP1: forceHTTP1, timeoutNs: headerTimeout.Nanoseconds()}
+
+	downloadTransportMu.Lock()
+	defer downloadTransportMu.Unlock()
+	if tr, ok := downloadTransports[key]; ok {
+		return tr
+	}
+
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.ResponseHeaderTimeout = headerTimeout
 	if forceHTTP1 {
 		tr.ForceAttemptHTTP2 = false
 	}
+	downloadTransports[key] = tr
+	return tr
+}
+
+// NewDownloadHTTPClient returns an http.Client suitable for large/binary downloads.
+// It uses a cookie jar so redirects that set cookies behave closer to browsers.
+//
+// Transports are reused across calls with the same header timeout and HTTP version
+// so TLS sessions and HTTP/2 connections can be pooled. A new Transport per request
+// (via Clone) forces a full handshake on every font file — the dominant cost when
+// installing families like Roboto that are published as many small TTF URLs.
+func NewDownloadHTTPClient(headerTimeout time.Duration, forceHTTP1 bool, onRedirect func(from *url.URL, to *url.URL, viaCount int)) *http.Client {
+	tr := sharedDownloadTransport(headerTimeout, forceHTTP1)
 
 	jar, _ := cookiejar.New(nil)
 
