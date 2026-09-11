@@ -265,14 +265,85 @@ func loadSourceDataFromCacheOnly(_ string, sourceName string) (*SourceData, erro
 	return &sourceData, nil
 }
 
+// matchingCatalogFont is the subset of a FontGet-Sources font entry needed to
+// match installed fonts and populate list columns. Variant file URL maps are omitted
+// so JSON decode does not allocate them.
+type matchingCatalogFont struct {
+	Name       string   `json:"name"`
+	License    string   `json:"license"`
+	Categories []string `json:"categories"`
+}
+
+type matchingCatalogFile struct {
+	SourceInfo SourceInfo                     `json:"source_info"`
+	Fonts      map[string]matchingCatalogFont `json:"fonts"`
+}
+
+func loadMatchingCatalogFromCache(sourceName string) (*matchingCatalogFile, error) {
+	cacheFile, err := SourceCachePath(sourceName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cache path: %w", err)
+	}
+	if _, err := os.Stat(cacheFile); err != nil {
+		return nil, fmt.Errorf("cache file not found: %w", err)
+	}
+	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cache file: %w", err)
+	}
+	var catalog matchingCatalogFile
+	if err := json.Unmarshal(data, &catalog); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
+	}
+	return &catalog, nil
+}
+
+func fontToFontInfo(font Font) FontInfo {
+	fontInfo := FontInfo{
+		Name:        font.Name,
+		License:     font.License,
+		LicenseURL:  font.LicenseURL,
+		Version:     font.Version,
+		Description: font.Description,
+		Categories:  font.Categories,
+		Tags:        font.Tags,
+		Popularity:  font.Popularity,
+		MetadataURL: font.MetadataURL,
+		SourceURL:   font.SourceURL,
+	}
+	fontInfo.VariantFiles = make(map[string]map[string]string)
+	for _, variant := range font.Variants {
+		fontInfo.Variants = append(fontInfo.Variants, variant.Name)
+		fontInfo.VariantFiles[variant.Name] = make(map[string]string)
+		for fileType, url := range variant.Files {
+			fontInfo.VariantFiles[variant.Name][fileType] = url
+		}
+		if fontInfo.Files == nil {
+			fontInfo.Files = make(map[string]string)
+		}
+		for fileType, url := range variant.Files {
+			fontInfo.Files[fileType] = url
+		}
+	}
+	return fontInfo
+}
+
 // loadAllSourcesFromCacheOnly loads all enabled sources from cache only (no refresh)
 func loadAllSourcesFromCacheOnly(manifest *config.Manifest) (*FontManifest, error) {
+	return loadAllSourcesFromCache(manifest, false)
+}
+
+// loadAllSourcesFromCacheMatching loads catalogs without variant download URLs.
+func loadAllSourcesFromCacheMatching(manifest *config.Manifest) (*FontManifest, error) {
+	return loadAllSourcesFromCache(manifest, true)
+}
+
+func loadAllSourcesFromCache(manifest *config.Manifest, matchingOnly bool) (*FontManifest, error) {
 	var allSources = make(map[string]SourceInfo)
 
 	totalSources := 0
 	enabledSources := 0
 
-	// Count enabled sources
 	for _, source := range manifest.Sources {
 		if source.Enabled {
 			totalSources++
@@ -291,89 +362,63 @@ func loadAllSourcesFromCacheOnly(manifest *config.Manifest) (*FontManifest, erro
 			continue
 		}
 
-		// Use the URL from the configuration
-		sourceURL := sourceConfig.URL
-
-		sourceData, err := loadSourceDataFromCacheOnly(sourceURL, sourceName)
-		if err != nil {
-			// If cache is not available, skip this source
-			continue
-		}
-
-		// Add source info with fonts
-		sourceInfo := sourceData.SourceInfo
-		sourceInfo.Fonts = make(map[string]FontInfo)
-
-		// Add fonts with source prefix, converting FontData to FontInfo
-		for fontID, font := range sourceData.Fonts {
-			prefixedID := fmt.Sprintf("%s.%s", sourceConfig.Prefix, fontID)
-
-			// Convert Font to FontInfo for compatibility
-			fontInfo := FontInfo{
-				Name:        font.Name,
-				License:     font.License,
-				LicenseURL:  font.LicenseURL,
-				Version:     font.Version,
-				Description: font.Description,
-				Categories:  font.Categories,
-				Tags:        font.Tags,
-				Popularity:  font.Popularity,
-				MetadataURL: font.MetadataURL,
-				SourceURL:   font.SourceURL,
+		var sourceInfo SourceInfo
+		if matchingOnly {
+			catalog, err := loadMatchingCatalogFromCache(sourceName)
+			if err != nil {
+				continue
 			}
-
-			// Convert variants to legacy format and preserve variant-file mapping
-			fontInfo.VariantFiles = make(map[string]map[string]string)
-			for _, variant := range font.Variants {
-				fontInfo.Variants = append(fontInfo.Variants, variant.Name)
-
-				// Store variant-specific files
-				fontInfo.VariantFiles[variant.Name] = make(map[string]string)
-				for fileType, url := range variant.Files {
-					fontInfo.VariantFiles[variant.Name][fileType] = url
-				}
-
-				// Merge variant files into main files for backward compatibility
-				if fontInfo.Files == nil {
-					fontInfo.Files = make(map[string]string)
-				}
-				for fileType, url := range variant.Files {
-					fontInfo.Files[fileType] = url
+			sourceInfo = catalog.SourceInfo
+			sourceInfo.Fonts = make(map[string]FontInfo, len(catalog.Fonts))
+			for fontID, font := range catalog.Fonts {
+				prefixedID := fmt.Sprintf("%s.%s", sourceConfig.Prefix, fontID)
+				sourceInfo.Fonts[prefixedID] = FontInfo{
+					Name:       font.Name,
+					License:    font.License,
+					Categories: font.Categories,
 				}
 			}
-
-			sourceInfo.Fonts[prefixedID] = fontInfo
+			sourceTime := catalog.SourceInfo.LastUpdated
+			if firstSource || sourceTime.Before(oldestSourceTime) {
+				oldestSourceTime = sourceTime
+				firstSource = false
+			}
+		} else {
+			sourceData, err := loadSourceDataFromCacheOnly(sourceConfig.URL, sourceName)
+			if err != nil {
+				continue
+			}
+			sourceInfo = sourceData.SourceInfo
+			sourceInfo.Fonts = make(map[string]FontInfo, len(sourceData.Fonts))
+			for fontID, font := range sourceData.Fonts {
+				prefixedID := fmt.Sprintf("%s.%s", sourceConfig.Prefix, fontID)
+				sourceInfo.Fonts[prefixedID] = fontToFontInfo(font)
+			}
+			sourceTime := sourceData.SourceInfo.LastUpdated
+			if firstSource || sourceTime.Before(oldestSourceTime) {
+				oldestSourceTime = sourceTime
+				firstSource = false
+			}
 		}
 
 		allSources[sourceName] = sourceInfo
 		enabledSources++
-
-		// Track the oldest source LastUpdated timestamp
-		sourceTime := sourceData.SourceInfo.LastUpdated
-		if firstSource || sourceTime.Before(oldestSourceTime) {
-			oldestSourceTime = sourceTime
-			firstSource = false
-		}
 	}
 
 	if enabledSources == 0 {
 		return nil, fmt.Errorf("no cached sources available")
 	}
 
-	// Use the oldest source LastUpdated timestamp, or current time if no sources found
 	lastUpdated := oldestSourceTime
 	if firstSource {
 		lastUpdated = time.Now()
 	}
 
-	// Create the font manifest
-	fontManifest := &FontManifest{
+	return &FontManifest{
 		Version:     "1.0",
 		LastUpdated: lastUpdated,
 		Sources:     allSources,
-	}
-
-	return fontManifest, nil
+	}, nil
 }
 
 // loadAllSourcesWithCache loads all enabled sources with optional cache refresh
@@ -425,41 +470,7 @@ func loadAllSourcesWithCache(manifest *config.Manifest, progress ProgressCallbac
 		for fontID, font := range sourceData.Fonts {
 			prefixedID := fmt.Sprintf("%s.%s", sourceConfig.Prefix, fontID)
 
-			// Convert Font to FontInfo for compatibility
-			fontInfo := FontInfo{
-				Name:        font.Name,
-				License:     font.License,
-				LicenseURL:  font.LicenseURL,
-				Version:     font.Version,
-				Description: font.Description,
-				Categories:  font.Categories,
-				Tags:        font.Tags,
-				Popularity:  font.Popularity,
-				MetadataURL: font.MetadataURL,
-				SourceURL:   font.SourceURL,
-			}
-
-			// Convert variants to legacy format and preserve variant-file mapping
-			fontInfo.VariantFiles = make(map[string]map[string]string)
-			for _, variant := range font.Variants {
-				fontInfo.Variants = append(fontInfo.Variants, variant.Name)
-
-				// Store variant-specific files
-				fontInfo.VariantFiles[variant.Name] = make(map[string]string)
-				for fileType, url := range variant.Files {
-					fontInfo.VariantFiles[variant.Name][fileType] = url
-				}
-
-				// Merge variant files into main files for backward compatibility
-				if fontInfo.Files == nil {
-					fontInfo.Files = make(map[string]string)
-				}
-				for fileType, url := range variant.Files {
-					fontInfo.Files[fileType] = url
-				}
-			}
-
-			sourceInfo.Fonts[prefixedID] = fontInfo
+			sourceInfo.Fonts[prefixedID] = fontToFontInfo(font)
 		}
 
 		allSources[sourceName] = sourceInfo

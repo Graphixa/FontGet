@@ -114,34 +114,45 @@ func getFontName(fontPath string) string {
 	return filepath.Base(fontPath)
 }
 
-// ListInstalledFonts returns a list of font files in the specified directory
+// ListInstalledFonts returns font files under dir as paths relative to dir.
+// Directories are scanned with ReadDir (no per-file Stat). Nested folders are
+// included; on typical Windows user/system font dirs the tree is flat.
 func ListInstalledFonts(dir string) ([]string, error) {
-	var fonts []string
-
-	// Walk through the directory
-	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		// Skip directories
-		if info.IsDir() {
-			return nil
-		}
-
-		// Check if the file is a font file
-		ext := strings.ToLower(filepath.Ext(path))
-		if isFontFile(ext) {
-			fonts = append(fonts, filepath.Base(path))
-		}
-
-		return nil
-	})
-
+	fonts, err := collectFontFiles(dir, "")
 	if err != nil {
 		return nil, fmt.Errorf("failed to list fonts: %w", err)
 	}
+	return fonts, nil
+}
 
+func collectFontFiles(root, rel string) ([]string, error) {
+	path := root
+	if rel != "" {
+		path = filepath.Join(root, rel)
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+	var fonts []string
+	for _, e := range entries {
+		name := e.Name()
+		childRel := name
+		if rel != "" {
+			childRel = filepath.Join(rel, name)
+		}
+		if e.IsDir() {
+			nested, err := collectFontFiles(root, childRel)
+			if err != nil {
+				return nil, err
+			}
+			fonts = append(fonts, nested...)
+			continue
+		}
+		if isFontFile(strings.ToLower(filepath.Ext(name))) {
+			fonts = append(fonts, childRel)
+		}
+	}
 	return fonts, nil
 }
 

@@ -268,7 +268,7 @@ func getSourcesInPriorityOrder(manifest *FontManifest) []string {
 // isProtectedFont is a function to check if a font is a protected system font (can be nil)
 func MatchAllInstalledFonts(familyNames []string, isProtectedFont func(string) bool) (map[string]*InstalledFontMatch, error) {
 	// Load manifest
-	manifest, err := GetCachedManifest()
+	manifest, err := getCachedManifestMatching()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load manifest: %w", err)
 	}
@@ -345,7 +345,7 @@ func MatchAllInstalledFonts(familyNames []string, isProtectedFont func(string) b
 // This is exported for use by commands that need to match fonts efficiently.
 // Returns nil if manifest cannot be loaded.
 func BuildFontIndexForMatching() (FontIndex, error) {
-	manifest, err := GetCachedManifest()
+	manifest, err := getCachedManifestMatching()
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +358,7 @@ func IsFontIDInCachedManifest(fontID string) bool {
 	if fontID == "" {
 		return false
 	}
-	manifest, err := GetCachedManifest()
+	manifest, err := getCachedManifestMatching()
 	if err != nil || manifest == nil {
 		return false
 	}
@@ -399,12 +399,12 @@ func IsFontIDInManifest(manifest *FontManifest, fontID string) bool {
 
 // MatchRepositoryFontByID returns repository metadata for an exact font ID if it exists in the cached manifest.
 // Returns (nil, nil) when the ID is not found (not an error).
-// Uses GetCachedManifest only (no network / refresh) so it is safe for list-time merges.
+// Uses the matching catalog memo (no network / refresh, no variant URLs) so it is safe for list-time merges.
 func MatchRepositoryFontByID(fontID string) (*InstalledFontMatch, error) {
 	if strings.TrimSpace(fontID) == "" {
 		return nil, nil
 	}
-	manifest, err := GetCachedManifest()
+	manifest, err := getCachedManifestMatching()
 	if err != nil {
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/term"
 )
 
 // Utility functions for consistent UI rendering
@@ -120,6 +121,14 @@ func RenderSuccessScreen(title, message string) string {
 // Always stops with a green check symbol on success
 // If doneMsg is empty string, the spinner line will be cleared (hidden) after completion
 func RunSpinner(msg, doneMsg string, fn func() error) error {
+	// tea.NewProgram hangs when stdout is not a TTY (pipes, redirected output).
+	// Skip the spinner in that case; keep it on an interactive terminal.
+	if !term.IsTerminal(os.Stdout.Fd()) {
+		if fn == nil {
+			return nil
+		}
+		return fn()
+	}
 	model := NewSpinnerModel(msg, doneMsg, fn)
 	program := tea.NewProgram(model)
 

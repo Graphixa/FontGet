@@ -127,6 +127,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return fmt.Errorf("install cache file: %w", err)
 	}
 	cleanup = false
+	InvalidateCachedManifests()
 	return nil
 }
 
@@ -170,5 +171,6 @@ func PruneStaleSourceCaches(keepSourceNames []string) error {
 		}
 		_ = os.Remove(filepath.Join(dir, name))
 	}
+	InvalidateCachedManifests()
 	return nil
 }
