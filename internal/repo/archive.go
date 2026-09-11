@@ -3,7 +3,6 @@ package repo
 import (
 	"archive/tar"
 	"archive/zip"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,8 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-
-	"github.com/xi2/xz"
 )
 
 // ArchiveType represents the type of archive file
@@ -111,8 +108,8 @@ type ExtractOptions struct {
 	// Policy overrides default extraction limits when non-nil.
 	Policy *ExtractionPolicy
 
-	// Selection, when set, enables source-aware / agnostic selection before ZIP extraction.
-	// TAR/7Z still stream-extract font candidates under the same hard budgets.
+	// Selection, when set, enables source-aware / agnostic (or Nerd package-mode) selection
+	// before ZIP and compressed-TAR extraction. 7Z still walks extracted contents under hard budgets.
 	Selection *ArchiveSelectionContext
 }
 
@@ -189,11 +186,7 @@ func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, er
 		return nil, err
 	}
 
-	ctx := ArchiveSelectionContext{}
-	if opts != nil && opts.Selection != nil {
-		ctx = *opts.Selection
-	}
-
+	ctx := selectionContextFromOpts(opts)
 	selected, err := SelectArchiveFontEntries(entries, ctx, policy)
 	if err != nil {
 		return nil, err
@@ -202,11 +195,7 @@ func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, er
 		return nil, fmt.Errorf("no font files selected from archive")
 	}
 
-	want := make(map[string]ArchiveEntry, len(selected))
-	for _, e := range selected {
-		want[e.NormalizedPath] = e
-		want[filepath.ToSlash(e.Name)] = e
-	}
+	want := selectedPathSet(selected)
 
 	reader, err := zip.OpenReader(archivePath)
 	if err != nil {
@@ -264,93 +253,101 @@ func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, er
 	return extractedFiles, nil
 }
 
-// extractTARXZ extracts a TAR.XZ archive and returns the list of extracted font files.
-// Selection before extract is not practical for single-pass streams; hard budgets still apply.
+func selectionContextFromOpts(opts *ExtractOptions) ArchiveSelectionContext {
+	if opts != nil && opts.Selection != nil {
+		return *opts.Selection
+	}
+	return ArchiveSelectionContext{}
+}
+
+func selectedPathSet(selected []ArchiveEntry) map[string]ArchiveEntry {
+	want := make(map[string]ArchiveEntry, len(selected)*2)
+	for _, e := range selected {
+		want[e.NormalizedPath] = e
+		want[filepath.ToSlash(e.Name)] = e
+	}
+	return want
+}
+
+// extractTARXZ inspects TAR headers, plans selection, then extracts only selected members.
 func extractTARXZ(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
 	policy := resolveExtractionPolicy(opts)
-
-	file, err := os.Open(archivePath)
+	entries, err := InspectTARXZWithPolicy(archivePath, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open TAR.XZ file: %w", err)
+		return nil, err
 	}
-	defer file.Close()
-
-	xzReader, err := xz.NewReader(file, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create XZ reader: %w", err)
-	}
-
-	tarReader := tar.NewReader(xzReader)
-	return extractTARStream(tarReader, destDir, opts, policy)
+	return extractSelectedCompressedTAR(archivePath, destDir, opts, policy, entries, openTARXZStream)
 }
 
-// extractTARGZ extracts a TAR.GZ archive and returns the list of extracted font files.
+// extractTARGZ inspects TAR headers, plans selection, then extracts only selected members.
 func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
 	policy := resolveExtractionPolicy(opts)
-
-	file, err := os.Open(archivePath)
+	entries, err := InspectTARGZWithPolicy(archivePath, policy)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open TAR.GZ file: %w", err)
+		return nil, err
 	}
-	defer file.Close()
-
-	gzReader, err := gzip.NewReader(file)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create GZIP reader: %w", err)
-	}
-	defer gzReader.Close()
-
-	tarReader := tar.NewReader(gzReader)
-	return extractTARStream(tarReader, destDir, opts, policy)
+	return extractSelectedCompressedTAR(archivePath, destDir, opts, policy, entries, openTARGZStream)
 }
 
-func extractTARStream(tarReader *tar.Reader, destDir string, opts *ExtractOptions, policy ExtractionPolicy) ([]string, error) {
+func extractSelectedCompressedTAR(
+	archivePath, destDir string,
+	opts *ExtractOptions,
+	policy ExtractionPolicy,
+	entries []ArchiveEntry,
+	open tarStreamOpener,
+) ([]string, error) {
+	ctx := selectionContextFromOpts(opts)
+	selected, err := SelectArchiveFontEntries(entries, ctx, policy)
+	if err != nil {
+		return nil, err
+	}
+	if len(selected) == 0 {
+		return nil, fmt.Errorf("no font files selected from archive")
+	}
+
+	want := selectedPathSet(selected)
+
+	tr, closer, err := open(archivePath)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create destination directory: %w", err)
 	}
 
 	var extractedFiles []string
 	var totalWritten int64
-	entryCount := 0
+	total := len(selected)
 	done := 0
-	seenDest := make(map[string]string)
 
 	for {
-		header, err := tarReader.Next()
+		header, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to read TAR header: %w", err)
 		}
-
-		entryCount++
-		if policy.MaxArchiveEntries > 0 && entryCount > policy.MaxArchiveEntries {
-			return nil, fmt.Errorf("%w: exceeded %d entries", ErrArchiveEntryCountLimit, policy.MaxArchiveEntries)
-		}
-
 		if header.Typeflag == tar.TypeDir {
 			continue
 		}
 		if header.Typeflag != tar.TypeReg {
 			continue
 		}
-		if !isFontFile(header.Name) {
-			continue
-		}
 
 		rel, ok := safeArchiveRelPath(header.Name)
 		if !ok {
-			return nil, fmt.Errorf("%w: %q", ErrArchiveUnsafePath, header.Name)
+			continue
 		}
-		key := destinationCollisionKey(rel)
-		if prev, exists := seenDest[key]; exists {
-			return nil, fmt.Errorf("%w: %q and %q", ErrArchivePathCollision, prev, rel)
-		}
-		seenDest[key] = rel
-
-		if policy.MaxSelectedFiles > 0 && done >= policy.MaxSelectedFiles {
-			return nil, fmt.Errorf("%w: selected %d (limit %d)", ErrArchiveSelectedFileLimit, done+1, policy.MaxSelectedFiles)
+		if _, ok := want[rel]; !ok {
+			if header.Size > 0 {
+				if _, err := io.Copy(io.Discard, tr); err != nil {
+					return nil, fmt.Errorf("failed to skip TAR member %q: %w", header.Name, err)
+				}
+			}
+			continue
 		}
 
 		extractedPath := filepath.Join(destDir, filepath.FromSlash(rel))
@@ -362,7 +359,7 @@ func extractTARStream(tarReader *tar.Reader, destDir string, opts *ExtractOption
 		if header.Size > 0 {
 			declared = uint64(header.Size)
 		}
-		n, extractErr := copyExtractedFileWithDeclaredSize(extractedPath, tarReader, header.Name, declared, policy, totalWritten)
+		n, extractErr := copyExtractedFileWithDeclaredSize(extractedPath, tr, header.Name, declared, policy, totalWritten)
 		if extractErr != nil {
 			return nil, extractErr
 		}
@@ -371,10 +368,13 @@ func extractTARStream(tarReader *tar.Reader, destDir string, opts *ExtractOption
 		extractedFiles = append(extractedFiles, extractedPath)
 		done++
 		if opts != nil && opts.OnFontFileExtracted != nil {
-			opts.OnFontFileExtracted(done, -1)
+			opts.OnFontFileExtracted(done, total)
 		}
 	}
 
+	if len(extractedFiles) == 0 {
+		return nil, fmt.Errorf("no font files extracted from archive")
+	}
 	return extractedFiles, nil
 }
 

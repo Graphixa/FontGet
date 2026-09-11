@@ -2,10 +2,18 @@ package repo
 
 import (
 	"fmt"
+	"math"
 	"path"
 	"path/filepath"
 	"strings"
 )
+
+// isNerdPackageSource reports whether the archive source prefix uses Nerd Fonts package mode:
+// install all supported desktop fonts from the manifest-selected archive.
+func isNerdPackageSource(prefix string) bool {
+	p := strings.ToLower(strings.TrimSpace(prefix))
+	return p == "nerd" || p == "nerdfonts"
+}
 
 // destinationCollisionKey returns a platform-stable key for detecting duplicate destinations.
 // Paths are slash-normalized and case-folded so Windows case collisions are rejected everywhere.
@@ -61,7 +69,7 @@ func fontCandidateEntries(entries []ArchiveEntry) []ArchiveEntry {
 }
 
 // SelectArchiveFontEntries applies source-aware / agnostic path selection to font candidates,
-// enforces MaxSelectedFiles, and rejects colliding destinations.
+// enforces MaxSelectedFiles, destination collisions, and declared aggregate size before extract.
 func SelectArchiveFontEntries(entries []ArchiveEntry, ctx ArchiveSelectionContext, policy ExtractionPolicy) ([]ArchiveEntry, error) {
 	candidates := fontCandidateEntries(entries)
 	if len(candidates) == 0 {
@@ -103,5 +111,35 @@ func SelectArchiveFontEntries(entries []ArchiveEntry, ctx ArchiveSelectionContex
 		seen[key] = struct{}{}
 		selected = append(selected, e)
 	}
+
+	if err := planSelectedArchiveBudget(selected, policy); err != nil {
+		return nil, err
+	}
 	return selected, nil
+}
+
+// planSelectedArchiveBudget rejects selections whose declared uncompressed sizes exceed
+// per-file or aggregate limits. Uses overflow-safe arithmetic; archive metadata is still
+// re-checked during streaming extract because headers are untrusted.
+func planSelectedArchiveBudget(selected []ArchiveEntry, policy ExtractionPolicy) error {
+	var total uint64
+	for _, e := range selected {
+		name := e.Name
+		if name == "" {
+			name = e.NormalizedPath
+		}
+		if sizeExceedsLimit(e.UncompressedSize, policy.MaxFileBytes) {
+			return fmt.Errorf("%w: %q (%d bytes)", ErrArchiveEntryTooLarge, name, e.UncompressedSize)
+		}
+		if math.MaxUint64-total < e.UncompressedSize {
+			return fmt.Errorf("%w: selected %d needs overflow bytes (limit %d)",
+				ErrArchiveTotalLimit, len(selected), policy.MaxTotalBytes)
+		}
+		total += e.UncompressedSize
+		if sizeExceedsLimit(total, policy.MaxTotalBytes) {
+			return fmt.Errorf("%w: selected %d needs %d bytes (limit %d)",
+				ErrArchiveTotalLimit, len(selected), total, policy.MaxTotalBytes)
+		}
+	}
+	return nil
 }

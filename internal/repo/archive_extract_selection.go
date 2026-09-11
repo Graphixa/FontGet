@@ -100,7 +100,7 @@ func sortExtractedFontPaths(items []archiveFontPickItem) []string {
 func isWebfontKitArchivePath(path string) bool {
 	s := strings.ToLower(filepath.ToSlash(path))
 	switch {
-	case strings.Contains(s, "/webfonts/"):
+	case s == "webfonts" || strings.HasPrefix(s, "webfonts/") || strings.Contains(s, "/webfonts/"):
 		return true
 	case strings.Contains(s, "/fonts/web/"): // e.g. Fontshare .../Fonts/WEB/fonts/...
 		return true

@@ -610,8 +610,22 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		return []string{downloadedPath}, nil
 	}
 
-	// It's an archive: ZIP selects before extract; other formats stream with hard budgets.
+	// It's an archive: ZIP and compressed TAR select before extract; 7Z streams with hard budgets.
 	extractDir := filepath.Join(targetDir, "extracted")
+	cleanupStaging := func(primary error) error {
+		var cleanupNotes []string
+		if rerr := os.RemoveAll(extractDir); rerr != nil && !os.IsNotExist(rerr) {
+			cleanupNotes = append(cleanupNotes, fmt.Sprintf("remove extract dir: %v", rerr))
+		}
+		if rerr := os.Remove(downloadedPath); rerr != nil && !os.IsNotExist(rerr) {
+			cleanupNotes = append(cleanupNotes, fmt.Sprintf("remove archive: %v", rerr))
+		}
+		if len(cleanupNotes) == 0 {
+			return primary
+		}
+		return fmt.Errorf("%w (%s)", primary, strings.Join(cleanupNotes, "; "))
+	}
+
 	extractedFiles, err := ExtractArchiveWithOptions(downloadedPath, extractDir, &ExtractOptions{
 		OnFontFileExtracted: func(done int, total int) {
 			if opts != nil && opts.OnExtractProgress != nil {
@@ -621,41 +635,54 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		Selection: &selCtx,
 	})
 	if err != nil {
-		if rerr := os.Remove(downloadedPath); rerr != nil && !os.IsNotExist(rerr) {
-			return nil, fmt.Errorf("failed to extract archive: %w (remove archive: %v)", err, rerr)
-		}
-		return nil, fmt.Errorf("failed to extract archive: %w", err)
+		return nil, cleanupStaging(fmt.Errorf("failed to extract archive: %w", err))
 	}
 
 	if rerr := os.Remove(downloadedPath); rerr != nil && !os.IsNotExist(rerr) {
+		_ = os.RemoveAll(extractDir)
 		return nil, fmt.Errorf("remove archive after extract: %w", rerr)
 	}
 
 	if len(extractedFiles) == 0 {
+		_ = os.RemoveAll(extractDir)
 		return nil, fmt.Errorf("no font files found in archive")
 	}
 
-	// Validate extracted files (header + sfnt); drop garbage so we never "install" it.
+	packageMode := isNerdPackageSource(selCtx.SourcePrefix)
+
+	// Validate extracted files (header + sfnt). Package mode requires every selected file to
+	// validate; non-package archives may drop unparseable members.
 	valid := make([]string, 0, len(extractedFiles))
 	for _, p := range extractedFiles {
 		if err := ValidateFontFile(p); err != nil {
+			if packageMode {
+				return nil, cleanupStaging(fmt.Errorf("package font invalid %q: %w", filepath.Base(p), err))
+			}
 			_ = os.Remove(p)
 			continue
 		}
 		if _, err := platform.ExtractFontMetadata(p); err != nil {
+			if packageMode {
+				return nil, cleanupStaging(fmt.Errorf("package font unparseable %q: %w", filepath.Base(p), err))
+			}
 			_ = os.Remove(p)
 			continue
 		}
 		valid = append(valid, p)
 	}
 	if len(valid) == 0 {
+		_ = os.RemoveAll(extractDir)
 		return nil, fmt.Errorf("no valid font files found after extraction (archive contents were not parseable as fonts)")
+	}
+	if packageMode && len(valid) != len(extractedFiles) {
+		return nil, cleanupStaging(fmt.Errorf("package install incomplete: validated %d of %d extracted fonts", len(valid), len(extractedFiles)))
 	}
 
 	// Post-extract policy: static vs variable preference (needs files on disk).
-	// Path/source selection already ran before ZIP extract.
+	// Path/source selection already ran before ZIP/TAR extract.
 	valid = applyArchiveInstallPolicy(valid)
 	if len(valid) == 0 {
+		_ = os.RemoveAll(extractDir)
 		return nil, fmt.Errorf("no font files selected for installation from archive")
 	}
 

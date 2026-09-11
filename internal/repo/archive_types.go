@@ -5,8 +5,8 @@ import "errors"
 const (
 	// Default extraction budgets. Fonts are typically small; these are generous to avoid
 	// false positives while preventing archive bombs and disk exhaustion.
-	defaultMaxExtractFileBytes  int64 = 200 << 20 // 200 MiB per file
-	defaultMaxExtractTotalBytes int64 = 1 << 30   // 1 GiB total
+	defaultMaxExtractFileBytes  int64 = 200 << 20  // 200 MiB per file
+	defaultMaxExtractTotalBytes int64 = 1536 << 20 // 1.5 GiB (1,610,612,736 bytes) total
 	defaultMaxArchiveEntries          = 10_000
 	defaultMaxSelectedFiles           = 512
 )

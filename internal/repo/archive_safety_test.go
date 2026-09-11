@@ -1,12 +1,15 @@
 package repo
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"math"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -158,48 +161,66 @@ func writeZipWithEntries(t *testing.T, path string, files map[string][]byte) {
 	}
 }
 
-func TestExtractZIP_selectiveNerdFonts_largeArchiveSmallSelection(t *testing.T) {
+func TestExtractZIP_nerdPackageMode_renamedFamiliesAndCompleteNoto(t *testing.T) {
 	dir := t.TempDir()
-	archivePath := filepath.Join(dir, "Noto.zip")
+	archivePath := filepath.Join(dir, "package.zip")
 	destDir := filepath.Join(dir, "out")
 
-	// Real Nerd Fonts v3 naming: Noto Sans Mono is abbreviated to NotoSansMNerdFont*.
+	// Catalogue names differ from installed family tokens (OFL remaps) and Noto is multi-family.
 	files := map[string][]byte{
-		"NotoSansMNerdFont-Regular.ttf":     bytes.Repeat([]byte("m"), 40),
-		"NotoSansMNerdFontMono-Regular.ttf": bytes.Repeat([]byte("m"), 40),
-		"NotoSansNerdFont-Regular.ttf":      bytes.Repeat([]byte("S"), 500),
-		"NotoSerifNerdFont-Regular.ttf":     bytes.Repeat([]byte("R"), 500),
+		"CaskaydiaCoveNerdFont-Regular.ttf": bytes.Repeat([]byte("c"), 40),
+		"SauceCodeProNerdFont-Regular.ttf":  bytes.Repeat([]byte("s"), 40),
+		"IosevkaNerdFont-Regular.ttf":       bytes.Repeat([]byte("i"), 20),
+		"IosevkaNerdFontMono-Regular.ttf":   bytes.Repeat([]byte("i"), 20),
+		"IosevkaNerdFontPropo-Regular.ttf":  bytes.Repeat([]byte("i"), 20),
+		"NotoSansMNerdFont-Regular.ttf":     bytes.Repeat([]byte("m"), 30),
+		"NotoSansNerdFont-Regular.ttf":      bytes.Repeat([]byte("S"), 30),
+		"NotoSerifNerdFont-Regular.ttf":     bytes.Repeat([]byte("R"), 30),
+		"webfonts/IgnoreMe-Regular.ttf":     bytes.Repeat([]byte("w"), 30),
+		"readme.txt":                        []byte("not a font"),
 	}
 	writeZipWithEntries(t, archivePath, files)
 
 	policy := ExtractionPolicy{
 		MaxFileBytes:      200,
-		MaxTotalBytes:     100, // selected=80 fits; full archive would not
+		MaxTotalBytes:     500,
 		MaxArchiveEntries: 100,
 		MaxSelectedFiles:  100,
 	}
-	paths, err := ExtractArchiveWithOptions(archivePath, destDir, &ExtractOptions{
-		Policy: &policy,
-		Selection: &ArchiveSelectionContext{
-			SourcePrefix: "nerd",
-			FontName:     "Noto Sans Mono",
-			FontID:       "nerd.noto-sans-mono",
-		},
-	})
-	if err != nil {
-		t.Fatalf("selective extract: %v", err)
+
+	cases := []struct {
+		name   string
+		fontID string
+		want   int
+	}{
+		{"cascadia renamed", "nerd.cascadia-code", 8}, // all desktop fonts; webfonts filtered
+		{"source-code renamed", "nerd.source-code-pro", 8},
+		{"iosevka all variants", "nerd.iosevka", 8},
+		{"noto complete package", "nerd.noto", 8},
 	}
-	if len(paths) != 2 {
-		t.Fatalf("want 2 extracted files, got %d: %v", len(paths), paths)
-	}
-	for _, p := range paths {
-		base := strings.ToLower(filepath.Base(p))
-		if !strings.HasPrefix(base, "notosansmnerdfont") {
-			t.Fatalf("unexpected extracted file %q", base)
-		}
-	}
-	if _, err := os.Stat(filepath.Join(destDir, "NotoSansNerdFont-Regular.ttf")); !os.IsNotExist(err) {
-		t.Fatalf("unselected filler should not be extracted")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := filepath.Join(destDir, tc.name)
+			paths, err := ExtractArchiveWithOptions(archivePath, out, &ExtractOptions{
+				Policy: &policy,
+				Selection: &ArchiveSelectionContext{
+					SourcePrefix: "nerd",
+					FontName:     "Unrelated Catalogue Name",
+					FontID:       tc.fontID,
+				},
+			})
+			if err != nil {
+				t.Fatalf("extract: %v", err)
+			}
+			if len(paths) != tc.want {
+				t.Fatalf("want %d extracted, got %d: %v", tc.want, len(paths), paths)
+			}
+			for _, p := range paths {
+				if strings.Contains(strings.ToLower(filepath.ToSlash(p)), "/webfonts/") {
+					t.Fatalf("webfont should not be extracted: %q", p)
+				}
+			}
+		})
 	}
 }
 
@@ -224,12 +245,246 @@ func TestExtractZIP_selectedSubsetExceedsBudget(t *testing.T) {
 		Policy: &policy,
 		Selection: &ArchiveSelectionContext{
 			SourcePrefix: "nerd",
-			FontName:     "Noto Sans Mono",
+			FontName:     "Noto",
+			FontID:       "nerd.noto",
 		},
 	})
 	if !errors.Is(err, ErrArchiveTotalLimit) {
 		t.Fatalf("got %v want ErrArchiveTotalLimit", err)
 	}
+	if _, statErr := os.Stat(destDir); !os.IsNotExist(statErr) {
+		entries, _ := os.ReadDir(destDir)
+		if len(entries) > 0 {
+			t.Fatalf("planning failure must leave dest empty, got %d entries", len(entries))
+		}
+	}
+}
+
+func TestPlanSelectedArchiveBudget_boundaries(t *testing.T) {
+	policy := DefaultExtractionPolicy()
+	exact := splitBudgetEntries("exact", uint64(policy.MaxTotalBytes), uint64(policy.MaxFileBytes))
+	if err := planSelectedArchiveBudget(exact, policy); err != nil {
+		t.Fatalf("exact 1.5 GiB should pass: %v", err)
+	}
+
+	over := splitBudgetEntries("over", uint64(policy.MaxTotalBytes)+1, uint64(policy.MaxFileBytes))
+	if err := planSelectedArchiveBudget(over, policy); !errors.Is(err, ErrArchiveTotalLimit) {
+		t.Fatalf("one over limit: got %v", err)
+	}
+
+	// Declared total just above the former 1 GiB default must succeed under 1.5 GiB.
+	former1GiB := uint64(1 << 30)
+	aboveOld := splitBudgetEntries("old", former1GiB+1, uint64(policy.MaxFileBytes))
+	if err := planSelectedArchiveBudget(aboveOld, policy); err != nil {
+		t.Fatalf("above old 1 GiB should pass under 1.5 GiB: %v", err)
+	}
+
+	// Overflow-safe aggregate rejection (three MaxInt64 sizes cannot sum in uint64).
+	overflow := []ArchiveEntry{
+		{Name: "a.ttf", NormalizedPath: "a.ttf", UncompressedSize: math.MaxInt64},
+		{Name: "b.ttf", NormalizedPath: "b.ttf", UncompressedSize: math.MaxInt64},
+		{Name: "c.ttf", NormalizedPath: "c.ttf", UncompressedSize: math.MaxInt64},
+	}
+	wide := ExtractionPolicy{
+		MaxFileBytes:  math.MaxInt64,
+		MaxTotalBytes: math.MaxInt64,
+	}
+	if err := planSelectedArchiveBudget(overflow, wide); !errors.Is(err, ErrArchiveTotalLimit) {
+		t.Fatalf("overflow: got %v", err)
+	}
+
+	perFile := []ArchiveEntry{{
+		Name: "huge.ttf", NormalizedPath: "huge.ttf", UncompressedSize: uint64(defaultMaxExtractFileBytes) + 1,
+	}}
+	if err := planSelectedArchiveBudget(perFile, policy); !errors.Is(err, ErrArchiveEntryTooLarge) {
+		t.Fatalf("per-file: got %v", err)
+	}
+}
+
+func splitBudgetEntries(prefix string, total, maxFile uint64) []ArchiveEntry {
+	var out []ArchiveEntry
+	remaining := total
+	i := 0
+	for remaining > 0 {
+		chunk := maxFile
+		if remaining < chunk {
+			chunk = remaining
+		}
+		name := prefix + string(rune('a'+i)) + ".ttf"
+		out = append(out, ArchiveEntry{Name: name, NormalizedPath: name, UncompressedSize: chunk})
+		remaining -= chunk
+		i++
+	}
+	return out
+}
+
+func TestDefaultExtractionPolicy_onePointFiveGiB(t *testing.T) {
+	p := DefaultExtractionPolicy()
+	if p.MaxTotalBytes != 1536<<20 {
+		t.Fatalf("MaxTotalBytes=%d want %d", p.MaxTotalBytes, 1536<<20)
+	}
+}
+
+func TestPickArchiveCandidates_nerdPackageMode(t *testing.T) {
+	paths := []string{
+		"CaskaydiaCoveNerdFont-Regular.ttf",
+		"SauceCodeProNerdFont-Regular.ttf",
+		"NotoSansNerdFont-Regular.ttf",
+		"NotoSerifNerdFont-Regular.ttf",
+	}
+	out := pickArchiveCandidates(paths, "nerd", "Cascadia Code", "nerd.cascadia-code")
+	if len(out) != len(paths) {
+		t.Fatalf("package mode should return all fonts, got %#v", out)
+	}
+}
+
+func TestExtractTARGZ_nerdPackageMode_parityWithZIP(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string][]byte{
+		"CaskaydiaCoveNerdFont-Regular.ttf": []byte("caskaydia"),
+		"SauceCodeProNerdFont-Regular.ttf":  []byte("sauce"),
+		"webfonts/Skip-Regular.ttf":         []byte("web"),
+	}
+
+	zipPath := filepath.Join(dir, "pkg.zip")
+	writeZipWithEntries(t, zipPath, files)
+	tarPath := filepath.Join(dir, "pkg.tar.gz")
+	writeTarGzWithEntries(t, tarPath, files)
+
+	policy := ExtractionPolicy{
+		MaxFileBytes:      1000,
+		MaxTotalBytes:     1000,
+		MaxArchiveEntries: 100,
+		MaxSelectedFiles:  100,
+	}
+	sel := &ArchiveSelectionContext{
+		SourcePrefix: "nerd",
+		FontID:       "nerd.cascadia-code",
+		FontName:     "Cascadia Code",
+	}
+
+	var zipProgressTotal int
+	zipOut := filepath.Join(dir, "zip-out")
+	zipPaths, err := ExtractArchiveWithOptions(zipPath, zipOut, &ExtractOptions{
+		Policy:    &policy,
+		Selection: sel,
+		OnFontFileExtracted: func(done, total int) {
+			zipProgressTotal = total
+		},
+	})
+	if err != nil {
+		t.Fatalf("zip: %v", err)
+	}
+
+	var tarProgressTotal int
+	tarOut := filepath.Join(dir, "tar-out")
+	tarPaths, err := ExtractArchiveWithOptions(tarPath, tarOut, &ExtractOptions{
+		Policy:    &policy,
+		Selection: sel,
+		OnFontFileExtracted: func(done, total int) {
+			tarProgressTotal = total
+		},
+	})
+	if err != nil {
+		t.Fatalf("tar.gz: %v", err)
+	}
+
+	if len(zipPaths) != 2 || len(tarPaths) != 2 {
+		t.Fatalf("want 2 each, zip=%d tar=%d", len(zipPaths), len(tarPaths))
+	}
+	if zipProgressTotal != 2 || tarProgressTotal != 2 {
+		t.Fatalf("progress totals zip=%d tar=%d want 2", zipProgressTotal, tarProgressTotal)
+	}
+
+	zipBases := basenames(zipPaths)
+	tarBases := basenames(tarPaths)
+	sort.Strings(zipBases)
+	sort.Strings(tarBases)
+	if strings.Join(zipBases, ",") != strings.Join(tarBases, ",") {
+		t.Fatalf("parity mismatch zip=%v tar=%v", zipBases, tarBases)
+	}
+}
+
+func TestExtractTARGZ_planningFailsLeavesNoOutput(t *testing.T) {
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "big.tar.gz")
+	destDir := filepath.Join(dir, "out")
+	writeTarGzWithEntries(t, tarPath, map[string][]byte{
+		"ANerdFont-Regular.ttf": bytes.Repeat([]byte("a"), 80),
+		"BNerdFont-Regular.ttf": bytes.Repeat([]byte("b"), 80),
+	})
+	policy := ExtractionPolicy{
+		MaxFileBytes:      200,
+		MaxTotalBytes:     100,
+		MaxArchiveEntries: 100,
+		MaxSelectedFiles:  100,
+	}
+	_, err := ExtractArchiveWithOptions(tarPath, destDir, &ExtractOptions{
+		Policy:    &policy,
+		Selection: &ArchiveSelectionContext{SourcePrefix: "nerd", FontID: "nerd.x"},
+	})
+	if !errors.Is(err, ErrArchiveTotalLimit) {
+		t.Fatalf("got %v", err)
+	}
+	if entries, _ := os.ReadDir(destDir); len(entries) > 0 {
+		t.Fatalf("dest should be empty after planning failure, got %v", entries)
+	}
+}
+
+func TestInspectTARXZ_corruptLeavesNoStaging(t *testing.T) {
+	dir := t.TempDir()
+	p := filepath.Join(dir, "bad.tar.xz")
+	// XZ magic but truncated/corrupt payload.
+	if err := os.WriteFile(p, []byte{0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, 0x00}, 0644); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(dir, "out")
+	_, err := ExtractArchiveWithOptions(p, dest, &ExtractOptions{
+		Selection: &ArchiveSelectionContext{SourcePrefix: "nerd", FontID: "nerd.x"},
+	})
+	if err == nil {
+		t.Fatal("expected corrupt archive error")
+	}
+	if entries, _ := os.ReadDir(dest); len(entries) > 0 {
+		t.Fatalf("corrupt extract must not leave staging files: %v", entries)
+	}
+}
+
+func writeTarGzWithEntries(t *testing.T, path string, files map[string][]byte) {
+	t.Helper()
+	var tarBuf bytes.Buffer
+	tw := tar.NewWriter(&tarBuf)
+	for name, data := range files {
+		h := &tar.Header{Name: name, Mode: 0644, Size: int64(len(data))}
+		if err := tw.WriteHeader(h); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var gzBuf bytes.Buffer
+	zw := gzip.NewWriter(&gzBuf)
+	if _, err := zw.Write(tarBuf.Bytes()); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, gzBuf.Bytes(), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func basenames(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = strings.ToLower(filepath.Base(p))
+	}
+	return out
 }
 
 func TestExtractZIP_pathCollision(t *testing.T) {
@@ -392,163 +647,5 @@ func TestValidateFontFile_headers(t *testing.T) {
 	}
 	if err := ValidateFontFile(woff); !errors.Is(err, ErrInvalidFontPayload) {
 		t.Fatalf("woff: got %v", err)
-	}
-}
-
-func TestTryNerdFontsKnownPaths(t *testing.T) {
-	paths := []string{
-		"NotoSansMNerdFont-Regular.ttf",
-		"NotoSansMNerdFontMono-Regular.ttf",
-		"NotoSansNerdFont-Regular.ttf",
-		"NotoSerifNerdFont-Regular.ttf",
-	}
-	got, stem, ok := tryNerdFontsKnownPaths(paths, "Noto Sans Mono", "nerd.noto-sans-mono")
-	if !ok || len(got) != 2 || stem != "notosansmono" {
-		t.Fatalf("got %#v stem=%q ok=%v", got, stem, ok)
-	}
-	// Nerd is fail-closed via pickArchiveCandidates, not tryKnownSourcePaths.
-	out := pickArchiveCandidates(paths, "nerd", "Noto Sans Mono", "")
-	if len(out) != 2 {
-		t.Fatalf("via pickArchiveCandidates: got %#v", out)
-	}
-}
-
-func TestTryNerdFontsKnownPaths_abbreviatedNotoSansM(t *testing.T) {
-	// Regression: real Noto.zip uses NotoSansMNerdFont* for Noto Sans Mono (SFNT name shortening).
-	paths := []string{
-		"NotoSansMNerdFont-Regular.ttf",
-		"NotoSansMNerdFont-Bold.ttf",
-		"NotoSansMNerdFontMono-Regular.ttf",
-		"NotoSansMNerdFontPropo-Regular.ttf",
-		"NotoSansNerdFont-Regular.ttf",
-		"NotoSansNerdFontPropo-CondensedThin.ttf",
-		"NotoSerifNerdFont-Regular.ttf",
-	}
-	got, stem, ok := tryNerdFontsKnownPaths(paths, "Noto Sans Mono", "nerd.noto-sans-mono")
-	if !ok || stem != "notosansmono" {
-		t.Fatalf("stem=%q ok=%v got=%#v", stem, ok, got)
-	}
-	if len(got) != 4 {
-		t.Fatalf("want 4 NotoSansM* files, got %d: %#v", len(got), got)
-	}
-	for _, p := range got {
-		b := strings.ToLower(filepath.Base(p))
-		if !strings.HasPrefix(b, "notosansmnerdfont") {
-			t.Fatalf("selected non-Mono file %q", p)
-		}
-		// Must not pick plain Noto Sans (notosansnerdfont without trailing m before nerd).
-		if strings.HasPrefix(b, "notosansnerdfont") && !strings.HasPrefix(b, "notosansmnerdfont") {
-			t.Fatalf("selected Noto Sans instead of Mono: %q", p)
-		}
-	}
-}
-
-func TestTryNerdFontsKnownPaths_fontIDWinsOverStyleBearingName(t *testing.T) {
-	paths := []string{
-		"NotoSansMNerdFont-Regular.ttf",
-		"NotoSansMNerdFontMono-Regular.ttf",
-		"NotoSansNerdFont-Regular.ttf",
-		"NotoSerifNerdFont-Regular.ttf",
-	}
-	got, stem, ok := tryNerdFontsKnownPaths(paths, "Noto Sans Mono Regular", "nerd.noto-sans-mono")
-	if !ok || stem != "notosansmono" || len(got) != 2 {
-		t.Fatalf("got %#v stem=%q ok=%v", got, stem, ok)
-	}
-}
-
-func TestTryNerdFontsKnownPaths_nameOnlyStripsRegular(t *testing.T) {
-	paths := []string{
-		"NotoSansMNerdFont-Regular.ttf",
-		"NotoSansNerdFont-Regular.ttf",
-	}
-	got, stem, ok := tryNerdFontsKnownPaths(paths, "Noto Sans Mono Regular", "")
-	if !ok || stem != "notosansmono" || len(got) != 1 {
-		t.Fatalf("got %#v stem=%q ok=%v", got, stem, ok)
-	}
-}
-
-func TestTryNerdFontsKnownPaths_notoSansDoesNotTakeMono(t *testing.T) {
-	paths := []string{
-		"NotoSansMNerdFont-Regular.ttf",
-		"NotoSansNerdFont-Regular.ttf",
-		"NotoSansNerdFont-Bold.ttf",
-	}
-	got, stem, ok := tryNerdFontsKnownPaths(paths, "Noto Sans", "nerd.noto-sans")
-	if !ok || stem != "notosans" || len(got) != 2 {
-		t.Fatalf("got %#v stem=%q ok=%v", got, stem, ok)
-	}
-	for _, p := range got {
-		if strings.Contains(strings.ToLower(filepath.Base(p)), "notosansmnerdfont") {
-			t.Fatalf("Mono file selected for Sans stem: %q", p)
-		}
-	}
-}
-
-func TestNerdFamilyKeyMatchesStem_noCrossFamily(t *testing.T) {
-	// Full Mono name must not match short Sans stem.
-	if nerdFamilyKeyMatchesStem(nerdFamilyKeyFromBasename("notosansmononerdfont-regular.ttf"), "notosans") {
-		t.Fatal("notosans must not match NotoSansMonoNerdFont")
-	}
-	// Exact Mono stem matches full Mono name.
-	if !nerdFamilyKeyMatchesStem(nerdFamilyKeyFromBasename("notosansmononerdfont-regular.ttf"), "notosansmono") {
-		t.Fatal("notosansmono should match NotoSansMonoNerdFont")
-	}
-	// Abbreviated Mono name matches Mono stem.
-	if !nerdFamilyKeyMatchesStem(nerdFamilyKeyFromBasename("notosansmnerdfont-regular.ttf"), "notosansmono") {
-		t.Fatal("notosansmono should match abbreviated NotoSansMNerdFont")
-	}
-}
-
-func TestMatchNerdPathsForStem_longestAbbreviationWins(t *testing.T) {
-	paths := []string{
-		"NotoSansNerdFont-Regular.ttf",
-		"NotoSansMNerdFont-Regular.ttf",
-	}
-	got := matchNerdPathsForStem(paths, "notosansmono")
-	if len(got) != 1 || !strings.Contains(got[0], "NotoSansM") {
-		t.Fatalf("want only NotoSansM, got %#v", got)
-	}
-}
-
-func TestPickArchiveCandidates_nerdFailClosed(t *testing.T) {
-	paths := []string{
-		"NotoSansNerdFont-Regular.ttf",
-		"NotoSerifNerdFont-Regular.ttf",
-		"OtherFamilyNerdFont-Regular.ttf",
-	}
-	out := pickArchiveCandidates(paths, "nerd", "NoSuchFont", "nerd.no-such-font")
-	if out != nil {
-		t.Fatalf("expected nil (fail closed), got %#v", out)
-	}
-}
-
-func TestNerdFontFamilyStem(t *testing.T) {
-	if got := nerdFontFamilyStem("Noto Sans Mono Regular", "nerd.noto-sans-mono"); got != "notosansmono" {
-		t.Fatalf("prefer id: %q", got)
-	}
-	if got := nerdFontFamilyStem("Noto Sans Mono", ""); got != "notosansmono" {
-		t.Fatalf("name stem: %q", got)
-	}
-	if got := nerdFontFamilyStem("", "nerd.noto-sans-mono"); got != "notosansmono" {
-		t.Fatalf("id stem: %q", got)
-	}
-	if got := nerdFontFamilyStem("Noto Sans Mono Regular", ""); got != "notosansmono" {
-		t.Fatalf("strip Regular: %q", got)
-	}
-}
-
-func TestStripTrailingFontStyleWords(t *testing.T) {
-	if got := stripTrailingFontStyleWords("Noto Sans Mono Regular"); got != "Noto Sans Mono" {
-		t.Fatalf("got %q", got)
-	}
-	if got := stripTrailingFontStyleWords("Fira Code Bold Italic"); got != "Fira Code" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestArchiveEntryBasename_forwardSlashOnWindows(t *testing.T) {
-	got := archiveEntryBasename("nested/dir/NotoSansMNerdFont-Regular.ttf")
-	if got != "notosansmnerdfont-regular.ttf" {
-		t.Fatalf("got %q", got)
 	}
 }
