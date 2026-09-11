@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -32,7 +31,7 @@ type updateModel struct {
 	total         int
 	quitting      bool
 	startTime     time.Time
-	manifest      *repo.FontManifest
+	totalFonts    int
 	verbose       bool
 }
 
@@ -44,16 +43,26 @@ type updateProgressMsg struct {
 
 // updateCompleteMsg represents completion of a source
 type updateCompleteMsg struct {
-	source string
-	status string
-	error  error
-	url    string // configured source URL (for file log / debug)
+	source    string
+	status    string
+	error     error
+	url       string // configured source URL (for file log / debug)
+	fontCount int    // fonts from this source after the download (or previous cache on failure)
 }
 
 // updateFinishedMsg represents completion of all updates
 type updateFinishedMsg struct {
-	manifest *repo.FontManifest
-	error    error
+	error error
+}
+
+func failedSourceUpdate(source, sourceURL string, err error) updateCompleteMsg {
+	return updateCompleteMsg{
+		source:    source,
+		status:    "Failed",
+		error:     err,
+		url:       sourceURL,
+		fontCount: repo.CachedSourceFontCount(source),
+	}
 }
 
 // createHTTPClient creates a properly configured HTTP client with timeouts
@@ -149,35 +158,28 @@ func (m updateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.error != nil {
 			m.errors[msg.source] = msg.error.Error()
 		}
+		m.totalFonts += msg.fontCount
 		m.completed++
 
 		if m.completed < m.total {
 			m.currentSource++
 			return m, m.updateNextSource()
-		} else {
-			return m, m.finishUpdate()
 		}
+		// Advance past the last source so the spinner is not left on it during prune/timestamp work.
+		m.currentSource++
+		return m, m.finishUpdate()
 
 	case updateFinishedMsg:
 		if msg.error != nil {
 			m.errors["system"] = msg.error.Error()
 			if lg := GetLogger(); lg != nil {
-				lg.Error("Sources update: manifest refresh after per-source downloads failed: %v", msg.error)
+				lg.Error("Sources update: finalize after per-source downloads failed: %v", msg.error)
 			}
-			output.GetDebug().State("Sources update: GetManifest after downloads failed: %v", msg.error)
-		} else {
-			m.manifest = msg.manifest
-			n := 0
-			if msg.manifest != nil {
-				for _, s := range msg.manifest.Sources {
-					n += len(s.Fonts)
-				}
-			}
-			if lg := GetLogger(); lg != nil {
-				lg.Info("Sources update: manifest refresh completed (%d fonts across sources)", n)
-			}
-			output.GetDebug().State("Sources update: manifest refresh ok, total fonts=%d", n)
+			output.GetDebug().State("Sources update: finalize after downloads failed: %v", msg.error)
+		} else if lg := GetLogger(); lg != nil {
+			lg.Info("Sources update: completed (%d fonts across sources)", m.totalFonts)
 		}
+		output.GetDebug().State("Sources update: ok, total fonts=%d", m.totalFonts)
 		m.quitting = true
 		// Quit immediately - no delays
 		return m, tea.Quit
@@ -204,23 +206,13 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		// Load the current manifest to get the source URL
 		manifest, err := config.LoadManifest()
 		if err != nil {
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  err,
-				url:    "",
-			}
+			return failedSourceUpdate(source, "", err)
 		}
 
 		// Get the source URL for validation
 		sourceConfig, exists := manifest.Sources[source]
 		if !exists {
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("source not found in configuration"),
-				url:    "",
-			}
+			return failedSourceUpdate(source, "", fmt.Errorf("source not found in configuration"))
 		}
 		sourceURL := sourceConfig.URL
 
@@ -243,12 +235,7 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		// Create request with context for proper cancellation
 		req, err := http.NewRequestWithContext(ctx, "GET", sourceURL, nil)
 		if err != nil {
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("failed to create request: %w", err),
-				url:    sourceURL,
-			}
+			return failedSourceUpdate(source, sourceURL, fmt.Errorf("failed to create request: %w", err))
 		}
 
 		// Add proper headers
@@ -276,23 +263,13 @@ func (m updateModel) updateNextSource() tea.Cmd {
 				errorMsg = fmt.Sprintf("network error: %v", err)
 			}
 
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("%s", errorMsg),
-				url:    sourceURL,
-			}
+			return failedSourceUpdate(source, sourceURL, fmt.Errorf("%s", errorMsg))
 		}
 		defer resp.Body.Close()
 
 		// Check HTTP status code
 		if resp.StatusCode >= 400 {
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("source URL returned status %d: %s", resp.StatusCode, resp.Status),
-				url:    sourceURL,
-			}
+			return failedSourceUpdate(source, sourceURL, fmt.Errorf("source URL returned status %d: %s", resp.StatusCode, resp.Status))
 		}
 
 		// Store verbose info for display in TUI
@@ -305,34 +282,18 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		maxSize := int64(50 * 1024 * 1024) // 50MB hardcoded limit
 		body, err := io.ReadAll(io.LimitReader(resp.Body, maxSize))
 		if err != nil {
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("failed to read source content: %w", err),
-				url:    sourceURL,
-			}
+			return failedSourceUpdate(source, sourceURL, fmt.Errorf("failed to read source content: %w", err))
 		}
 
 		// Check if we hit the size limit
 		if len(body) == int(maxSize) {
 			maxSizeMB := maxSize / (1024 * 1024)
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("source file too large (max %dMB)", maxSizeMB),
-				url:    sourceURL,
-			}
+			return failedSourceUpdate(source, sourceURL, fmt.Errorf("source file too large (max %dMB)", maxSizeMB))
 		}
 
-		// Validate that it's valid JSON
-		var jsonData interface{}
-		if err := json.Unmarshal(body, &jsonData); err != nil {
-			return updateCompleteMsg{
-				source: source,
-				status: "Failed",
-				error:  fmt.Errorf("source content is not valid JSON: %w", err),
-				url:    sourceURL,
-			}
+		fontCount, _, err := repo.PersistSourceCatalog(source, body)
+		if err != nil {
+			return failedSourceUpdate(source, sourceURL, err)
 		}
 
 		// Store verbose info for display in TUI
@@ -341,67 +302,37 @@ func (m updateModel) updateNextSource() tea.Cmd {
 		}
 
 		return updateCompleteMsg{
-			source: source,
-			status: "Completed",
-			error:  nil,
-			url:    sourceURL,
+			source:    source,
+			status:    "Completed",
+			error:     nil,
+			url:       sourceURL,
+			fontCount: fontCount,
 		}
 	}
 }
 
-// finishUpdate completes the update process
+// finishUpdate prunes stale cache files and records the update timestamp.
+// Font counts already come from the download pass; do not call GetManifest here.
 func (m updateModel) finishUpdate() tea.Cmd {
+	names := append([]string(nil), m.sources...)
 	return func() tea.Msg {
-		// Use a timeout context to prevent hanging
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
+		finalizeSourcesUpdate(names)
+		return updateFinishedMsg{}
+	}
+}
 
-		// Load manifest to get actual font count with timeout
-		done := make(chan struct{})
-		var manifest *repo.FontManifest
-		var err error
-
-		// Use a goroutine with proper cleanup
-		go func() {
-			defer func() {
-				// Ensure the done channel is always closed
-				select {
-				case <-done:
-					// Already closed
-				default:
-					close(done)
-				}
-			}()
-
-			// Check if context is already cancelled
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			manifest, err = repo.GetManifest(nil, nil)
-		}()
-
-		select {
-		case <-done:
-			// Manifest loaded successfully or with error
-			if err == nil {
-				if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
-					if log := GetLogger(); log != nil {
-						log.Warn("UpdateSourcesLastUpdated: %v", uerr)
-					}
-				}
-			}
-		case <-ctx.Done():
-			// Timeout occurred - ensure goroutine cleanup
-			cancel()
-			err = fmt.Errorf("manifest loading timeout after 5 seconds")
+// finalizeSourcesUpdate keeps previous caches for enabled sources (including failures)
+// and drops files for sources that are no longer enabled/present.
+func finalizeSourcesUpdate(enabledNames []string) {
+	if err := repo.PruneStaleSourceCaches(enabledNames); err != nil {
+		if lg := GetLogger(); lg != nil {
+			lg.Warn("PruneStaleSourceCaches: %v", err)
 		}
-
-		return updateFinishedMsg{
-			manifest: manifest,
-			error:    err,
+		output.GetDebug().State("PruneStaleSourceCaches: %v", err)
+	}
+	if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
+		if log := GetLogger(); log != nil {
+			log.Warn("UpdateSourcesLastUpdated: %v", uerr)
 		}
 	}
 }
@@ -558,17 +489,10 @@ func (m updateModel) renderSummary() string {
 	return content.String()
 }
 
-// calculateFontCount calculates the total number of fonts available
+// calculateFontCount returns the running total collected during the download pass
+// (source_info.total_fonts, plus previous cache counts for failed sources).
 func (m updateModel) calculateFontCount() int {
-	if m.manifest == nil {
-		return 0
-	}
-
-	totalFonts := 0
-	for _, sourceInfo := range m.manifest.Sources {
-		totalFonts += len(sourceInfo.Fonts)
-	}
-	return totalFonts
+	return m.totalFonts
 }
 
 func hostForSourcesLog(raw string) string {

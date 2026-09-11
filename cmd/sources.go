@@ -382,7 +382,7 @@ func runSourcesUpdateVerbose() error {
 
 	successful := 0
 	failed := 0
-	failedSources := make(map[string]bool) // Track which sources failed
+	totalFonts := 0
 
 	// Process each source with detailed logging
 	for _, sourceName := range enabledSources {
@@ -393,7 +393,7 @@ func runSourcesUpdateVerbose() error {
 			fmt.Println()
 			logSourcesUpdateCLIStep(sourceName, "", fmt.Errorf("source not found in configuration"))
 			failed++
-			failedSources[sourceName] = true
+			totalFonts += repo.CachedSourceFontCount(sourceName)
 			continue
 		}
 
@@ -424,7 +424,7 @@ func runSourcesUpdateVerbose() error {
 			fmt.Println()
 			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("%s", errorMsg))
 			failed++
-			failedSources[sourceName] = true
+			totalFonts += repo.CachedSourceFontCount(sourceName)
 			continue
 		}
 		headResp.Body.Close()
@@ -435,7 +435,7 @@ func runSourcesUpdateVerbose() error {
 			fmt.Println()
 			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("source URL returned status %d", headResp.StatusCode))
 			failed++
-			failedSources[sourceName] = true
+			totalFonts += repo.CachedSourceFontCount(sourceName)
 			continue
 		}
 
@@ -448,7 +448,7 @@ func runSourcesUpdateVerbose() error {
 			fmt.Println()
 			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("download failed: %w", err))
 			failed++
-			failedSources[sourceName] = true
+			totalFonts += repo.CachedSourceFontCount(sourceName)
 			continue
 		}
 
@@ -460,97 +460,33 @@ func runSourcesUpdateVerbose() error {
 			fmt.Println()
 			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("read body: %w", err))
 			failed++
-			failedSources[sourceName] = true
+			totalFonts += repo.CachedSourceFontCount(sourceName)
 			continue
 		}
 
-		// Validate JSON
-		var jsonData interface{}
-		if err := json.Unmarshal(body, &jsonData); err != nil {
-			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Source content is not valid JSON - %v", err)))
-			fmt.Println()
-			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("invalid JSON: %w", err))
-			failed++
-			continue
-		}
-
-		// Success - show where it would be cached
-		homeDir, err := os.UserHomeDir()
+		fontCount, cachePath, err := repo.PersistSourceCatalog(sourceName, body)
 		if err != nil {
-			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to get home directory - %v", err)))
+			fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Failed to cache source - %v", err)))
 			fmt.Println()
-			logSourcesUpdateCLIStep(sourceName, source.URL, fmt.Errorf("home directory: %w", err))
+			logSourcesUpdateCLIStep(sourceName, source.URL, err)
 			failed++
-			failedSources[sourceName] = true
+			totalFonts += repo.CachedSourceFontCount(sourceName)
 			continue
 		}
-		// Sanitize source name for filename (same as in repo package)
-		sanitizedName := strings.ToLower(sourceName)
-		sanitizedName = strings.ReplaceAll(sanitizedName, " ", "_")
-		cachePath := filepath.Join(homeDir, ".fontget", "sources", fmt.Sprintf("%s.json", sanitizedName))
+
 		fmt.Printf("%s\n", ui.RenderSuccess(fmt.Sprintf("Downloaded to '%s' (%d bytes)", ui.InfoText.Render(cachePath), len(body))))
 		fmt.Println()
 		logSourcesUpdateCLIStep(sourceName, source.URL, nil)
 		successful++
+		totalFonts += fontCount
 	}
 
 	if lg := GetLogger(); lg != nil {
-		lg.Info("Sources update: download phase complete (ok=%d failed=%d)", successful, failed)
+		lg.Info("Sources update: download phase complete (ok=%d failed=%d fonts=%d)", successful, failed, totalFonts)
 	}
 
-	// Temporarily disable failed sources before refresh to avoid trying to load them again
-	originalEnabledStates := make(map[string]bool)
-	if len(failedSources) > 0 {
-		for sourceName := range failedSources {
-			if source, exists := manifest.Sources[sourceName]; exists {
-				originalEnabledStates[sourceName] = source.Enabled
-				source.Enabled = false
-				manifest.Sources[sourceName] = source // Update the map with the modified struct
-			}
-		}
-		// Save the modified manifest so GetManifestWithRefresh will skip failed sources
-		if err := config.SaveManifest(manifest); err != nil {
-			GetLogger().Error("Failed to save manifest with disabled sources: %v", err)
-			output.GetVerbose().Warning("Failed to temporarily disable failed sources, they may be attempted again")
-		}
-	}
-
-	// Try to load manifest with force refresh
-	fmt.Printf("Refreshing font data cache...\n")
-	progress := func(current, total int, message string) {
-		if current == total {
-			fmt.Printf("%s\n", ui.RenderSuccess("\nFont data cache refreshed successfully\n"))
-		} else {
-			fmt.Printf("   %s\n", message)
-		}
-	}
-
-	fontManifest, err := repo.GetManifestWithRefresh(nil, progress, true)
-
-	// Restore original enabled states for failed sources
-	if len(originalEnabledStates) > 0 {
-		for sourceName, wasEnabled := range originalEnabledStates {
-			if source, exists := manifest.Sources[sourceName]; exists {
-				source.Enabled = wasEnabled
-				manifest.Sources[sourceName] = source // Update the map with the modified struct
-			}
-		}
-		// Restore the manifest
-		if err := config.SaveManifest(manifest); err != nil {
-			GetLogger().Error("Failed to restore manifest: %v", err)
-			output.GetVerbose().Warning("Failed to restore original source states")
-		}
-	}
-	if err != nil {
-		fmt.Printf("%s\n", ui.RenderWarning(fmt.Sprintf("Failed to refresh font data cache: %v", err)))
-	} else {
-		// Count total fonts
-		totalFonts := 0
-		for _, sourceInfo := range fontManifest.Sources {
-			totalFonts += len(sourceInfo.Fonts)
-		}
-		fmt.Printf("%s %d\n", ui.InfoText.Render("Total fonts available:"), totalFonts)
-	}
+	finalizeSourcesUpdate(enabledSources)
+	fmt.Printf("%s %d\n", ui.InfoText.Render("Total fonts available:"), totalFonts)
 
 	// Status Report at the bottom (only shown in verbose mode - this function is only called in verbose mode)
 	fmt.Printf("\n%s\n", ui.TextBold.Render("Status Report"))
@@ -580,36 +516,8 @@ Downloads the latest font data from all enabled sources and updates the local ca
 
 		output.GetDebug().Message("Debug mode enabled - showing detailed diagnostic information")
 
-		// Clear existing cached sources first
-		output.GetVerbose().Info("Clearing existing cached sources")
-		output.GetDebug().State("Clearing sources directory before update")
-
-		home, err := os.UserHomeDir()
-		if err != nil {
-			GetLogger().Error("Failed to get home directory: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("os.UserHomeDir() failed: %v", err)
-			return fmt.Errorf("unable to access home directory: %v", err)
-		}
-
-		sourcesDir := filepath.Join(home, ".fontget", "sources")
-		if err := os.RemoveAll(sourcesDir); err != nil {
-			GetLogger().Error("Failed to clear sources directory: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("os.RemoveAll() failed: %v", err)
-			return fmt.Errorf("unable to clear sources directory: %v", err)
-		}
-
-		// Recreate the sources directory
-		if err := os.MkdirAll(sourcesDir, 0755); err != nil {
-			GetLogger().Error("Failed to recreate sources directory: %v", err)
-			output.GetVerbose().Error("%v", err)
-			output.GetDebug().Error("os.MkdirAll() failed: %v", err)
-			return fmt.Errorf("unable to create sources directory: %v", err)
-		}
-
-		output.GetVerbose().Success("Cleared existing cached sources")
-		output.GetDebug().State("Sources directory cleared and recreated")
+		// Keep existing cache files until each source downloads successfully.
+		// Failed sources retain their previous good cache; writes use temp+rename.
 
 		// Update the source configurations
 		output.GetVerbose().Info("Updating source configurations")

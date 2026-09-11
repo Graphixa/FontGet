@@ -3,6 +3,7 @@ package repo
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -135,18 +136,13 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 		progress(0, 1, fmt.Sprintf("Loading %s source...", sourceName))
 	}
 
-	// Get cache directory
-	cacheDir, err := getFontGetDir()
+	cacheFile, err := SourceCachePath(sourceName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cache directory: %w", err)
+		return nil, fmt.Errorf("failed to get cache path: %w", err)
 	}
-	sourcesCacheDir := filepath.Join(cacheDir, "sources")
-	if err := os.MkdirAll(sourcesCacheDir, 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(cacheFile), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create sources cache directory: %w", err)
 	}
-
-	// Create cache filename based on source name
-	cacheFile := filepath.Join(sourcesCacheDir, fmt.Sprintf("%s.json", sanitizeSourceNameForFilename(sourceName)))
 
 	// Check if we should use cached data
 	useCache := false
@@ -217,19 +213,22 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 	stallReader := network.WrapReaderWithStallDetection(resp.Body, downloadTimeout, 0)
 	defer stallReader.Close()
 
+	body, err := io.ReadAll(stallReader)
+	if err != nil {
+		return nil, fmt.Errorf("error reading %s source: %w", sourceName, err)
+	}
+
 	var sourceData SourceData
-	if err := json.NewDecoder(stallReader).Decode(&sourceData); err != nil {
+	if err := json.Unmarshal(body, &sourceData); err != nil {
 		return nil, fmt.Errorf("error parsing %s source: %w", sourceName, err)
 	}
 
-	// Save to cache
-	if data, err := json.MarshalIndent(sourceData, "", "  "); err == nil {
-		if werr := os.WriteFile(cacheFile, data, 0600); werr != nil {
-			if log := logging.GetLogger(); log != nil {
-				log.Warn("failed to write sources cache %q: %v", cacheFile, werr)
-			} else {
-				fmt.Fprintf(os.Stderr, "fontget: warning: failed to write sources cache %q: %v\n", cacheFile, werr)
-			}
+	// Write the raw downloaded body (not a pretty-printed re-encode) via temp+rename.
+	if _, werr := WriteSourceCacheAtomic(sourceName, body); werr != nil {
+		if log := logging.GetLogger(); log != nil {
+			log.Warn("failed to write sources cache %q: %v", cacheFile, werr)
+		} else {
+			fmt.Fprintf(os.Stderr, "fontget: warning: failed to write sources cache %q: %v\n", cacheFile, werr)
 		}
 	}
 
@@ -242,15 +241,10 @@ func loadSourceDataWithCache(url string, sourceName string, progress ProgressCal
 
 // loadSourceDataFromCacheOnly loads source data from cache only (no refresh)
 func loadSourceDataFromCacheOnly(_ string, sourceName string) (*SourceData, error) {
-	// Get cache directory
-	cacheDir, err := getFontGetDir()
+	cacheFile, err := SourceCachePath(sourceName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get cache directory: %w", err)
+		return nil, fmt.Errorf("failed to get cache path: %w", err)
 	}
-	sourcesCacheDir := filepath.Join(cacheDir, "sources")
-
-	// Create cache filename based on source name
-	cacheFile := filepath.Join(sourcesCacheDir, fmt.Sprintf("%s.json", sanitizeSourceNameForFilename(sourceName)))
 
 	// Check if cache file exists
 	if _, err := os.Stat(cacheFile); err != nil {
