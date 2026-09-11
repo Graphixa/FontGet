@@ -12,8 +12,14 @@ on:
 
 jobs:
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -28,9 +34,11 @@ jobs:
         run: go mod download
 
       - name: Staticcheck
+        if: matrix.os == 'ubuntu-latest'
         run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
 
       - name: Gosec
+        if: matrix.os == 'ubuntu-latest'
         run: go run github.com/securego/gosec/v2/cmd/gosec@latest -conf=.gosec.json ./...
 
       - name: Run tests
