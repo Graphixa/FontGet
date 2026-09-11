@@ -138,6 +138,10 @@ type FontFile struct {
 	Path        string
 	SHA         string
 	DownloadURL string
+	// DownloadCandidates is preference-ordered URLs for this variant payload.
+	// When non-empty, DownloadCandidates[0] matches DownloadURL. DownloadAndExtractFont
+	// tries each URL in order on download/extract/validation failure.
+	DownloadCandidates []string
 }
 
 // DownloadFontOptions configures DownloadFont / DownloadAndExtractFont.
@@ -514,8 +518,68 @@ func isHTTP2HeaderTimeout(err error) bool {
 	return errors.As(err, &ne) && ne.Timeout() && strings.Contains(err.Error(), "http2:")
 }
 
-// DownloadAndExtractFont downloads a font file (which may be an archive) and extracts it if needed
+// DownloadAndExtractFont downloads a font file (which may be an archive) and extracts it if needed.
+// When FontFile.DownloadCandidates is set, formats are tried in preference order on failure.
 func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFontOptions) ([]string, error) {
+	if font == nil {
+		return nil, fmt.Errorf("font is nil")
+	}
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create target directory: %w", err)
+	}
+
+	candidates := font.DownloadCandidates
+	if len(candidates) == 0 && strings.TrimSpace(font.DownloadURL) != "" {
+		candidates = []string{font.DownloadURL}
+	}
+	if len(candidates) == 0 {
+		return nil, fmt.Errorf("no download URL for %s", font.Name)
+	}
+
+	var lastErr error
+	for i, candidateURL := range candidates {
+		candidateURL = strings.TrimSpace(candidateURL)
+		if candidateURL == "" {
+			continue
+		}
+		font.DownloadURL = candidateURL
+		if isArchiveFile(candidateURL) {
+			font.Path = filepath.Base(candidateURL)
+		} else {
+			font.Path = createFontFileName(font.Name, font.Variant, candidateURL)
+		}
+
+		output.GetDebug().State("DownloadAndExtractFont: attempt %d/%d url=%s", i+1, len(candidates), candidateURL)
+		paths, err := attemptDownloadAndExtract(font, targetDir, opts)
+		if err == nil {
+			if i > 0 {
+				output.GetDebug().State("DownloadAndExtractFont: succeeded on format candidate %d/%d url=%s", i+1, len(candidates), candidateURL)
+			}
+			return paths, nil
+		}
+		lastErr = err
+		output.GetDebug().State("DownloadAndExtractFont: candidate %d/%d failed: %v", i+1, len(candidates), err)
+
+		// Best-effort cleanup of this attempt's artifacts before the next format.
+		_ = os.Remove(filepath.Join(targetDir, font.Path))
+		_ = os.RemoveAll(filepath.Join(targetDir, "extracted"))
+
+		if i+1 < len(candidates) {
+			output.GetDebug().State("DownloadAndExtractFont: trying next format candidate")
+		}
+	}
+
+	if lastErr == nil {
+		return nil, fmt.Errorf("no download URL for %s", font.Name)
+	}
+	if len(candidates) > 1 {
+		return nil, fmt.Errorf("%w (after %d format candidates)", lastErr, len(candidates))
+	}
+	return nil, lastErr
+}
+
+// attemptDownloadAndExtract performs one download + optional extract + validation for font.DownloadURL.
+func attemptDownloadAndExtract(font *FontFile, targetDir string, opts *DownloadFontOptions) ([]string, error) {
 	start := time.Now()
 
 	isProbablyHTML := func(path string) bool {
@@ -528,11 +592,6 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		n, _ := f.Read(buf[:])
 		b := bytes.TrimSpace(bytes.ToLower(buf[:n]))
 		return bytes.HasPrefix(b, []byte("<!doctype html")) || bytes.HasPrefix(b, []byte("<html"))
-	}
-
-	// Create target directory if it doesn't exist
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create target directory: %w", err)
 	}
 
 	// Download the file first (capture response headers if available)
@@ -810,64 +869,55 @@ func GetFontByIDCached(fontID string) ([]FontFile, error) {
 	return convertFontInfoToFontFiles(info, id)
 }
 
-// pickDownloadURLFromFileMap chooses a download URL from FontGet-Sources variant or top-level files.
-// Order: direct fonts first (ttf, otf), then archives (zip, 7z) used e.g. by Font Squirrel fontface kits.
-func pickDownloadURLFromFileMap(files map[string]string) string {
-	if len(files) == 0 {
-		return ""
-	}
-	for _, key := range []string{"ttf", "otf", "zip", "7z"} {
-		if u := strings.TrimSpace(files[key]); u != "" {
-			return u
-		}
-	}
-	return ""
-}
-
 // convertFontInfoToFontFiles converts FontInfo to []FontFile
 func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error) {
 	var fonts []FontFile
-	seenURLs := make(map[string]bool) // Track seen URLs to avoid duplicates
+	seenURLs := make(map[string]bool) // Track seen primary URLs to avoid duplicate variants
 
 	// Process each variant using the preserved variant-file mapping
 	for _, variantName := range font.Variants {
-		var downloadURL string
+		var files map[string]string
 
 		// Use variant-specific files if available
 		if font.VariantFiles != nil {
 			if variantFiles, exists := font.VariantFiles[variantName]; exists {
-				downloadURL = pickDownloadURLFromFileMap(variantFiles)
+				files = variantFiles
 			}
 		}
 
 		// Fallback to general files if variant-specific not found
-		if downloadURL == "" {
-			downloadURL = pickDownloadURLFromFileMap(font.Files)
+		if len(files) == 0 {
+			files = font.Files
 		}
 
-		if downloadURL != "" {
-			// Check if we've already processed this URL (for duplicate variants)
-			if seenURLs[downloadURL] {
-				continue
-			}
-			seenURLs[downloadURL] = true
-
-			// For archive files, use the archive filename as the path
-			// For individual font files, create a proper filename
-			var fileName string
-			if isArchiveFile(downloadURL) {
-				fileName = filepath.Base(downloadURL)
-			} else {
-				fileName = createFontFileName(font.Name, variantName, downloadURL)
-			}
-
-			fonts = append(fonts, FontFile{
-				Name:        font.Name,
-				Variant:     variantName,
-				Path:        fileName,
-				DownloadURL: downloadURL,
-			})
+		candidates := downloadCandidateURLs(files)
+		if len(candidates) == 0 {
+			continue
 		}
+		downloadURL := candidates[0]
+
+		// Check if we've already processed this primary URL (for duplicate variants)
+		if seenURLs[downloadURL] {
+			continue
+		}
+		seenURLs[downloadURL] = true
+
+		// For archive files, use the archive filename as the path
+		// For individual font files, create a proper filename
+		var fileName string
+		if isArchiveFile(downloadURL) {
+			fileName = filepath.Base(downloadURL)
+		} else {
+			fileName = createFontFileName(font.Name, variantName, downloadURL)
+		}
+
+		fonts = append(fonts, FontFile{
+			Name:               font.Name,
+			Variant:            variantName,
+			Path:               fileName,
+			DownloadURL:        downloadURL,
+			DownloadCandidates: candidates,
+		})
 	}
 	if len(fonts) == 0 {
 		return nil, fmt.Errorf("no valid font files found for %s", fontID)

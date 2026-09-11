@@ -269,9 +269,15 @@ func selectedPathSet(selected []ArchiveEntry) map[string]ArchiveEntry {
 	return want
 }
 
-// extractTARXZ inspects TAR headers, plans selection, then extracts only selected members.
+// extractTARXZ extracts a TAR.XZ archive.
+// Nerd package mode uses a single decompress pass (all desktop fonts).
+// Other sources inspect first, then extract only selected members (second decompress).
 func extractTARXZ(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
 	policy := resolveExtractionPolicy(opts)
+	ctx := selectionContextFromOpts(opts)
+	if isNerdPackageSource(ctx.SourcePrefix) {
+		return extractCompressedTARPackageMode(archivePath, destDir, opts, policy, openTARXZStream)
+	}
 	entries, err := InspectTARXZWithPolicy(archivePath, policy)
 	if err != nil {
 		return nil, err
@@ -279,14 +285,150 @@ func extractTARXZ(archivePath, destDir string, opts *ExtractOptions) ([]string, 
 	return extractSelectedCompressedTAR(archivePath, destDir, opts, policy, entries, openTARXZStream)
 }
 
-// extractTARGZ inspects TAR headers, plans selection, then extracts only selected members.
+// extractTARGZ extracts a TAR.GZ archive (same package-mode single-pass rule as TAR.XZ).
 func extractTARGZ(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
 	policy := resolveExtractionPolicy(opts)
+	ctx := selectionContextFromOpts(opts)
+	if isNerdPackageSource(ctx.SourcePrefix) {
+		return extractCompressedTARPackageMode(archivePath, destDir, opts, policy, openTARGZStream)
+	}
 	entries, err := InspectTARGZWithPolicy(archivePath, policy)
 	if err != nil {
 		return nil, err
 	}
 	return extractSelectedCompressedTAR(archivePath, destDir, opts, policy, entries, openTARGZStream)
+}
+
+// extractCompressedTARPackageMode decompresses once and writes every safe desktop font
+// as it is seen. Used for Nerd Fonts where selection is "install the whole package".
+// On failure, any files written in this call are removed so callers see a clean dest.
+func extractCompressedTARPackageMode(
+	archivePath, destDir string,
+	opts *ExtractOptions,
+	policy ExtractionPolicy,
+	open tarStreamOpener,
+) ([]string, error) {
+	tr, closer, err := open(archivePath)
+	if err != nil {
+		return nil, err
+	}
+	defer closer.Close()
+
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	var extractedFiles []string
+	var totalWritten int64
+	entryCount := 0
+	selectedCount := 0
+	seenDest := make(map[string]string)
+	done := 0
+
+	cleanupWritten := func() {
+		for _, p := range extractedFiles {
+			_ = os.Remove(p)
+		}
+	}
+
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			cleanupWritten()
+			return nil, fmt.Errorf("failed to read TAR header: %w", err)
+		}
+
+		entryCount++
+		if policy.MaxArchiveEntries > 0 && entryCount > policy.MaxArchiveEntries {
+			cleanupWritten()
+			return nil, fmt.Errorf("%w: exceeded %d entries", ErrArchiveEntryCountLimit, policy.MaxArchiveEntries)
+		}
+
+		if header.Typeflag == tar.TypeDir || strings.HasSuffix(header.Name, "/") {
+			continue
+		}
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		discardBody := func() error {
+			if header.Size <= 0 {
+				return nil
+			}
+			if _, err := io.Copy(io.Discard, tr); err != nil {
+				return fmt.Errorf("failed to skip TAR member %q: %w", header.Name, err)
+			}
+			return nil
+		}
+
+		if !isFontFile(header.Name) {
+			if err := discardBody(); err != nil {
+				cleanupWritten()
+				return nil, err
+			}
+			continue
+		}
+
+		rel, ok := safeArchiveRelPath(header.Name)
+		if !ok {
+			if err := discardBody(); err != nil {
+				cleanupWritten()
+				return nil, err
+			}
+			continue
+		}
+		if isWebfontKitArchivePath(rel) {
+			if err := discardBody(); err != nil {
+				cleanupWritten()
+				return nil, err
+			}
+			continue
+		}
+
+		key := destinationCollisionKey(rel)
+		if prev, exists := seenDest[key]; exists {
+			cleanupWritten()
+			return nil, fmt.Errorf("%w: %q and %q", ErrArchivePathCollision, prev, rel)
+		}
+
+		selectedCount++
+		if policy.MaxSelectedFiles > 0 && selectedCount > policy.MaxSelectedFiles {
+			cleanupWritten()
+			return nil, fmt.Errorf("%w: selected %d (limit %d)", ErrArchiveSelectedFileLimit, selectedCount, policy.MaxSelectedFiles)
+		}
+		seenDest[key] = rel
+
+		extractedPath := filepath.Join(destDir, filepath.FromSlash(rel))
+		if err := ensureParentDir(extractedPath); err != nil {
+			cleanupWritten()
+			return nil, fmt.Errorf("failed to create destination directory for %s: %w", extractedPath, err)
+		}
+
+		var declared uint64
+		if header.Size > 0 {
+			declared = uint64(header.Size)
+		}
+		n, extractErr := copyExtractedFileWithDeclaredSize(extractedPath, tr, header.Name, declared, policy, totalWritten)
+		if extractErr != nil {
+			cleanupWritten()
+			return nil, extractErr
+		}
+		totalWritten += n
+		extractedFiles = append(extractedFiles, extractedPath)
+		done++
+		if opts != nil && opts.OnFontFileExtracted != nil {
+			// Total unknown until stream ends; progress UIs treat -1 as indeterminate.
+			opts.OnFontFileExtracted(done, -1)
+		}
+	}
+
+	if len(extractedFiles) == 0 {
+		return nil, fmt.Errorf("no font files selected from archive")
+	}
+	return extractedFiles, nil
 }
 
 func extractSelectedCompressedTAR(

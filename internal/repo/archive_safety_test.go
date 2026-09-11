@@ -392,8 +392,12 @@ func TestExtractTARGZ_nerdPackageMode_parityWithZIP(t *testing.T) {
 	if len(zipPaths) != 2 || len(tarPaths) != 2 {
 		t.Fatalf("want 2 each, zip=%d tar=%d", len(zipPaths), len(tarPaths))
 	}
-	if zipProgressTotal != 2 || tarProgressTotal != 2 {
-		t.Fatalf("progress totals zip=%d tar=%d want 2", zipProgressTotal, tarProgressTotal)
+	// ZIP inspects first so progress total is known; Nerd TAR package mode is single-pass (-1).
+	if zipProgressTotal != 2 {
+		t.Fatalf("zip progress total=%d want 2", zipProgressTotal)
+	}
+	if tarProgressTotal != -1 {
+		t.Fatalf("tar package-mode progress total=%d want -1", tarProgressTotal)
 	}
 
 	zipBases := basenames(zipPaths)
@@ -426,8 +430,9 @@ func TestExtractTARGZ_planningFailsLeavesNoOutput(t *testing.T) {
 	if !errors.Is(err, ErrArchiveTotalLimit) {
 		t.Fatalf("got %v", err)
 	}
+	// Package-mode single-pass may write then fail; written fonts are cleaned up on error.
 	if entries, _ := os.ReadDir(destDir); len(entries) > 0 {
-		t.Fatalf("dest should be empty after planning failure, got %v", entries)
+		t.Fatalf("dest should be empty after budget failure cleanup, got %v", entries)
 	}
 }
 
