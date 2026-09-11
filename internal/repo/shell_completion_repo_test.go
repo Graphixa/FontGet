@@ -9,11 +9,12 @@ import (
 
 	"fontget/internal/config"
 	"fontget/internal/sources"
+	"fontget/internal/testutil"
 )
 
 func TestGetRepositoryForShellCompletion_WithoutManifest(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 
 	cfgDir := filepath.Join(home, ".fontget")
 	if err := os.MkdirAll(cfgDir, 0755); err != nil {

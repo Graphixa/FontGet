@@ -11,6 +11,7 @@ func TestIsWebfontKitArchivePath(t *testing.T) {
 		{"Kihim_Complete/Fonts/WEB/fonts/Kihim-Regular.ttf", true},
 		{"fanwood-master/Fanwood.otf", false},
 		{"fanwood-master/webfonts/fanwood-webfont.ttf", true},
+		{"webfonts/IgnoreMe-Regular.ttf", true},
 		{"pkg/dist/Fanwood_Text-webfont.ttf", true},
 		{"Some/Font/static/webfonts/x.ttf", true},
 		{"plain/Regular.ttf", false},

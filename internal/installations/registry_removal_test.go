@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"fontget/internal/platform"
+	"fontget/internal/testutil"
 )
 
 func TestShouldConsultRegistryForRemoval_dot(t *testing.T) {
@@ -26,7 +27,7 @@ func TestShouldConsultRegistryForRemoval_registryHitWithoutDot(t *testing.T) {
 
 func TestInstallationHasBasenamesUnderDir(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	userFonts := filepath.Join(home, "Library", "Fonts")
 	if err := RecordInstallation(RecordParams{
 		FontID:      "nerd.meslo",
@@ -56,7 +57,7 @@ func TestInstallationHasBasenamesUnderDir(t *testing.T) {
 
 func TestInstallationRegistryResolvable(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	userFonts := filepath.Join(home, "Library", "Fonts")
 	if err := RecordInstallation(RecordParams{
 		FontID:      "nerd.x",

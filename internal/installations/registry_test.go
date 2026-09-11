@@ -7,11 +7,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"fontget/internal/testutil"
 )
 
 func TestRegistryPath_underHome(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	p := RegistryPath()
 	if filepath.Dir(p) != filepath.Join(home, ".fontget") {
 		t.Fatalf("RegistryPath dir = %q want %q", filepath.Dir(p), filepath.Join(home, ".fontget"))
@@ -29,7 +31,7 @@ func TestCurrentRegistrySchemaVersion(t *testing.T) {
 
 func TestLoad_migratesSchemaVersionAndPersists(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	dir := filepath.Join(home, ".fontget")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -62,7 +64,7 @@ func TestLoad_migratesSchemaVersionAndPersists(t *testing.T) {
 
 func TestLoad_unknownSchemaVersion_errors(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	dir := filepath.Join(home, ".fontget")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -85,7 +87,7 @@ func TestLoad_unknownSchemaVersion_errors(t *testing.T) {
 
 func TestLoad_missingFile_isEmpty(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	reg, err := Load()
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +99,7 @@ func TestLoad_missingFile_isEmpty(t *testing.T) {
 
 func TestRecord_roundTripAndUpsert(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 
 	err := RecordInstallation(RecordParams{
 		FontID:         "nerd.testfont",
@@ -135,8 +137,9 @@ func TestRecord_roundTripAndUpsert(t *testing.T) {
 	reg2, _ := Load()
 	inst2 := reg2.FindByFontID("nerd.testfont")
 	ff := inst2.FlatFiles()
-	if len(ff) != 1 || ff[0].Path != "/tmp/b.otf" {
-		t.Fatalf("upsert files: %#v", ff)
+	wantPath := filepath.Clean("/tmp/b.otf")
+	if len(ff) != 1 || ff[0].Path != wantPath {
+		t.Fatalf("upsert files: %#v want path %q", ff, wantPath)
 	}
 }
 
@@ -186,7 +189,7 @@ func TestDirContainsFontFile_caseInsensitiveDir(t *testing.T) {
 
 func TestLoad_corruptJSON(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	dir := filepath.Join(home, ".fontget")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -203,7 +206,7 @@ func TestLoad_corruptJSON(t *testing.T) {
 
 func TestRemoveInstallation(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	if err := RecordInstallation(RecordParams{
 		FontID:      "a.b",
 		CatalogName: "B",

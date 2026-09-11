@@ -3,6 +3,7 @@ package network
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -59,7 +60,8 @@ func TestDownloadWithFallbacks_NoTools(t *testing.T) {
 		paths:   map[string]string{},
 		results: map[string]fakeResult{},
 	}
-	rep, err := downloadWithFallbacks(r, "https://example.com/file.zip", "/tmp/file.zip", DownloadFallbackOptions{UserAgent: "ua"})
+	out := filepath.Join(t.TempDir(), "file.zip")
+	rep, err := downloadWithFallbacks(r, "https://example.com/file.zip", out, DownloadFallbackOptions{UserAgent: "ua"})
 	if err == nil {
 		t.Fatalf("expected error")
 	}
@@ -80,7 +82,8 @@ func TestDownloadWithFallbacks_CurlSuccess(t *testing.T) {
 			"/usr/bin/curl": {out: "FONTGET_HTTP_STATUS=200", err: nil},
 		},
 	}
-	rep, err := downloadWithFallbacks(r, "https://example.com/file.zip", "/tmp/file.zip", DownloadFallbackOptions{
+	out := filepath.Join(t.TempDir(), "file.zip")
+	rep, err := downloadWithFallbacks(r, "https://example.com/file.zip", out, DownloadFallbackOptions{
 		UserAgent: "ua",
 		Headers:   map[string]string{"Accept": "*/*"},
 	})
@@ -111,7 +114,8 @@ func TestDownloadWithFallbacks_CurlFails_WgetSucceeds(t *testing.T) {
 			"/usr/bin/wget": {out: "", err: nil},
 		},
 	}
-	rep, err := downloadWithFallbacks(r, "https://example.com/file.zip", "/tmp/file.zip", DownloadFallbackOptions{UserAgent: "ua"})
+	out := filepath.Join(t.TempDir(), "file.zip")
+	rep, err := downloadWithFallbacks(r, "https://example.com/file.zip", out, DownloadFallbackOptions{UserAgent: "ua"})
 	if err != nil {
 		t.Fatalf("expected nil, got %v", err)
 	}
