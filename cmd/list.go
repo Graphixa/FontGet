@@ -46,14 +46,18 @@ var listCmd = &cobra.Command{
 
 By default, shows fonts from both user and system-wide installations.
 Results can be filtered by font family name, Font ID, type, or scope.
+Use --fontget-installed to show only fonts installed by FontGet (from the installation registry).
 
-The query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto").`,
+The query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto").
+
+Name queries (the common case, e.g. "jet") are matched against SFNT family names and file names before catalog join so the whole OS font set is not parsed or matched. If that produces no rows, list falls back to a full collect + catalog join and then filters by Font ID (e.g. "google.roboto", or a source prefix like "google" when no family/file name contains the query).`,
 	Example: `  fontget list
   fontget list "jet"
   fontget list roboto -t ttf
   fontget list "google.roboto"
   fontget list "fira" -x
-  fontget list -s user`,
+  fontget list -s user
+  fontget list --fontget-installed`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Query is optional - no validation needed
 		return nil
@@ -73,6 +77,7 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 		scope, _ := cmd.Flags().GetString("scope")
 		typeFilter, _ := cmd.Flags().GetString("type")
 		showVariants, _ := cmd.Flags().GetBool("expand")
+		fontgetOnly, _ := cmd.Flags().GetBool("fontget-installed")
 
 		// Get query from positional argument
 		var familyFilter string
@@ -85,7 +90,7 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 		if scope != "" {
 			scopeDisplay = scope
 		}
-		GetLogger().Info("List parameters - Scope: %s, Type filter: %s, Family filter: %s, Show variants: %v", scopeDisplay, typeFilter, familyFilter, showVariants)
+		GetLogger().Info("List parameters - Scope: %s, Type filter: %s, Family filter: %s, Show variants: %v, FontGet-managed: %v", scopeDisplay, typeFilter, familyFilter, showVariants, fontgetOnly)
 
 		// Verbose output for parameters
 		output.GetVerbose().Info("Scope: %s", scopeDisplay)
@@ -94,6 +99,9 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 		}
 		if familyFilter != "" {
 			output.GetVerbose().Info("Family filter: %s", familyFilter)
+		}
+		if fontgetOnly {
+			output.GetVerbose().Info("Showing only fonts installed by FontGet")
 		}
 		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
 		if output.IsVerboseOutputEnabled() {
@@ -141,9 +149,12 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			var workErr error
 			t0 := time.Now()
 
-			// Collect fonts
 			tCollect := time.Now()
-			fonts, workErr = collectFonts(scopes, fm, typeFilter)
+			if fontgetOnly {
+				fonts, workErr = collectFontGetManagedFonts(scopes, typeFilter)
+			} else {
+				fonts, workErr = collectFontsForQuery(scopes, fm, typeFilter, familyFilter)
+			}
 			if workErr != nil {
 				GetLogger().Error("Failed to collect fonts: %v", workErr)
 				output.GetVerbose().Error("%v", workErr)
@@ -153,9 +164,16 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			output.GetDebug().State("Collected %d font files before filtering", len(fonts))
 			output.GetDebug().State("Timing: collectFonts=%s", time.Since(tCollect))
 
-			// Group fonts by family first (before matching to repository)
 			tGroup := time.Now()
 			families = groupByFamily(fonts)
+			if !fontgetOnly {
+				// Name queries (e.g. "jet") join only matching families. If nothing matches
+				// by SFNT family / file name, collectFontsForQuery already fell back to the
+				// full file set so Font ID substrings can still match after catalog join.
+				if named, ok := familiesMatchingNameQuery(families, familyFilter); ok {
+					families = named
+				}
+			}
 			allFamilyNames := make([]string, 0, len(families))
 			for k := range families {
 				allFamilyNames = append(allFamilyNames, k)
@@ -163,59 +181,43 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 			output.GetDebug().State("Grouped %d font files into %d unique families", len(fonts), len(allFamilyNames))
 			output.GetDebug().State("Timing: groupByFamily=%s", time.Since(tGroup))
 
-			// Match installed fonts to repository BEFORE filtering (so Font IDs are available).
-			// We must match all families (not a name-prefiltered subset) because the user query can
-			// match a Font ID substring (e.g. "google" → google.roboto) without containing '.'.
-			// Use nil filter instead of IsCriticalSystemFont to allow matching user-installed fonts
-			// that happen to share names with system fonts (e.g., Ubuntu installed via FontGet)
 			output.GetVerbose().Info("Matching installed fonts to repository...")
 			output.GetDebug().State("Matching %d font families against repository", len(allFamilyNames))
 			tMatch := time.Now()
-			matches, workErr = repo.MatchAllInstalledFonts(allFamilyNames, nil)
-			if workErr != nil {
-				output.GetVerbose().Error("%v", workErr)
-				output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", workErr)
-				// Continue without matches (fonts will show blank fields)
+			if fontgetOnly {
+				applyCatalogMatchesByFontID(families)
 				matches = make(map[string]*repo.InstalledFontMatch)
 			} else {
-				matchCount := 0
-				for _, match := range matches {
-					if match != nil {
-						matchCount++
+				matches, workErr = repo.MatchAllInstalledFonts(allFamilyNames, nil)
+				if workErr != nil {
+					output.GetVerbose().Error("%v", workErr)
+					output.GetDebug().Error("repo.MatchAllInstalledFonts() failed: %v", workErr)
+					matches = make(map[string]*repo.InstalledFontMatch)
+				} else {
+					matchCount := 0
+					for _, match := range matches {
+						if match != nil {
+							matchCount++
+						}
+					}
+					output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
+					if output.IsVerboseOutputEnabled() {
+						fmt.Println()
 					}
 				}
-				output.GetVerbose().Info("Found %d matches out of %d installed fonts", matchCount, len(allFamilyNames))
-				// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-				if output.IsVerboseOutputEnabled() {
-					fmt.Println()
-				}
+				applyRepositoryMatches(families, matches)
 			}
 			output.GetDebug().State("Timing: MatchAllInstalledFonts=%s", time.Since(tMatch))
 
-			// Populate match data into ParsedFont structs
-			tPopulate := time.Now()
-			for familyName, fontGroup := range families {
-				if match, exists := matches[familyName]; exists && match != nil {
-					// Update all fonts in this family group with match data
-					for i := range fontGroup {
-						fontGroup[i].FontID = match.FontID
-						fontGroup[i].License = match.License // Only use repository license
-						fontGroup[i].Categories = match.Categories
-						fontGroup[i].Source = match.Source
-					}
-					families[familyName] = fontGroup
+			if !fontgetOnly {
+				tReg := time.Now()
+				if reg, regErr := installations.Load(); regErr != nil {
+					output.GetDebug().Error("installation registry: %v", regErr)
+				} else {
+					mergeInstallationRegistryIntoFamilies(families, reg)
 				}
+				output.GetDebug().State("Timing: mergeInstallationRegistry=%s", time.Since(tReg))
 			}
-			output.GetDebug().State("Timing: populateMatchData=%s", time.Since(tPopulate))
-
-			tReg := time.Now()
-			if reg, regErr := installations.Load(); regErr != nil {
-				output.GetDebug().Error("installation registry: %v", regErr)
-			} else {
-				mergeInstallationRegistryIntoFamilies(families, reg)
-			}
-			output.GetDebug().State("Timing: mergeInstallationRegistry=%s", time.Since(tReg))
-
 			// Apply filters (now that Font IDs are populated)
 			// Filter by family name and Font ID (type filter already applied during collection)
 			// Apply filter using helper function
@@ -257,11 +259,16 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 
 		if len(names) == 0 {
 
-			// Show filter info in same format as successful results, just with 0 count
-			if familyFilter != "" || typeFilter != "" {
+			if familyFilter != "" || typeFilter != "" || fontgetOnly {
 				filterInfo := fmt.Sprintf("Found 0 font families installed matching '%s'", ui.QueryText.Render(familyFilter))
+				if familyFilter == "" && typeFilter == "" {
+					filterInfo = "Found 0 font families installed"
+				}
 				if typeFilter != "" {
 					filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.QueryText.Render(typeFilter))
+				}
+				if fontgetOnly {
+					filterInfo += " | FontGet-managed"
 				}
 				fmt.Printf("%s\n", filterInfo)
 				fmt.Println()
@@ -275,11 +282,16 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 		// Log completion
 		GetLogger().Info("List operation complete - Found %d font families", len(names))
 
-		// Show filter info if filtering is applied (count shows families, not individual files)
-		if familyFilter != "" || typeFilter != "" {
+		if familyFilter != "" || typeFilter != "" || fontgetOnly {
 			filterInfo := fmt.Sprintf("Found %d font families installed matching '%s'", len(names), ui.QueryText.Render(familyFilter))
+			if familyFilter == "" && typeFilter == "" {
+				filterInfo = fmt.Sprintf("Found %d font families installed", len(names))
+			}
 			if typeFilter != "" {
 				filterInfo += fmt.Sprintf(" | Filtered by type: '%s'", ui.QueryText.Render(typeFilter))
+			}
+			if fontgetOnly {
+				filterInfo += " | FontGet-managed"
 			}
 			fmt.Printf("%s\n", filterInfo)
 			fmt.Println()
@@ -374,60 +386,94 @@ The query parameter can match either font family names (e.g., "Roboto") or Font 
 	},
 }
 
+type installedFontRef struct {
+	fontPath string
+	fileName string
+	scope    platform.InstallationScope
+}
+
 // collectFonts collects font files from the specified scopes
 func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string, suppressVerbose ...bool) ([]ParsedFont, error) {
-	// Normalize type filter for comparison (uppercase)
-	typeFilterUpper := ""
-	if typeFilter != "" {
-		typeFilterUpper = strings.ToUpper(typeFilter)
-	}
-
-	// Check if verbose output should be suppressed (default: false, show verbose)
 	shouldSuppressVerbose := false
 	if len(suppressVerbose) > 0 {
 		shouldSuppressVerbose = suppressVerbose[0]
 	}
-
-	// Bounded concurrency for metadata extraction (typically the slowest part).
-	// Keep it conservative to avoid overwhelming slow disks / networked volumes.
-	workerCount := runtime.GOMAXPROCS(0)
-	if workerCount < 2 {
-		workerCount = 2
+	refs, err := enumerateInstalledFonts(scopes, fm, typeFilter, shouldSuppressVerbose)
+	if err != nil {
+		return nil, err
 	}
-	if workerCount > 8 {
-		workerCount = 8
+	parsed := parseInstalledFontRefs(refs)
+	if !shouldSuppressVerbose {
+		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+		if output.IsVerboseOutputEnabled() {
+			fmt.Println()
+		}
 	}
+	return parsed, nil
+}
 
-	type parseJob struct {
-		fontPath string
-		fileName string
-		scope    platform.InstallationScope
+// collectFontsForQuery enumerates OS font dirs once. For name queries it parses only
+// files whose names contain the query; if no SFNT family then matches, it falls back
+// to parsing every file so Font ID substring matching can still run.
+func collectFontsForQuery(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter, familyFilter string) ([]ParsedFont, error) {
+	refs, err := enumerateInstalledFonts(scopes, fm, typeFilter, false)
+	if err != nil {
+		return nil, err
 	}
-
-	// Use a single bounded jobs channel; workers write results to a mutex-guarded slice.
-	// Do NOT use a second "results" channel: the main goroutine enqueues all jobs before
-	// draining output, so a bounded results channel can deadlock (workers block on results
-	// while main is blocked on jobs when both buffers are full).
-	jobs := make(chan parseJob, workerCount*4)
-	var outMu sync.Mutex
-	parsed := make([]ParsedFont, 0, 256)
-
-	var wg sync.WaitGroup
-	for i := 0; i < workerCount; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for job := range jobs {
-				parsedFont := buildParsedFont(job.fontPath, job.fileName, job.scope)
-				if parsedFont != nil {
-					outMu.Lock()
-					parsed = append(parsed, *parsedFont)
-					outMu.Unlock()
-				}
-			}
-		}()
+	if strings.TrimSpace(familyFilter) == "" {
+		parsed := parseInstalledFontRefs(refs)
+		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+		if output.IsVerboseOutputEnabled() {
+			fmt.Println()
+		}
+		return parsed, nil
 	}
+	nameHits := filterFontRefsByName(refs, familyFilter)
+	parsed := parseInstalledFontRefs(nameHits)
+	if _, ok := familiesMatchingNameQuery(groupByFamily(parsed), familyFilter); ok {
+		output.GetDebug().State("List name filter: parsed %d of %d files for query %q", len(nameHits), len(refs), familyFilter)
+		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+		if output.IsVerboseOutputEnabled() {
+			fmt.Println()
+		}
+		return parsed, nil
+	}
+	output.GetDebug().State("List name filter missed family names for %q; falling back to full parse for Font ID matching", familyFilter)
+	parsed = parseInstalledFontRefs(refs)
+	output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
+	if output.IsVerboseOutputEnabled() {
+		fmt.Println()
+	}
+	return parsed, nil
+}
 
+func filterFontRefsByName(refs []installedFontRef, query string) []installedFontRef {
+	if strings.TrimSpace(query) == "" {
+		return refs
+	}
+	out := make([]installedFontRef, 0, len(refs))
+	for _, r := range refs {
+		if fontFileMatchesNameFilter(r.fileName, query) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+func fontFileMatchesNameFilter(fileName, query string) bool {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return true
+	}
+	return strings.Contains(strings.ToLower(filepath.Base(fileName)), q)
+}
+
+func enumerateInstalledFonts(scopes []platform.InstallationScope, fm platform.FontManager, typeFilter string, shouldSuppressVerbose bool) ([]installedFontRef, error) {
+	typeFilterUpper := ""
+	if typeFilter != "" {
+		typeFilterUpper = strings.ToUpper(typeFilter)
+	}
+	var refs []installedFontRef
 	for _, scope := range scopes {
 		fontDir := fm.GetFontDir(scope)
 		if !shouldSuppressVerbose {
@@ -435,23 +481,19 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 		}
 		output.GetDebug().State("Checking font directory: %s (scope: %s)", fontDir, scope)
 
-		// Check if directory exists and is accessible
 		if _, err := os.Stat(fontDir); os.IsNotExist(err) {
 			output.GetVerbose().Warning("Font directory does not exist: %s", fontDir)
 			output.GetDebug().Warning("Directory %s does not exist, skipping", fontDir)
-			continue // Skip this scope, don't fail
+			continue
 		}
 
-		// Check read permissions
 		if f, err := os.Open(fontDir); err != nil {
 			if os.IsPermission(err) {
 				output.GetVerbose().Warning("No read permission for font directory: %s", fontDir)
 				output.GetDebug().Error("Permission denied accessing %s: %v", fontDir, err)
-				// For machine scope, suggest using sudo
 				if scope == platform.MachineScope {
 					return nil, fmt.Errorf("insufficient permissions to read %s. Try running with sudo or use --scope user", fontDir)
 				}
-				// For user scope, this is unusual but not fatal
 				output.GetDebug().Warning("Permission denied for user scope directory (unusual), continuing...")
 				continue
 			}
@@ -470,32 +512,187 @@ func collectFonts(scopes []platform.InstallationScope, fm platform.FontManager, 
 			output.GetVerbose().Info("Found %d files in %s", len(names), fontDir)
 		}
 		for _, name := range names {
-			// Optimization 1: Early type filtering - check extension before expensive metadata extraction
 			fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(name), "."))
 			if typeFilterUpper != "" && fileExt != typeFilterUpper {
-				// Skip this file if it doesn't match the type filter
 				continue
 			}
-
-			jobs <- parseJob{
+			refs = append(refs, installedFontRef{
 				fontPath: filepath.Join(fontDir, name),
 				fileName: name,
 				scope:    scope,
-			}
+			})
 		}
 	}
+	return refs, nil
+}
 
+func parseInstalledFontRefs(refs []installedFontRef) []ParsedFont {
+	workerCount := runtime.GOMAXPROCS(0)
+	if workerCount < 2 {
+		workerCount = 2
+	}
+	if workerCount > 8 {
+		workerCount = 8
+	}
+
+	jobs := make(chan installedFontRef, workerCount*4)
+	var outMu sync.Mutex
+	parsed := make([]ParsedFont, 0, len(refs))
+
+	var wg sync.WaitGroup
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs {
+				parsedFont := buildParsedFont(job.fontPath, job.fileName, job.scope)
+				if parsedFont != nil {
+					outMu.Lock()
+					parsed = append(parsed, *parsedFont)
+					outMu.Unlock()
+				}
+			}
+		}()
+	}
+	for _, ref := range refs {
+		jobs <- ref
+	}
 	close(jobs)
 	wg.Wait()
+	return parsed
+}
 
-	if !shouldSuppressVerbose {
-		output.GetVerbose().Info("Scan complete: parsed %d files across %d scope(s)", len(parsed), len(scopes))
-		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
-		if output.IsVerboseOutputEnabled() {
-			fmt.Println()
+// collectFontGetManagedFonts builds list rows from the FontGet installation registry
+// instead of scanning OS font directories. Missing files are skipped.
+func collectFontGetManagedFonts(scopes []platform.InstallationScope, typeFilter string) ([]ParsedFont, error) {
+	reg, err := installations.Load()
+	if err != nil {
+		return nil, fmt.Errorf("unable to read FontGet installation registry: %w", err)
+	}
+	if reg == nil || len(reg.Installations) == 0 {
+		return nil, nil
+	}
+
+	typeFilterUpper := ""
+	if typeFilter != "" {
+		typeFilterUpper = strings.ToUpper(typeFilter)
+	}
+	allowed := make(map[string]bool, len(scopes))
+	for _, s := range scopes {
+		allowed[string(s)] = true
+	}
+
+	output.GetVerbose().Info("Listing FontGet-managed installs from the installation registry (%d entries)", len(reg.Installations))
+
+	var parsed []ParsedFont
+	for _, inst := range reg.Installations {
+		if inst == nil {
+			continue
+		}
+		instScope := strings.TrimSpace(inst.Scope)
+		if instScope != "" && !allowed[instScope] {
+			continue
+		}
+		for _, face := range inst.FlatFiles() {
+			p := strings.TrimSpace(face.Path)
+			if p == "" {
+				continue
+			}
+			if _, err := os.Stat(p); err != nil {
+				output.GetDebug().Warning("Skipping vanished FontGet install file: %s (%v)", p, err)
+				continue
+			}
+			fileName := filepath.Base(p)
+			fileExt := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
+			if typeFilterUpper != "" && fileExt != typeFilterUpper {
+				continue
+			}
+			family := strings.TrimSpace(face.SFNT.Family)
+			style := strings.TrimSpace(face.SFNT.Style)
+			scope := instScope
+			if family == "" || style == "" {
+				if pf := buildParsedFont(p, fileName, platform.InstallationScope(scope)); pf != nil {
+					if family == "" {
+						family = pf.Family
+					}
+					if style == "" {
+						style = pf.Style
+					}
+					if scope == "" {
+						scope = pf.Scope
+					}
+					if fileExt == "" {
+						fileExt = pf.Type
+					}
+				}
+			}
+			if family == "" {
+				family = strings.TrimSuffix(fileName, filepath.Ext(fileName))
+			}
+			if style == "" {
+				style = "Regular"
+			}
+			if scope == "" {
+				scope = string(platform.UserScope)
+			}
+			parsed = append(parsed, ParsedFont{
+				Name:   fileName,
+				Family: family,
+				Style:  style,
+				Type:   fileExt,
+				Scope:  scope,
+				Path:   p,
+				FontID: strings.TrimSpace(inst.FontID),
+				Source: strings.TrimSpace(inst.InstallationSource),
+			})
 		}
 	}
 	return parsed, nil
+}
+
+func applyRepositoryMatches(families map[string][]ParsedFont, matches map[string]*repo.InstalledFontMatch) {
+	for familyName, fontGroup := range families {
+		if match, exists := matches[familyName]; exists && match != nil {
+			for i := range fontGroup {
+				fontGroup[i].FontID = match.FontID
+				fontGroup[i].License = match.License
+				fontGroup[i].Categories = match.Categories
+				fontGroup[i].Source = match.Source
+			}
+			families[familyName] = fontGroup
+		}
+	}
+}
+
+func applyCatalogMatchesByFontID(families map[string][]ParsedFont) {
+	seen := make(map[string]*repo.InstalledFontMatch)
+	for familyName, group := range families {
+		for i := range group {
+			id := strings.TrimSpace(group[i].FontID)
+			if id == "" {
+				continue
+			}
+			key := strings.ToLower(id)
+			match, cached := seen[key]
+			if !cached {
+				var err error
+				match, err = repo.MatchRepositoryFontByID(id)
+				if err != nil {
+					output.GetDebug().Error("MatchRepositoryFontByID(%s): %v", id, err)
+					match = nil
+				}
+				seen[key] = match
+			}
+			if match == nil {
+				continue
+			}
+			group[i].FontID = match.FontID
+			group[i].License = match.License
+			group[i].Categories = match.Categories
+			group[i].Source = match.Source
+		}
+		families[familyName] = group
+	}
 }
 
 // buildParsedFont extracts font metadata from a file path and builds a ParsedFont struct
@@ -598,6 +795,27 @@ func groupByFamily(fonts []ParsedFont) map[string][]ParsedFont {
 	return res
 }
 
+// familiesMatchingNameQuery returns families whose SFNT family name contains query
+// (case-insensitive substring, same as list <query> name matching). If nothing matches
+// by family name, it returns the original map and false so callers can fall back to a
+// full catalog join and Font ID filtering.
+func familiesMatchingNameQuery(families map[string][]ParsedFont, query string) (map[string][]ParsedFont, bool) {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return families, false
+	}
+	out := make(map[string][]ParsedFont)
+	for name, group := range families {
+		if strings.Contains(strings.ToLower(name), q) {
+			out[name] = group
+		}
+	}
+	if len(out) == 0 {
+		return families, false
+	}
+	return out, true
+}
+
 // filterFontsByFamilyAndID filters font families by family name or Font ID
 func filterFontsByFamilyAndID(families map[string][]ParsedFont, familyFilter string) map[string][]ParsedFont {
 	// Optimization: Cache lowercased strings to avoid repeated ToLower() calls
@@ -644,4 +862,5 @@ func init() {
 	listCmd.Flags().StringP("scope", "s", "", "Filter by installation scope (user or machine). Default: show all scopes")
 	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
 	listCmd.Flags().BoolP("expand", "x", false, "Show font styles in hierarchical view")
+	listCmd.Flags().Bool("fontget-installed", false, "Show only fonts installed by FontGet")
 }
