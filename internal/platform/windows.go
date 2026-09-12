@@ -86,40 +86,56 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 	targetPath := filepath.Join(targetDir, fontName)
 	logger.Debug("Target path: %s", targetPath)
 
-	// Check if font is already installed
-	logger.Debug("Checking if font is already installed...")
+	existed := false
 	if _, err := os.Stat(targetPath); err == nil {
-		if !force {
-			logger.Warn("Font already installed at %s", targetPath)
-			return fmt.Errorf("font already installed: %s", fontName)
+		existed = true
+		if force {
+			logger.Debug("Unregistering existing font before safe replacement...")
+			if rerr := RemoveFontResource(targetPath); rerr == nil {
+				if opts != nil && opts.Mutation != nil {
+					opts.Mutation.PriorResourceRemoved = true
+				}
+			}
 		}
-		logger.Debug("Font exists, removing due to force flag...")
-		// Remove the existing file if force is true
-		if err := os.Remove(targetPath); err != nil {
-			logger.Error("Failed to overwrite existing font at %s: %v", targetPath, err)
-			return fmt.Errorf("failed to overwrite existing font: %w", err)
-		}
-		logger.Debug("Existing font removed successfully")
 	}
 
-	// Copy the font file to the target directory
-	logger.Debug("Copying font file to target directory...")
-	if err := copyFile(fontPath, targetPath); err != nil {
-		logger.Error("Failed to copy font file from %s to %s: %v", fontPath, targetPath, err)
-		return fmt.Errorf("failed to copy font file: %w", err)
+	logger.Debug("Placing font file at destination...")
+	mut, err := placeFontFile(fontPath, targetPath, force, opts)
+	if err != nil {
+		logger.Error("Failed to place font file at %s: %v", targetPath, err)
+		if existed {
+			_ = AddFontResource(targetPath)
+		}
+		return err
 	}
-	logger.Debug("Font file copied successfully")
+	mut.FontName = fontName
+	mut.Scope = scope
+	if existed && force {
+		mut.PriorResourceRemoved = true
+	}
+	if opts != nil && opts.Mutation != nil {
+		*opts.Mutation = mut
+	}
 
-	// Add the font to the system
+	if opts != nil && opts.FailPoint == InstallFailRegister {
+		_ = RollbackMutation(mut)
+		return failPointError(InstallFailRegister)
+	}
+
 	logger.Debug("Adding font resource...")
 	if err := AddFontResource(targetPath); err != nil {
 		logger.Error("Failed to add font resource at %s: %v", targetPath, err)
-		// Clean up on error
-		logger.Debug("Cleaning up after failed font resource addition...")
-		if removeErr := os.Remove(targetPath); removeErr != nil {
-			logger.Error("Failed to clean up font file after resource addition failure: %v", removeErr)
+		if rbErr := RollbackMutation(mut); rbErr != nil {
+			logger.Error("Rollback after register failure: %v", rbErr)
 		}
 		return fmt.Errorf("failed to add font resource: %w", err)
+	}
+	mut.ResourceRegistered = true
+	if opts != nil && opts.Mutation != nil {
+		opts.Mutation.ResourceRegistered = true
+		opts.Mutation.FontName = fontName
+		opts.Mutation.Scope = scope
+		opts.Mutation.PriorResourceRemoved = mut.PriorResourceRemoved
 	}
 	logger.Debug("Font resource added successfully")
 
@@ -128,13 +144,49 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		logger.Debug("Adding font to registry...")
 		if err := m.addFontToRegistry(fontName, targetPath); err != nil {
 			logger.Error("Failed to add font to registry: %v", err)
-			// Clean up on error
-			logger.Debug("Cleaning up after failed registry addition...")
 			RemoveFontResource(targetPath)
-			os.Remove(targetPath)
+			mut.ResourceRegistered = false
+			if rbErr := RollbackMutation(mut); rbErr != nil {
+				logger.Error("Rollback after registry failure: %v", rbErr)
+			}
 			return fmt.Errorf("failed to add font to registry: %w", err)
 		}
+		mut.RegistryAdded = true
+		if opts != nil && opts.Mutation != nil {
+			opts.Mutation.RegistryAdded = true
+			opts.Mutation.ResourceRegistered = true
+		}
 		logger.Debug("Font added to registry successfully")
+	}
+
+	destPath := targetPath
+	fname := fontName
+	priorRemoved := mut.PriorResourceRemoved
+	registryAdded := mut.RegistryAdded
+	resourceRegistered := mut.ResourceRegistered
+	mut.UndoRegistration = func() error {
+		if registryAdded {
+			_ = m.removeFontFromRegistry(fname)
+		}
+		if resourceRegistered {
+			_ = RemoveFontResource(destPath)
+		}
+		return nil
+	}
+	mut.RestoreRegistration = func() error {
+		if priorRemoved {
+			return AddFontResource(destPath)
+		}
+		return nil
+	}
+	if opts != nil && opts.Mutation != nil {
+		opts.Mutation.UndoRegistration = mut.UndoRegistration
+		opts.Mutation.RestoreRegistration = mut.RestoreRegistration
+		opts.Mutation.RegistryAdded = registryAdded
+		opts.Mutation.ResourceRegistered = resourceRegistered
+		opts.Mutation.PriorResourceRemoved = priorRemoved
+		opts.Mutation.FontName = fname
+		opts.Mutation.Scope = scope
 	}
 
 	skipNotify := opts != nil && opts.SkipPostInstallCacheRefresh
@@ -143,13 +195,21 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		logger.Debug("Notifying system about font change...")
 		if err := NotifyFontChange(); err != nil {
 			logger.Error("Failed to notify font change: %v", err)
-			// Clean up on error
-			logger.Debug("Cleaning up after failed notification...")
-			RemoveFontResource(targetPath)
-			if scope == MachineScope {
-				m.removeFontFromRegistry(fontName)
+			if scope == MachineScope && mut.RegistryAdded {
+				_ = m.removeFontFromRegistry(fontName)
+				mut.RegistryAdded = false
 			}
-			os.Remove(targetPath)
+			if mut.ResourceRegistered {
+				_ = RemoveFontResource(targetPath)
+				mut.ResourceRegistered = false
+			}
+			if opts != nil && opts.Mutation != nil {
+				opts.Mutation.ResourceRegistered = false
+				opts.Mutation.RegistryAdded = false
+			}
+			if rbErr := RollbackMutation(mut); rbErr != nil {
+				logger.Error("Rollback after notify failure: %v", rbErr)
+			}
 			return fmt.Errorf("failed to notify font change: %w", err)
 		}
 		logger.Debug("Font change notification sent successfully")

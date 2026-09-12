@@ -95,9 +95,16 @@ Use --license to show only license information.`,
 
 		// Get repository (using cached manifest)
 		output.GetVerbose().Info("Initializing repository for font lookup")
-		r, err := cmdutils.GetRepository(GetLogger())
+		output.GetVerbose().Info("Loading font repository")
+		output.GetDebug().State("Calling repo.GetRepository()")
+		r, err := repo.GetRepository()
 		if err != nil {
-			return err
+			if lg := GetLogger(); lg != nil {
+				lg.Error("Failed to get repository: %v", err)
+			}
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %w", err)
 		}
 
 		// Get manifest

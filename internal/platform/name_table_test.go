@@ -156,11 +156,10 @@ func BenchmarkParseNameTable_Large(b *testing.B) {
 	nameTable := buildNameTable(records)
 
 	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		md, err := parseNameTable(nameTable)
 		if err != nil || md.FamilyName == "" || md.StyleName == "" {
 			b.Fatalf("unexpected failure: md=%+v err=%v", md, err)
 		}
 	}
 }
-

@@ -78,31 +78,25 @@ func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope
 
 	targetPath := filepath.Join(targetDir, fontName)
 
-	// Check if font is already installed
-	if _, err := os.Stat(targetPath); err == nil {
-		if !force {
-			return fmt.Errorf("font already installed: %s", fontName)
-		}
-		// Remove the existing file if force is true
-		if err := os.Remove(targetPath); err != nil {
-			return fmt.Errorf("failed to overwrite existing font: %w", err)
-		}
+	mut, err := placeFontFile(fontPath, targetPath, force, opts)
+	if err != nil {
+		return err
 	}
-
-	// Copy the font file to the target directory
-	if err := copyFile(fontPath, targetPath); err != nil {
-		return fmt.Errorf("failed to copy font file: %w", err)
+	mut.FontName = fontName
+	mut.Scope = scope
+	if opts != nil && opts.Mutation != nil {
+		*opts.Mutation = mut
+	}
+	if opts != nil && opts.FailPoint == InstallFailRegister {
+		_ = RollbackMutation(mut)
+		return failPointError(InstallFailRegister)
 	}
 
 	skipCache := opts != nil && opts.SkipPostInstallCacheRefresh
 	if !skipCache {
-		// Update the font cache (non-critical on macOS 14+)
-		// Fonts in ~/Library/Fonts and /Library/Fonts are auto-detected by macOS
+		// Cache refresh failure is non-critical - font is already installed.
+		// Do not roll back committed files for a best-effort discovery-cache refresh.
 		if err := m.updateFontCache(scope); err != nil {
-			// Cache refresh failure is non-critical - font is already installed
-			// On macOS 14+, fonts are auto-detected without manual cache refresh
-			// Don't remove the file - installation succeeded, cache refresh is optional
-			// Return a warning-style error that can be handled gracefully
 			return fmt.Errorf("font installed successfully, but cache refresh failed (non-critical): %w", err)
 		}
 	}
@@ -165,7 +159,7 @@ func (m *darwinFontManager) RequiresElevation(scope InstallationScope) bool {
 // updateFontCache refreshes the font cache on macOS
 // Uses modern method compatible with macOS 14+ (Sonoma)
 // On macOS 14+, atsutil was removed, so we use pkill fontd instead
-func (m *darwinFontManager) updateFontCache(scope InstallationScope) error {
+func (m *darwinFontManager) updateFontCache(_ InstallationScope) error {
 	// Modern approach: restart fontd service to refresh cache
 	// fontd automatically restarts and picks up new fonts
 	// This works on both older macOS versions and macOS 14+

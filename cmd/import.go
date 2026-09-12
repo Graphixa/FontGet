@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,16 +33,15 @@ type ImportResult struct {
 // loadAndValidateManifest loads and validates an export manifest file
 func loadAndValidateManifest(manifestFile string) (*ExportManifest, error) {
 	// Check if file exists
-	exists, err := cmdutils.CheckFileExists(manifestFile)
-	if err != nil {
+	if _, err := os.Stat(manifestFile); err != nil {
+		if os.IsNotExist(err) {
+			cmdutils.PrintErrorf("Manifest file not found: '%s'", ui.InfoText.Render(manifestFile))
+			fmt.Println()
+			return nil, fmt.Errorf("manifest file not found: %s", manifestFile)
+		}
 		cmdutils.PrintErrorf("Unable to check manifest file: %v", err)
 		fmt.Println()
 		return nil, err
-	}
-	if !exists {
-		cmdutils.PrintErrorf("Manifest file not found: '%s'", ui.InfoText.Render(manifestFile))
-		fmt.Println()
-		return nil, fmt.Errorf("manifest file not found: %s", manifestFile)
 	}
 
 	// Read manifest file
@@ -635,14 +635,17 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						})
 					}
 					result, err := installFont(
+						cmd.Context(),
 						fontGroup.Fonts,
 						fontGroup.FontID,
 						fontManager,
 						installScope,
 						force,
 						fontDir,
+						nil,
 						true,
 						onProgress,
+						nil,
 					)
 
 					if err != nil {
@@ -746,13 +749,16 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 		output.GetDebug().State("Calling installFont(%s, %s, %s, %v, %s)", fontGroup.FontID, scopeLabel, fontDir, force, "...")
 
 		result, err := installFont(
+			context.Background(),
 			fontGroup.Fonts,
 			fontGroup.FontID,
 			fontManager,
 			installScope,
 			force,
 			fontDir,
+			nil,
 			false,
+			nil,
 			nil,
 		)
 

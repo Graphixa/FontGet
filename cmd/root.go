@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"fontget/internal/components"
@@ -427,24 +428,13 @@ Examples:
 
 // Execute runs the root command
 func Execute() error {
-	// Set up signal handling for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		// Force exit on interrupt
-		os.Exit(1)
-	}()
-
-	err := rootCmd.Execute()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
-		// Check if it's our custom error type
 		if _, ok := err.(*shared.FontInstallationError); ok {
-			// Just return the error without showing help
 			return err
 		}
-		// For other errors, let Cobra handle them
 		return err
 	}
 	return nil

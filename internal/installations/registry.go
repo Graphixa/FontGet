@@ -2,6 +2,7 @@
 package installations
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -141,9 +142,15 @@ func RegistryPath() string {
 // Load reads the registry from disk. Missing file yields an empty registry (no error).
 // Invalid JSON returns an error (caller should not overwrite without user intent).
 func Load() (*Registry, error) {
-	mu.Lock()
-	defer mu.Unlock()
-	return loadUnlocked()
+	var reg *Registry
+	err := withRegistryFileLock(context.Background(), func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		var loadErr error
+		reg, loadErr = loadUnlocked()
+		return loadErr
+	})
+	return reg, err
 }
 
 func loadUnlocked() (*Registry, error) {
@@ -200,9 +207,11 @@ func Save(reg *Registry) error {
 	if reg == nil {
 		return fmt.Errorf("nil registry")
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	return saveUnlocked(reg)
+	return withRegistryFileLock(context.Background(), func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		return saveUnlocked(reg)
+	})
 }
 
 func saveUnlocked(reg *Registry) error {
@@ -252,26 +261,28 @@ func RecordInstallation(p RecordParams) error {
 	}
 	key := strings.ToLower(strings.TrimSpace(p.FontID))
 
-	mu.Lock()
-	defer mu.Unlock()
+	return withRegistryFileLock(context.Background(), func() error {
+		mu.Lock()
+		defer mu.Unlock()
 
-	reg, err := loadUnlocked()
-	if err != nil {
-		return err
-	}
+		reg, err := loadUnlocked()
+		if err != nil {
+			return err
+		}
 
-	flat := normalizeInstalledFiles(p.Files)
-	inst := &Installation{
-		FontID:               p.FontID,
-		CatalogName:          strings.TrimSpace(p.CatalogName),
-		InstallationSource:   strings.TrimSpace(p.InstallationSource),
-		Scope:                strings.TrimSpace(p.Scope),
-		InstalledAt:          time.Now().UTC(),
-		FontGetVersion:       strings.TrimSpace(p.FontGetVersion),
-		Families:             GroupInstalledFiles(flat),
-	}
-	reg.Installations[key] = inst
-	return saveUnlocked(reg)
+		flat := normalizeInstalledFiles(p.Files)
+		inst := &Installation{
+			FontID:             p.FontID,
+			CatalogName:        strings.TrimSpace(p.CatalogName),
+			InstallationSource: strings.TrimSpace(p.InstallationSource),
+			Scope:              strings.TrimSpace(p.Scope),
+			InstalledAt:        time.Now().UTC(),
+			FontGetVersion:     strings.TrimSpace(p.FontGetVersion),
+			Families:           GroupInstalledFiles(flat),
+		}
+		reg.Installations[key] = inst
+		return saveUnlocked(reg)
+	})
 }
 
 func normalizeInstalledFiles(in []InstalledFontFile) []InstalledFontFile {
@@ -391,14 +402,16 @@ func RemoveInstallation(fontID string) error {
 	if key == "" {
 		return nil
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	reg, err := loadUnlocked()
-	if err != nil {
-		return err
-	}
-	delete(reg.Installations, key)
-	return saveUnlocked(reg)
+	return withRegistryFileLock(context.Background(), func() error {
+		mu.Lock()
+		defer mu.Unlock()
+		reg, err := loadUnlocked()
+		if err != nil {
+			return err
+		}
+		delete(reg.Installations, key)
+		return saveUnlocked(reg)
+	})
 }
 
 // FindByFontID returns the installation for fontID or nil.

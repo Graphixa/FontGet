@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -53,6 +54,13 @@ func (r *fakeRunner) CombinedOutput(name string, args ...string) ([]byte, error)
 		return []byte(res.out), res.err
 	}
 	return []byte("no result configured"), errors.New("failed")
+}
+
+func (r *fakeRunner) CombinedOutputContext(ctx context.Context, _ ExecOptions, name string, args ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return r.CombinedOutput(name, args...)
 }
 
 func TestDownloadWithFallbacks_NoTools(t *testing.T) {
@@ -128,5 +136,77 @@ func TestDownloadWithFallbacks_CurlFails_WgetSucceeds(t *testing.T) {
 	}
 	if !strings.HasPrefix(r.calls[0], "/usr/bin/curl ") || !strings.HasPrefix(r.calls[1], "/usr/bin/wget ") {
 		t.Fatalf("unexpected call order: %#v", r.calls)
+	}
+}
+
+func TestDownloadWithFallbacks_Curl404DoesNotCallWget(t *testing.T) {
+	r := &fakeRunner{
+		paths: map[string]string{
+			"curl": "/usr/bin/curl",
+			"wget": "/usr/bin/wget",
+		},
+		results: map[string]fakeResult{
+			"/usr/bin/curl": {out: "FONTGET_HTTP_STATUS=404", err: errors.New("exit 22")},
+			"/usr/bin/wget": {out: "", err: nil},
+		},
+	}
+	out := filepath.Join(t.TempDir(), "file.zip")
+	_, err := downloadWithFallbacks(r, "https://example.com/missing.zip", out, DownloadFallbackOptions{UserAgent: "ua"})
+	if err == nil {
+		t.Fatal("expected 404 error")
+	}
+	if !errors.Is(err, ErrCandidateUnavailable) {
+		t.Fatalf("want ErrCandidateUnavailable, got %v", err)
+	}
+	if len(r.calls) != 1 || !strings.HasPrefix(r.calls[0], "/usr/bin/curl ") {
+		t.Fatalf("404 must not continue to wget, calls=%#v", r.calls)
+	}
+}
+
+func TestDownloadWithFallbacks_Wget404Structured(t *testing.T) {
+	r := &fakeRunner{
+		paths: map[string]string{
+			"wget": "/usr/bin/wget",
+			"pwsh": "/usr/bin/pwsh",
+		},
+		results: map[string]fakeResult{
+			"/usr/bin/wget": {out: "HTTP/1.1 404 Not Found", err: errors.New("exit 8")},
+			"/usr/bin/pwsh": {out: "", err: nil},
+		},
+	}
+	out := filepath.Join(t.TempDir(), "file.zip")
+	_, err := downloadWithFallbacks(r, "https://example.com/missing.zip", out, DownloadFallbackOptions{UserAgent: "ua"})
+	if err == nil {
+		t.Fatal("expected 404 error")
+	}
+	if !errors.Is(err, ErrCandidateUnavailable) {
+		t.Fatalf("want ErrCandidateUnavailable, got %v", err)
+	}
+	if len(r.calls) != 1 || !strings.HasPrefix(r.calls[0], "/usr/bin/wget ") {
+		t.Fatalf("404 must not continue to pwsh, calls=%#v", r.calls)
+	}
+}
+
+func TestDownloadWithFallbacks_Curl429DoesNotCallWget(t *testing.T) {
+	r := &fakeRunner{
+		paths: map[string]string{
+			"curl": "/usr/bin/curl",
+			"wget": "/usr/bin/wget",
+		},
+		results: map[string]fakeResult{
+			"/usr/bin/curl": {out: "FONTGET_HTTP_STATUS=429", err: errors.New("exit 22")},
+			"/usr/bin/wget": {out: "", err: nil},
+		},
+	}
+	out := filepath.Join(t.TempDir(), "file.zip")
+	_, err := downloadWithFallbacks(r, "https://example.com/rate.zip", out, DownloadFallbackOptions{UserAgent: "ua"})
+	if err == nil {
+		t.Fatal("expected 429 error")
+	}
+	if !errors.Is(err, ErrRateLimited) {
+		t.Fatalf("want ErrRateLimited, got %v", err)
+	}
+	if len(r.calls) != 1 {
+		t.Fatalf("429 must not change tools, calls=%#v", r.calls)
 	}
 }

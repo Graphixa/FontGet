@@ -8,7 +8,6 @@ import (
 
 	"fontget/internal/cmdutils"
 	"fontget/internal/config"
-	"fontget/internal/functions"
 	"fontget/internal/output"
 	"fontget/internal/ui"
 
@@ -131,7 +130,7 @@ func runSourcesAdd(cmd *cobra.Command, _ []string) error {
 	}
 
 	existing := convertManifestToSourceItems(manifest)
-	result := functions.ValidateSourceForm(name, url, prefix, existing, -1)
+	result := ValidateSourceForm(name, url, prefix, existing, -1)
 	if !result.IsValid {
 		fmt.Println()
 		cmdutils.PrintErrorf("%s", result.GetFirstError())
@@ -140,7 +139,7 @@ func runSourcesAdd(cmd *cobra.Command, _ []string) error {
 	}
 
 	if prefix == "" {
-		prefix = functions.AutoGeneratePrefix(name)
+		prefix = AutoGeneratePrefix(name)
 	}
 	prefix = strings.ToLower(prefix)
 
@@ -358,9 +357,9 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 
 	source := manifest.Sources[name]
 	existing := convertManifestToSourceItems(manifest)
-	editingIndex := functions.FindSourceIndex(existing, name)
+	editingIndex := FindSourceIndex(existing, name)
 	if hasURL {
-		if err := functions.ValidateURL(url); err != nil {
+		if err := ValidateURL(url); err != nil {
 			fmt.Println()
 			cmdutils.PrintErrorf("%v", err)
 			fmt.Println()
@@ -378,7 +377,7 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 	}
 	if hasPrefix {
 		prefix = strings.ToLower(prefix)
-		if err := functions.ValidatePrefix(prefix); err != nil {
+		if err := ValidatePrefix(prefix); err != nil {
 			fmt.Println()
 			cmdutils.PrintErrorf("%v", err)
 			fmt.Println()

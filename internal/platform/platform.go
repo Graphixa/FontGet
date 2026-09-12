@@ -27,11 +27,52 @@ const (
 	MachineScope InstallationScope = "machine"
 )
 
+// InstallFailPoint is a test-only hook that stops an install after the named step.
+type InstallFailPoint string
+
+const (
+	InstallFailNone           InstallFailPoint = ""
+	InstallFailCopyAfterWrite InstallFailPoint = "copy-after-write"
+	InstallFailReplace        InstallFailPoint = "replace"
+	InstallFailRegister       InstallFailPoint = "register"
+)
+
+// FileMutation records destination and registration changes so a package can roll them back.
+type FileMutation struct {
+	DestPath   string
+	BackupPath string
+	Created    bool
+	Replaced   bool
+
+	FontName string
+	Scope    InstallationScope
+
+	// ResourceRegistered is true after a successful AddFontResource for DestPath.
+	ResourceRegistered bool
+	// PriorResourceRemoved is true when an existing registration was cleared before replacement.
+	PriorResourceRemoved bool
+	// RegistryAdded is true after a successful machine-scope registry write for FontName.
+	RegistryAdded bool
+
+	// ArtifactPaths are unique disposable files (backups/stages) owned by this mutation.
+	ArtifactPaths []string
+
+	// UndoRegistration, when set, undoes registrations for this mutation (tests and platforms).
+	// When nil, platform undoFontRegistration is used.
+	UndoRegistration func() error
+	// RestoreRegistration restores prior registration after file restore. Nil uses platform helper.
+	RestoreRegistration func() error
+}
+
 // InstallFontOptions configures InstallFont. A nil opts value keeps legacy behavior (run post-install cache/notify after each InstallFont).
 type InstallFontOptions struct {
 	// SkipPostInstallCacheRefresh skips the per-install OS font cache update / Windows WM_FONTCHANGE notification.
 	// Use with FlushFontCache(scope) once after installing multiple files in one batch.
 	SkipPostInstallCacheRefresh bool
+	// Mutation, when non-nil, is filled with the destination change performed by this call.
+	Mutation *FileMutation
+	// FailPoint is a test hook. Production code must leave it empty.
+	FailPoint InstallFailPoint
 }
 
 // RemoveFontOptions configures RemoveFont. A nil opts value keeps legacy behavior (run post-remove cache/notify after each RemoveFont).

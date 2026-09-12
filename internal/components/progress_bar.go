@@ -2,7 +2,9 @@ package components
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"fontget/internal/shared"
@@ -12,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/term"
 )
 
 // OperationItem represents a single item in the progress display
@@ -41,6 +44,7 @@ type ProgressBarModel struct {
 	program       *tea.Program
 	statusReport  *StatusReportData
 	cancelChan    chan struct{} // Channel to signal cancellation
+	opDone        chan struct{}
 }
 
 // Message types for communication
@@ -114,6 +118,7 @@ func NewProgressBar(title string, items []OperationItem, verboseMode bool, debug
 		ProgressBar: prog,
 		Spinner:     spin,
 		cancelChan:  make(chan struct{}),
+		opDone:      make(chan struct{}),
 	}
 }
 
@@ -128,14 +133,25 @@ func (m ProgressBarModel) Init() tea.Cmd {
 // startOperation runs the actual work in background
 func (m ProgressBarModel) startOperation() tea.Cmd {
 	return func() tea.Msg {
-		// Run the operation in a goroutine to avoid blocking
 		go func() {
+			defer func() {
+				if m.opDone != nil {
+					select {
+					case <-m.opDone:
+					default:
+						close(m.opDone)
+					}
+				}
+			}()
 			err := m.operationFunc(m.program)
-			// If cancelled, return a cancellation error
-			if m.cancelled {
+			select {
+			case <-m.cancelChan:
 				err = shared.ErrOperationCancelled
+			default:
 			}
-			m.program.Send(operationCompleteMsg{err: err})
+			if m.program != nil {
+				m.program.Send(operationCompleteMsg{err: err})
+			}
 		}()
 		return nil
 	}
@@ -149,30 +165,24 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c", "esc", "enter", " ":
 			if m.quitting {
-				// If already completed, any key quits
-				return m, tea.Quit
-			} else {
-				// If still running, mark as interrupted and quit immediately
-				// Don't process any more operationCompleteMsg messages
-				m.quitting = true
-				m.cancelled = true
-				m.err = shared.ErrOperationCancelled
-				// Signal cancellation via channel if it exists
-				if m.cancelChan != nil {
-					select {
-					case <-m.cancelChan:
-						// Already closed
-					default:
-						close(m.cancelChan)
-					}
-				}
-				// Quit immediately - don't wait for operation
-				return m, tea.Quit
+				// Already cancelling or finished: never Quit without joining the worker.
+				return m, waitForOperationQuit(m.opDone)
 			}
+			m.quitting = true
+			m.cancelled = true
+			m.err = shared.ErrOperationCancelled
+			if m.cancelChan != nil {
+				select {
+				case <-m.cancelChan:
+				default:
+					close(m.cancelChan)
+				}
+			}
+			return m, waitForOperationQuit(m.opDone)
 		}
-		// If operation is complete, any key press should quit
+		// If operation is complete, any other key still joins then quits.
 		if m.quitting {
-			return m, tea.Quit
+			return m, waitForOperationQuit(m.opDone)
 		}
 		return m, nil
 
@@ -599,33 +609,91 @@ func operationTickCmd() tea.Cmd {
 	})
 }
 
-// RunProgressBar runs the progress display with the given operation
+func waitForOperationQuit(done <-chan struct{}) tea.Cmd {
+	return func() tea.Msg {
+		if done != nil {
+			<-done
+		}
+		return quitMsg{}
+	}
+}
+
+// UseInteractiveRenderer is true only when both stdin and stdout are terminals.
+func UseInteractiveRenderer() bool {
+	return term.IsTerminal(os.Stdin.Fd()) && term.IsTerminal(os.Stdout.Fd())
+}
+
+// RunProgressBar runs the progress display with the given operation.
+// Interactive Bubble Tea is used only when stdin and stdout are terminals and debug is off.
 func RunProgressBar(title string, items []OperationItem, verboseMode bool, debugMode bool, operation func(send func(msg tea.Msg), cancelChan <-chan struct{}) error) error {
-	// Initialize the model
+	if debugMode || !UseInteractiveRenderer() {
+		return runPlainProgressBar(items, operation)
+	}
+	return runInteractiveProgressBar(title, items, verboseMode, debugMode, operation)
+}
+
+func runPlainProgressBar(items []OperationItem, operation func(send func(msg tea.Msg), cancelChan <-chan struct{}) error) error {
+	cancelChan := make(chan struct{})
+	send := func(msg tea.Msg) {
+		update, ok := msg.(ItemUpdateMsg)
+		if !ok || update.Index < 0 || update.Index >= len(items) {
+			return
+		}
+		name := items[update.Index].Name
+		if update.Name != "" {
+			name = update.Name
+		}
+		switch update.Status {
+		case "failed":
+			if update.ErrorMessage != "" {
+				fmt.Printf("%s: failed: %s\n", name, update.ErrorMessage)
+			} else {
+				fmt.Printf("%s: failed\n", name)
+			}
+		case "completed":
+			fmt.Printf("%s: installed\n", name)
+		case "skipped":
+			fmt.Printf("%s: skipped\n", name)
+		}
+	}
+	return operation(send, cancelChan)
+}
+
+func runInteractiveProgressBar(title string, items []OperationItem, verboseMode bool, debugMode bool, operation func(send func(msg tea.Msg), cancelChan <-chan struct{}) error) error {
 	model := NewProgressBar(title, items, verboseMode, debugMode)
-
-	// Create the Bubble Tea program
 	p := tea.NewProgram(model)
-
-	// Store the program reference so operation can send messages
 	model.program = p
-
-	// Wrap the operation to work with the program
+	var workStarted atomic.Bool
 	model.operationFunc = func(program *tea.Program) error {
-		// Call the operation with a send function that uses program.Send
-		// Also pass cancelChan so operation can check for cancellation
+		workStarted.Store(true)
 		return operation(func(msg tea.Msg) {
+			select {
+			case <-model.cancelChan:
+				return
+			default:
+			}
 			program.Send(msg)
 		}, model.cancelChan)
 	}
 
-	// Run the program
 	finalModel, err := p.Run()
+	joinWorker := func() {
+		if !workStarted.Load() || model.opDone == nil {
+			return
+		}
+		select {
+		case <-model.cancelChan:
+		default:
+			close(model.cancelChan)
+		}
+		<-model.opDone
+	}
 	if err != nil {
+		joinWorker()
 		return err
 	}
+	joinWorker()
 
-	// Check if there was an operation error or cancellation
 	if m, ok := finalModel.(ProgressBarModel); ok {
 		if m.cancelled {
 			return shared.ErrOperationCancelled
@@ -634,6 +702,5 @@ func RunProgressBar(title string, items []OperationItem, verboseMode bool, debug
 			return m.err
 		}
 	}
-
 	return nil
 }
