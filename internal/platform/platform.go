@@ -31,19 +31,39 @@ const (
 type InstallFailPoint string
 
 const (
-	InstallFailNone     InstallFailPoint = ""
-	InstallFailBackup   InstallFailPoint = "backup"
-	InstallFailCopy     InstallFailPoint = "copy"
-	InstallFailReplace  InstallFailPoint = "replace"
-	InstallFailRegister InstallFailPoint = "register"
+	InstallFailNone           InstallFailPoint = ""
+	InstallFailBackup         InstallFailPoint = "backup"
+	InstallFailCopy           InstallFailPoint = "copy"
+	InstallFailCopyAfterWrite InstallFailPoint = "copy-after-write"
+	InstallFailReplace        InstallFailPoint = "replace"
+	InstallFailRegister       InstallFailPoint = "register"
 )
 
-// FileMutation records destination changes so a package can roll them back or commit backups.
+// FileMutation records destination and registration changes so a package can roll them back.
 type FileMutation struct {
 	DestPath   string
 	BackupPath string
 	Created    bool
 	Replaced   bool
+
+	FontName string
+	Scope    InstallationScope
+
+	// ResourceRegistered is true after a successful AddFontResource for DestPath.
+	ResourceRegistered bool
+	// PriorResourceRemoved is true when an existing registration was cleared before replacement.
+	PriorResourceRemoved bool
+	// RegistryAdded is true after a successful machine-scope registry write for FontName.
+	RegistryAdded bool
+
+	// ArtifactPaths are unique disposable files (backups/stages) owned by this mutation.
+	ArtifactPaths []string
+
+	// UndoRegistration, when set, undoes registrations for this mutation (tests and platforms).
+	// When nil, platform undoFontRegistration is used.
+	UndoRegistration func() error
+	// RestoreRegistration restores prior registration after file restore. Nil uses platform helper.
+	RestoreRegistration func() error
 }
 
 // InstallFontOptions configures InstallFont. A nil opts value keeps legacy behavior (run post-install cache/notify after each InstallFont).

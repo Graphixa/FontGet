@@ -3,6 +3,7 @@ package platform
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -37,8 +38,7 @@ func TestPlaceFontFileForceRestoresOnReplaceFail(t *testing.T) {
 		t.Fatal(err)
 	}
 	var mut FileMutation
-	err := error(nil)
-	_, err = placeFontFile(src, dst, true, &InstallFontOptions{Mutation: &mut, FailPoint: InstallFailReplace})
+	_, err := placeFontFile(src, dst, true, &InstallFontOptions{Mutation: &mut, FailPoint: InstallFailReplace})
 	if err == nil {
 		t.Fatal("expected injected replace failure")
 	}
@@ -52,6 +52,73 @@ func TestPlaceFontFileForceRestoresOnReplaceFail(t *testing.T) {
 	bak, _ := os.ReadFile(mut.BackupPath)
 	if string(bak) != "old-bytes-here" {
 		t.Fatalf("backup = %q", bak)
+	}
+	if !strings.Contains(filepath.Base(mut.BackupPath), ".fontget-bak-") {
+		t.Fatalf("backup should use unique suffix, got %s", mut.BackupPath)
+	}
+}
+
+func TestPlaceFontFileCopyAfterWriteTracksPartial(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.ttf")
+	dst := filepath.Join(dir, "dst.ttf")
+	if err := os.WriteFile(src, []byte("partial-new-bytes"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	var mut FileMutation
+	_, err := placeFontFile(src, dst, false, &InstallFontOptions{Mutation: &mut, FailPoint: InstallFailCopyAfterWrite})
+	if err == nil {
+		t.Fatal("expected copy-after-write failure")
+	}
+	if !mut.Created || mut.DestPath != dst {
+		t.Fatalf("partial dest must be tracked: %+v", mut)
+	}
+	if err := RollbackMutation(mut); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Fatal("partial dest must be removed by rollback")
+	}
+}
+
+func TestUniqueBackupSurvivesSecondAttempt(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.ttf")
+	dst := filepath.Join(dir, "dst.ttf")
+	_ = os.WriteFile(src, []byte("new-bytes-here"), 0644)
+	_ = os.WriteFile(dst, []byte("old-bytes-here"), 0644)
+
+	var mut1 FileMutation
+	_, err := placeFontFile(src, dst, true, &InstallFontOptions{Mutation: &mut1, FailPoint: InstallFailReplace})
+	if err == nil {
+		t.Fatal("expected first failure")
+	}
+	firstBak := mut1.BackupPath
+	firstBytes, _ := os.ReadFile(firstBak)
+
+	var mut2 FileMutation
+	_, err = placeFontFile(src, dst, true, &InstallFontOptions{Mutation: &mut2, FailPoint: InstallFailReplace})
+	if err == nil {
+		t.Fatal("expected second failure")
+	}
+	if mut2.BackupPath == firstBak {
+		t.Fatal("second attempt must not reuse first backup path")
+	}
+	got, err := os.ReadFile(firstBak)
+	if err != nil {
+		t.Fatalf("first recovery backup destroyed: %v", err)
+	}
+	if string(got) != string(firstBytes) {
+		t.Fatal("first backup contents changed")
+	}
+}
+
+func TestCheckDestinationCollisions(t *testing.T) {
+	if err := CheckDestinationCollisions([]string{`C:\a\Foo.ttf`, `C:\b\Foo.ttf`}); err == nil {
+		t.Fatal("expected collision")
+	}
+	if err := CheckDestinationCollisions([]string{`C:\a\Foo.ttf`, `C:\a\Bar.ttf`}); err != nil {
+		t.Fatal(err)
 	}
 }
 

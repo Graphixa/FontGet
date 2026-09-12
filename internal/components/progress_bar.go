@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"fontget/internal/shared"
@@ -164,25 +165,24 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "q", "ctrl+c", "esc", "enter", " ":
 			if m.quitting {
-				// If already completed, any key quits
-				return m, tea.Quit
-			} else {
-				m.quitting = true
-				m.cancelled = true
-				m.err = shared.ErrOperationCancelled
-				if m.cancelChan != nil {
-					select {
-					case <-m.cancelChan:
-					default:
-						close(m.cancelChan)
-					}
-				}
+				// Already cancelling or finished: never Quit without joining the worker.
 				return m, waitForOperationQuit(m.opDone)
 			}
+			m.quitting = true
+			m.cancelled = true
+			m.err = shared.ErrOperationCancelled
+			if m.cancelChan != nil {
+				select {
+				case <-m.cancelChan:
+				default:
+					close(m.cancelChan)
+				}
+			}
+			return m, waitForOperationQuit(m.opDone)
 		}
-		// If operation is complete, any key press should quit
+		// If operation is complete, any other key still joins then quits.
 		if m.quitting {
-			return m, tea.Quit
+			return m, waitForOperationQuit(m.opDone)
 		}
 		return m, nil
 
@@ -663,7 +663,9 @@ func runInteractiveProgressBar(title string, items []OperationItem, verboseMode 
 	model := NewProgressBar(title, items, verboseMode, debugMode)
 	p := tea.NewProgram(model)
 	model.program = p
+	var workStarted atomic.Bool
 	model.operationFunc = func(program *tea.Program) error {
+		workStarted.Store(true)
 		return operation(func(msg tea.Msg) {
 			select {
 			case <-model.cancelChan:
@@ -675,17 +677,22 @@ func runInteractiveProgressBar(title string, items []OperationItem, verboseMode 
 	}
 
 	finalModel, err := p.Run()
-	if err != nil {
+	joinWorker := func() {
+		if !workStarted.Load() || model.opDone == nil {
+			return
+		}
 		select {
 		case <-model.cancelChan:
 		default:
 			close(model.cancelChan)
 		}
-		if model.opDone != nil {
-			<-model.opDone
-		}
+		<-model.opDone
+	}
+	if err != nil {
+		joinWorker()
 		return err
 	}
+	joinWorker()
 
 	if m, ok := finalModel.(ProgressBarModel); ok {
 		if m.cancelled {

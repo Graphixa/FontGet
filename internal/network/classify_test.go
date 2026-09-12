@@ -3,6 +3,7 @@ package network
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -86,6 +87,20 @@ func TestRetryAfterWithinBudget(t *testing.T) {
 	}
 	if !RetryAfterWithinBudget(time.Second) {
 		t.Fatal("in-budget wait must be allowed")
+	}
+}
+
+func TestDrainAndCloseBodyBoundsWait(t *testing.T) {
+	pr, pw := io.Pipe()
+	go func() {
+		// Never write — drain must time out and close.
+		time.Sleep(5 * time.Second)
+		_ = pw.Close()
+	}()
+	start := time.Now()
+	DrainAndCloseBody(pr)
+	if time.Since(start) > 4*time.Second {
+		t.Fatalf("drain hung for %s", time.Since(start))
 	}
 }
 

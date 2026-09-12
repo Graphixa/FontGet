@@ -164,13 +164,24 @@ func isLocalIOError(err error) bool {
 	return false
 }
 
-// DrainAndCloseBody discards up to maxErrorBodyDrain bytes and closes the body.
+// DrainAndCloseBody closes the body promptly. A short, bounded drain avoids holding a host
+// slot on a stalled error body; on drain timeout the body is closed immediately.
 func DrainAndCloseBody(body io.ReadCloser) {
 	if body == nil {
 		return
 	}
-	_, _ = io.Copy(io.Discard, io.LimitReader(body, maxErrorBodyDrain))
-	_ = body.Close()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = io.Copy(io.Discard, io.LimitReader(body, maxErrorBodyDrain))
+		_ = body.Close()
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		_ = body.Close()
+		<-done
+	}
 }
 
 // ParseRetryAfter returns the wait duration from a Retry-After header.

@@ -1165,6 +1165,14 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 	var skippedFiles []string
 	var failedFiles []string
 
+	destPaths := make([]string, 0, len(fontPaths))
+	for _, fontPath := range fontPaths {
+		destPaths = append(destPaths, filepath.Join(fontDir, filepath.Base(fontPath)))
+	}
+	if collErr := platform.CheckDestinationCollisions(destPaths); collErr != nil {
+		return 0, 0, len(fontPaths), nil, []string{collErr.Error()}, 0, nil, collErr
+	}
+
 	batchOpts := &platform.InstallFontOptions{SkipPostInstallCacheRefresh: true}
 
 	total := len(fontPaths)
@@ -1395,7 +1403,7 @@ func installFont(
 		ctx, allFontPaths, fontManager, installScope, fontDir, force, onProgress)
 
 	if installErr != nil || failed > 0 {
-		rbErr := rollbackPackageMutations(ctx, fontID, string(installScope), mutations, installErr)
+		rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, installErr)
 		res := buildInstallResult(InstallStatusFailed, "Installation failed", 0, skipped, failed, details, instErrs, downloadSize)
 		if rbErr != nil {
 			return res, rbErr
@@ -1416,7 +1424,7 @@ func installFont(
 	res := buildInstallResult(status, message, installed, skipped, failed, details, instErrs, downloadSize)
 	if status == InstallStatusCompleted && installed > 0 {
 		if testInstallFailPoint == "provenance" {
-			rbErr := rollbackPackageMutations(ctx, fontID, string(installScope), mutations, fmt.Errorf("injected provenance failure"))
+			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, fmt.Errorf("injected provenance failure"))
 			res.Status = InstallStatusFailed
 			res.Success = 0
 			if rbErr != nil {
@@ -1425,7 +1433,7 @@ func installFont(
 			return res, fmt.Errorf("injected provenance failure")
 		}
 		if recErr := tryRecordInstallationRegistry(fontID, fontFiles, installScope, fontDir, res); recErr != nil {
-			rbErr := rollbackPackageMutations(ctx, fontID, string(installScope), mutations, recErr)
+			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, recErr)
 			res.Status = InstallStatusFailed
 			res.Success = 0
 			if rbErr != nil {
@@ -1440,10 +1448,9 @@ func installFont(
 	return res, nil
 }
 
-func rollbackPackageMutations(ctx context.Context, fontID, scope string, mutations []platform.FileMutation, cause error) error {
+func rollbackPackageMutations(ctx context.Context, fontManager platform.FontManager, installScope platform.InstallationScope, fontID, scope string, mutations []platform.FileMutation, cause error) error {
 	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
 	defer cancel()
-	_ = recCtx
 
 	var outstanding []string
 	var completed []string
@@ -1454,6 +1461,11 @@ func rollbackPackageMutations(ctx context.Context, fontID, scope string, mutatio
 	var backupPaths []string
 	var affected []string
 	for i := len(mutations) - 1; i >= 0; i-- {
+		if err := recCtx.Err(); err != nil {
+			outstanding = append(outstanding, "recovery timeout before finishing remaining mutations")
+			recErrs = append(recErrs, err.Error())
+			break
+		}
 		mut := mutations[i]
 		affected = append(affected, mut.DestPath)
 		if mut.BackupPath != "" {
@@ -1469,9 +1481,19 @@ func rollbackPackageMutations(ctx context.Context, fontID, scope string, mutatio
 			_ = os.Remove(mut.BackupPath)
 		}
 	}
+
+	if fontManager != nil && len(mutations) > 0 {
+		if err := recCtx.Err(); err == nil {
+			if flushErr := fontManager.FlushFontCache(installScope); flushErr != nil {
+				output.GetDebug().Warning("Font cache refresh after rollback: %v", flushErr)
+			}
+		}
+	}
+
 	if len(outstanding) == 0 {
 		return nil
 	}
+	// Retain backups for outstanding recoveries.
 	path, saveErr := installations.SaveRecoveryRecord(installations.RecoveryRecord{
 		PackageID:        fontID,
 		Scope:            scope,

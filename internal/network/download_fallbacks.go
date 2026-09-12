@@ -226,7 +226,7 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "wget", Result: "skipped", Detail: "not found in PATH"})
 	} else {
 		ok, term := tryTool("wget", wgetPath, func() (string, error) {
-			return "", runWget(ctx, runner, wgetPath, url, targetPath, opts)
+			return runWget(ctx, runner, wgetPath, url, targetPath, opts)
 		})
 		if ok {
 			return rep, nil
@@ -244,7 +244,7 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "pwsh", Result: "skipped", Detail: "not found in PATH"})
 	} else {
 		ok, term := tryTool("pwsh", pwshPath, func() (string, error) {
-			return "", runPowerShell(ctx, runner, pwshPath, url, targetPath, opts)
+			return runPowerShell(ctx, runner, pwshPath, url, targetPath, opts)
 		})
 		if ok {
 			return rep, nil
@@ -262,7 +262,7 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 		rep.Steps = append(rep.Steps, DownloadFallbackStep{Tool: "powershell", Result: "skipped", Detail: "not found in PATH"})
 	} else {
 		ok, term := tryTool("powershell", psPath, func() (string, error) {
-			return "", runPowerShell(ctx, runner, psPath, url, targetPath, opts)
+			return runPowerShell(ctx, runner, psPath, url, targetPath, opts)
 		})
 		if ok {
 			return rep, nil
@@ -400,10 +400,11 @@ func parseHTTPStatus(s string) (int, bool) {
 	return code, true
 }
 
-func runWget(ctx context.Context, runner CommandRunner, wgetPath, url, targetPath string, opts DownloadFallbackOptions) error {
+func runWget(ctx context.Context, runner CommandRunner, wgetPath, url, targetPath string, opts DownloadFallbackOptions) (string, error) {
 	args := []string{
 		"-q",
 		"-O", targetPath,
+		"--server-response",
 	}
 	if opts.UserAgent != "" {
 		args = append(args, "--user-agent", opts.UserAgent)
@@ -414,16 +415,20 @@ func runWget(ctx context.Context, runner CommandRunner, wgetPath, url, targetPat
 	args = append(args, url)
 
 	out, err := runTool(ctx, runner, opts, wgetPath, args...)
+	status := scrapeHTTPStatus(out, err)
 	if err != nil {
 		if isCancelErr(err) {
-			return err
+			return status, err
 		}
-		return fmt.Errorf("%s", normalizeToolError(out, err))
+		if code, ok := parseHTTPStatus(status); ok {
+			return status, NewHTTPStatusError(code, url, 0)
+		}
+		return status, fmt.Errorf("%s", normalizeToolError(out, err))
 	}
-	return nil
+	return status, nil
 }
 
-func runPowerShell(ctx context.Context, runner CommandRunner, psPath, url, targetPath string, opts DownloadFallbackOptions) error {
+func runPowerShell(ctx context.Context, runner CommandRunner, psPath, url, targetPath string, opts DownloadFallbackOptions) (string, error) {
 	ua := opts.UserAgent
 	if ua == "" {
 		ua = "Mozilla/5.0"
@@ -444,18 +449,50 @@ func runPowerShell(ctx context.Context, runner CommandRunner, psPath, url, targe
 		fmt.Sprintf("$u='%s'", esc(url)),
 		fmt.Sprintf("$p='%s'", esc(targetPath)),
 		fmt.Sprintf("$h=%s", headerLiteral),
-		fmt.Sprintf("Invoke-WebRequest -Uri $u -OutFile $p -Headers $h -UserAgent '%s' -ErrorAction Stop | Out-Null", esc(ua)),
+		"try {",
+		fmt.Sprintf("  Invoke-WebRequest -Uri $u -OutFile $p -Headers $h -UserAgent '%s' -ErrorAction Stop | Out-Null", esc(ua)),
+		"  Write-Output 'FONTGET_HTTP_STATUS=200'",
+		"} catch {",
+		"  $code = 0",
+		"  if ($_.Exception.Response -ne $null) { $code = [int]$_.Exception.Response.StatusCode }",
+		"  Write-Output ('FONTGET_HTTP_STATUS=' + $code)",
+		"  throw",
+		"}",
 	}, "; ")
 
 	args := []string{"-NoProfile", "-NonInteractive", "-Command", script}
 	out, err := runTool(ctx, runner, opts, psPath, args...)
+	status := scrapeHTTPStatus(out, err)
 	if err != nil {
 		if isCancelErr(err) {
-			return err
+			return status, err
 		}
-		return fmt.Errorf("%s", normalizeToolError(out, err))
+		if code, ok := parseHTTPStatus(status); ok && code != 0 {
+			return status, NewHTTPStatusError(code, url, 0)
+		}
+		return status, fmt.Errorf("%s", normalizeToolError(out, err))
 	}
-	return nil
+	return status, nil
+}
+
+var httpStatusScrapers = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)FONTGET_HTTP_STATUS=(\d{3})`),
+	regexp.MustCompile(`(?i)HTTP[/\d.]*\s+(\d{3})\b`),
+	regexp.MustCompile(`(?i)\bERROR\s+(\d{3})\b`),
+	regexp.MustCompile(`(?i)\bstatus(?:\s+code)?[=:\s]+(\d{3})\b`),
+}
+
+func scrapeHTTPStatus(out []byte, err error) string {
+	blob := string(out)
+	if err != nil {
+		blob += "\n" + err.Error()
+	}
+	for _, re := range httpStatusScrapers {
+		if m := re.FindStringSubmatch(blob); len(m) == 2 {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 func sleepCtx(ctx context.Context, d time.Duration) error {

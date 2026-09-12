@@ -145,7 +145,8 @@ func TestDisplayedErrorSkipsDuplicate(t *testing.T) {
 }
 
 type copyFontManager struct {
-	dir string
+	dir        string
+	registered map[string]bool
 }
 
 func (m *copyFontManager) FlushFontCache(scope platform.InstallationScope) error { return nil }
@@ -153,9 +154,25 @@ func (m *copyFontManager) InstallFont(fontPath string, scope platform.Installati
 	if opts == nil {
 		opts = &platform.InstallFontOptions{}
 	}
-	mut, err := platform.PlaceFontFile(fontPath, filepath.Join(m.dir, filepath.Base(fontPath)), force, opts)
+	if m.registered == nil {
+		m.registered = map[string]bool{}
+	}
+	dest := filepath.Join(m.dir, filepath.Base(fontPath))
+	name := filepath.Base(fontPath)
+	mut, err := platform.PlaceFontFile(fontPath, dest, force, opts)
 	if err != nil {
 		return err
+	}
+	mut.FontName = name
+	mut.Scope = scope
+	mut.ResourceRegistered = true
+	m.registered[name] = true
+	mut.UndoRegistration = func() error {
+		delete(m.registered, name)
+		return nil
+	}
+	if opts.Mutation != nil {
+		*opts.Mutation = mut
 	}
 	if opts.FailPoint == platform.InstallFailRegister {
 		_ = platform.RollbackMutation(mut)
@@ -204,7 +221,7 @@ func TestInstallRollbackAfterFirstMutation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected injected failure")
 	}
-	if rb := rollbackPackageMutations(context.Background(), "test.pkg", "user", mutations, err); rb != nil {
+	if rb := rollbackPackageMutations(context.Background(), fm, platform.UserScope, "test.pkg", "user", mutations, err); rb != nil {
 		t.Fatalf("rollback: %v", rb)
 	}
 	entries, _ := os.ReadDir(fontDir)
@@ -213,6 +230,9 @@ func TestInstallRollbackAfterFirstMutation(t *testing.T) {
 			continue
 		}
 		t.Fatalf("rolled-back dest must not keep created fonts, found %s", e.Name())
+	}
+	if len(fm.registered) != 0 {
+		t.Fatalf("registrations left after rollback: %#v", fm.registered)
 	}
 }
 
@@ -277,7 +297,7 @@ func TestInstallRollbackAfterLaterMutation(t *testing.T) {
 	if len(mutations) < 2 {
 		t.Fatalf("need two mutations before later fail, got %d", len(mutations))
 	}
-	if rb := rollbackPackageMutations(context.Background(), "test.pkg", "user", mutations, err); rb != nil {
+	if rb := rollbackPackageMutations(context.Background(), fm, platform.UserScope, "test.pkg", "user", mutations, err); rb != nil {
 		t.Fatalf("rollback: %v", rb)
 	}
 	entries, _ := os.ReadDir(fontDir)
@@ -286,6 +306,9 @@ func TestInstallRollbackAfterLaterMutation(t *testing.T) {
 			continue
 		}
 		t.Fatalf("rolled-back dest must not keep created fonts, found %s", e.Name())
+	}
+	if len(fm.registered) != 0 {
+		t.Fatalf("registrations left after rollback: %#v", fm.registered)
 	}
 }
 
@@ -307,7 +330,7 @@ func TestInstallRegisterFailRollsBack(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected register failure")
 	}
-	if rb := rollbackPackageMutations(context.Background(), "test.pkg", "user", mutations, err); rb != nil {
+	if rb := rollbackPackageMutations(context.Background(), fm, platform.UserScope, "test.pkg", "user", mutations, err); rb != nil {
 		t.Fatalf("rollback: %v", rb)
 	}
 	entries, _ := os.ReadDir(fontDir)
@@ -374,7 +397,7 @@ func TestRollbackFailureWritesRecoveryRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	mut := platform.FileMutation{DestPath: dest, BackupPath: backup, Replaced: true}
-	err := rollbackPackageMutations(context.Background(), "test.pkg", "user", []platform.FileMutation{mut}, errors.New("install failed"))
+	err := rollbackPackageMutations(context.Background(), nil, platform.UserScope, "test.pkg", "user", []platform.FileMutation{mut}, errors.New("install failed"))
 	if err == nil || !errors.Is(err, shared.ErrRecoveryRequired) {
 		t.Fatalf("want ErrRecoveryRequired, got %v", err)
 	}

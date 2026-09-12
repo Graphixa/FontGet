@@ -91,7 +91,11 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		existed = true
 		if force {
 			logger.Debug("Unregistering existing font before safe replacement...")
-			_ = RemoveFontResource(targetPath)
+			if rerr := RemoveFontResource(targetPath); rerr == nil {
+				if opts != nil && opts.Mutation != nil {
+					opts.Mutation.PriorResourceRemoved = true
+				}
+			}
 		}
 	}
 
@@ -104,12 +108,17 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		}
 		return err
 	}
+	mut.FontName = fontName
+	mut.Scope = scope
+	if existed && force {
+		mut.PriorResourceRemoved = true
+	}
+	if opts != nil && opts.Mutation != nil {
+		*opts.Mutation = mut
+	}
 
 	if opts != nil && opts.FailPoint == InstallFailRegister {
 		_ = RollbackMutation(mut)
-		if existed {
-			_ = AddFontResource(targetPath)
-		}
 		return failPointError(InstallFailRegister)
 	}
 
@@ -119,10 +128,14 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		if rbErr := RollbackMutation(mut); rbErr != nil {
 			logger.Error("Rollback after register failure: %v", rbErr)
 		}
-		if existed {
-			_ = AddFontResource(targetPath)
-		}
 		return fmt.Errorf("failed to add font resource: %w", err)
+	}
+	mut.ResourceRegistered = true
+	if opts != nil && opts.Mutation != nil {
+		opts.Mutation.ResourceRegistered = true
+		opts.Mutation.FontName = fontName
+		opts.Mutation.Scope = scope
+		opts.Mutation.PriorResourceRemoved = mut.PriorResourceRemoved
 	}
 	logger.Debug("Font resource added successfully")
 
@@ -132,15 +145,48 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		if err := m.addFontToRegistry(fontName, targetPath); err != nil {
 			logger.Error("Failed to add font to registry: %v", err)
 			RemoveFontResource(targetPath)
+			mut.ResourceRegistered = false
 			if rbErr := RollbackMutation(mut); rbErr != nil {
 				logger.Error("Rollback after registry failure: %v", rbErr)
 			}
-			if existed {
-				_ = AddFontResource(targetPath)
-			}
 			return fmt.Errorf("failed to add font to registry: %w", err)
 		}
+		mut.RegistryAdded = true
+		if opts != nil && opts.Mutation != nil {
+			opts.Mutation.RegistryAdded = true
+			opts.Mutation.ResourceRegistered = true
+		}
 		logger.Debug("Font added to registry successfully")
+	}
+
+	destPath := targetPath
+	fname := fontName
+	priorRemoved := mut.PriorResourceRemoved
+	registryAdded := mut.RegistryAdded
+	resourceRegistered := mut.ResourceRegistered
+	mut.UndoRegistration = func() error {
+		if registryAdded {
+			_ = m.removeFontFromRegistry(fname)
+		}
+		if resourceRegistered {
+			_ = RemoveFontResource(destPath)
+		}
+		return nil
+	}
+	mut.RestoreRegistration = func() error {
+		if priorRemoved {
+			return AddFontResource(destPath)
+		}
+		return nil
+	}
+	if opts != nil && opts.Mutation != nil {
+		opts.Mutation.UndoRegistration = mut.UndoRegistration
+		opts.Mutation.RestoreRegistration = mut.RestoreRegistration
+		opts.Mutation.RegistryAdded = registryAdded
+		opts.Mutation.ResourceRegistered = resourceRegistered
+		opts.Mutation.PriorResourceRemoved = priorRemoved
+		opts.Mutation.FontName = fname
+		opts.Mutation.Scope = scope
 	}
 
 	skipNotify := opts != nil && opts.SkipPostInstallCacheRefresh
@@ -149,15 +195,20 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		logger.Debug("Notifying system about font change...")
 		if err := NotifyFontChange(); err != nil {
 			logger.Error("Failed to notify font change: %v", err)
-			RemoveFontResource(targetPath)
-			if scope == MachineScope {
-				m.removeFontFromRegistry(fontName)
+			if scope == MachineScope && mut.RegistryAdded {
+				_ = m.removeFontFromRegistry(fontName)
+				mut.RegistryAdded = false
+			}
+			if mut.ResourceRegistered {
+				_ = RemoveFontResource(targetPath)
+				mut.ResourceRegistered = false
+			}
+			if opts != nil && opts.Mutation != nil {
+				opts.Mutation.ResourceRegistered = false
+				opts.Mutation.RegistryAdded = false
 			}
 			if rbErr := RollbackMutation(mut); rbErr != nil {
 				logger.Error("Rollback after notify failure: %v", rbErr)
-			}
-			if existed {
-				_ = AddFontResource(targetPath)
 			}
 			return fmt.Errorf("failed to notify font change: %w", err)
 		}

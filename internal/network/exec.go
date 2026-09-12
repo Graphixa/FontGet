@@ -21,6 +21,8 @@ const (
 	DefaultExternalTerminateWait = 5 * time.Second
 	// DefaultMaxCapturedOutput bounds retained stdout/stderr from an external downloader.
 	DefaultMaxCapturedOutput = 256 << 10
+	// defaultWaitAfterKill bounds how long we wait for Wait() after forced termination.
+	defaultWaitAfterKill = 10 * time.Second
 )
 
 // ExecOptions controls cancellable external process execution.
@@ -64,7 +66,8 @@ func (execRunner) CombinedOutputContext(ctx context.Context, opts ExecOptions, n
 }
 
 // RunCancellable starts name with args (no shell), waits until completion, cancellation, or stall.
-// On cancel it signals the process group/job, waits TerminateWait, then force-kills descendants.
+// Cancellation is owned entirely here: we do not use exec.CommandContext so Go's default
+// Process.Kill cannot race process-tree teardown that needs the parent PID.
 func RunCancellable(ctx context.Context, opts ExecOptions, name string, args ...string) ([]byte, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -73,20 +76,53 @@ func RunCancellable(ctx context.Context, opts ExecOptions, name string, args ...
 		return nil, err
 	}
 
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := exec.Command(name, args...)
 	prepareProcessGroup(cmd)
 
 	var out limitedBuffer
 	out.max = opts.maxOutput()
-	cmd.Stdout = &out
-	cmd.Stderr = &out
+
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		return nil, err
+	}
+	stderrR, stderrW, err := os.Pipe()
+	if err != nil {
+		_ = stdoutR.Close()
+		_ = stdoutW.Close()
+		return nil, err
+	}
+	cmd.Stdout = stdoutW
+	cmd.Stderr = stderrW
+
+	var copyWG sync.WaitGroup
+	copyWG.Add(2)
+	go func() {
+		defer copyWG.Done()
+		_, _ = io.Copy(&out, stdoutR)
+		_ = stdoutR.Close()
+	}()
+	go func() {
+		defer copyWG.Done()
+		_, _ = io.Copy(&out, stderrR)
+		_ = stderrR.Close()
+	}()
 
 	if err := cmd.Start(); err != nil {
+		_ = stdoutW.Close()
+		_ = stderrW.Close()
+		copyWG.Wait()
 		return out.Bytes(), err
 	}
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
 
 	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
+	go func() {
+		waitErr := cmd.Wait()
+		copyWG.Wait()
+		done <- waitErr
+	}()
 
 	stallCtx, stallCancel := context.WithCancel(ctx)
 	defer stallCancel()
@@ -119,7 +155,11 @@ func RunCancellable(ctx context.Context, opts ExecOptions, name string, args ...
 		case <-done:
 		case <-time.After(opts.terminateWait()):
 			_ = killProcessTree(cmd)
-			<-done
+			select {
+			case <-done:
+			case <-time.After(defaultWaitAfterKill):
+				return out.Bytes(), fmt.Errorf("%w: process did not exit after kill", cause)
+			}
 		}
 		return out.Bytes(), cause
 	}
@@ -177,19 +217,4 @@ func (l *limitedBuffer) Bytes() []byte {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return append([]byte(nil), l.buf.Bytes()...)
-}
-
-func closePipes(cmd *exec.Cmd) {
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	if wc, ok := cmd.Stdout.(io.Closer); ok {
-		_ = wc.Close()
-	}
-	if wc, ok := cmd.Stderr.(io.Closer); ok {
-		_ = wc.Close()
-	}
-	if wc, ok := cmd.Stdin.(io.Closer); ok {
-		_ = wc.Close()
-	}
 }

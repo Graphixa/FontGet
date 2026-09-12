@@ -183,6 +183,13 @@ type DownloadFontOptions struct {
 	Context context.Context
 }
 
+func downloadOptsContext(opts *DownloadFontOptions) context.Context {
+	if opts != nil && opts.Context != nil {
+		return opts.Context
+	}
+	return context.Background()
+}
+
 // DownloadFont downloads a font file and verifies its SHA-256 hash if available.
 func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (string, error) {
 	start := time.Now()
@@ -632,9 +639,9 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		}
 		action := network.ClassifyDownloadError(err)
 		switch action {
-		case network.ActionFailPackage, network.ActionFailLocal:
+		case network.ActionFailPackage, network.ActionFailLocal, network.ActionRateLimit:
 			return nil, err
-		case network.ActionAdvanceCandidate, network.ActionFailCandidate, network.ActionRetrySame, network.ActionRateLimit, network.ActionExternalFallback:
+		case network.ActionAdvanceCandidate, network.ActionFailCandidate, network.ActionRetrySame, network.ActionExternalFallback:
 			if i+1 < len(candidates) {
 				output.GetDebug().State("DownloadAndExtractFont: trying next format candidate")
 			}
@@ -759,6 +766,7 @@ func attemptDownloadAndExtract(font *FontFile, targetDir string, opts *DownloadF
 	}
 
 	extractedFiles, err := ExtractArchiveWithOptions(downloadedPath, extractDir, &ExtractOptions{
+		Context: downloadOptsContext(opts),
 		OnFontFileExtracted: func(done int, total int) {
 			if opts != nil && opts.OnExtractProgress != nil {
 				opts.OnExtractProgress(done, total)

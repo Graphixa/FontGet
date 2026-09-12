@@ -159,6 +159,34 @@ func TestCompleteDownloadedFile(t *testing.T) {
 	}
 }
 
+func TestDownloadAndExtractFont_RateLimitDoesNotAdvanceCandidate(t *testing.T) {
+	old := network.MaxRetryAfterWait
+	network.MaxRetryAfterWait = time.Millisecond
+	t.Cleanup(func() { network.MaxRetryAfterWait = old })
+
+	hits := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits[r.URL.Path]++
+		w.Header().Set("Retry-After", "30")
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	t.Cleanup(srv.Close)
+
+	font := &FontFile{
+		Name:               "Rate",
+		Variant:            "Regular",
+		DownloadURL:        srv.URL + "/a.zip",
+		DownloadCandidates: []string{srv.URL + "/a.zip", srv.URL + "/b.zip"},
+	}
+	_, err := DownloadAndExtractFont(font, t.TempDir(), nil)
+	if err == nil || !errors.Is(err, network.ErrRateLimited) {
+		t.Fatalf("want rate limited, got %v", err)
+	}
+	if hits["/b.zip"] != 0 {
+		t.Fatalf("must not advance to next candidate on rate limit, hits=%v", hits)
+	}
+}
+
 func TestDownloadFont_RetryAfterExceedsBudget(t *testing.T) {
 	old := network.MaxRetryAfterWait
 	network.MaxRetryAfterWait = time.Millisecond

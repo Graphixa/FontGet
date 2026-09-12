@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -407,6 +408,12 @@ type RemoveFontFilesParams struct {
 
 // removeFontFiles removes font files from system
 func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string) {
+	unlock, lockErr := installations.LockDestination(context.Background(), params.FontDir)
+	if lockErr != nil {
+		return 0, 0, len(params.MatchingFonts), nil, []string{lockErr.Error()}
+	}
+	defer unlock()
+
 	batchOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
 
 	total := len(params.MatchingFonts)

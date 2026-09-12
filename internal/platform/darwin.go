@@ -82,6 +82,11 @@ func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope
 	if err != nil {
 		return err
 	}
+	mut.FontName = fontName
+	mut.Scope = scope
+	if opts != nil && opts.Mutation != nil {
+		*opts.Mutation = mut
+	}
 	if opts != nil && opts.FailPoint == InstallFailRegister {
 		_ = RollbackMutation(mut)
 		return failPointError(InstallFailRegister)

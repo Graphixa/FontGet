@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"os/exec"
 	"strconv"
 	"syscall"
@@ -18,13 +19,23 @@ func prepareProcessGroup(cmd *exec.Cmd) {
 	cmd.SysProcAttr.CreationFlags |= windows.CREATE_NEW_PROCESS_GROUP
 }
 
+func runTaskkill(force bool, pid string, timeout time.Duration) error {
+	args := []string{"/T", "/PID", pid}
+	if force {
+		args = append([]string{"/F"}, args...)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "taskkill", args...)
+	return cmd.Run()
+}
+
 func terminateProcessTree(cmd *exec.Cmd, wait time.Duration) error {
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
 	pid := strconv.Itoa(cmd.Process.Pid)
-	_ = exec.Command("taskkill", "/T", "/PID", pid).Run()
-	closePipes(cmd)
+	_ = runTaskkill(false, pid, wait)
 	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
 		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
@@ -40,7 +51,5 @@ func killProcessTree(cmd *exec.Cmd) error {
 		return nil
 	}
 	pid := strconv.Itoa(cmd.Process.Pid)
-	err := exec.Command("taskkill", "/F", "/T", "/PID", pid).Run()
-	closePipes(cmd)
-	return err
+	return runTaskkill(true, pid, DefaultExternalTerminateWait)
 }

@@ -16,14 +16,19 @@ func prepareProcessGroup(cmd *exec.Cmd) {
 }
 
 func terminateProcessTree(cmd *exec.Cmd, wait time.Duration) error {
-	_ = wait
 	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
 	pgid := cmd.Process.Pid
 	_ = syscall.Kill(-pgid, syscall.SIGTERM)
-	closePipes(cmd)
-	return nil
+	deadline := time.Now().Add(wait)
+	for time.Now().Before(deadline) {
+		if cmd.ProcessState != nil && cmd.ProcessState.Exited() {
+			return nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return killProcessTree(cmd)
 }
 
 func killProcessTree(cmd *exec.Cmd) error {
@@ -31,7 +36,5 @@ func killProcessTree(cmd *exec.Cmd) error {
 		return nil
 	}
 	pgid := cmd.Process.Pid
-	_ = syscall.Kill(-pgid, syscall.SIGKILL)
-	closePipes(cmd)
-	return nil
+	return syscall.Kill(-pgid, syscall.SIGKILL)
 }
