@@ -7,8 +7,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 )
@@ -48,52 +46,79 @@ func TestRunCancellable_InactivityStall(t *testing.T) {
 }
 
 func TestRunCancellable_KillsDescendants(t *testing.T) {
-	marker := filepath.Join(t.TempDir(), "alive")
-	name, args := descendantMarkerArgs(marker)
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "alive")
+	name, args, err := descendantMarkerArgs(dir, marker)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := exec.LookPath(name); err != nil {
 		t.Skip(err)
 	}
-	_ = os.Remove(marker)
+
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		_, err := RunCancellable(ctx, ExecOptions{InactivityTimeout: time.Minute, TerminateWait: time.Second}, name, args...)
-		errCh <- err
+		_, runErr := RunCancellable(ctx, ExecOptions{InactivityTimeout: time.Minute, TerminateWait: time.Second}, name, args...)
+		errCh <- runErr
 	}()
-	deadline := time.Now().Add(3 * time.Second)
+
+	deadline := time.Now().Add(8 * time.Second)
 	for time.Now().Before(deadline) {
-		if _, err := os.Stat(marker); err == nil {
+		select {
+		case runErr := <-errCh:
+			t.Fatalf("runner exited before marker appeared: %v", runErr)
+		default:
+		}
+		if _, statErr := os.Stat(marker); statErr == nil {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if _, err := os.Stat(marker); err != nil {
-		t.Fatal("child never created alive marker")
+		select {
+		case runErr := <-errCh:
+			t.Fatalf("child never created alive marker; runner err=%v", runErr)
+		default:
+			t.Fatal("child never created alive marker")
+		}
 	}
+
 	cancel()
 	select {
 	case err := <-errCh:
 		if err == nil {
 			t.Fatal("expected cancellation error")
 		}
-	case <-time.After(8 * time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("runner did not return after cancel")
 	}
+
 	// Child should stop updating the marker; remove and ensure it is not recreated.
 	_ = os.Remove(marker)
-	time.Sleep(800 * time.Millisecond)
+	time.Sleep(1200 * time.Millisecond)
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("descendant still alive after cancel (marker recreated)")
 	}
 }
 
-func descendantMarkerArgs(marker string) (string, []string) {
+func descendantMarkerArgs(dir, marker string) (string, []string, error) {
 	if runtime.GOOS == "windows" {
-		script := fmt.Sprintf(`while ($true) { Set-Content -LiteralPath '%s' -Value 'alive' -Encoding ascii; Start-Sleep -Seconds 1 }`, marker)
-		return "powershell", []string{"-NoProfile", "-NonInteractive", "-Command", script}
+		// Use a .cmd helper: more reliable on GitHub Actions than powershell -Command loops.
+		bat := filepath.Join(dir, "alive_loop.cmd")
+		script := fmt.Sprintf(""+
+			"@echo off\r\n"+
+			":loop\r\n"+
+			">\"%s\" echo alive\r\n"+
+			"ping -n 2 127.0.0.1 >nul\r\n"+
+			"goto loop\r\n", marker)
+		if err := os.WriteFile(bat, []byte(script), 0o644); err != nil {
+			return "", nil, err
+		}
+		return "cmd", []string{"/c", bat}, nil
 	}
-	script := `touch "` + marker + `"; while true; do touch "` + marker + `"; sleep 1; done`
-	return "sh", []string{"-c", script}
+	script := `touch "` + marker + `"; (sleep 60 &); while true; do touch "` + marker + `"; sleep 1; done`
+	return "sh", []string{"-c", script}, nil
 }
 
 func longSleepArgs() (string, []string) {
@@ -148,8 +173,6 @@ func TestScrapeHTTPStatus(t *testing.T) {
 	if got := scrapeHTTPStatus(nil, errWith("ERROR 429: Too Many Requests")); got != "429" {
 		t.Fatalf("got %q", got)
 	}
-	_ = strconv.Itoa(1)
-	_ = strings.TrimSpace("x")
 }
 
 type errWith string
