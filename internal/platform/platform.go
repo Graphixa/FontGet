@@ -32,8 +32,6 @@ type InstallFailPoint string
 
 const (
 	InstallFailNone           InstallFailPoint = ""
-	InstallFailBackup         InstallFailPoint = "backup"
-	InstallFailCopy           InstallFailPoint = "copy"
 	InstallFailCopyAfterWrite InstallFailPoint = "copy-after-write"
 	InstallFailReplace        InstallFailPoint = "replace"
 	InstallFailRegister       InstallFailPoint = "register"

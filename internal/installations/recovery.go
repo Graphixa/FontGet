@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"fontget/internal/config"
+	"fontget/internal/platform"
 	"fontget/internal/shared"
 )
 
@@ -45,7 +46,11 @@ func SaveRecoveryRecord(rec RecoveryRecord) (string, error) {
 	}
 	name := rec.OperationID
 	if rec.PackageID != "" {
-		name = rec.OperationID + "-" + sanitizeFilePart(rec.PackageID)
+		part := platform.SanitizePathPart(rec.PackageID)
+		if part == "" {
+			part = "package"
+		}
+		name = rec.OperationID + "-" + part
 	}
 	path := filepath.Join(dir, name+".json")
 	payload, err := json.MarshalIndent(rec, "", "  ")
@@ -56,23 +61,4 @@ func SaveRecoveryRecord(rec RecoveryRecord) (string, error) {
 		return "", fmt.Errorf("%w: write recovery: %v", shared.ErrRecoveryRequired, err)
 	}
 	return path, nil
-}
-
-func sanitizeFilePart(s string) string {
-	out := make([]rune, 0, len(s))
-	for _, r := range s {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_', r == '.':
-			out = append(out, r)
-		default:
-			out = append(out, '_')
-		}
-	}
-	if len(out) > 80 {
-		out = out[:80]
-	}
-	if len(out) == 0 {
-		return "package"
-	}
-	return string(out)
 }

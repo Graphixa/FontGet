@@ -563,7 +563,7 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 			ch <- browseOpProgressMsg{phase: step, percent: OverallInstallPercent(0, 1, step, stepPct)}
 		}
 
-		ir, ierr := installFont(context.Background(), res.Fonts, res.FontID, fm, scope, force, fontDir, nil, true, onProgress)
+		ir, ierr := installFont(context.Background(), res.Fonts, res.FontID, fm, scope, force, fontDir, nil, true, onProgress, nil)
 		ch <- installFinishedMsg{result: ir, err: ierr, fontID: fontID}
 	}()
 	return m.waitForOpMsg()

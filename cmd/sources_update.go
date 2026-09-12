@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"fontget/internal/config"
-	"fontget/internal/functions"
 	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/ui"
@@ -91,7 +90,7 @@ func NewUpdateModel(verbose bool) (*updateModel, error) {
 	}
 
 	// Get enabled sources
-	enabledSources := functions.GetEnabledSourcesInOrder(manifest)
+	enabledSources := GetEnabledSourcesInOrder(manifest)
 	if len(enabledSources) == 0 {
 		return nil, fmt.Errorf("no sources are enabled")
 	}

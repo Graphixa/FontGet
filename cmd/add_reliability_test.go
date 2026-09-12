@@ -214,10 +214,7 @@ func TestInstallRollbackAfterFirstMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testInstallFailPoint = "after-first"
-	t.Cleanup(func() { testInstallFailPoint = "" })
-
-	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil)
+	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 1})
 	if err == nil {
 		t.Fatal("expected injected failure")
 	}
@@ -288,9 +285,7 @@ func TestInstallRollbackAfterLaterMutation(t *testing.T) {
 	if err := os.WriteFile(pathB, testutil.MinimalTTF("Beta", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	testInstallFailPoint = "after-later"
-	t.Cleanup(func() { testInstallFailPoint = "" })
-	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil)
+	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 2})
 	if err == nil {
 		t.Fatal("expected injected failure")
 	}
@@ -324,9 +319,7 @@ func TestInstallRegisterFailRollsBack(t *testing.T) {
 	if err := os.WriteFile(src, testutil.MinimalTTF("Face", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	testInstallFailPoint = "register"
-	t.Cleanup(func() { testInstallFailPoint = "" })
-	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{src}, fm, platform.UserScope, fontDir, false, nil)
+	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{src}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failRegister: true})
 	if err == nil {
 		t.Fatal("expected register failure")
 	}
@@ -359,16 +352,13 @@ func TestInstallProvenanceFailRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = staging.Cleanup() })
-	testInstallFailPoint = "provenance"
-	t.Cleanup(func() { testInstallFailPoint = "" })
-
 	files := []repo.FontFile{{
 		Name:        "ProvFam",
 		Variant:     "Regular",
 		Path:        "ProvFam-Regular.ttf",
 		DownloadURL: srv.URL + "/ProvFam-Regular.ttf",
 	}}
-	res, err := installFont(context.Background(), files, "test.prov", fm, platform.UserScope, false, fontDir, staging, true, nil)
+	res, err := installFont(context.Background(), files, "test.prov", fm, platform.UserScope, false, fontDir, staging, true, nil, &installTestControl{failProvenance: true})
 	if err == nil {
 		t.Fatal("expected provenance failure")
 	}

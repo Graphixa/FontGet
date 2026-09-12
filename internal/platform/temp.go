@@ -9,9 +9,7 @@ import (
 
 const (
 	// TempDirName is the name of our temporary directory (shared container only).
-	TempDirName = "Fontget"
-	// TempFontsDir is the name of the fonts subdirectory (legacy shared staging).
-	TempFontsDir       = "fonts"
+	TempDirName        = "Fontget"
 	operationDirPrefix = "op-"
 )
 
@@ -32,22 +30,6 @@ func GetTempDir() (string, error) {
 	return fontgetTempDir, nil
 }
 
-// GetTempFontsDir returns the path to the legacy shared temporary fonts directory.
-// New installation code should use NewOperationStaging instead.
-func GetTempFontsDir() (string, error) {
-	tempDir, err := GetTempDir()
-	if err != nil {
-		return "", err
-	}
-
-	fontsDir := filepath.Join(tempDir, TempFontsDir)
-	if err := os.MkdirAll(fontsDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create fonts directory: %w", err)
-	}
-
-	return fontsDir, nil
-}
-
 // CleanupTempDir removes the shared Fontget temp container if it is empty.
 // It never deletes unrelated sibling directories. Prefer OperationStaging.Cleanup.
 func CleanupTempDir() error {
@@ -61,21 +43,6 @@ func CleanupTempDir() error {
 			return nil
 		}
 		return fmt.Errorf("failed to cleanup temp directory: %w", err)
-	}
-	return nil
-}
-
-// CleanupTempFontsDir removes the legacy shared fonts subdirectory if empty.
-func CleanupTempFontsDir() error {
-	fontsDir, err := GetTempFontsDir()
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(fontsDir); err != nil && !os.IsNotExist(err) {
-		if isNotEmptyDirErr(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to cleanup fonts directory: %w", err)
 	}
 	return nil
 }
@@ -107,48 +74,22 @@ func NewOperationStaging() (*OperationStaging, error) {
 	return &OperationStaging{Root: dir}, nil
 }
 
-// PackageDir returns a dedicated directory for one catalogue package (font ID).
-func (s *OperationStaging) PackageDir(packageID string) (string, error) {
+// VariantDir returns a dedicated directory for one variant inside a package.
+func (s *OperationStaging) VariantDir(packageID, variant string) (string, error) {
 	if s == nil || s.Root == "" {
 		return "", fmt.Errorf("nil operation staging")
 	}
-	name := sanitizeStagingName(packageID)
-	if name == "" {
-		name = "package"
+	pkgName := SanitizePathPart(packageID)
+	if pkgName == "" {
+		pkgName = "package"
 	}
-	dir := filepath.Join(s.Root, "pkg-"+name)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create package staging directory: %w", err)
+	varName := SanitizePathPart(variant)
+	if varName == "" {
+		varName = "variant"
 	}
-	return dir, nil
-}
-
-// VariantDir returns a dedicated directory for one variant inside a package.
-func (s *OperationStaging) VariantDir(packageID, variant string) (string, error) {
-	pkg, err := s.PackageDir(packageID)
-	if err != nil {
-		return "", err
-	}
-	name := sanitizeStagingName(variant)
-	if name == "" {
-		name = "variant"
-	}
-	dir := filepath.Join(pkg, "var-"+name)
+	dir := filepath.Join(s.Root, "pkg-"+pkgName, "var-"+varName)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create variant staging directory: %w", err)
-	}
-	return dir, nil
-}
-
-// AttemptDir allocates a unique directory for one download/extract candidate attempt.
-func (s *OperationStaging) AttemptDir(packageID, variant string) (string, error) {
-	parent, err := s.VariantDir(packageID, variant)
-	if err != nil {
-		return "", err
-	}
-	dir, err := os.MkdirTemp(parent, "attempt-*")
-	if err != nil {
-		return "", fmt.Errorf("failed to create attempt staging directory: %w", err)
 	}
 	return dir, nil
 }
@@ -166,7 +107,8 @@ func (s *OperationStaging) Cleanup() error {
 	return nil
 }
 
-func sanitizeStagingName(s string) string {
+// SanitizePathPart returns a filesystem-safe fragment for staging and recovery filenames.
+func SanitizePathPart(s string) string {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return ""

@@ -35,17 +35,11 @@ func ParseExpectedSHA256(expected string) (string, error) {
 	if strings.HasPrefix(expected, "sha256:") || strings.HasPrefix(expected, "SHA256:") {
 		expected = strings.TrimSpace(expected[7:])
 	}
-	if len(expected) != 64 {
+	b, err := hex.DecodeString(expected)
+	if err != nil || len(b) != 32 {
 		return "", fmt.Errorf("%w: expected 64 hex characters", ErrMalformedChecksum)
 	}
-	for i := 0; i < len(expected); i++ {
-		c := expected[i]
-		hexDigit := (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-		if !hexDigit {
-			return "", fmt.Errorf("%w: non-hex character", ErrMalformedChecksum)
-		}
-	}
-	return strings.ToLower(expected), nil
+	return hex.EncodeToString(b), nil
 }
 
 // VerifyFileSHA256 compares path bytes against an already-validated expected hex digest.

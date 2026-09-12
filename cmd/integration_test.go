@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"fontget/internal/cmdutils"
+	"fontget/internal/repo"
 	"fontget/internal/shared"
 )
 
@@ -121,20 +122,20 @@ func TestGetRepository_Integration(t *testing.T) {
 		t.Fatalf("Failed to initialize manifest: %v", err)
 	}
 
-	repo, err := cmdutils.GetRepository(GetLogger())
+	r, err := repo.GetRepository()
 
 	if err != nil {
 		t.Errorf("getRepository() unexpected error: %v", err)
 		return
 	}
 
-	if repo == nil {
+	if r == nil {
 		t.Errorf("getRepository() returned nil repository")
 		return
 	}
 
 	// Verify repository is usable
-	manifest, err := repo.GetManifest()
+	manifest, err := r.GetManifest()
 	if err != nil {
 		t.Errorf("getRepository() returned repository that failed to get manifest: %v", err)
 	}

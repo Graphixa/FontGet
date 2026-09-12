@@ -29,7 +29,6 @@ const (
 type ExecOptions struct {
 	InactivityTimeout time.Duration
 	TerminateWait     time.Duration
-	MaxOutputBytes    int
 	// ProgressPath, when set, is stat'd to detect downloaded-byte progress (file size growth).
 	ProgressPath string
 }
@@ -46,19 +45,6 @@ func (o ExecOptions) terminateWait() time.Duration {
 		return o.TerminateWait
 	}
 	return DefaultExternalTerminateWait
-}
-
-func (o ExecOptions) maxOutput() int {
-	if o.MaxOutputBytes > 0 {
-		return o.MaxOutputBytes
-	}
-	return DefaultMaxCapturedOutput
-}
-
-// ContextCommandRunner is an optional CommandRunner extension used by production execution.
-type ContextCommandRunner interface {
-	CommandRunner
-	CombinedOutputContext(ctx context.Context, opts ExecOptions, name string, args ...string) ([]byte, error)
 }
 
 func (execRunner) CombinedOutputContext(ctx context.Context, opts ExecOptions, name string, args ...string) ([]byte, error) {
@@ -80,7 +66,7 @@ func RunCancellable(ctx context.Context, opts ExecOptions, name string, args ...
 	prepareProcessGroup(cmd)
 
 	var out limitedBuffer
-	out.max = opts.maxOutput()
+	out.max = DefaultMaxCapturedOutput
 
 	stdoutR, stdoutW, err := os.Pipe()
 	if err != nil {

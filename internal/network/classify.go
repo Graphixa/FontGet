@@ -44,8 +44,6 @@ const (
 	ActionRateLimit
 	// ActionExternalFallback means a recognised challenge and external tools are allowed.
 	ActionExternalFallback
-	// ActionFailCandidate means a permanent candidate failure without blind same-URL tool retries.
-	ActionFailCandidate
 	// ActionFailPackage means stop the package (checksum, cancel, unassociated digest).
 	ActionFailPackage
 	// ActionFailLocal means a local I/O/permission error; switching transports cannot repair it.
@@ -96,12 +94,12 @@ func ClassifyHTTPStatus(statusCode int, botChallenge bool) DownloadAction {
 		return ActionRetrySame
 	default:
 		if statusCode >= 400 && statusCode < 500 {
-			return ActionFailCandidate
+			return ActionAdvanceCandidate
 		}
 		if statusCode >= 500 {
 			return ActionRetrySame
 		}
-		return ActionFailCandidate
+		return ActionAdvanceCandidate
 	}
 }
 

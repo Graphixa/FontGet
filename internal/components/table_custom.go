@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // CustomTable is a custom table component with full viewport control
@@ -298,13 +298,12 @@ func (ct *CustomTable) renderRow(rowIndex int, isSelected bool) string {
 			cellValue = row[i]
 		}
 
-		// Use runewidth.Truncate for proper truncation
 		// Truncate if: column is marked truncatable, OR content exceeds column width (after scaling)
 		// This ensures content never wraps, even for non-truncatable columns that were scaled down
 		var truncated string
-		contentWidth := runewidth.StringWidth(cellValue)
+		contentWidth := ansi.StringWidth(cellValue)
 		if col.Truncatable || contentWidth > width {
-			truncated = runewidth.Truncate(cellValue, width, "…")
+			truncated = ansi.Truncate(cellValue, width, "…")
 		} else {
 			truncated = cellValue
 		}
@@ -342,7 +341,7 @@ func (ct *CustomTable) renderRow(rowIndex int, isSelected bool) string {
 	// If total exceeds viewport, truncate the entire row
 	if ct.viewport.Width > 0 && expectedTotalWidth > ct.viewport.Width {
 		// Truncate to fit viewport
-		rowContent = runewidth.Truncate(rowContent, ct.viewport.Width, "")
+		rowContent = ansi.Truncate(rowContent, ct.viewport.Width, "")
 	}
 
 	// Apply width constraint to prevent wrapping

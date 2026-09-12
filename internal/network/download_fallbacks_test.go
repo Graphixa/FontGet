@@ -1,6 +1,7 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -53,6 +54,13 @@ func (r *fakeRunner) CombinedOutput(name string, args ...string) ([]byte, error)
 		return []byte(res.out), res.err
 	}
 	return []byte("no result configured"), errors.New("failed")
+}
+
+func (r *fakeRunner) CombinedOutputContext(ctx context.Context, _ ExecOptions, name string, args ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return r.CombinedOutput(name, args...)
 }
 
 func TestDownloadWithFallbacks_NoTools(t *testing.T) {

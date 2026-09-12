@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"fontget/internal/shared"
+	"fontget/internal/network"
 )
 
 func registryLockPath() string {
@@ -28,11 +28,11 @@ func withRegistryFileLock(ctx context.Context, fn func() error) error {
 
 func lockFile(ctx context.Context, path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return nil, fmt.Errorf("%w: lock dir: %v", shared.ErrLocalFailure, err)
+		return nil, fmt.Errorf("%w: lock dir: %v", network.ErrLocalFailure, err)
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("%w: open lock: %v", shared.ErrLocalFailure, err)
+		return nil, fmt.Errorf("%w: open lock: %v", network.ErrLocalFailure, err)
 	}
 	deadline := time.Now().Add(30 * time.Second)
 	for {

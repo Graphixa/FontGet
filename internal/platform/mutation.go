@@ -76,10 +76,6 @@ func placeFontFile(src, dest string, force bool, opts *InstallFontOptions) (File
 }
 
 func createNewFontFile(src, dest string, mut *FileMutation, opts *InstallFontOptions) error {
-	if opts != nil && opts.FailPoint == InstallFailCopy {
-		return failPointError(InstallFailCopy)
-	}
-
 	staged := uniqueArtifact(dest, "new")
 	trackArtifact(mut, staged)
 	if err := copyFile(src, staged); err != nil {
@@ -115,10 +111,6 @@ func createNewFontFile(src, dest string, mut *FileMutation, opts *InstallFontOpt
 }
 
 func replaceExistingFontFile(src, dest string, mut *FileMutation, opts *InstallFontOptions) error {
-	if opts != nil && opts.FailPoint == InstallFailBackup {
-		return failPointError(InstallFailBackup)
-	}
-
 	backup := uniqueArtifact(dest, "bak")
 	if err := copyFile(dest, backup); err != nil {
 		return fmt.Errorf("backup existing font: %w", err)
@@ -126,10 +118,6 @@ func replaceExistingFontFile(src, dest string, mut *FileMutation, opts *InstallF
 	mut.BackupPath = backup
 	mut.Replaced = true
 	trackArtifact(mut, backup)
-
-	if opts != nil && opts.FailPoint == InstallFailCopy {
-		return failPointError(InstallFailCopy)
-	}
 
 	staged := uniqueArtifact(dest, "new")
 	trackArtifact(mut, staged)

@@ -17,6 +17,7 @@ import (
 type CommandRunner interface {
 	LookPath(file string) (string, error)
 	CombinedOutput(name string, args ...string) ([]byte, error)
+	CombinedOutputContext(ctx context.Context, opts ExecOptions, name string, args ...string) ([]byte, error)
 }
 
 type execRunner struct{}
@@ -53,7 +54,8 @@ func (opts DownloadFallbackOptions) maxAttempts() int {
 	return 3
 }
 
-func isZipMagic(b []byte) bool {
+// IsZipMagic reports whether b starts with a ZIP local/EOCD/span signature.
+func IsZipMagic(b []byte) bool {
 	if len(b) < 4 {
 		return false
 	}
@@ -157,7 +159,7 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 			expectZip = strings.Contains(accept, "application/zip")
 		}
 		if expectZip {
-			if !isZipMagic(buf[:n]) {
+			if !IsZipMagic(buf[:n]) {
 				return fmt.Errorf("output is not a ZIP archive (missing PK header)")
 			}
 		}
@@ -167,7 +169,7 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 	stopChain := func(err error) (*DownloadFallbackReport, error) {
 		action := ClassifyDownloadError(err)
 		cause := err
-		if action == ActionAdvanceCandidate || action == ActionFailCandidate || action == ActionFailPackage || action == ActionFailLocal || action == ActionRateLimit {
+		if action == ActionAdvanceCandidate || action == ActionFailPackage || action == ActionFailLocal || action == ActionRateLimit {
 			return rep, &FallbackAttemptError{URL: url, Report: rep, attempt: compact, cause: cause}
 		}
 		return nil, err
@@ -186,7 +188,7 @@ func downloadWithFallbacks(runner CommandRunner, url, targetPath string, opts Do
 				err = NewHTTPStatusError(code, url, 0)
 			}
 			switch action {
-			case ActionAdvanceCandidate, ActionFailCandidate, ActionFailPackage, ActionFailLocal, ActionRateLimit:
+			case ActionAdvanceCandidate, ActionFailPackage, ActionFailLocal, ActionRateLimit:
 				return false, err
 			default:
 				return false, nil
@@ -282,10 +284,7 @@ func runTool(ctx context.Context, runner CommandRunner, opts DownloadFallbackOpt
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-	if cr, ok := runner.(ContextCommandRunner); ok {
-		return cr.CombinedOutputContext(ctx, opts.Exec, name, args...)
-	}
-	return runner.CombinedOutput(name, args...)
+	return runner.CombinedOutputContext(ctx, opts.Exec, name, args...)
 }
 
 func runCurl(ctx context.Context, runner CommandRunner, curlPath, url, targetPath string, opts DownloadFallbackOptions) (finalStatus string, _ error) {
@@ -326,7 +325,7 @@ func runCurl(ctx context.Context, runner CommandRunner, curlPath, url, targetPat
 				action := ClassifyHTTPStatus(code, false)
 				httpErr := NewHTTPStatusError(code, url, 0)
 				switch action {
-				case ActionAdvanceCandidate, ActionFailCandidate, ActionFailPackage, ActionFailLocal:
+				case ActionAdvanceCandidate, ActionFailPackage, ActionFailLocal:
 					return finalStatus, httpErr
 				case ActionRateLimit:
 					return finalStatus, httpErr
@@ -359,7 +358,7 @@ func runCurl(ctx context.Context, runner CommandRunner, curlPath, url, targetPat
 		switch action {
 		case ActionSuccess:
 			return finalStatus, nil
-		case ActionAdvanceCandidate, ActionFailCandidate, ActionFailPackage, ActionFailLocal, ActionRateLimit:
+		case ActionAdvanceCandidate, ActionFailPackage, ActionFailLocal, ActionRateLimit:
 			return finalStatus, httpErr
 		case ActionRetrySame:
 			lastErr = httpErr
@@ -495,7 +494,10 @@ func scrapeHTTPStatus(out []byte, err error) string {
 	return ""
 }
 
-func sleepCtx(ctx context.Context, d time.Duration) error {
+func SleepCtx(ctx context.Context, d time.Duration) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if d <= 0 {
 		return ctx.Err()
 	}
@@ -507,6 +509,10 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	case <-t.C:
 		return nil
 	}
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	return SleepCtx(ctx, d)
 }
 
 func normalizeToolError(out []byte, err error) string {

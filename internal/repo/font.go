@@ -52,13 +52,6 @@ func resolveDownloadUserAgent() string {
 // DownloadUserAgent is Network.DownloadUserAgent from preferences (embedded default if unset).
 func DownloadUserAgent() string { return resolveDownloadUserAgent() }
 
-func isZipMagic(b []byte) bool {
-	if len(b) < 4 {
-		return false
-	}
-	return b[0] == 'P' && b[1] == 'K' && ((b[2] == 3 && b[3] == 4) || (b[2] == 5 && b[3] == 6) || (b[2] == 7 && b[3] == 8))
-}
-
 var (
 	downloadHostMu    sync.Mutex
 	downloadHostSlots = map[string]chan struct{}{}
@@ -325,7 +318,7 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		retryAfter, _ := network.ParseRetryAfter(resp.Header, time.Now())
 		network.DrainAndCloseBody(resp.Body)
 		switch action {
-		case network.ActionAdvanceCandidate, network.ActionFailCandidate:
+		case network.ActionAdvanceCandidate:
 			return "", network.NewHTTPStatusError(resp.StatusCode, font.DownloadURL, retryAfter)
 		case network.ActionRateLimit:
 			if !network.RetryAfterWithinBudget(retryAfter) {
@@ -409,7 +402,7 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	if expectZIP {
 		br := bufio.NewReader(reader)
 		if hdr, peekErr := br.Peek(4); peekErr == nil {
-			if !isZipMagic(hdr) {
+			if !network.IsZipMagic(hdr) {
 				return "", fmt.Errorf("download did not return a ZIP archive (possible upstream challenge): %s", network.RedactDownloadURL(font.DownloadURL))
 			}
 		}
@@ -533,17 +526,7 @@ func sleepRequest(req *http.Request, d time.Duration) error {
 	if req != nil && req.Context() != nil {
 		ctx = req.Context()
 	}
-	if d <= 0 {
-		return ctx.Err()
-	}
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
+	return network.SleepCtx(ctx, d)
 }
 
 func isHTTP2HeaderTimeout(err error) bool {
@@ -641,7 +624,7 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 		switch action {
 		case network.ActionFailPackage, network.ActionFailLocal, network.ActionRateLimit:
 			return nil, err
-		case network.ActionAdvanceCandidate, network.ActionFailCandidate, network.ActionRetrySame, network.ActionExternalFallback:
+		case network.ActionAdvanceCandidate, network.ActionRetrySame, network.ActionExternalFallback:
 			if i+1 < len(candidates) {
 				output.GetDebug().State("DownloadAndExtractFont: trying next format candidate")
 			}

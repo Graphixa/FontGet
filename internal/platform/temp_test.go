@@ -85,33 +85,3 @@ func TestOperationStagingConcurrentCleanup(t *testing.T) {
 		}
 	}
 }
-
-func TestAttemptDirIsolatedFromSiblingVariant(t *testing.T) {
-	s, err := NewOperationStaging()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = s.Cleanup() })
-
-	okDir, err := s.VariantDir("pkg", "regular")
-	if err != nil {
-		t.Fatal(err)
-	}
-	keep := filepath.Join(okDir, "ok.ttf")
-	if err := os.WriteFile(keep, []byte("ok"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	attempt, err := s.AttemptDir("pkg", "bold")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(attempt, "bad.bin"), []byte("bad"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.RemoveAll(attempt); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(keep); err != nil {
-		t.Fatalf("successful variant staging lost: %v", err)
-	}
-}

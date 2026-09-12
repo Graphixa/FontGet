@@ -11,7 +11,6 @@ import (
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
 	"fontget/internal/installations"
-	"fontget/internal/normalize"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
@@ -80,7 +79,7 @@ type RemoveResult struct {
 //
 // Returns the original name if no suffix pattern is found
 func extractBaseFontName(familyName string) string {
-	return normalize.BaseFamilyName(familyName)
+	return repo.BaseFamilyName(familyName)
 }
 
 // ProgressCallback is a function type for reporting progress during font finding
@@ -218,7 +217,7 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 
 // normalizeFontName normalizes a font name for comparison
 func normalizeFontName(name string) string {
-	return normalize.FontKey(name)
+	return repo.FontKey(name)
 }
 
 // resolveFontNameOrID resolves a Font ID to a font name, or returns the original if it's already a font name
@@ -1443,13 +1442,7 @@ Use --scope to set removal location:
 
 									// Render table with priority configuration
 									tableConfig := components.TableConfig{
-										Columns: []components.ColumnConfig{
-											{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-											{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-											{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-											{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-											{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-										},
+										Columns: components.DefaultFontTableColumns(),
 										Rows:     tableRows,
 										Width:    0,   // Auto-detect terminal width
 										MaxWidth: 120, // Maximum width
@@ -1595,13 +1588,7 @@ Use --scope to set removal location:
 
 									// Render table with priority configuration
 									tableConfig := components.TableConfig{
-										Columns: []components.ColumnConfig{
-											{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-											{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-											{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-											{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-											{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-										},
+										Columns: components.DefaultFontTableColumns(),
 										Rows:     tableRows,
 										Width:    0,   // Auto-detect terminal width
 										MaxWidth: 120, // Maximum width
@@ -2476,13 +2463,7 @@ Use --scope to set removal location:
 
 							// Render table with priority configuration
 							tableConfig := components.TableConfig{
-								Columns: []components.ColumnConfig{
-									{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-									{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-									{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-									{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-									{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-								},
+								Columns: components.DefaultFontTableColumns(),
 								Rows:     tableRows,
 								Width:    0,   // Auto-detect terminal width
 								MaxWidth: 120, // Maximum width
@@ -2629,13 +2610,7 @@ Use --scope to set removal location:
 
 							// Render table with priority configuration
 							tableConfig := components.TableConfig{
-								Columns: []components.ColumnConfig{
-									{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-									{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-									{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-									{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-									{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-								},
+								Columns: components.DefaultFontTableColumns(),
 								Rows:     tableRows,
 								Width:    0,   // Auto-detect terminal width
 								MaxWidth: 120, // Maximum width

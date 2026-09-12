@@ -1,4 +1,4 @@
-﻿package cmd
+package cmd
 
 import (
 	"context"
@@ -214,13 +214,7 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 
 			// Render table with priority configuration
 			tableConfig := components.TableConfig{
-				Columns: []components.ColumnConfig{
-					{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-					{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-					{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-					{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-					{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-				},
+				Columns: components.DefaultFontTableColumns(),
 				Rows:     tableRows,
 				Width:    0,   // Auto-detect terminal width
 				MaxWidth: 120, // Maximum width
@@ -317,13 +311,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
-			Columns: []components.ColumnConfig{
-				{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-				{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-				{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-				{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-				{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-			},
+			Columns: components.DefaultFontTableColumns(),
 			Rows:     tableRows,
 			Width:    0,   // Auto-detect terminal width
 			MaxWidth: 120, // Maximum width
@@ -468,13 +456,7 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 
 	// Render table with priority configuration
 	tableConfig := components.TableConfig{
-		Columns: []components.ColumnConfig{
-			{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-			{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-			{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-			{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-			{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-		},
+		Columns: components.DefaultFontTableColumns(),
 		Rows:     tableRows,
 		Width:    0,   // Auto-detect terminal width
 		MaxWidth: 120, // Maximum width
@@ -758,6 +740,7 @@ Use --scope to set installation location:
 						staging,
 						suppressVerboseDownloads,
 						onProgress,
+						nil,
 					)
 
 					if err != nil {
@@ -962,19 +945,6 @@ func archiveSourcePrefixFromFontID(fontID string) string {
 	return strings.ToLower(fontID[:i])
 }
 
-// cloneDownloadOptsForProgress returns a shallow copy of downloadOpts (or zero)
-// with ArchiveSourcePrefix set from archiveSourcePrefix so progress callbacks
-// can be attached without dropping fields like OnResponseHeaders.
-func cloneDownloadOptsForProgress(downloadOpts *repo.DownloadFontOptions, archiveSourcePrefix, archiveFontID string) *repo.DownloadFontOptions {
-	var base repo.DownloadFontOptions
-	if downloadOpts != nil {
-		base = *downloadOpts
-	}
-	base.ArchiveSourcePrefix = archiveSourcePrefix
-	base.ArchiveFontID = archiveFontID
-	return &base
-}
-
 // downloadFontVariants downloads all variants of a font family
 func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, staging *platform.OperationStaging, fontID string, archiveSourcePrefix string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
 	start := time.Now()
@@ -1041,7 +1011,7 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 }
 
 // installDownloadedFonts installs downloaded font files to system
-func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress StepProgressFunc) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
+func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress StepProgressFunc, tc *installTestControl) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
 	start := time.Now()
 	var installedFiles []string
 	var skippedFiles []string
@@ -1087,7 +1057,7 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 
 		var mut platform.FileMutation
 		batchOpts.Mutation = &mut
-		if testInstallFailPoint == "register" {
+		if tc != nil && tc.failRegister {
 			batchOpts.FailPoint = platform.InstallFailRegister
 		} else {
 			batchOpts.FailPoint = ""
@@ -1111,15 +1081,9 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 			break
 		}
 
-		if testInstallFailPoint == "after-first" && len(mutations) == 1 {
+		if tc != nil && tc.failAfterMutations > 0 && len(mutations) >= tc.failAfterMutations {
 			failed++
-			err = fmt.Errorf("injected failure after first file mutation")
-			failedFiles = append(failedFiles, fontDisplayName)
-			break
-		}
-		if testInstallFailPoint == "after-later" && len(mutations) >= 2 {
-			failed++
-			err = fmt.Errorf("injected failure after later file mutation")
+			err = fmt.Errorf("injected failure after mutation count %d", len(mutations))
 			failedFiles = append(failedFiles, fontDisplayName)
 			break
 		}
@@ -1174,8 +1138,12 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 	return installed, skipped, failed, details, errs, downloadSize, mutations, err
 }
 
-// testInstallFailPoint injects package-level failures in tests: after-first, after-later, register, provenance.
-var testInstallFailPoint string
+// installTestControl injects package-level failures from tests. Production passes nil.
+type installTestControl struct {
+	failRegister       bool
+	failAfterMutations int // fail when len(mutations) >= N; 0 = off
+	failProvenance     bool
+}
 
 // buildInstallResult builds InstallResult from installation outcomes
 func buildInstallResult(status string, message string, installed, skipped, failed int, details []string, errors []string, downloadSize int64) *InstallResult {
@@ -1219,6 +1187,7 @@ func installFont(
 	staging *platform.OperationStaging,
 	suppressVerboseDownloads bool,
 	onProgress StepProgressFunc,
+	tc *installTestControl,
 ) (*InstallResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -1282,7 +1251,7 @@ func installFont(
 	defer unlockDest()
 
 	installed, skipped, failed, details, instErrs, downloadSize, mutations, installErr := installDownloadedFonts(
-		ctx, allFontPaths, fontManager, installScope, fontDir, force, onProgress)
+		ctx, allFontPaths, fontManager, installScope, fontDir, force, onProgress, tc)
 
 	if installErr != nil || failed > 0 {
 		rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, installErr)
@@ -1305,7 +1274,7 @@ func installFont(
 
 	res := buildInstallResult(status, message, installed, skipped, failed, details, instErrs, downloadSize)
 	if status == InstallStatusCompleted && installed > 0 {
-		if testInstallFailPoint == "provenance" {
+		if tc != nil && tc.failProvenance {
 			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, fmt.Errorf("injected provenance failure"))
 			res.Status = InstallStatusFailed
 			res.Success = 0

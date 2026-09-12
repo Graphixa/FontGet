@@ -41,30 +41,6 @@ func (e *FontRemovalError) Error() string {
 	return fmt.Sprintf("failed to remove %d out of %d fonts", e.FailedCount, e.TotalCount)
 }
 
-// ConfigurationError represents configuration-related errors
-type ConfigurationError struct {
-	Field string
-	Value string
-	Hint  string
-}
-
-func (e *ConfigurationError) Error() string {
-	if e.Hint != "" {
-		return fmt.Sprintf("configuration error in field '%s' with value '%s': %s", e.Field, e.Value, e.Hint)
-	}
-	return fmt.Sprintf("configuration error in field '%s' with value '%s'", e.Field, e.Value)
-}
-
-// ElevationError represents elevation-related errors
-type ElevationError struct {
-	Operation string
-	Platform  string
-}
-
-func (e *ElevationError) Error() string {
-	return fmt.Sprintf("elevation required for operation '%s' on platform '%s'", e.Operation, e.Platform)
-}
-
 // Classified operation errors. Callers should use errors.Is; do not match message text.
 var (
 	// ErrOperationCancelled is a sentinel error used to indicate that an operation was cancelled by the user.
@@ -72,8 +48,6 @@ var (
 
 	// ErrRecoveryRequired is returned when installation rollback could not fully restore prior state.
 	ErrRecoveryRequired = errors.New("installation recovery required")
-	// ErrLocalFailure is returned for local permission or disk errors that network fallback cannot repair.
-	ErrLocalFailure = errors.New("local filesystem failure")
 )
 
 // DisplayedError wraps an error whose user-facing message has already been printed.
