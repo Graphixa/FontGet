@@ -184,7 +184,8 @@ func (m *UnifiedFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Handle enter based on focused component
 			if m.FocusedIdx < len(m.Components) {
 				comp := &m.Components[m.FocusedIdx]
-				if comp.Type == ComponentButtonGroup {
+				switch comp.Type {
+				case ComponentButtonGroup:
 					// Button group handles enter internally
 					action := comp.ButtonGroup.HandleKey(key)
 					if action != "" {
@@ -198,12 +199,12 @@ func (m *UnifiedFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							return m, tea.Quit
 						}
 					}
-				} else if comp.Type == ComponentCheckboxList {
+				case ComponentCheckboxList:
 					// Toggle checkbox
 					if comp.CheckboxList.Cursor >= 0 && comp.CheckboxList.Cursor < len(comp.CheckboxList.Items) {
 						comp.CheckboxList.Items[comp.CheckboxList.Cursor].Checked = !comp.CheckboxList.Items[comp.CheckboxList.Cursor].Checked
 					}
-				} else {
+				default:
 					// Text input - validate and submit
 					if m.validateForm() {
 						if m.OnSubmit != nil {

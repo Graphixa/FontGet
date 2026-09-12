@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -635,12 +636,14 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						})
 					}
 					result, err := installFont(
+						cmd.Context(),
 						fontGroup.Fonts,
 						fontGroup.FontID,
 						fontManager,
 						installScope,
 						force,
 						fontDir,
+						nil,
 						true,
 						onProgress,
 					)
@@ -746,12 +749,14 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 		output.GetDebug().State("Calling installFont(%s, %s, %s, %v, %s)", fontGroup.FontID, scopeLabel, fontDir, force, "...")
 
 		result, err := installFont(
+			context.Background(),
 			fontGroup.Fonts,
 			fontGroup.FontID,
 			fontManager,
 			installScope,
 			force,
 			fontDir,
+			nil,
 			false,
 			nil,
 		)

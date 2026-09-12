@@ -27,11 +27,34 @@ const (
 	MachineScope InstallationScope = "machine"
 )
 
+// InstallFailPoint is a test-only hook that stops an install after the named step.
+type InstallFailPoint string
+
+const (
+	InstallFailNone     InstallFailPoint = ""
+	InstallFailBackup   InstallFailPoint = "backup"
+	InstallFailCopy     InstallFailPoint = "copy"
+	InstallFailReplace  InstallFailPoint = "replace"
+	InstallFailRegister InstallFailPoint = "register"
+)
+
+// FileMutation records destination changes so a package can roll them back or commit backups.
+type FileMutation struct {
+	DestPath   string
+	BackupPath string
+	Created    bool
+	Replaced   bool
+}
+
 // InstallFontOptions configures InstallFont. A nil opts value keeps legacy behavior (run post-install cache/notify after each InstallFont).
 type InstallFontOptions struct {
 	// SkipPostInstallCacheRefresh skips the per-install OS font cache update / Windows WM_FONTCHANGE notification.
 	// Use with FlushFontCache(scope) once after installing multiple files in one batch.
 	SkipPostInstallCacheRefresh bool
+	// Mutation, when non-nil, is filled with the destination change performed by this call.
+	Mutation *FileMutation
+	// FailPoint is a test hook. Production code must leave it empty.
+	FailPoint InstallFailPoint
 }
 
 // RemoveFontOptions configures RemoveFont. A nil opts value keeps legacy behavior (run post-remove cache/notify after each RemoveFont).

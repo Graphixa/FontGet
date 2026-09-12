@@ -65,8 +65,48 @@ func (e *ElevationError) Error() string {
 	return fmt.Sprintf("elevation required for operation '%s' on platform '%s'", e.Operation, e.Platform)
 }
 
-// ErrOperationCancelled is a sentinel error used to indicate that an operation was cancelled by the user.
-var ErrOperationCancelled = errors.New("operation cancelled")
+// Classified operation errors. Callers should use errors.Is; do not match message text.
+var (
+	// ErrOperationCancelled is a sentinel error used to indicate that an operation was cancelled by the user.
+	ErrOperationCancelled = errors.New("operation cancelled")
+
+	// ErrRecoveryRequired is returned when installation rollback could not fully restore prior state.
+	ErrRecoveryRequired = errors.New("installation recovery required")
+	// ErrLocalFailure is returned for local permission or disk errors that network fallback cannot repair.
+	ErrLocalFailure = errors.New("local filesystem failure")
+)
+
+// DisplayedError wraps an error whose user-facing message has already been printed.
+// The process should still exit non-zero, but the entry point must not print it again.
+type DisplayedError struct {
+	Cause error
+}
+
+func (e *DisplayedError) Error() string {
+	if e == nil || e.Cause == nil {
+		return "error already displayed"
+	}
+	return e.Cause.Error()
+}
+
+func (e *DisplayedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
+// AlreadyPrinted wraps err so the executable entry point skips duplicate output.
+func AlreadyPrinted(err error) error {
+	if err == nil {
+		return nil
+	}
+	var displayed *DisplayedError
+	if errors.As(err, &displayed) {
+		return err
+	}
+	return &DisplayedError{Cause: err}
+}
 
 // ErrExportCancelled is a sentinel error used to indicate that an export operation was cancelled by the user.
 var ErrExportCancelled = errors.New("export cancelled")

@@ -205,17 +205,18 @@ func (ct *CustomTable) handleNavigation(key string) {
 		return
 	}
 	var newCursor int
-	if key == "up" {
+	switch key {
+	case "up":
 		newCursor = ct.cursor - 1
 		if newCursor < 0 {
 			newCursor = 0
 		}
-	} else if key == "down" {
+	case "down":
 		newCursor = ct.cursor + 1
 		if newCursor >= len(ct.rows) {
 			newCursor = len(ct.rows) - 1
 		}
-	} else {
+	default:
 		return // Not a navigation key
 	}
 

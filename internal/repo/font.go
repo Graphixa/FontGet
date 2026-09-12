@@ -3,8 +3,7 @@ package repo
 import (
 	"bufio"
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
+	"context"
 	"errors"
 	"fmt"
 	"fontget/internal/config"
@@ -65,10 +64,13 @@ var (
 	downloadHostSlots = map[string]chan struct{}{}
 )
 
-func acquireDownloadHostSlot(host string) func() {
+func acquireDownloadHostSlot(ctx context.Context, host string) (func(), error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	host = strings.TrimSpace(strings.ToLower(host))
 	if host == "" {
-		return func() {}
+		return func() {}, nil
 	}
 
 	downloadHostMu.Lock()
@@ -80,8 +82,12 @@ func acquireDownloadHostSlot(host string) func() {
 	}
 	downloadHostMu.Unlock()
 
-	ch <- struct{}{}
-	return func() { <-ch }
+	select {
+	case ch <- struct{}{}:
+		return func() { <-ch }, nil
+	case <-ctx.Done():
+		return func() {}, ctx.Err()
+	}
 }
 
 func fallbackHeadersFromRequest(req *http.Request) map[string]string {
@@ -172,9 +178,12 @@ type DownloadFontOptions struct {
 	// ArchiveFontID is the full FontGet font ID (e.g. "nerd.noto-sans-mono") used by source-specific
 	// archive selectors when FontFile.Name alone is insufficient.
 	ArchiveFontID string
+
+	// Context cancels host-slot waits, HTTP requests, retry backoff and external tools.
+	Context context.Context
 }
 
-// DownloadFont downloads a font file and verifies its SHA-256 hash if available
+// DownloadFont downloads a font file and verifies its SHA-256 hash if available.
 func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (string, error) {
 	start := time.Now()
 	dbg := func(format string, args ...interface{}) {
@@ -192,24 +201,37 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		dbg("DownloadFont: downloaded size=%d bytes path=%s", info.Size(), path)
 	}
 
-	// Create target directory if it doesn't exist
-	if err := os.MkdirAll(targetDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create target directory: %w", err)
+	if font == nil {
+		return "", fmt.Errorf("font is nil")
+	}
+	ctx := context.Background()
+	if opts != nil && opts.Context != nil {
+		ctx = opts.Context
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
 	}
 
-	// Compute target path early so we can fall back to alternate download methods.
+	if _, err := ParseExpectedSHA256(font.SHA); err != nil {
+		return "", err
+	}
+	if err := checksumAppliesToCandidate(font, font.DownloadURL); err != nil {
+		return "", err
+	}
+
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return "", fmt.Errorf("%w: failed to create target directory: %v", network.ErrLocalFailure, err)
+	}
+
 	targetPath := filepath.Join(targetDir, font.Path)
 
-	// Create HTTP request
-	req, err := http.NewRequest("GET", font.DownloadURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", font.DownloadURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Accept", "*/*")
-	// Many CDNs behave more predictably when Accept-Language is present (still honest; not browser spoofing).
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
-	// Download file
 	appConfig := config.GetUserPreferences()
 	downloadTimeout := config.ParseDuration(appConfig.Network.DownloadTimeout, 30*time.Second)
 	requestTimeout := config.ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
@@ -222,7 +244,6 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		path = u.Path
 	}
 
-	// Font Squirrel-specific headers: make the request look like a normal file download, without pretending to be a browser.
 	isFontSquirrel := strings.Contains(host, "fontsquirrel.com")
 	if isFontSquirrel {
 		req.Header.Set("User-Agent", resolveDownloadUserAgent())
@@ -230,10 +251,8 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		req.Header.Set("Accept-Encoding", "identity")
 		req.Header.Set("Referer", "https://www.fontsquirrel.com/")
 	} else {
-		// Default UA for other upstreams.
 		req.Header.Set("User-Agent", resolveDownloadUserAgent())
 	}
-	// Font Squirrel often delays/challenges non-browser clients. Prefer failing fast and falling back.
 	fastHeaderTimeout := requestTimeout
 	if fallbackEnabled && strings.Contains(host, "fontsquirrel.com") {
 		if fastHeaderTimeout <= 0 || fastHeaderTimeout > 3*time.Second {
@@ -241,101 +260,100 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		}
 	}
 
-	releaseHost := acquireDownloadHostSlot(host)
+	releaseHost, err := acquireDownloadHostSlot(ctx, host)
+	if err != nil {
+		return "", err
+	}
 	defer releaseHost()
 
-	// Don't use http.Client.Timeout for downloads - it times out even during active transfers
-	// Instead, use ResponseHeaderTimeout to detect connection issues early
-	// The stall detector handles inactivity detection (no overall timeout needed)
+	fbOpts := network.DownloadFallbackOptions{
+		UserAgent: req.Header.Get("User-Agent"),
+		Headers:   fallbackHeadersFromRequest(req),
+		Context:   ctx,
+		Exec: network.ExecOptions{
+			InactivityTimeout: downloadTimeout,
+		},
+	}
+	if downloadTimeout < network.DefaultExternalInactivityTimeout {
+		fbOpts.Exec.InactivityTimeout = network.DefaultExternalInactivityTimeout
+	}
+
+	completeExternal := func(rep *network.DownloadFallbackReport) (string, error) {
+		if rep != nil {
+			for _, step := range rep.Steps {
+				dbg("DownloadFont fallback step: tool=%s path=%s result=%s detail=%q", step.Tool, step.Path, step.Result, step.Detail)
+			}
+		}
+		if err := completeDownloadedFile(targetPath, font.SHA); err != nil {
+			return "", err
+		}
+		toolName, toolPath := rep.UsedTool()
+		dbg("DownloadFont: %s -> %s (via %s)", font.DownloadURL, targetPath, toolName)
+		logging.GetLogger().Info("External download succeeded using %s (%s)", toolName, toolPath)
+		dbgFileSize(targetPath)
+		return targetPath, nil
+	}
+
 	resp, err := doDownloadRequestWithHeaderTimeout(req, fastHeaderTimeout, 15*time.Second, start, dbg)
 	if err != nil {
-		// Always attempt external fallbacks when enabled.
-		if fallbackEnabled {
+		action := network.ClassifyDownloadError(err)
+		if action == network.ActionFailPackage || action == network.ActionFailLocal {
+			return "", err
+		}
+		if fallbackEnabled && action == network.ActionExternalFallback {
 			dbg("DownloadFont: standard request failed: %v", err)
-			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
-				UserAgent: req.Header.Get("User-Agent"),
-				Headers:   fallbackHeadersFromRequest(req),
-			})
-			if rep != nil {
-				for _, step := range rep.Steps {
-					dbg("DownloadFont fallback step: tool=%s path=%s result=%s detail=%q", step.Tool, step.Path, step.Result, step.Detail)
-				}
-			}
+			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, fbOpts)
 			if fbErr == nil {
-				toolName, toolPath := rep.UsedTool()
-				dbg("DownloadFont: %s -> %s (via %s)", font.DownloadURL, targetPath, toolName)
-				logging.GetLogger().Info("External download succeeded using %s (%s)", toolName, toolPath)
-				dbgFileSize(targetPath)
-				return targetPath, nil
+				return completeExternal(rep)
+			}
+			if network.ClassifyDownloadError(fbErr) != network.ActionExternalFallback {
+				return "", fbErr
 			}
 		}
 		return "", fmt.Errorf("failed to download font: %w", err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		// Bot/WAF challenge: retry using external tools when enabled.
-		if network.IsBotChallenge(resp) {
-			logging.GetLogger().Info("Download: HTTP %d bot/WAF challenge from host %s", resp.StatusCode, host)
-
-			wafAction := network.HeaderValueFold(resp.Header, "x-amzn-waf-action")
-			dbg("DownloadFont: IsBotChallenge=true status=%d x-amzn-waf-action=%q", resp.StatusCode, wafAction)
-
+	action := network.ClassifyHTTPStatus(resp.StatusCode, network.IsBotChallenge(resp))
+	if action != network.ActionSuccess {
+		retryAfter, _ := network.ParseRetryAfter(resp.Header, time.Now())
+		network.DrainAndCloseBody(resp.Body)
+		switch action {
+		case network.ActionAdvanceCandidate, network.ActionFailCandidate:
+			return "", network.NewHTTPStatusError(resp.StatusCode, font.DownloadURL, retryAfter)
+		case network.ActionRateLimit:
+			if !network.RetryAfterWithinBudget(retryAfter) {
+				return "", fmt.Errorf("%w: Retry-After %s exceeds wait budget", network.ErrRateLimited, retryAfter)
+			}
+			return "", network.NewHTTPStatusError(resp.StatusCode, font.DownloadURL, retryAfter)
+		case network.ActionExternalFallback:
 			if !fallbackEnabled {
 				logging.GetLogger().Info("External download fallback disabled (Network.EnableExternalDownloadFallback=false); not retrying with external tools")
 				output.GetVerbose().Warning("Upstream returned HTTP %d (bot/WAF challenge). External download fallback is disabled in config.", resp.StatusCode)
-				dbg("DownloadFont: skipping DownloadWithFallbacks (EnableExternalDownloadFallback=false)")
-				return "", fmt.Errorf("HTTP %d (blocked by upstream challenge). Enable Network.EnableExternalDownloadFallback in config.yaml or retry later: %s", resp.StatusCode, font.DownloadURL)
+				return "", fmt.Errorf("HTTP %d (blocked by upstream challenge). Enable Network.EnableExternalDownloadFallback in config.yaml or retry later: %s", resp.StatusCode, network.RedactDownloadURL(font.DownloadURL))
 			}
-
 			output.GetVerbose().Info("Upstream returned HTTP %d (bot/WAF challenge). Retrying with external download tools if available.", resp.StatusCode)
-
-			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
-				UserAgent: req.Header.Get("User-Agent"),
-				Headers:   fallbackHeadersFromRequest(req),
-			})
-			for _, step := range rep.Steps {
-				dbg("DownloadFont fallback step: tool=%s path=%s result=%s detail=%q", step.Tool, step.Path, step.Result, step.Detail)
-			}
-
+			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, fbOpts)
 			if fbErr == nil {
-				toolName, toolPath := rep.UsedTool()
-				logging.GetLogger().Info("External download succeeded using %s (%s)", toolName, toolPath)
-				output.GetVerbose().Info("Download completed using %s after HTTP %d challenge.", toolName, resp.StatusCode)
-				dbg("DownloadFont: %s -> %s (via %s)", font.DownloadURL, targetPath, toolName)
-				dbgFileSize(targetPath)
-				return targetPath, nil
+				return completeExternal(rep)
 			}
-
 			logging.GetLogger().Error("External download fallback failed for %s: %v", font.DownloadURL, fbErr)
-			output.GetVerbose().Error("External download tools did not succeed after HTTP %d challenge. Use --debug for per-tool details.", resp.StatusCode)
-			output.GetDebug().Error("DownloadFont: DownloadWithFallbacks failed: %v", fbErr)
-			return "", fmt.Errorf("HTTP %d (blocked by upstream challenge): %s", resp.StatusCode, font.DownloadURL)
-		}
-		// Any non-200: attempt fallbacks when enabled.
-		if fallbackEnabled {
-			dbg("DownloadFont: HTTP %d from upstream, attempting fallbacks", resp.StatusCode)
-			rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, network.DownloadFallbackOptions{
-				UserAgent: req.Header.Get("User-Agent"),
-				Headers:   fallbackHeadersFromRequest(req),
-			})
-			if rep != nil {
-				for _, step := range rep.Steps {
-					dbg("DownloadFont fallback step: tool=%s path=%s result=%s detail=%q", step.Tool, step.Path, step.Result, step.Detail)
+			return "", fmt.Errorf("HTTP %d (blocked by upstream challenge): %s", resp.StatusCode, network.RedactDownloadURL(font.DownloadURL))
+		case network.ActionRetrySame:
+			if fallbackEnabled {
+				fbOnce := fbOpts
+				fbOnce.MaxAttempts = 1
+				dbg("DownloadFont: HTTP %d after native retries, trying external tools once", resp.StatusCode)
+				rep, fbErr := network.DownloadWithFallbacks(font.DownloadURL, targetPath, fbOnce)
+				if fbErr == nil {
+					return completeExternal(rep)
 				}
 			}
-			if fbErr == nil {
-				toolName, toolPath := rep.UsedTool()
-				dbg("DownloadFont: %s -> %s (via %s)", font.DownloadURL, targetPath, toolName)
-				logging.GetLogger().Info("External download succeeded using %s (%s)", toolName, toolPath)
-				dbgFileSize(targetPath)
-				return targetPath, nil
-			}
+			return "", network.NewHTTPStatusError(resp.StatusCode, font.DownloadURL, retryAfter)
+		default:
+			return "", network.NewHTTPStatusError(resp.StatusCode, font.DownloadURL, retryAfter)
 		}
-		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, font.DownloadURL)
 	}
 
-	// Best-effort response info capture for downstream archive detection.
 	if opts != nil && opts.OnResponseHeaders != nil {
 		finalURL := ""
 		if resp != nil && resp.Request != nil && resp.Request.URL != nil {
@@ -348,8 +366,6 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		})
 	}
 
-	// If this looks like a Font Squirrel kit download, validate we actually received a ZIP payload.
-	// This prevents saving an HTML/WAF page that happens to return HTTP 200.
 	expectZIP := isFontSquirrel && strings.Contains(path, "/fontfacekit/")
 	if !expectZIP {
 		ct := strings.ToLower(resp.Header.Get("Content-Type"))
@@ -371,9 +387,6 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 		}
 	}
 
-	// Wrap response body with stall detection
-	// No overall timeout (0) - downloads can take as long as needed if there's activity
-	// Only timeout if no activity for downloadTimeout duration
 	stallReader := network.WrapReaderWithStallDetection(resp.Body, downloadTimeout, 0)
 	defer stallReader.Close()
 
@@ -381,62 +394,56 @@ func DownloadFont(font *FontFile, targetDir string, opts *DownloadFontOptions) (
 	if totalBytes <= 0 {
 		totalBytes = -1
 	}
-	// Optional byte progress callback.
 	var reader io.Reader = stallReader
 	if opts != nil && opts.OnBytesDownloaded != nil {
 		reader = newProgressReader(stallReader, totalBytes, opts.OnBytesDownloaded)
 	}
 
-	// ZIP validation (best-effort) before writing to disk.
 	if expectZIP {
 		br := bufio.NewReader(reader)
 		if hdr, peekErr := br.Peek(4); peekErr == nil {
 			if !isZipMagic(hdr) {
-				return "", fmt.Errorf("download did not return a ZIP archive (possible upstream challenge): %s", font.DownloadURL)
+				return "", fmt.Errorf("download did not return a ZIP archive (possible upstream challenge): %s", network.RedactDownloadURL(font.DownloadURL))
 			}
 		}
 		reader = br
 	}
 
-	// Create target file
 	file, err := os.Create(targetPath)
 	if err != nil {
-		return "", fmt.Errorf("failed to create file: %w", err)
+		return "", fmt.Errorf("%w: failed to create file: %v", network.ErrLocalFailure, err)
 	}
-	defer file.Close()
-
-	// If we have a SHA hash, verify it
-	if font.SHA != "" {
-		// Create SHA-256 hash
-		hash := sha256.New()
-		tee := io.TeeReader(reader, hash)
-
-		// Copy file content with stall detection
-		if _, err := io.Copy(file, tee); err != nil {
-			return "", fmt.Errorf("failed to write file: %w", err)
+	if _, err := io.Copy(file, reader); err != nil {
+		_ = file.Close()
+		_ = os.Remove(targetPath)
+		if ctx.Err() != nil {
+			return "", ctx.Err()
 		}
+		return "", fmt.Errorf("failed to write file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(targetPath)
+		return "", fmt.Errorf("%w: close download: %v", network.ErrLocalFailure, err)
+	}
 
-		// Calculate SHA-256
-		calculatedHash := hex.EncodeToString(hash.Sum(nil))
-		if calculatedHash != font.SHA {
-			if rerr := os.Remove(targetPath); rerr != nil && !os.IsNotExist(rerr) {
-				return "", fmt.Errorf("SHA-256 verification failed: expected %s, got %s (remove partial file: %v)", font.SHA, calculatedHash, rerr)
-			}
-			return "", fmt.Errorf("SHA-256 verification failed: expected %s, got %s", font.SHA, calculatedHash)
-		}
-	} else {
-		// Just copy the file content if we don't have a SHA hash
-		// Use stallReader instead of resp.Body for stall detection
-		if _, err := io.Copy(file, reader); err != nil {
-			return "", fmt.Errorf("failed to write file: %w", err)
-		}
+	if err := completeDownloadedFile(targetPath, font.SHA); err != nil {
+		return "", err
 	}
 
 	logging.GetLogger().Info("Download complete: %s -> %s", font.Path, targetPath)
 	dbg("DownloadFont: %s -> %s", font.DownloadURL, targetPath)
 	dbgFileSize(targetPath)
-
 	return targetPath, nil
+}
+
+func completeDownloadedFile(path, expectedSHA string) error {
+	if err := VerifyFileSHA256(path, expectedSHA); err != nil {
+		if rerr := os.Remove(path); rerr != nil && !os.IsNotExist(rerr) {
+			return fmt.Errorf("%w (remove rejected file: %v)", err, rerr)
+		}
+		return err
+	}
+	return nil
 }
 
 func doDownloadRequestWithHeaderTimeout(req *http.Request, fastHeaderTimeout time.Duration, slowHeaderTimeout time.Duration, start time.Time, dbg func(string, ...interface{})) (*http.Response, error) {
@@ -487,13 +494,23 @@ func doDownloadRequestWithHeaderTimeout(req *http.Request, fastHeaderTimeout tim
 		}
 
 		if resp != nil && network.ShouldRetryGoDownloadStatus(resp.StatusCode) && attempt < maxTransientAttempts {
-			_, _ = io.Copy(io.Discard, resp.Body)
-			_ = resp.Body.Close()
+			wait := backoff + time.Duration(rng.Intn(120))*time.Millisecond
+			if resp.StatusCode == http.StatusTooManyRequests {
+				if ra, ok := network.ParseRetryAfter(resp.Header, time.Now()); ok {
+					if !network.RetryAfterWithinBudget(ra) {
+						network.DrainAndCloseBody(resp.Body)
+						return nil, fmt.Errorf("%w: Retry-After %s exceeds wait budget", network.ErrRateLimited, ra)
+					}
+					wait = ra
+				}
+			}
+			network.DrainAndCloseBody(resp.Body)
 			if dbg != nil {
 				dbg("DownloadFont: transient HTTP %d, retrying (attempt %d/%d) hdr=%s", resp.StatusCode, attempt, maxTransientAttempts, network.FormatHTTPHeadersForDebug(resp.Header))
 			}
-			j := time.Duration(rng.Intn(120)) * time.Millisecond
-			time.Sleep(backoff + j)
+			if err := sleepRequest(req, wait); err != nil {
+				return nil, err
+			}
 			backoff *= 2
 			continue
 		}
@@ -502,6 +519,24 @@ func doDownloadRequestWithHeaderTimeout(req *http.Request, fastHeaderTimeout tim
 	}
 
 	return nil, fmt.Errorf("download request failed after %d attempts", maxTransientAttempts)
+}
+
+func sleepRequest(req *http.Request, d time.Duration) error {
+	ctx := context.Background()
+	if req != nil && req.Context() != nil {
+		ctx = req.Context()
+	}
+	if d <= 0 {
+		return ctx.Err()
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 func isHTTP2HeaderTimeout(err error) bool {
@@ -537,11 +572,27 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 	}
 
 	var lastErr error
+	var outcomes []string
+	primaryURL := strings.TrimSpace(font.DownloadURL)
+	if primaryURL == "" {
+		primaryURL = candidates[0]
+	}
 	for i, candidateURL := range candidates {
 		candidateURL = strings.TrimSpace(candidateURL)
 		if candidateURL == "" {
 			continue
 		}
+		if opts != nil && opts.Context != nil {
+			if err := opts.Context.Err(); err != nil {
+				return nil, err
+			}
+		}
+
+		attemptDir, err := os.MkdirTemp(targetDir, fmt.Sprintf("attempt-%d-*", i+1))
+		if err != nil {
+			return nil, fmt.Errorf("%w: attempt staging: %v", network.ErrLocalFailure, err)
+		}
+
 		font.DownloadURL = candidateURL
 		if isArchiveFile(candidateURL) {
 			font.Path = filepath.Base(candidateURL)
@@ -549,8 +600,22 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 			font.Path = createFontFileName(font.Name, font.Variant, candidateURL)
 		}
 
-		output.GetDebug().State("DownloadAndExtractFont: attempt %d/%d url=%s", i+1, len(candidates), candidateURL)
-		paths, err := attemptDownloadAndExtract(font, targetDir, opts)
+		if applyErr := checksumAppliesToCandidate(&FontFile{
+			SHA:                font.SHA,
+			DownloadURL:        primaryURL,
+			DownloadCandidates: candidates,
+		}, candidateURL); applyErr != nil {
+			_ = os.RemoveAll(attemptDir)
+			lastErr = applyErr
+			outcomes = append(outcomes, fmt.Sprintf("%s: %v", network.RedactDownloadURL(candidateURL), applyErr))
+			if errors.Is(applyErr, ErrChecksumUnassociated) || errors.Is(applyErr, ErrMalformedChecksum) {
+				return nil, applyErr
+			}
+			continue
+		}
+
+		output.GetDebug().State("DownloadAndExtractFont: attempt %d/%d url=%s dir=%s", i+1, len(candidates), candidateURL, attemptDir)
+		paths, err := attemptDownloadAndExtract(font, attemptDir, opts)
 		if err == nil {
 			if i > 0 {
 				output.GetDebug().State("DownloadAndExtractFont: succeeded on format candidate %d/%d url=%s", i+1, len(candidates), candidateURL)
@@ -558,24 +623,32 @@ func DownloadAndExtractFont(font *FontFile, targetDir string, opts *DownloadFont
 			return paths, nil
 		}
 		lastErr = err
+		outcomes = append(outcomes, fmt.Sprintf("%s: %v", network.RedactDownloadURL(candidateURL), err))
 		output.GetDebug().State("DownloadAndExtractFont: candidate %d/%d failed: %v", i+1, len(candidates), err)
+		_ = os.RemoveAll(attemptDir)
 
-		// Best-effort cleanup of this attempt's artifacts before the next format.
-		_ = os.Remove(filepath.Join(targetDir, font.Path))
-		_ = os.RemoveAll(filepath.Join(targetDir, "extracted"))
-
-		if i+1 < len(candidates) {
-			output.GetDebug().State("DownloadAndExtractFont: trying next format candidate")
+		if errors.Is(err, ErrChecksumMismatch) || errors.Is(err, ErrMalformedChecksum) || errors.Is(err, ErrChecksumUnassociated) {
+			return nil, err
+		}
+		action := network.ClassifyDownloadError(err)
+		switch action {
+		case network.ActionFailPackage, network.ActionFailLocal:
+			return nil, err
+		case network.ActionAdvanceCandidate, network.ActionFailCandidate, network.ActionRetrySame, network.ActionRateLimit, network.ActionExternalFallback:
+			if i+1 < len(candidates) {
+				output.GetDebug().State("DownloadAndExtractFont: trying next format candidate")
+			}
+		default:
+			if i+1 < len(candidates) {
+				output.GetDebug().State("DownloadAndExtractFont: trying next format candidate")
+			}
 		}
 	}
 
 	if lastErr == nil {
 		return nil, fmt.Errorf("no download URL for %s", font.Name)
 	}
-	if len(candidates) > 1 {
-		return nil, fmt.Errorf("%w (after %d format candidates)", lastErr, len(candidates))
-	}
-	return nil, lastErr
+	return nil, fmt.Errorf("%w: %s (%s)", ErrCandidatesExhausted, font.Name, strings.Join(outcomes, "; "))
 }
 
 // attemptDownloadAndExtract performs one download + optional extract + validation for font.DownloadURL.

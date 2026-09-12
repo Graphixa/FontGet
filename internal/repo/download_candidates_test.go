@@ -3,6 +3,7 @@ package repo
 import (
 	"archive/zip"
 	"bytes"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -216,6 +217,7 @@ func TestDownloadAndExtractFont_formatRetryToSecondCandidate(t *testing.T) {
 		return
 	}
 	if !strings.Contains(err.Error(), "after 2 format candidates") &&
+		!strings.Contains(err.Error(), "candidates exhausted") &&
 		!strings.Contains(err.Error(), "no valid font files") &&
 		!strings.Contains(err.Error(), "failed to extract") {
 		t.Fatalf("unexpected err after retry: %v", err)
@@ -246,8 +248,12 @@ func TestDownloadAndExtractFont_allCandidatesFail(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "after 2 format candidates") {
-		t.Fatalf("want multi-candidate error, got: %v", err)
+	if !errors.Is(err, ErrCandidatesExhausted) {
+		t.Fatalf("want ErrCandidatesExhausted, got: %v", err)
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "/a.tar.xz") || !strings.Contains(msg, "/a.zip") {
+		t.Fatalf("want candidate outcomes, got: %v", err)
 	}
 	entries, _ := os.ReadDir(tmp)
 	for _, e := range entries {
