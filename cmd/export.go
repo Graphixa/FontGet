@@ -234,6 +234,7 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			}
 
 			// Phase 1: Collect fonts (0-20% progress)
+			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Scanning", "")})
 			send(components.ProgressUpdateMsg{Percent: 5.0})
 			output.GetVerbose().Info("Scanning fonts to determine export scope...")
 			fonts, collectErr := collectFonts(scopes, fontManager, "", true) // Suppress verbose - we have our own high-level message
@@ -251,6 +252,7 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			}
 
 			// Phase 2: Group by family (20-30% progress)
+			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Grouping", "")})
 			families := groupByFamily(fonts)
 			output.GetVerbose().Info("Grouped into %d font families", len(families))
 			send(components.ProgressUpdateMsg{Percent: 30.0})
@@ -269,6 +271,7 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			}
 			sort.Strings(names)
 
+			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Matching", "")})
 			send(components.ProgressUpdateMsg{Percent: 35.0})
 			matches, matchErr := cmdutils.MatchInstalledFontsToRepository(names, GetLogger(), shared.IsCriticalSystemFont)
 			if matchErr != nil {
@@ -288,6 +291,7 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			}
 
 			// Phase 4: Populate match data and filter fonts (50-60% progress)
+			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Filtering", "")})
 			populateFontMatchData(families, matches)
 
 			fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter := filterFontsForExport(FilterFontsForExportParams{
@@ -319,6 +323,7 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			}
 
 			// Phase 5: Perform the actual export operation (60-100% progress)
+			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Writing", "")})
 			params := ExportProgressParams{
 				FontManager:      fontManager,
 				Scopes:           scopes,
@@ -403,13 +408,41 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 		}
 	}
 
+	if send != nil {
+		send(components.TitleUpdateMsg{Title: FormatProgressActivity("Building", "")})
+		send(components.ProgressUpdateMsg{Percent: 70.0})
+	}
+
 	// Build export manifest
 	manifest, totalVariants := buildExportManifest(
 		params.FontIDGroups, params.MatchFilter, params.SourceFilter, params.OnlyMatched, params.SkippedSystem, params.SkippedUnmatched, params.SkippedByFilter)
 
-	// Update progress
+	// Mark families complete with i/N activity (70–95%)
 	if send != nil {
-		send(components.ProgressUpdateMsg{Percent: 50.0})
+		n := len(manifest.Fonts)
+		for i, font := range manifest.Fonts {
+			if cancelChan != nil {
+				select {
+				case <-cancelChan:
+					return nil, 0, shared.ErrOperationCancelled
+				default:
+				}
+			}
+			label := font.FontID
+			if label == "" && len(font.FamilyNames) > 0 {
+				label = font.FamilyNames[0]
+			}
+			pct := 70.0
+			if n > 0 {
+				pct = 70.0 + (float64(i+1)/float64(n))*25.0
+			}
+			send(components.ProgressUpdateMsg{Percent: pct})
+			send(components.ItemUpdateMsg{
+				Index:  i,
+				Name:   label,
+				Status: "completed",
+			})
+		}
 	}
 
 	// Check for cancellation before writing
@@ -420,6 +453,11 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 		default:
 			// Continue processing
 		}
+	}
+
+	if send != nil {
+		send(components.TitleUpdateMsg{Title: FormatProgressActivity("Writing", "manifest")})
+		send(components.ProgressUpdateMsg{Percent: 95.0})
 	}
 
 	// Write manifest
@@ -451,17 +489,9 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 	GetLogger().Info("Export file written successfully: %s", params.OutputFile)
 	output.GetVerbose().Info("Export file written successfully")
 
-	// Update progress to 100%
 	if send != nil {
+		send(components.TitleUpdateMsg{Title: "Exporting Fonts"})
 		send(components.ProgressUpdateMsg{Percent: 100.0})
-		// Mark all items as completed so the count shows correctly
-		// The progress bar component counts items with status "completed", "failed", or "skipped"
-		for i := 0; i < params.TotalFamilies; i++ {
-			send(components.ItemUpdateMsg{
-				Index:  i,
-				Status: "completed",
-			})
-		}
 	}
 
 	return manifest.Fonts, totalVariants, nil

@@ -705,29 +705,22 @@ Use --scope to set installation location:
 					percent := float64(itemIndex) / float64(len(fontsToInstall)) * 100
 					send(components.ProgressUpdateMsg{Percent: percent})
 
-					lastStep := ""
-					lastPctBucket := -1
-					onProgress := func(step string, stepPct float64) {
-						bucket := int(shared.Clamp01(stepPct) * 20.0)
-						if step == lastStep && bucket == lastPctBucket {
+					var th progressThrottle
+					onProgress := func(u ProgressUpdate) {
+						pct := OverallWorkPercent(itemIndex, len(fontsToInstall), u)
+						if !th.ShouldSend(u, pct) {
 							return
 						}
-						lastStep = step
-						lastPctBucket = bucket
-
-						msg := step + "..."
-						if step == installStepDownload {
+						msg := FormatProgressActivity(u.Phase, u.Detail)
+						if u.Phase == installStepDownload && u.Detail == "" {
 							msg = "Downloading from " + fontGroup.SourceName
 						}
-
 						send(components.ItemUpdateMsg{
 							Index:   itemIndex,
 							Status:  "in_progress",
 							Message: msg,
 						})
-						send(components.ProgressUpdateMsg{
-							Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), step, stepPct),
-						})
+						send(components.ProgressUpdateMsg{Percent: pct})
 					}
 					result, err := installFont(
 						ctx,
@@ -817,7 +810,7 @@ Use --scope to set installation location:
 						Scope:        scopeLabel,
 					})
 
-					send(components.ProgressUpdateMsg{Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), installStepCompleted, 1)})
+					send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(itemIndex, len(fontsToInstall), ProgressUpdate{Phase: installStepCompleted})})
 				}
 
 				return nil
@@ -946,7 +939,7 @@ func archiveSourcePrefixFromFontID(fontID string) string {
 }
 
 // downloadFontVariants downloads all variants of a font family
-func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, staging *platform.OperationStaging, fontID string, archiveSourcePrefix string, downloadOpts *repo.DownloadFontOptions, onProgress StepProgressFunc) ([]string, error) {
+func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, staging *platform.OperationStaging, fontID string, archiveSourcePrefix string, downloadOpts *repo.DownloadFontOptions, onProgress ProgressFunc) ([]string, error) {
 	start := time.Now()
 	var allFontPaths []string
 
@@ -958,7 +951,12 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 			}
 		}
 		if onProgress != nil && total > 0 {
-			onProgress(installStepDownload, float64(i)/float64(total))
+			onProgress(ProgressUpdate{
+				Phase: installStepDownload,
+				Kind:  ProgressCount,
+				Done:  float64(i),
+				Total: float64(total),
+			})
 		}
 		opts := downloadOpts
 		if opts == nil {
@@ -972,16 +970,25 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 		opts.ArchiveFontID = fontID
 		if onProgress != nil {
 			opts.OnBytesDownloaded = func(doneBytes int64, totalBytes int64) {
-				if totalBytes > 0 {
-					onProgress(installStepDownload, float64(doneBytes)/float64(totalBytes))
-				}
+				onProgress(ProgressUpdate{
+					Phase: installStepDownload,
+					Kind:  ProgressBytes,
+					Done:  float64(doneBytes),
+					Total: float64(totalBytes),
+				})
 			}
 			opts.OnExtractProgress = func(done int, total int) {
-				if total > 0 {
-					onProgress(installStepExtract, float64(done)/float64(total))
-					return
+				t := float64(total)
+				if total <= 0 {
+					// Package-mode streams (e.g. nerd tar.xz) don't know M until EOF.
+					t = float64(done + 12)
 				}
-				onProgress(installStepExtract, float64(done)/float64(done+12))
+				onProgress(ProgressUpdate{
+					Phase: installStepExtract,
+					Kind:  ProgressCount,
+					Done:  float64(done),
+					Total: t,
+				})
 			}
 		}
 
@@ -1003,15 +1010,15 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 	}
 
 	if onProgress != nil {
-		onProgress(installStepDownload, 1)
-		onProgress(installStepExtract, 1)
+		onProgress(ProgressUpdate{Phase: installStepDownload, Kind: ProgressBytes, Done: 1, Total: 0})
+		onProgress(ProgressUpdate{Phase: installStepExtract, Kind: ProgressCount, Done: 1, Total: 0})
 	}
 	output.GetDebug().State("downloadFontVariants: files=%d extracted=%d total=%dms", len(fontFiles), len(allFontPaths), time.Since(start).Milliseconds())
 	return allFontPaths, nil
 }
 
 // installDownloadedFonts installs downloaded font files to system
-func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress StepProgressFunc, tc *installTestControl) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
+func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress ProgressFunc, tc *installTestControl) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
 	start := time.Now()
 	var installedFiles []string
 	var skippedFiles []string
@@ -1035,10 +1042,16 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 				break
 			}
 		}
-		if onProgress != nil && total > 0 {
-			onProgress(installStepInstall, float64(i)/float64(total))
-		}
 		fontDisplayName := filepath.Base(fontPath)
+		if onProgress != nil && total > 0 {
+			onProgress(ProgressUpdate{
+				Phase:  installStepInstall,
+				Detail: fmt.Sprintf("variants (%d of %d)", i+1, total),
+				Kind:   ProgressCount,
+				Done:   float64(i),
+				Total:  float64(total),
+			})
+		}
 
 		if fileInfo, statErr := os.Stat(fontPath); statErr == nil {
 			downloadSize += fileInfo.Size()
@@ -1109,12 +1122,24 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 	}
 
 	if onProgress != nil {
-		onProgress(installStepInstall, 1)
+		onProgress(ProgressUpdate{
+			Phase: installStepInstall,
+			Kind:  ProgressCount,
+			Done:  float64(total),
+			Total: float64(max(total, 1)),
+		})
 	}
 
 	if err == nil && installed > 0 {
+		if ctx != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				err = ctxErr
+			}
+		}
+	}
+	if err == nil && installed > 0 {
 		if onProgress != nil {
-			onProgress(installStepFinalize, 0)
+			onProgress(ProgressUpdate{Phase: installStepFinalize, Kind: ProgressFlag, Done: 0, Total: 1})
 		}
 		if flushErr := fontManager.FlushFontCache(installScope); flushErr != nil {
 			errStr := flushErr.Error()
@@ -1126,7 +1151,7 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 			}
 		}
 		if onProgress != nil {
-			onProgress(installStepFinalize, 1)
+			onProgress(ProgressUpdate{Phase: installStepFinalize, Kind: ProgressFlag, Done: 1, Total: 1})
 		}
 	}
 
@@ -1186,14 +1211,14 @@ func installFont(
 	fontDir string,
 	staging *platform.OperationStaging,
 	suppressVerboseDownloads bool,
-	onProgress StepProgressFunc,
+	onProgress ProgressFunc,
 	tc *installTestControl,
 ) (*InstallResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if onProgress != nil {
-		onProgress(installStepPrecheck, 0)
+		onProgress(ProgressUpdate{Phase: installStepPrecheck, Kind: ProgressFlag, Done: 0, Total: 1})
 	}
 	if !force && fontID != "" && len(fontFiles) > 0 {
 		fontName := ""
@@ -1205,8 +1230,8 @@ func installFont(
 			GetLogger().Warn("Failed to check if font is already installed (ID: %s): %v. Proceeding with installation.", fontID, checkErr)
 		} else if alreadyInstalled {
 			if onProgress != nil {
-				onProgress(installStepPrecheck, 1)
-				onProgress(installStepCompleted, 1)
+				onProgress(ProgressUpdate{Phase: installStepPrecheck, Kind: ProgressFlag, Done: 1, Total: 1})
+				onProgress(ProgressUpdate{Phase: installStepCompleted})
 			}
 			output.GetDebug().State("Font %s (ID: %s) is already installed, skipping download", fontName, fontID)
 			var details []string
@@ -1217,7 +1242,7 @@ func installFont(
 		}
 	}
 	if onProgress != nil {
-		onProgress(installStepPrecheck, 1)
+		onProgress(ProgressUpdate{Phase: installStepPrecheck, Kind: ProgressFlag, Done: 1, Total: 1})
 	}
 
 	if staging == nil {
@@ -1237,7 +1262,7 @@ func installFont(
 	}
 	archivePrefix := archiveSourcePrefixFromFontID(fontID)
 	if onProgress != nil {
-		onProgress(installStepDownload, 0)
+		onProgress(ProgressUpdate{Phase: installStepDownload, Kind: ProgressBytes, Done: 0, Total: 1})
 	}
 	allFontPaths, downloadErr := downloadFontVariants(ctx, fontFiles, staging, fontID, archivePrefix, downloadOpts, onProgress)
 	if downloadErr != nil {
@@ -1274,6 +1299,15 @@ func installFont(
 
 	res := buildInstallResult(status, message, installed, skipped, failed, details, instErrs, downloadSize)
 	if status == InstallStatusCompleted && installed > 0 {
+		if err := ctx.Err(); err != nil {
+			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, err)
+			res.Status = InstallStatusFailed
+			res.Success = 0
+			if rbErr != nil {
+				return res, rbErr
+			}
+			return res, err
+		}
 		if tc != nil && tc.failProvenance {
 			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, fmt.Errorf("injected provenance failure"))
 			res.Status = InstallStatusFailed
@@ -1475,85 +1509,53 @@ func makeUserFriendlyError(fontName string, err error) string {
 }
 
 // checkFontsAlreadyInstalled checks if a font is already installed in the specified scope.
-// It uses the same matching logic as the list command (collectFonts and MatchAllInstalledFonts)
-// to match by Font ID (most accurate) and family name (fallback).
-// Returns true if the font is already installed, false otherwise.
-// Note: This function scans the font directory each time it's called. For multiple fonts,
-// checkFontsAlreadyInstalled checks if a font is already installed in the specified scope.
 //
-// It collects installed fonts from the target scope, matches them against the repository to get
-// Font IDs, and checks if the provided fontID matches any installed font.
-//
-// This function is used to avoid unnecessary downloads when a font is already installed.
-// Note: For performance with many fonts, consider pre-collecting fonts and using a cached approach.
-//
-// Parameters:
-//   - fontID: Font identifier to check
-//   - fontName: Font name (used for fallback matching if Font ID matching fails)
-//   - scope: Installation scope to check (user or machine)
-//   - fontManager: Platform-specific font manager
-//
-// Returns:
-//   - bool: true if font is already installed, false otherwise
-//   - error: Error if font collection or matching fails
+// Order: installations registry (Font ID + scope + all files present), then directory
+// scan + repository match (Font ID, then family-name fallback). Used to skip download
+// when safe. Registry load failures fall through to the scan path.
 func checkFontsAlreadyInstalled(fontID string, fontName string, scope platform.InstallationScope, fontManager platform.FontManager) (bool, error) {
-	// Early return if fontID is empty (can't check without ID)
 	if fontID == "" {
 		return false, nil
 	}
 
-	// Collect installed fonts from the target scope
-	// Suppress verbose output since this is an internal check, not a primary operation
+	if ok, handled := checkInstalledViaRegistry(fontID, scope); handled {
+		return ok, nil
+	}
+
+	// Fallback: scan installed fonts and match against the repository.
 	scopes := []platform.InstallationScope{scope}
 	fonts, err := collectFonts(scopes, fontManager, "", true)
 	if err != nil {
 		return false, fmt.Errorf("failed to collect installed fonts: %w", err)
 	}
-
-	// Early return if no fonts found
 	if len(fonts) == 0 {
 		return false, nil
 	}
 
-	// Group fonts by family name
 	families := groupByFamily(fonts)
 	if len(families) == 0 {
 		return false, nil
 	}
 
-	// Get all family names
 	var familyNames []string
 	for familyName := range families {
 		familyNames = append(familyNames, familyName)
 	}
 
-	// Match installed fonts to repository entries
 	matches, err := repo.MatchAllInstalledFonts(familyNames, shared.IsCriticalSystemFont)
 	if err != nil {
-		// If matching fails, we can't determine if font is installed, so return false
-		// This allows the installation to proceed (fail-safe)
-		// Note: Error is not returned to caller, but this is intentional for fail-safe behavior
+		// Fail-open: proceed with install if matching fails.
 		return false, nil
 	}
 
-	// Normalize font ID for comparison (case-insensitive) - do this once
 	fontIDLower := strings.ToLower(fontID)
-
-	// Check if any installed font matches the target Font ID (most accurate match)
 	for _, match := range matches {
-		if match != nil {
-			// Match by Font ID (most accurate)
-			matchIDLower := strings.ToLower(match.FontID)
-			if matchIDLower == fontIDLower {
-				return true, nil
-			}
+		if match != nil && strings.ToLower(match.FontID) == fontIDLower {
+			return true, nil
 		}
 	}
 
-	// Fallback: check by family name if Font ID didn't match
-	// This handles cases where the font might be installed but not matched to repository
-	// Note: This fallback may have false positives (e.g., "Roboto" might match "Roboto Mono")
-	// but it's acceptable as a fallback for fonts not in the repository
+	// Family-name fallback for fonts not matched to the repository.
 	if fontName != "" {
 		fontNameLower := strings.ToLower(fontName)
 		fontNameNorm := strings.ReplaceAll(fontNameLower, " ", "")
@@ -1566,7 +1568,6 @@ func checkFontsAlreadyInstalled(fontID string, fontName string, scope platform.I
 			familyNorm = strings.ReplaceAll(familyNorm, "-", "")
 			familyNorm = strings.ReplaceAll(familyNorm, "_", "")
 
-			// Check for exact match (normalized)
 			if familyLower == fontNameLower || familyNorm == fontNameNorm {
 				return true, nil
 			}
@@ -1574,6 +1575,33 @@ func checkFontsAlreadyInstalled(fontID string, fontName string, scope platform.I
 	}
 
 	return false, nil
+}
+
+// checkInstalledViaRegistry returns (installed, handled).
+// handled=false means the caller should use the scan/match fallback
+// (no record, load error, or empty file list).
+func checkInstalledViaRegistry(fontID string, scope platform.InstallationScope) (installed bool, handled bool) {
+	reg, err := installations.Load()
+	if err != nil {
+		GetLogger().Warn("Failed to load installation registry for precheck (ID: %s): %v. Falling back to font scan.", fontID, err)
+		return false, false
+	}
+	inst := reg.FindByFontID(fontID)
+	if inst == nil || !inst.HasFaces() {
+		return false, false
+	}
+	if !strings.EqualFold(strings.TrimSpace(inst.Scope), strings.TrimSpace(string(scope))) {
+		return false, true // recorded under a different scope → not installed here
+	}
+	for _, f := range inst.FlatFiles() {
+		if strings.TrimSpace(f.Path) == "" {
+			return false, true
+		}
+		if _, err := os.Stat(f.Path); err != nil {
+			return false, true // vanished/partial → allow repair install
+		}
+	}
+	return true, true
 }
 
 func init() {

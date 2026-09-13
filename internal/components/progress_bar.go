@@ -164,13 +164,13 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle cancellation keys (q, esc, ctrl+c, enter, space) - like sources update
 		switch key {
 		case "q", "ctrl+c", "esc", "enter", " ":
-			if m.quitting {
-				// Already cancelling or finished: never Quit without joining the worker.
-				return m, waitForOperationQuit(m.opDone)
+			if m.cancelled {
+				return m, tea.Quit
 			}
 			m.quitting = true
 			m.cancelled = true
 			m.err = shared.ErrOperationCancelled
+			m.Title = "Cancelling..."
 			if m.cancelChan != nil {
 				select {
 				case <-m.cancelChan:
@@ -178,7 +178,8 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					close(m.cancelChan)
 				}
 			}
-			return m, waitForOperationQuit(m.opDone)
+			// Quit TUI immediately; RunProgressBar joins the worker after p.Run().
+			return m, tea.Quit
 		}
 		// If operation is complete, any other key still joins then quits.
 		if m.quitting {

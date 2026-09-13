@@ -598,8 +598,25 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
+				opCtx := cmd.Context()
+				if opCtx == nil {
+					opCtx = context.Background()
+				}
+				ctx, cancel := context.WithCancel(opCtx)
+				defer cancel()
+				go func() {
+					select {
+					case <-cancelChan:
+						cancel()
+					case <-ctx.Done():
+					}
+				}()
+
 				// Process each font group
 				for itemIndex, fontGroup := range fontsToInstall {
+					if err := ctx.Err(); err != nil {
+						return shared.ErrOperationCancelled
+					}
 					send(components.ItemUpdateMsg{
 						Index:   itemIndex,
 						Status:  "in_progress",
@@ -609,33 +626,25 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 					percent := float64(itemIndex) / float64(len(fontsToInstall)) * 100
 					send(components.ProgressUpdateMsg{Percent: percent})
 
-					// Install the font
-					lastStep := ""
-					lastPctBucket := -1
-					onProgress := func(step string, stepPct float64) {
-						bucket := int(shared.Clamp01(stepPct) * 20.0)
-						if step == lastStep && bucket == lastPctBucket {
+					var th progressThrottle
+					onProgress := func(u ProgressUpdate) {
+						pct := OverallWorkPercent(itemIndex, len(fontsToInstall), u)
+						if !th.ShouldSend(u, pct) {
 							return
 						}
-						lastStep = step
-						lastPctBucket = bucket
-
-						msg := step + "..."
-						if step == installStepDownload {
+						msg := FormatProgressActivity(u.Phase, u.Detail)
+						if u.Phase == installStepDownload && u.Detail == "" {
 							msg = "Downloading from " + fontGroup.SourceName
 						}
-
 						send(components.ItemUpdateMsg{
 							Index:   itemIndex,
 							Status:  "in_progress",
 							Message: msg,
 						})
-						send(components.ProgressUpdateMsg{
-							Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), step, stepPct),
-						})
+						send(components.ProgressUpdateMsg{Percent: pct})
 					}
 					result, err := installFont(
-						cmd.Context(),
+						ctx,
 						fontGroup.Fonts,
 						fontGroup.FontID,
 						fontManager,
@@ -649,7 +658,11 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 					)
 
 					if err != nil {
-						status.Failed += result.Failed
+						if result != nil {
+							status.Failed += result.Failed
+						} else {
+							status.Failed++
+						}
 						GetLogger().Error("Failed to process font %s: %v", fontGroup.FontName, err)
 						errorMsg := err.Error()
 						send(components.ItemUpdateMsg{
@@ -658,6 +671,9 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 							Message:      "Operation failed",
 							ErrorMessage: errorMsg,
 						})
+						if errors.Is(err, shared.ErrOperationCancelled) || errors.Is(err, context.Canceled) {
+							return shared.ErrOperationCancelled
+						}
 						continue
 					}
 
@@ -683,7 +699,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						Scope:        "", // Empty for single-scope operations (cleaner output)
 					})
 
-					send(components.ProgressUpdateMsg{Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), installStepCompleted, 1)})
+					send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(itemIndex, len(fontsToInstall), ProgressUpdate{Phase: installStepCompleted})})
 				}
 
 				return nil

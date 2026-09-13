@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -118,7 +119,8 @@ type browseModel struct {
 	statusProgress float64
 	statusPhase    string
 
-	opMsgCh <-chan tea.Msg
+	opMsgCh  <-chan tea.Msg
+	opCancel context.CancelFunc
 
 	debounceGen int
 
@@ -423,6 +425,9 @@ func browseResultFromInstall(fontName, source string, msg installFinishedMsg) (t
 	}
 	source = browseNormalizeSourceLabel(source)
 	if msg.err != nil {
+		if errors.Is(msg.err, context.Canceled) || errors.Is(msg.err, shared.ErrOperationCancelled) {
+			return "Cancelled", false, ui.InfoText.Render("Installation cancelled.")
+		}
 		return "Error", true, ui.RenderError(msg.err.Error())
 	}
 	if msg.result == nil {
@@ -451,6 +456,9 @@ func browseResultFromUninstall(fontName string, installScope platform.Installati
 		fontName = shared.PlaceholderNA
 	}
 	if msg.err != nil {
+		if errors.Is(msg.err, context.Canceled) || errors.Is(msg.err, shared.ErrOperationCancelled) {
+			return "Cancelled", false, ui.InfoText.Render("Uninstall cancelled.")
+		}
 		return "Error", true, ui.RenderError(msg.err.Error())
 	}
 	if msg.result == nil {
@@ -545,10 +553,14 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 	force := m.force
 	fontDir := m.fontDir
 
+	ctx, cancel := context.WithCancel(context.Background())
+	m.opCancel = cancel
+
 	ch := make(chan tea.Msg, 32)
 	m.opMsgCh = ch
 	go func() {
 		defer close(ch)
+		defer cancel()
 		res, err := shared.ResolveFontQuery(fontID)
 		if err != nil {
 			ch <- installFinishedMsg{err: err, fontID: fontID}
@@ -559,11 +571,22 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 			return
 		}
 
-		onProgress := func(step string, stepPct float64) {
-			ch <- browseOpProgressMsg{phase: step, percent: OverallInstallPercent(0, 1, step, stepPct)}
+		var th progressThrottle
+		onProgress := func(u ProgressUpdate) {
+			if ctx.Err() != nil {
+				return
+			}
+			pct := OverallWorkPercent(0, 1, u)
+			if !th.ShouldSend(u, pct) {
+				return
+			}
+			ch <- browseOpProgressMsg{phase: FormatProgressActivity(u.Phase, u.Detail), percent: pct}
 		}
 
-		ir, ierr := installFont(context.Background(), res.Fonts, res.FontID, fm, scope, force, fontDir, nil, true, onProgress, nil)
+		ir, ierr := installFont(ctx, res.Fonts, res.FontID, fm, scope, force, fontDir, nil, true, onProgress, nil)
+		if ctx.Err() != nil && ierr == nil {
+			ierr = shared.ErrOperationCancelled
+		}
 		ch <- installFinishedMsg{result: ir, err: ierr, fontID: fontID}
 	}()
 	return m.waitForOpMsg()
@@ -584,15 +607,30 @@ func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) t
 	fontDir := m.fontDir
 	repository := m.repository
 
+	ctx, cancel := context.WithCancel(context.Background())
+	m.opCancel = cancel
+
 	ch := make(chan tea.Msg, 8)
 	m.opMsgCh = ch
 	go func() {
 		defer close(ch)
-		onProgress := func(step string, stepPct float64) {
-			ch <- browseOpProgressMsg{phase: step, percent: OverallRemovePercent(0, 1, step, stepPct)}
+		defer cancel()
+		var th progressThrottle
+		onProgress := func(u ProgressUpdate) {
+			if ctx.Err() != nil {
+				return
+			}
+			pct := OverallWorkPercent(0, 1, u)
+			if !th.ShouldSend(u, pct) {
+				return
+			}
+			ch <- browseOpProgressMsg{phase: FormatProgressActivity(u.Phase, u.Detail), percent: pct}
 		}
 		installReg, _ := m.cachedInstallRegistry()
-		rr, err := removeFont(fontID, fm, scope, fontDir, repository, installReg, m.cachedManifestFontIDProbe(), onProgress)
+		rr, err := removeFont(ctx, fontID, fm, scope, fontDir, repository, installReg, m.cachedManifestFontIDProbe(), onProgress)
+		if ctx.Err() != nil && err == nil {
+			err = shared.ErrOperationCancelled
+		}
 		ch <- uninstallFinishedMsg{result: rr, err: err, fontID: fontID}
 	}()
 	return m.waitForOpMsg()
@@ -969,6 +1007,9 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.installing && !m.removing {
 			return m, nil
 		}
+		if m.statusPhase == "Cancelling..." {
+			return m, m.waitForOpMsg()
+		}
 		if strings.TrimSpace(msg.phase) != "" {
 			m.statusPhase = msg.phase
 		}
@@ -983,6 +1024,7 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusProgress = 0
 		m.statusPhase = ""
 		m.opMsgCh = nil
+		m.opCancel = nil
 		title, errTitle, body := browseResultFromUninstall(fontName, m.installScope, msg)
 		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
@@ -997,6 +1039,7 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusProgress = 0
 		m.statusPhase = ""
 		m.opMsgCh = nil
+		m.opCancel = nil
 		title, errTitle, body := browseResultFromInstall(fontName, source, msg)
 		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
@@ -1004,8 +1047,16 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.installing || m.removing {
-		if km, ok := msg.(tea.KeyMsg); ok && km.String() == "ctrl+c" {
-			return m, tea.Quit
+		if km, ok := msg.(tea.KeyMsg); ok {
+			k := km.String()
+			if k == "ctrl+c" || k == "esc" {
+				if m.opCancel != nil {
+					m.opCancel()
+					m.opCancel = nil
+				}
+				m.statusPhase = "Cancelling..."
+				return m, m.waitForOpMsg()
+			}
 		}
 		return m, nil
 	}
