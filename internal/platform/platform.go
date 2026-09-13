@@ -54,7 +54,7 @@ type FileMutation struct {
 	// RegistryAdded is true after a successful machine-scope registry write for FontName.
 	RegistryAdded bool
 
-	// ArtifactPaths are unique disposable files (backups/stages) owned by this mutation.
+	// ArtifactPaths are unique disposable staging files owned by this mutation.
 	ArtifactPaths []string
 
 	// UndoRegistration, when set, undoes registrations for this mutation (tests and platforms).
@@ -80,6 +80,9 @@ type RemoveFontOptions struct {
 	// SkipPostRemoveCacheRefresh skips the per-remove OS font cache update / Windows WM_FONTCHANGE notification.
 	// Use with FlushFontCache(scope) once after removing multiple files in one batch.
 	SkipPostRemoveCacheRefresh bool
+	// UnregisterOnly removes registration (e.g. RemoveFontResource) but does not delete the file.
+	// Batch remove: unregister all → FlushFontCache → delete, so Windows releases locks first.
+	UnregisterOnly bool
 }
 
 // FontManager defines the interface for platform-specific font operations

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"fontget/internal/logging"
@@ -269,23 +270,34 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 		}
 	}
 
-	// Delete the font file
+	if opts != nil && opts.UnregisterOnly {
+		return nil
+	}
+
+	// Delete the font file. Prefer a font-change broadcast first so the session releases locks.
+	_ = NotifyFontChange()
 	logger.Debug("Removing font file...")
-	if err := os.Remove(fontPath); err != nil {
-		logger.Error("Failed to remove font file at path %s: %v", fontPath, err)
-		// Try to restore the font resource if file deletion fails
-		if restoreErr := AddFontResource(fontPath); restoreErr != nil {
-			logger.Error("Failed to restore font resource after file deletion failure: %v", restoreErr)
+	var removeErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt*40) * time.Millisecond)
+			_ = NotifyFontChange()
 		}
-		return fmt.Errorf("failed to remove font file: %w", err)
+		removeErr = os.Remove(fontPath)
+		if removeErr == nil || os.IsNotExist(removeErr) {
+			removeErr = nil
+			break
+		}
+	}
+	if removeErr != nil {
+		logger.Error("Failed to remove font file at path %s: %v", fontPath, removeErr)
+		// ponytail: do not AddFontResource after a failed delete — that re-locks the file.
+		return fmt.Errorf("failed to remove font file: %w", removeErr)
 	}
 	logger.Debug("Font file removed successfully")
 
 	skipNotify := opts != nil && opts.SkipPostRemoveCacheRefresh
 	if !skipNotify {
-		// Notify other applications about the font removal
-		// Only send WM_FONTCHANGE to the desktop window to avoid hangs from full window enumeration.
-		// Enumerating all windows can hang or be extremely slow on some systems.
 		logger.Debug("Notifying system about font change...")
 		if err := NotifyFontChange(); err != nil {
 			logger.Error("Failed to notify system about font change: %v", err)

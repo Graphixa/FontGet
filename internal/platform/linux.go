@@ -117,6 +117,10 @@ func (m *linuxFontManager) RemoveFont(fontName string, scope InstallationScope, 
 
 	fontPath := filepath.Join(targetDir, fontName)
 
+	if opts != nil && opts.UnregisterOnly {
+		return nil
+	}
+
 	// Delete the font file
 	if err := os.Remove(fontPath); err != nil {
 		return fmt.Errorf("failed to remove font file: %w", err)

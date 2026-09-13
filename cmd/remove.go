@@ -418,9 +418,18 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 	}
 	defer unlock()
 
-	batchOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
+	unregisterOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true, UnregisterOnly: true}
+	deleteOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
 
 	total := len(params.MatchingFonts)
+	type pending struct {
+		base    string
+		display string
+	}
+	var toDelete []pending
+
+	// Pass 1: unregister (Windows RemoveFontResource). Defer deletes until after one FlushFontCache
+	// so the session releases file locks — deleting immediately after UnregisterOnly=false used to fail "in use".
 	for i, matchingFont := range params.MatchingFonts {
 		if err := ctx.Err(); err != nil {
 			errors = append(errors, err.Error())
@@ -430,47 +439,82 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 			params.OnProgress(ProgressUpdate{
 				Phase: removeStepRemove,
 				Kind:  ProgressCount,
-				Done:  float64(i),
+				Done:  float64(i) * 0.5,
 				Total: float64(total),
 			})
 		}
-		// Construct full font path for metadata extraction
 		fontPath := filepath.Join(params.FontDir, matchingFont)
+		display := shared.GetDisplayNameFromFilename(matchingFont)
 
-		// Check for protected system fonts - ALWAYS enforced
-		// Critical system fonts should never be removable for system stability
 		if params.IsCriticalSystemFont != nil && params.IsCriticalSystemFont(matchingFont) {
 			skipped++
-			fontDisplayName := extractFontDisplayNameFromPath(fontPath)
-			details = append(details, fontDisplayName+" (Skipped - Protected system font)")
+			details = append(details, display+" (Skipped - Protected system font)")
+			continue
+		}
+		if _, statErr := os.Stat(fontPath); os.IsNotExist(statErr) {
+			removed++
+			details = append(details, display+" (already gone)")
+			output.GetDebug().State("Font file already absent, counting as removed: %s", matchingFont)
 			continue
 		}
 
-		fontDisplayName := extractFontDisplayNameFromPath(fontPath)
-
-		// Remove font
-		output.GetDebug().State("Calling fontManager.RemoveFont(%s, %s)", matchingFont, params.Scope)
-		err := params.FontManager.RemoveFont(matchingFont, params.Scope, batchOpts)
-
-		if err != nil {
-			// Actual removal failure (cache flush is handled once after the batch)
-			failed++
-			var errorMsg string
-			errStr := err.Error()
-			if containsAny(errStr, []string{"in use", "access denied", "permission"}) {
-				errorMsg = "Font is in use or access denied"
-			} else {
-				errorMsg = "Failed to remove existing font"
+		output.GetDebug().State("Unregistering font: %s (%s)", matchingFont, params.Scope)
+		if err := params.FontManager.RemoveFont(matchingFont, params.Scope, unregisterOpts); err != nil {
+			if strings.Contains(err.Error(), "font not found") {
+				removed++
+				details = append(details, display+" (already gone)")
+				continue
 			}
-			errors = append(errors, errorMsg)
-			details = append(details, fontDisplayName+" (Failed)")
-			output.GetDebug().Error("fontManager.RemoveFont() failed for %s: %v", matchingFont, err)
+			failed++
+			errors = append(errors, "Failed to unregister font")
+			details = append(details, display+" (Failed)")
+			output.GetDebug().Error("unregister RemoveFont failed for %s: %v", matchingFont, err)
 			continue
 		}
+		toDelete = append(toDelete, pending{base: matchingFont, display: display})
+	}
 
-		output.GetDebug().State("Successfully removed font: %s", fontDisplayName)
+	if len(toDelete) > 0 && ctx.Err() == nil {
+		if flushErr := params.FontManager.FlushFontCache(params.Scope); flushErr != nil {
+			output.GetDebug().Warning("Font cache flush before delete: %v", flushErr)
+		}
+	}
+
+	// Pass 2: delete files (RemoveFont does delete + optional notify; we already flushed).
+	for j, p := range toDelete {
+		if err := ctx.Err(); err != nil {
+			errors = append(errors, err.Error())
+			break
+		}
+		if params.OnProgress != nil && total > 0 {
+			params.OnProgress(ProgressUpdate{
+				Phase: removeStepRemove,
+				Kind:  ProgressCount,
+				Done:  float64(total)/2 + float64(j+1)*0.5,
+				Total: float64(total),
+			})
+		}
+		output.GetDebug().State("Deleting font file: %s (%s)", p.base, params.Scope)
+		if err := params.FontManager.RemoveFont(p.base, params.Scope, deleteOpts); err != nil {
+			if strings.Contains(err.Error(), "font not found") || strings.Contains(err.Error(), "cannot find the file") {
+				removed++
+				details = append(details, p.display+" (already gone)")
+				continue
+			}
+			failed++
+			errStr := err.Error()
+			if containsAny(errStr, []string{"in use", "access denied", "permission", "used by another"}) {
+				errors = append(errors, "Font is in use or access denied")
+			} else {
+				errors = append(errors, "Failed to remove existing font")
+			}
+			details = append(details, p.display+" (Failed)")
+			output.GetDebug().Error("delete RemoveFont failed for %s: %v", p.base, err)
+			continue
+		}
 		removed++
-		details = append(details, fontDisplayName)
+		details = append(details, p.display)
+		output.GetDebug().State("Successfully removed font: %s", p.display)
 	}
 
 	if params.OnProgress != nil {
@@ -482,7 +526,6 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 		})
 	}
 
-	// Single cache refresh / font-change notification after all removals (avoids pkill fontd / fc-cache / WM_FONTCHANGE per file)
 	if removed > 0 && ctx.Err() == nil {
 		if params.OnProgress != nil {
 			params.OnProgress(ProgressUpdate{Phase: removeStepFinalize, Kind: ProgressFlag, Done: 0, Total: 1})
@@ -594,6 +637,7 @@ func removeFont(
 	if err := ctx.Err(); err != nil {
 		return res, err
 	}
+	// Clear install record when every listed file is gone (removed or already absent) and none failed.
 	if usedRegistry && failed == 0 && removed == len(matchingFonts) && removed > 0 {
 		if rmErr := installations.RemoveInstallation(fontName); rmErr != nil {
 			output.GetDebug().Error("remove installation registry entry: %v", rmErr)

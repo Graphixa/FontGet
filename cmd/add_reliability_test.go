@@ -233,7 +233,7 @@ func TestInstallRollbackAfterFirstMutation(t *testing.T) {
 	}
 }
 
-func TestInstallRollbackRestoresReplacedBytes(t *testing.T) {
+func TestInstallForceReplaceNoBackup(t *testing.T) {
 	fontDir := t.TempDir()
 	old := testutil.MinimalTTF("OldFam", "Regular")
 	neu := testutil.MinimalTTF("NewFam", "Regular")
@@ -249,6 +249,9 @@ func TestInstallRollbackRestoresReplacedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if mut.BackupPath != "" {
+		t.Fatal("force replace must not create a backup")
+	}
 	got, _ := os.ReadFile(dst)
 	if !bytes.Equal(got, neu) {
 		t.Fatal("replace did not write new bytes")
@@ -257,8 +260,8 @@ func TestInstallRollbackRestoresReplacedBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ = os.ReadFile(dst)
-	if !bytes.Equal(got, old) {
-		t.Fatal("rollback did not restore old bytes")
+	if !bytes.Equal(got, neu) {
+		t.Fatal("without backup, rollback leaves replaced bytes")
 	}
 }
 

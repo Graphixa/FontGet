@@ -48,8 +48,8 @@ func removeTracked(mut *FileMutation, path string) {
 	mut.ArtifactPaths = out
 }
 
-// placeFontFile copies src to dest, using unique same-volume staging and backups when replacing.
-// New files are staged then renamed so a failed mid-copy cannot leave an untracked partial dest.
+// placeFontFile copies src to dest. New installs stage then rename. Force replace
+// overwrites in place (no backup) — fonts are re-downloadable.
 func placeFontFile(src, dest string, force bool, opts *InstallFontOptions) (FileMutation, error) {
 	var mut FileMutation
 	mut.DestPath = dest
@@ -111,13 +111,10 @@ func createNewFontFile(src, dest string, mut *FileMutation, opts *InstallFontOpt
 }
 
 func replaceExistingFontFile(src, dest string, mut *FileMutation, opts *InstallFontOptions) error {
-	backup := uniqueArtifact(dest, "bak")
-	if err := copyFile(dest, backup); err != nil {
-		return fmt.Errorf("backup existing font: %w", err)
-	}
-	mut.BackupPath = backup
 	mut.Replaced = true
-	trackArtifact(mut, backup)
+	if opts != nil && opts.FailPoint == InstallFailReplace {
+		return failPointError(InstallFailReplace)
+	}
 
 	staged := uniqueArtifact(dest, "new")
 	trackArtifact(mut, staged)
@@ -129,30 +126,21 @@ func replaceExistingFontFile(src, dest string, mut *FileMutation, opts *InstallF
 		return failPointError(InstallFailCopyAfterWrite)
 	}
 
-	if opts != nil && opts.FailPoint == InstallFailReplace {
+	if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
 		removeTracked(mut, staged)
-		return failPointError(InstallFailReplace)
-	}
-
-	oldMoved := uniqueArtifact(dest, "old")
-	trackArtifact(mut, oldMoved)
-	if err := os.Rename(dest, oldMoved); err != nil {
-		removeTracked(mut, staged)
-		removeTracked(mut, oldMoved)
-		return fmt.Errorf("cannot replace locked or busy font: %w", err)
+		return fmt.Errorf("remove existing font: %w", err)
 	}
 	if err := os.Rename(staged, dest); err != nil {
-		_ = os.Rename(oldMoved, dest)
-		removeTracked(mut, staged)
-		removeTracked(mut, oldMoved)
-		return fmt.Errorf("install replacement: %w", err)
+		if copyErr := copyFile(staged, dest); copyErr != nil {
+			removeTracked(mut, staged)
+			return fmt.Errorf("install replacement: %w", copyErr)
+		}
 	}
 	removeTracked(mut, staged)
-	removeTracked(mut, oldMoved)
 	return nil
 }
 
-// CommitMutation deletes disposable backups/artifacts after a successful package commit.
+// CommitMutation deletes disposable staging artifacts after a successful package commit.
 func CommitMutation(mut FileMutation) error {
 	var first error
 	paths := append([]string{}, mut.ArtifactPaths...)
@@ -175,8 +163,8 @@ func CommitMutation(mut FileMutation) error {
 	return first
 }
 
-// RollbackMutation undoes file and platform registration changes for one mutation.
-// Pre-existing fonts are restored from backup; files created by this operation are removed.
+// RollbackMutation undoes registration and removes files this operation created.
+// Force-replaced fonts are not restored from backup (fonts are re-downloadable).
 func RollbackMutation(mut FileMutation) error {
 	if mut.UndoRegistration != nil {
 		if err := mut.UndoRegistration(); err != nil {
@@ -188,6 +176,7 @@ func RollbackMutation(mut FileMutation) error {
 
 	var fileErr error
 	if mut.Replaced && mut.BackupPath != "" {
+		// Legacy mutations that still carry a backup (e.g. recovery records).
 		if err := copyFile(mut.BackupPath, mut.DestPath); err != nil {
 			fileErr = fmt.Errorf("restore backup %s: %w", mut.BackupPath, err)
 		}
@@ -205,7 +194,6 @@ func RollbackMutation(mut FileMutation) error {
 		fileErr = restoreErr
 	}
 
-	// Do not delete BackupPath here: incomplete recovery must retain it. CommitMutation cleans success.
 	for _, p := range mut.ArtifactPaths {
 		if p == "" || p == mut.BackupPath {
 			continue
