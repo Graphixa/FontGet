@@ -34,7 +34,7 @@ func (m *removeTrackingFM) GetElevationCommand() (string, []string, error) {
 func TestRemoveFontFiles_missingFilesCountAsRemoved(t *testing.T) {
 	dir := t.TempDir()
 	fm := &removeTrackingFM{dir: dir}
-	removed, skipped, failed, _, _ := removeFontFiles(RemoveFontFilesParams{
+	removed, skipped, failed, _, _, _ := removeFontFiles(RemoveFontFilesParams{
 		Ctx:           context.Background(),
 		MatchingFonts: []string{"Lekton.ttf", "Lekton-Bold.ttf"},
 		FontManager:   fm,
@@ -55,7 +55,7 @@ func TestRemoveFontFiles_presentStillCallsRemove(t *testing.T) {
 		t.Fatal(err)
 	}
 	fm := &removeTrackingFM{dir: dir}
-	removed, _, failed, _, _ := removeFontFiles(RemoveFontFilesParams{
+	removed, _, failed, _, _, _ := removeFontFiles(RemoveFontFilesParams{
 		Ctx:           context.Background(),
 		MatchingFonts: []string{"Lekton.ttf", "Gone.ttf"},
 		FontManager:   fm,
@@ -65,8 +65,8 @@ func TestRemoveFontFiles_presentStillCallsRemove(t *testing.T) {
 	if removed != 2 || failed != 0 {
 		t.Fatalf("removed=%d failed=%d", removed, failed)
 	}
-	// unregister + delete for present file only
-	if len(fm.calls) != 2 || fm.calls[0] != "Lekton.ttf" || fm.calls[1] != "Lekton.ttf" {
+	// one RemoveFont call for the present file (absent file skipped)
+	if len(fm.calls) != 1 || fm.calls[0] != "Lekton.ttf" {
 		t.Fatalf("calls=%v", fm.calls)
 	}
 }

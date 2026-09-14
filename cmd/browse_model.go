@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -418,15 +417,16 @@ func browseNormalizeSourceLabel(s string) string {
 	return s
 }
 
-func browseResultFromInstall(fontName, source string, msg installFinishedMsg) (title string, errorTitle bool, body string) {
+func browseResultFromInstall(fontName, source string, msg installFinishedMsg, scope platform.InstallationScope, force bool) (title string, errorTitle bool, body string) {
 	fontName = strings.TrimSpace(fontName)
 	if fontName == "" {
 		fontName = shared.PlaceholderNA
 	}
 	source = browseNormalizeSourceLabel(source)
 	if msg.err != nil {
-		if errors.Is(msg.err, context.Canceled) || errors.Is(msg.err, shared.ErrOperationCancelled) {
-			return "Cancelled", false, ui.InfoText.Render("Installation cancelled.")
+		if IsCancelErr(msg.err) {
+			text := FormatInstallationCancelledText([]string{msg.fontID}, string(scope), force)
+			return "Cancelled", false, ui.WarningText.Render(text)
 		}
 		return "Error", true, ui.RenderError(msg.err.Error())
 	}
@@ -456,8 +456,9 @@ func browseResultFromUninstall(fontName string, installScope platform.Installati
 		fontName = shared.PlaceholderNA
 	}
 	if msg.err != nil {
-		if errors.Is(msg.err, context.Canceled) || errors.Is(msg.err, shared.ErrOperationCancelled) {
-			return "Cancelled", false, ui.InfoText.Render("Uninstall cancelled.")
+		if IsCancelErr(msg.err) {
+			text := FormatRemovalCancelledText([]string{msg.fontID}, string(installScope))
+			return "Cancelled", false, ui.WarningText.Render(text)
 		}
 		return "Error", true, ui.RenderError(msg.err.Error())
 	}
@@ -1040,7 +1041,7 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusPhase = ""
 		m.opMsgCh = nil
 		m.opCancel = nil
-		title, errTitle, body := browseResultFromInstall(fontName, source, msg)
+		title, errTitle, body := browseResultFromInstall(fontName, source, msg, m.installScope, m.force)
 		m.openResultModal(title, errTitle, body)
 		cmd := m.syncTableDimensions()
 		return m, cmd

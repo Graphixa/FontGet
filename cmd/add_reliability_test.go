@@ -192,7 +192,7 @@ func (m *copyFontManager) GetElevationCommand() (string, []string, error) {
 	return "", nil, nil
 }
 
-func TestInstallRollbackAfterFirstMutation(t *testing.T) {
+func TestInstallKeepsCompletedFileAfterInjectedFailure(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 	fontDir := t.TempDir()
@@ -214,22 +214,18 @@ func TestInstallRollbackAfterFirstMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 1})
+	installed, _, _, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 1}, nil)
 	if err == nil {
 		t.Fatal("expected injected failure")
 	}
-	if rb := rollbackPackageMutations(context.Background(), fm, platform.UserScope, "test.pkg", "user", mutations, err); rb != nil {
-		t.Fatalf("rollback: %v", rb)
+	if installed != 1 {
+		t.Fatalf("expected 1 completed file kept, got %d", installed)
 	}
-	entries, _ := os.ReadDir(fontDir)
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		t.Fatalf("rolled-back dest must not keep created fonts, found %s", e.Name())
+	if _, statErr := os.Stat(filepath.Join(fontDir, "Alpha-Regular.ttf")); statErr != nil {
+		t.Fatalf("completed file must remain: %v", statErr)
 	}
-	if len(fm.registered) != 0 {
-		t.Fatalf("registrations left after rollback: %#v", fm.registered)
+	if _, statErr := os.Stat(filepath.Join(fontDir, "Beta-Regular.ttf")); !os.IsNotExist(statErr) {
+		t.Fatal("second file must not have been installed")
 	}
 }
 
@@ -272,7 +268,7 @@ func TestPackageFailureDoesNotCountRolledBackAsInstalled(t *testing.T) {
 	}
 }
 
-func TestInstallRollbackAfterLaterMutation(t *testing.T) {
+func TestInstallKeepsCompletedFilesAfterLaterInjectedFailure(t *testing.T) {
 	fontDir := t.TempDir()
 	fm := &copyFontManager{dir: fontDir}
 	staging, err := platform.NewOperationStaging()
@@ -288,25 +284,17 @@ func TestInstallRollbackAfterLaterMutation(t *testing.T) {
 	if err := os.WriteFile(pathB, testutil.MinimalTTF("Beta", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 2})
+	installed, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 2}, nil)
 	if err == nil {
 		t.Fatal("expected injected failure")
 	}
-	if len(mutations) < 2 {
-		t.Fatalf("need two mutations before later fail, got %d", len(mutations))
+	if installed != 2 || len(mutations) < 2 {
+		t.Fatalf("both files should complete before stop: installed=%d mutations=%d", installed, len(mutations))
 	}
-	if rb := rollbackPackageMutations(context.Background(), fm, platform.UserScope, "test.pkg", "user", mutations, err); rb != nil {
-		t.Fatalf("rollback: %v", rb)
-	}
-	entries, _ := os.ReadDir(fontDir)
-	for _, e := range entries {
-		if strings.HasPrefix(e.Name(), ".") {
-			continue
+	for _, name := range []string{"Alpha-Regular.ttf", "Beta-Regular.ttf"} {
+		if _, statErr := os.Stat(filepath.Join(fontDir, name)); statErr != nil {
+			t.Fatalf("completed file missing %s: %v", name, statErr)
 		}
-		t.Fatalf("rolled-back dest must not keep created fonts, found %s", e.Name())
-	}
-	if len(fm.registered) != 0 {
-		t.Fatalf("registrations left after rollback: %#v", fm.registered)
 	}
 }
 
@@ -322,12 +310,12 @@ func TestInstallRegisterFailRollsBack(t *testing.T) {
 	if err := os.WriteFile(src, testutil.MinimalTTF("Face", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{src}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failRegister: true})
+	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{src}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failRegister: true}, nil)
 	if err == nil {
 		t.Fatal("expected register failure")
 	}
-	if rb := rollbackPackageMutations(context.Background(), fm, platform.UserScope, "test.pkg", "user", mutations, err); rb != nil {
-		t.Fatalf("rollback: %v", rb)
+	if len(mutations) != 0 {
+		t.Fatalf("failed file should not remain in mutations: %d", len(mutations))
 	}
 	entries, _ := os.ReadDir(fontDir)
 	for _, e := range entries {
@@ -338,7 +326,7 @@ func TestInstallRegisterFailRollsBack(t *testing.T) {
 	}
 }
 
-func TestInstallProvenanceFailRollsBack(t *testing.T) {
+func TestInstallProvenanceFailRollsBackCurrentFile(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 	payload := testutil.MinimalTTF("ProvFam", "Regular")
@@ -374,32 +362,5 @@ func TestInstallProvenanceFailRollsBack(t *testing.T) {
 			continue
 		}
 		t.Fatalf("provenance failure left installed file %s", e.Name())
-	}
-}
-
-func TestRollbackFailureWritesRecoveryRecord(t *testing.T) {
-	home := t.TempDir()
-	testutil.SetHome(t, home)
-	dir := t.TempDir()
-	dest := filepath.Join(dir, "Face.ttf")
-	if err := os.Mkdir(dest, 0755); err != nil {
-		t.Fatal(err)
-	}
-	backup := dest + ".fontget-bak"
-	if err := os.WriteFile(backup, []byte("old-bytes"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	mut := platform.FileMutation{DestPath: dest, BackupPath: backup, Replaced: true}
-	err := rollbackPackageMutations(context.Background(), nil, platform.UserScope, "test.pkg", "user", []platform.FileMutation{mut}, errors.New("install failed"))
-	if err == nil || !errors.Is(err, shared.ErrRecoveryRequired) {
-		t.Fatalf("want ErrRecoveryRequired, got %v", err)
-	}
-	if _, statErr := os.Stat(backup); statErr != nil {
-		t.Fatalf("backup must be retained: %v", statErr)
-	}
-	recDir := filepath.Join(home, ".fontget", "recovery")
-	entries, _ := os.ReadDir(recDir)
-	if len(entries) == 0 {
-		t.Fatal("expected recovery record file")
 	}
 }

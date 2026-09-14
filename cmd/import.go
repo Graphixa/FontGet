@@ -592,6 +592,8 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		// Run unified progress for download and install
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		debug, _ := cmd.Flags().GetBool("debug")
+		var incompleteCancelIDs []string
+		cancelled := false
 		progressErr := components.RunProgressBar(
 			title,
 			operationItems,
@@ -615,6 +617,10 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 				// Process each font group
 				for itemIndex, fontGroup := range fontsToInstall {
 					if err := ctx.Err(); err != nil {
+						cancelled = true
+						for j := itemIndex; j < len(fontsToInstall); j++ {
+							incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
+						}
 						return shared.ErrOperationCancelled
 					}
 					send(components.ItemUpdateMsg{
@@ -658,8 +664,28 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 					)
 
 					if err != nil {
+						if IsCancelErr(err) {
+							cancelled = true
+							incompleteCancelIDs = append(incompleteCancelIDs, fontGroup.FontID)
+							for j := itemIndex + 1; j < len(fontsToInstall); j++ {
+								incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
+							}
+							if result != nil {
+								status.Installed += result.Success
+								status.Skipped += result.Skipped
+								status.Failed += result.Failed
+							}
+							send(components.ItemUpdateMsg{
+								Index:   itemIndex,
+								Status:  "failed",
+								Message: "Cancelled",
+							})
+							return shared.ErrOperationCancelled
+						}
 						if result != nil {
 							status.Failed += result.Failed
+							status.Installed += result.Success
+							status.Skipped += result.Skipped
 						} else {
 							status.Failed++
 						}
@@ -671,9 +697,6 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 							Message:      "Operation failed",
 							ErrorMessage: errorMsg,
 						})
-						if errors.Is(err, shared.ErrOperationCancelled) || errors.Is(err, context.Canceled) {
-							return shared.ErrOperationCancelled
-						}
 						continue
 					}
 
@@ -707,15 +730,15 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		)
 
 		if progressErr != nil {
-			// Check if it was a cancellation
-			if errors.Is(progressErr, shared.ErrOperationCancelled) {
-				cmdutils.PrintWarning("Import cancelled.")
+			if errors.Is(progressErr, shared.ErrOperationCancelled) || cancelled {
+				if err := FinishInstallationCancel(incompleteCancelIDs, string(installScope), force); err != nil {
+					return err
+				}
+			} else {
+				cmdutils.PrintErrorf("%v", progressErr)
 				fmt.Println()
-				return nil // Don't return error for cancellation
+				return nil
 			}
-			cmdutils.PrintErrorf("%v", progressErr)
-			fmt.Println()
-			return nil
 		}
 
 		// Show source availability warnings at the bottom (after progress bar, before status report)

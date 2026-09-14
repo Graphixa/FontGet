@@ -57,6 +57,13 @@ type InstalledFace struct {
 	CatalogVariant string `json:"catalog_variant,omitempty"`
 }
 
+// Installation status values for interrupted or failed multi-file operations.
+// Empty Status means a completed installation (Remaining must also be empty).
+const (
+	StatusIncompleteInstall = "incomplete_install"
+	StatusIncompleteRemove  = "incomplete_remove"
+)
+
 // Installation is one catalog install record (map key: lowercase Font ID).
 type Installation struct {
 	FontID               string        `json:"font_id"`
@@ -66,6 +73,12 @@ type Installation struct {
 	InstalledAt          time.Time     `json:"installed_at"`
 	FontGetVersion       string        `json:"fontget_version,omitempty"`
 	Families             []FamilyGroup `json:"families"`
+	// Status is empty when complete; otherwise incomplete_install or incomplete_remove.
+	Status string `json:"status,omitempty"`
+	// Remaining are basenames still to install (incomplete_install) or remove (incomplete_remove).
+	Remaining []string `json:"remaining,omitempty"`
+	// LastErrors records unresolved file/registration/tracking issues from the last attempt.
+	LastErrors []string `json:"last_errors,omitempty"`
 }
 
 // Bump when the persisted JSON contract changes incompatibly.
@@ -251,13 +264,46 @@ type RecordParams struct {
 	Files                []InstalledFontFile // one row per installed file (grouped on save)
 }
 
-// RecordInstallation upserts one installation keyed by lowercase Font ID.
+// UpsertParams describes a full or partial install/remove record to persist.
+type UpsertParams struct {
+	FontID               string
+	CatalogName          string
+	InstallationSource   string
+	Scope                string
+	FontGetVersion       string
+	Files                []InstalledFontFile // currently present tracked files
+	Status               string              // empty = complete; incomplete_install | incomplete_remove
+	Remaining            []string            // basenames still to install or remove
+	LastErrors           []string
+}
+
+// RecordInstallation upserts one completed installation keyed by lowercase Font ID.
 func RecordInstallation(p RecordParams) error {
+	return UpsertInstallation(UpsertParams{
+		FontID:             p.FontID,
+		CatalogName:        p.CatalogName,
+		InstallationSource: p.InstallationSource,
+		Scope:              p.Scope,
+		FontGetVersion:     p.FontGetVersion,
+		Files:              p.Files,
+	})
+}
+
+// UpsertInstallation writes a complete or incomplete installation record.
+// An incomplete install with no present files is allowed (Remaining only).
+// A complete record requires at least one file.
+func UpsertInstallation(p UpsertParams) error {
 	if strings.TrimSpace(p.FontID) == "" {
 		return fmt.Errorf("empty font_id")
 	}
-	if len(p.Files) == 0 {
+	status := strings.TrimSpace(p.Status)
+	flat := normalizeInstalledFiles(p.Files)
+	remaining := dedupeStrings(p.Remaining)
+	if status == "" && len(remaining) == 0 && len(flat) == 0 {
 		return fmt.Errorf("empty files")
+	}
+	if status != "" && status != StatusIncompleteInstall && status != StatusIncompleteRemove {
+		return fmt.Errorf("invalid installation status %q", status)
 	}
 	key := strings.ToLower(strings.TrimSpace(p.FontID))
 
@@ -270,7 +316,6 @@ func RecordInstallation(p RecordParams) error {
 			return err
 		}
 
-		flat := normalizeInstalledFiles(p.Files)
 		inst := &Installation{
 			FontID:             p.FontID,
 			CatalogName:        strings.TrimSpace(p.CatalogName),
@@ -279,6 +324,14 @@ func RecordInstallation(p RecordParams) error {
 			InstalledAt:        time.Now().UTC(),
 			FontGetVersion:     strings.TrimSpace(p.FontGetVersion),
 			Families:           GroupInstalledFiles(flat),
+			Status:             status,
+			Remaining:          remaining,
+			LastErrors:         dedupeStrings(p.LastErrors),
+		}
+		if status == "" {
+			inst.Status = ""
+			inst.Remaining = nil
+			inst.LastErrors = nil
 		}
 		reg.Installations[key] = inst
 		return saveUnlocked(reg)
@@ -394,6 +447,24 @@ func (inst *Installation) HasFaces() bool {
 		}
 	}
 	return false
+}
+
+// IsComplete reports a finished install with no remaining work recorded.
+// Incomplete installs must never satisfy the "already installed" shortcut.
+func (inst *Installation) IsComplete() bool {
+	if inst == nil || !inst.HasFaces() {
+		return false
+	}
+	return strings.TrimSpace(inst.Status) == "" && len(inst.Remaining) == 0
+}
+
+// IsIncomplete reports interrupted install or remove work.
+func (inst *Installation) IsIncomplete() bool {
+	if inst == nil {
+		return false
+	}
+	s := strings.TrimSpace(inst.Status)
+	return s == StatusIncompleteInstall || s == StatusIncompleteRemove
 }
 
 // RemoveInstallation deletes the record for fontID (case-insensitive).

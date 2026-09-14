@@ -291,7 +291,11 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 	}
 	if removeErr != nil {
 		logger.Error("Failed to remove font file at path %s: %v", fontPath, removeErr)
-		// ponytail: do not AddFontResource after a failed delete — that re-locks the file.
+		// Restore GDI registration only (Windows). User-facing cancel/retry copy lives in cmd/.
+		if addErr := AddFontResource(fontPath); addErr != nil {
+			logger.Error("Failed to restore font registration after delete failure for %s: %v", fontPath, addErr)
+			return fmt.Errorf("failed to remove font file: %w (also failed to restore registration: %v)", removeErr, addErr)
+		}
 		return fmt.Errorf("failed to remove font file: %w", removeErr)
 	}
 	logger.Debug("Font file removed successfully")

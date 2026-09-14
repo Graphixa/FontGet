@@ -61,5 +61,5 @@ For version/commit/date in the binary, use the same ldflags as in `scripts/build
 
 - **Build fails:** Ensure Go 1.26+ (`go version`), you’re in the repo root (where `go.mod` is), and run `go mod tidy` if needed.
 - **Permission denied on script:** Run with `sh scripts/build.sh` (or `bash scripts/build.sh`), not `./scripts/build.sh`.
-- **Binary won’t run (e.g. on pCloud):** Default output is already `/tmp/fontget-dev`; run `/tmp/fontget-dev`. If you used `FONTGET_OUTPUT=./fontget`, the filesystem may not allow execute — use the default or build to another local path.
+- **Binary won’t run (e.g. on pCloud, onedrive etc):** Default output is already `/tmp/fontget-dev`; run `/tmp/fontget-dev`. If you used `FONTGET_OUTPUT=./fontget`, the filesystem may not allow execute — use the default or build to another local path.
 - **Windows:** Use the PowerShell script; Make is optional (e.g. via WSL or Chocolatey).

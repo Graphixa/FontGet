@@ -17,7 +17,6 @@ import (
 	"fontget/internal/repo"
 	"fontget/internal/shared"
 	"fontget/internal/ui"
-	"fontget/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -660,6 +659,7 @@ Use --scope to set installation location:
 
 		packagesFailed := 0
 		cancelled := false
+		var incompleteCancelIDs []string
 
 		operationItems := setupInstallationProgressBar(fontsToInstall)
 
@@ -693,6 +693,9 @@ Use --scope to set installation location:
 				for itemIndex, fontGroup := range fontsToInstall {
 					if err := ctx.Err(); err != nil {
 						cancelled = true
+						for j := itemIndex; j < len(fontsToInstall); j++ {
+							incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
+						}
 						return shared.ErrOperationCancelled
 					}
 
@@ -737,6 +740,25 @@ Use --scope to set installation location:
 					)
 
 					if err != nil {
+						isCancel := IsCancelErr(err)
+						if isCancel {
+							cancelled = true
+							incompleteCancelIDs = append(incompleteCancelIDs, fontGroup.FontID)
+							for j := itemIndex + 1; j < len(fontsToInstall); j++ {
+								incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
+							}
+							if result != nil {
+								status.Installed += result.Success
+								status.Skipped += result.Skipped
+								status.Failed += result.Failed
+							}
+							send(components.ItemUpdateMsg{
+								Index:   itemIndex,
+								Status:  InstallStatusFailed,
+								Message: "Cancelled",
+							})
+							return shared.ErrOperationCancelled
+						}
 						packagesFailed++
 						if result != nil {
 							if result.Status != InstallStatusFailed {
@@ -746,6 +768,8 @@ Use --scope to set installation location:
 								status.Failed++
 							} else {
 								status.Failed += result.Failed
+								status.Installed += result.Success
+								status.Skipped += result.Skipped
 							}
 							status.Errors = append(status.Errors, result.Errors...)
 						} else {
@@ -759,10 +783,6 @@ Use --scope to set installation location:
 							Message:      "Operation failed",
 							ErrorMessage: errorMsg,
 						})
-						if errors.Is(err, shared.ErrOperationCancelled) || errors.Is(err, context.Canceled) {
-							cancelled = true
-							return shared.ErrOperationCancelled
-						}
 						continue
 					}
 
@@ -819,12 +839,14 @@ Use --scope to set installation location:
 
 		if progressErr != nil {
 			if errors.Is(progressErr, shared.ErrOperationCancelled) || cancelled {
-				fmt.Printf("%s\n", ui.WarningText.Render("Installation cancelled."))
-				fmt.Println()
-				return shared.AlreadyPrinted(shared.ErrOperationCancelled)
+				if err := FinishInstallationCancel(incompleteCancelIDs, string(installScope), force); err != nil {
+					return err
+				}
+				// Cancellation after all requested work finished — report completion below.
+			} else {
+				GetLogger().Error("Failed to install fonts: %v", progressErr)
+				return progressErr
 			}
-			GetLogger().Error("Failed to install fonts: %v", progressErr)
-			return progressErr
 		}
 
 		handleNotFoundFonts(notFoundFonts, IsDebug())
@@ -1017,12 +1039,19 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 	return allFontPaths, nil
 }
 
-// installDownloadedFonts installs downloaded font files to system
-func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress ProgressFunc, tc *installTestControl) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
+// installDownloadedFonts installs downloaded font files to system.
+// Cancellation stops before the next file after finishing the current file's place/register/track steps.
+// Successfully completed files are kept; package-wide rollback is not performed.
+func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress ProgressFunc, tc *installTestControl, track *installTracker) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
 	start := time.Now()
 	var installedFiles []string
 	var skippedFiles []string
 	var failedFiles []string
+	var present []string // retained + newly installed basenames
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	destPaths := make([]string, 0, len(fontPaths))
 	for _, fontPath := range fontPaths {
@@ -1036,11 +1065,9 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 
 	total := len(fontPaths)
 	for i, fontPath := range fontPaths {
-		if ctx != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				err = ctxErr
-				break
-			}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+			break
 		}
 		fontDisplayName := filepath.Base(fontPath)
 		if onProgress != nil && total > 0 {
@@ -1064,6 +1091,13 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 				skipped++
 				_ = os.Remove(fontPath)
 				skippedFiles = append(skippedFiles, fontDisplayName)
+				present = append(present, fontDisplayName)
+				if track != nil {
+					if trackErr := track.persistInstallState(present, nil); trackErr != nil {
+						err = fmt.Errorf("installation tracking failed: %w", trackErr)
+						break
+					}
+				}
 				continue
 			}
 		}
@@ -1079,25 +1113,20 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		output.GetDebug().State("Installing font file: %s to %s (scope: %s)", fontDisplayName, fontDir, installScope)
 		installErr := fontManager.InstallFont(fontPath, installScope, force, batchOpts)
 
-		if mut.DestPath != "" {
-			mutations = append(mutations, mut)
-		}
-
 		if installErr != nil {
 			_ = os.Remove(fontPath)
+			if mut.DestPath != "" {
+				_ = platform.RollbackMutation(mut)
+			}
 			failed++
 			errorMsg := makeUserFriendlyError(fontDisplayName, installErr)
 			errs = append(errs, errorMsg)
 			failedFiles = append(failedFiles, fontDisplayName)
 			output.GetDebug().Error("fontManager.InstallFont() failed for %s: %v", fontDisplayName, installErr)
 			err = installErr
-			break
-		}
-
-		if tc != nil && tc.failAfterMutations > 0 && len(mutations) >= tc.failAfterMutations {
-			failed++
-			err = fmt.Errorf("injected failure after mutation count %d", len(mutations))
-			failedFiles = append(failedFiles, fontDisplayName)
+			if track != nil && len(present) > 0 {
+				_ = track.persistInstallState(present, errs)
+			}
 			break
 		}
 
@@ -1105,12 +1134,16 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		if _, statErr := os.Stat(installedPath); statErr == nil {
 			if _, metaErr := platform.ExtractFontMetadata(installedPath); metaErr != nil {
 				_ = os.Remove(fontPath)
+				_ = platform.RollbackMutation(mut)
 				failed++
 				errorMsg := makeUserFriendlyError(fontDisplayName, fmt.Errorf("installed file is not a valid font: %w", metaErr))
 				errs = append(errs, errorMsg)
 				failedFiles = append(failedFiles, fontDisplayName)
 				output.GetDebug().Warning("Installed file failed validation: %s (%v)", fontDisplayName, metaErr)
 				err = metaErr
+				if track != nil && len(present) > 0 {
+					_ = track.persistInstallState(present, errs)
+				}
 				break
 			}
 		}
@@ -1119,6 +1152,58 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		_ = os.Remove(fontPath)
 		installed++
 		installedFiles = append(installedFiles, fontDisplayName)
+		present = append(present, fontDisplayName)
+		mutations = append(mutations, mut)
+
+		if track != nil {
+			if tc != nil && tc.failProvenance {
+				err = fmt.Errorf("injected provenance failure")
+				_ = platform.RollbackMutation(mut)
+				installed--
+				installedFiles = installedFiles[:len(installedFiles)-1]
+				present = present[:len(present)-1]
+				mutations = mutations[:len(mutations)-1]
+				failed++
+				failedFiles = append(failedFiles, fontDisplayName)
+				if len(present) > 0 {
+					_ = track.persistInstallState(present, []string{err.Error()})
+				}
+				break
+			}
+			if trackErr := track.persistInstallState(present, nil); trackErr != nil {
+				_ = platform.RollbackMutation(mut)
+				installed--
+				installedFiles = installedFiles[:len(installedFiles)-1]
+				present = present[:len(present)-1]
+				mutations = mutations[:len(mutations)-1]
+				failed++
+				failedFiles = append(failedFiles, fontDisplayName)
+				err = fmt.Errorf("installation tracking failed: %w", trackErr)
+				if len(present) > 0 {
+					_ = track.persistInstallState(present, []string{err.Error()})
+				}
+				break
+			}
+		} else if tc != nil && tc.failProvenance {
+			err = fmt.Errorf("injected provenance failure")
+			_ = platform.RollbackMutation(mut)
+			installed--
+			installedFiles = installedFiles[:len(installedFiles)-1]
+			present = present[:len(present)-1]
+			mutations = mutations[:len(mutations)-1]
+			failed++
+			failedFiles = append(failedFiles, fontDisplayName)
+			break
+		}
+		_ = platform.CommitMutation(mut)
+
+		if tc != nil && tc.failAfterMutations > 0 && installed >= tc.failAfterMutations {
+			err = fmt.Errorf("injected failure after mutation count %d", installed)
+			if track != nil {
+				_ = track.persistInstallState(present, []string{err.Error()})
+			}
+			break
+		}
 	}
 
 	if onProgress != nil {
@@ -1130,14 +1215,11 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		})
 	}
 
-	if err == nil && installed > 0 {
-		if ctx != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				err = ctxErr
-			}
-		}
+	if err == nil && ctx.Err() != nil {
+		err = ctx.Err()
 	}
-	if err == nil && installed > 0 {
+
+	if installed > 0 || (err != nil && len(present) > 0) {
 		if onProgress != nil {
 			onProgress(ProgressUpdate{Phase: installStepFinalize, Kind: ProgressFlag, Done: 0, Total: 1})
 		}
@@ -1187,20 +1269,9 @@ func buildInstallResult(status string, message string, installed, skipped, faile
 // installFont handles the core installation logic for a single font.
 //
 // It checks if the font is already installed (unless force is true), downloads all font variants,
-// installs them to the system, and returns an InstallResult with the operation outcome.
-// The function handles cleanup of temporary files automatically via defer.
-//
-// Parameters:
-//   - fontFiles: List of font file variants to install
-//   - fontID: Font identifier for checking if already installed
-//   - fontManager: Platform-specific font manager for installation
-//   - installScope: Installation scope (user or machine)
-//   - force: If true, skip already-installed check and force reinstallation
-//   - fontDir: Target directory for font installation
-//
-// Returns:
-//   - InstallResult: Contains success/skipped/failed counts and details
-//   - error: Installation error if the operation fails
+// optionally removes existing package files when force is set, installs them to the system,
+// and returns an InstallResult with the operation outcome.
+// Cancellation keeps successfully completed files and records incomplete package state.
 func installFont(
 	ctx context.Context,
 	fontFiles []repo.FontFile,
@@ -1268,6 +1339,9 @@ func installFont(
 	if downloadErr != nil {
 		return buildInstallResult(InstallStatusFailed, "Download failed", 0, 0, len(fontFiles), nil, nil, 0), downloadErr
 	}
+	if err := ctx.Err(); err != nil {
+		return buildInstallResult(InstallStatusFailed, msgDownloadCancelledShort, 0, 0, len(fontFiles), nil, nil, 0), err
+	}
 
 	unlockDest, lockErr := installations.LockDestination(ctx, fontDir)
 	if lockErr != nil {
@@ -1275,18 +1349,60 @@ func installFont(
 	}
 	defer unlockDest()
 
-	installed, skipped, failed, details, instErrs, downloadSize, mutations, installErr := installDownloadedFonts(
-		ctx, allFontPaths, fontManager, installScope, fontDir, force, onProgress, tc)
+	expected := make([]string, 0, len(allFontPaths))
+	for _, p := range allFontPaths {
+		expected = append(expected, filepath.Base(p))
+	}
+	track := newInstallTracker(fontID, fontFiles, installScope, fontDir, expected)
 
-	if installErr != nil || failed > 0 {
-		rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, installErr)
-		res := buildInstallResult(InstallStatusFailed, "Installation failed", 0, skipped, failed, details, instErrs, downloadSize)
-		if rbErr != nil {
-			return res, rbErr
+		if force {
+		existing := packageBasenamesFromRegistry(fontID, fontDir)
+		if len(existing) > 0 {
+			if onProgress != nil {
+				onProgress(ProgressUpdate{Phase: removeStepRemove, Detail: "existing package", Kind: ProgressCount, Done: 0, Total: float64(len(existing))})
+			}
+			removed, _, remFailed, _, remErrs, remErr := removeFontFiles(RemoveFontFilesParams{
+				Ctx:                  ctx,
+				MatchingFonts:        existing,
+				FontManager:          fontManager,
+				Scope:                installScope,
+				FontDir:              fontDir,
+				FontID:               fontID,
+				IsCriticalSystemFont: shared.IsCriticalSystemFont,
+				OnProgress:           onProgress,
+			})
+			if remErr != nil || remFailed > 0 {
+				msg := "Force removal failed"
+				if IsCancelErr(remErr) {
+					msg = msgForceRemovalCancelledShort
+				}
+				res := buildInstallResult(InstallStatusFailed, msg, 0, 0, remFailed, existing, remErrs, 0)
+				if remErr != nil {
+					return res, remErr
+				}
+				return res, fmt.Errorf("force install: removal incomplete")
+			}
+			_ = removed
 		}
-		if installErr != nil {
-			return res, installErr
+		if err := ctx.Err(); err != nil {
+			return buildInstallResult(InstallStatusFailed, msgInstallationCancelledShort, 0, 0, 0, nil, nil, 0), err
 		}
+	}
+
+	installed, skipped, failed, details, instErrs, downloadSize, _, installErr := installDownloadedFonts(
+		ctx, allFontPaths, fontManager, installScope, fontDir, force, onProgress, tc, track)
+
+	if installErr != nil {
+		status := InstallStatusFailed
+		message := "Installation failed"
+		if IsCancelErr(installErr) {
+			message = msgInstallationCancelledShort
+		}
+		res := buildInstallResult(status, message, installed, skipped, failed, details, instErrs, downloadSize)
+		return res, installErr
+	}
+	if failed > 0 {
+		res := buildInstallResult(InstallStatusFailed, "Installation failed", installed, skipped, failed, details, instErrs, downloadSize)
 		return res, fmt.Errorf("package install incomplete")
 	}
 
@@ -1298,190 +1414,19 @@ func installFont(
 	}
 
 	res := buildInstallResult(status, message, installed, skipped, failed, details, instErrs, downloadSize)
-	if status == InstallStatusCompleted && installed > 0 {
-		if err := ctx.Err(); err != nil {
-			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, err)
-			res.Status = InstallStatusFailed
-			res.Success = 0
-			if rbErr != nil {
-				return res, rbErr
-			}
-			return res, err
-		}
-		if tc != nil && tc.failProvenance {
-			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, fmt.Errorf("injected provenance failure"))
-			res.Status = InstallStatusFailed
-			res.Success = 0
-			if rbErr != nil {
-				return res, rbErr
-			}
-			return res, fmt.Errorf("injected provenance failure")
-		}
-		if recErr := tryRecordInstallationRegistry(fontID, fontFiles, installScope, fontDir, res); recErr != nil {
-			rbErr := rollbackPackageMutations(ctx, fontManager, installScope, fontID, string(installScope), mutations, recErr)
-			res.Status = InstallStatusFailed
-			res.Success = 0
-			if rbErr != nil {
-				return res, rbErr
-			}
-			return res, recErr
-		}
-		for _, mut := range mutations {
-			_ = platform.CommitMutation(mut)
-		}
-	}
 	return res, nil
 }
 
-func rollbackPackageMutations(ctx context.Context, fontManager platform.FontManager, installScope platform.InstallationScope, fontID, scope string, mutations []platform.FileMutation, cause error) error {
-	recCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 60*time.Second)
-	defer cancel()
-
-	var outstanding []string
-	var completed []string
-	var recErrs []string
-	if cause != nil {
-		recErrs = append(recErrs, cause.Error())
-	}
-	var backupPaths []string
-	var affected []string
-	for i := len(mutations) - 1; i >= 0; i-- {
-		if err := recCtx.Err(); err != nil {
-			outstanding = append(outstanding, "recovery timeout before finishing remaining mutations")
-			recErrs = append(recErrs, err.Error())
-			break
-		}
-		mut := mutations[i]
-		affected = append(affected, mut.DestPath)
-		if mut.BackupPath != "" {
-			backupPaths = append(backupPaths, mut.BackupPath)
-		}
-		if err := platform.RollbackMutation(mut); err != nil {
-			outstanding = append(outstanding, "restore "+mut.DestPath)
-			recErrs = append(recErrs, err.Error())
+func removeBasename(list []string, base string) []string {
+	base = strings.ToLower(filepath.Base(strings.TrimSpace(base)))
+	var out []string
+	for _, s := range list {
+		if strings.ToLower(filepath.Base(s)) == base {
 			continue
 		}
-		completed = append(completed, "restore "+mut.DestPath)
-		if mut.BackupPath != "" {
-			_ = os.Remove(mut.BackupPath)
-		}
+		out = append(out, s)
 	}
-
-	if fontManager != nil && len(mutations) > 0 {
-		if err := recCtx.Err(); err == nil {
-			if flushErr := fontManager.FlushFontCache(installScope); flushErr != nil {
-				output.GetDebug().Warning("Font cache refresh after rollback: %v", flushErr)
-			}
-		}
-	}
-
-	if len(outstanding) == 0 {
-		return nil
-	}
-	// Retain backups for outstanding recoveries.
-	path, saveErr := installations.SaveRecoveryRecord(installations.RecoveryRecord{
-		PackageID:        fontID,
-		Scope:            scope,
-		AffectedPaths:    affected,
-		BackupPaths:      backupPaths,
-		CompletedSteps:   completed,
-		OutstandingSteps: outstanding,
-		Errors:           recErrs,
-	})
-	msg := fmt.Sprintf("recovery required for %s; backups retained", fontID)
-	if path != "" {
-		msg = fmt.Sprintf("%s; recovery record: %s", msg, path)
-		if len(backupPaths) > 0 {
-			msg = fmt.Sprintf("%s; backups: %s", msg, strings.Join(backupPaths, ", "))
-		}
-		fmt.Printf("%s\n", ui.ErrorText.Render(msg))
-	}
-	if saveErr != nil {
-		return fmt.Errorf("%w: %v: %v", shared.ErrRecoveryRequired, cause, saveErr)
-	}
-	return fmt.Errorf("%w: %s", shared.ErrRecoveryRequired, msg)
-}
-
-func tryRecordInstallationRegistry(fontID string, fontFiles []repo.FontFile, installScope platform.InstallationScope, fontDir string, result *InstallResult) error {
-	if fontID == "" || result == nil {
-		return nil
-	}
-	if result.Status != InstallStatusCompleted || result.Success <= 0 || result.Failed != 0 {
-		return nil
-	}
-	if result.Success > len(result.Details) {
-		return fmt.Errorf("installation registry: details shorter than success count")
-	}
-	catalogName := ""
-	variantByBasename := make(map[string]string)
-	for _, ff := range fontFiles {
-		b := filepath.Base(strings.TrimSpace(ff.Path))
-		if b == "" {
-			continue
-		}
-		variantByBasename[b] = strings.TrimSpace(ff.Variant)
-	}
-	if len(fontFiles) > 0 {
-		catalogName = strings.TrimSpace(fontFiles[0].Name)
-	}
-	installedBasenames := result.Details[:result.Success]
-	nonEmptyBasenames := 0
-	for _, base := range installedBasenames {
-		if strings.TrimSpace(base) != "" {
-			nonEmptyBasenames++
-		}
-	}
-	var files []installations.InstalledFontFile
-	for _, base := range installedBasenames {
-		base = strings.TrimSpace(base)
-		if base == "" {
-			continue
-		}
-		full := filepath.Join(fontDir, base)
-		md, err := platform.ExtractFontMetadata(full)
-		if err != nil {
-			output.GetDebug().Warning("installation registry: skipping %s (metadata: %v)", full, err)
-			continue
-		}
-		fam := strings.TrimSpace(md.TypographicFamily)
-		if fam == "" {
-			fam = strings.TrimSpace(md.FamilyName)
-		}
-		style := strings.TrimSpace(md.TypographicStyle)
-		if style == "" {
-			style = strings.TrimSpace(md.StyleName)
-		}
-		fullName := strings.TrimSpace(md.FullName)
-		files = append(files, installations.InstalledFontFile{
-			Path:           full,
-			CatalogVariant: variantByBasename[base],
-			SFNT: installations.SFNTSnapshot{
-				Family:   fam,
-				Style:    style,
-				FullName: fullName,
-			},
-		})
-	}
-	if len(files) != nonEmptyBasenames {
-		return fmt.Errorf("installation registry: incomplete metadata (%d/%d faces)", len(files), nonEmptyBasenames)
-	}
-	if len(files) == 0 {
-		return fmt.Errorf("installation registry: no files to record")
-	}
-	installSrc := ""
-	if meta, metaErr := repo.MatchRepositoryFontByID(fontID); metaErr == nil && meta != nil {
-		installSrc = strings.TrimSpace(meta.Source)
-	} else if metaErr != nil {
-		output.GetDebug().Warning("installation registry: catalog lookup for installation_source failed: %v", metaErr)
-	}
-	return installations.RecordInstallation(installations.RecordParams{
-		FontID:             fontID,
-		CatalogName:        catalogName,
-		InstallationSource: installSrc,
-		Scope:              string(installScope),
-		FontGetVersion:     version.GetVersion(),
-		Files:              files,
-	})
+	return out
 }
 
 func makeUserFriendlyError(fontName string, err error) string {
@@ -1587,7 +1532,13 @@ func checkInstalledViaRegistry(fontID string, scope platform.InstallationScope) 
 		return false, false
 	}
 	inst := reg.FindByFontID(fontID)
-	if inst == nil || !inst.HasFaces() {
+	if inst == nil {
+		return false, false
+	}
+	if inst.IsIncomplete() {
+		return false, true // known incomplete — do not treat as already installed
+	}
+	if !inst.IsComplete() {
 		return false, false
 	}
 	if !strings.EqualFold(strings.TrimSpace(inst.Scope), strings.TrimSpace(string(scope))) {

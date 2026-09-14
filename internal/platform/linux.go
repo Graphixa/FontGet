@@ -121,7 +121,8 @@ func (m *linuxFontManager) RemoveFont(fontName string, scope InstallationScope, 
 		return nil
 	}
 
-	// Delete the font file
+	// Delete the font file. No separate registration API on Linux (unlike Windows GDI).
+	// Cancellation boundaries and user-facing messages are handled in cmd/.
 	if err := os.Remove(fontPath); err != nil {
 		return fmt.Errorf("failed to remove font file: %w", err)
 	}

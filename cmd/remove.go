@@ -402,44 +402,42 @@ type RemoveFontFilesParams struct {
 	FontManager          platform.FontManager
 	Scope                platform.InstallationScope
 	FontDir              string
+	FontID               string // catalog id when known (for incomplete tracking)
 	IsCriticalSystemFont func(string) bool
 	OnProgress           ProgressFunc
 }
 
-// removeFontFiles removes font files from system
-func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string) {
+// removeFontFiles removes font files one at a time (unregister + delete + track).
+// Cancellation finishes the current file, then stops before starting another.
+func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string, err error) {
 	ctx := params.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	unlock, lockErr := installations.LockDestination(ctx, params.FontDir)
 	if lockErr != nil {
-		return 0, 0, len(params.MatchingFonts), nil, []string{lockErr.Error()}
+		return 0, 0, len(params.MatchingFonts), nil, []string{lockErr.Error()}, lockErr
 	}
 	defer unlock()
 
-	unregisterOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true, UnregisterOnly: true}
-	deleteOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
-
+	opts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
 	total := len(params.MatchingFonts)
-	type pending struct {
-		base    string
-		display string
-	}
-	var toDelete []pending
+	left := append([]string(nil), params.MatchingFonts...)
+	track := strings.TrimSpace(params.FontID) != ""
 
-	// Pass 1: unregister (Windows RemoveFontResource). Defer deletes until after one FlushFontCache
-	// so the session releases file locks — deleting immediately after UnregisterOnly=false used to fail "in use".
 	for i, matchingFont := range params.MatchingFonts {
-		if err := ctx.Err(); err != nil {
-			errors = append(errors, err.Error())
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+			if track {
+				_ = persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, errors)
+			}
 			break
 		}
 		if params.OnProgress != nil && total > 0 {
 			params.OnProgress(ProgressUpdate{
 				Phase: removeStepRemove,
 				Kind:  ProgressCount,
-				Done:  float64(i) * 0.5,
+				Done:  float64(i),
 				Total: float64(total),
 			})
 		}
@@ -449,72 +447,68 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 		if params.IsCriticalSystemFont != nil && params.IsCriticalSystemFont(matchingFont) {
 			skipped++
 			details = append(details, display+" (Skipped - Protected system font)")
+			left = removeBasename(left, matchingFont)
 			continue
 		}
 		if _, statErr := os.Stat(fontPath); os.IsNotExist(statErr) {
 			removed++
 			details = append(details, display+" (already gone)")
 			output.GetDebug().State("Font file already absent, counting as removed: %s", matchingFont)
+			left = removeBasename(left, matchingFont)
+			if track {
+				if trackErr := persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, nil); trackErr != nil {
+					err = fmt.Errorf("removal tracking failed: %w", trackErr)
+					errors = append(errors, err.Error())
+					break
+				}
+			}
 			continue
 		}
 
-		output.GetDebug().State("Unregistering font: %s (%s)", matchingFont, params.Scope)
-		if err := params.FontManager.RemoveFont(matchingFont, params.Scope, unregisterOpts); err != nil {
-			if strings.Contains(err.Error(), "font not found") {
+		output.GetDebug().State("Removing font: %s (%s)", matchingFont, params.Scope)
+		if remErr := params.FontManager.RemoveFont(matchingFont, params.Scope, opts); remErr != nil {
+			if strings.Contains(remErr.Error(), "font not found") || strings.Contains(remErr.Error(), "cannot find the file") {
 				removed++
 				details = append(details, display+" (already gone)")
+				left = removeBasename(left, matchingFont)
+				if track {
+					if trackErr := persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, nil); trackErr != nil {
+						err = fmt.Errorf("removal tracking failed: %w", trackErr)
+						errors = append(errors, err.Error())
+						break
+					}
+				}
 				continue
 			}
 			failed++
-			errors = append(errors, "Failed to unregister font")
-			details = append(details, display+" (Failed)")
-			output.GetDebug().Error("unregister RemoveFont failed for %s: %v", matchingFont, err)
-			continue
-		}
-		toDelete = append(toDelete, pending{base: matchingFont, display: display})
-	}
-
-	if len(toDelete) > 0 && ctx.Err() == nil {
-		if flushErr := params.FontManager.FlushFontCache(params.Scope); flushErr != nil {
-			output.GetDebug().Warning("Font cache flush before delete: %v", flushErr)
-		}
-	}
-
-	// Pass 2: delete files (RemoveFont does delete + optional notify; we already flushed).
-	for j, p := range toDelete {
-		if err := ctx.Err(); err != nil {
-			errors = append(errors, err.Error())
-			break
-		}
-		if params.OnProgress != nil && total > 0 {
-			params.OnProgress(ProgressUpdate{
-				Phase: removeStepRemove,
-				Kind:  ProgressCount,
-				Done:  float64(total)/2 + float64(j+1)*0.5,
-				Total: float64(total),
-			})
-		}
-		output.GetDebug().State("Deleting font file: %s (%s)", p.base, params.Scope)
-		if err := params.FontManager.RemoveFont(p.base, params.Scope, deleteOpts); err != nil {
-			if strings.Contains(err.Error(), "font not found") || strings.Contains(err.Error(), "cannot find the file") {
-				removed++
-				details = append(details, p.display+" (already gone)")
-				continue
-			}
-			failed++
-			errStr := err.Error()
+			errStr := remErr.Error()
 			if containsAny(errStr, []string{"in use", "access denied", "permission", "used by another"}) {
 				errors = append(errors, "Font is in use or access denied")
+			} else if strings.Contains(strings.ToLower(errStr), "restore registration") {
+				errors = append(errors, "Failed to delete font and restore registration")
 			} else {
 				errors = append(errors, "Failed to remove existing font")
 			}
-			details = append(details, p.display+" (Failed)")
-			output.GetDebug().Error("delete RemoveFont failed for %s: %v", p.base, err)
-			continue
+			details = append(details, display+" (Failed)")
+			output.GetDebug().Error("RemoveFont failed for %s: %v", matchingFont, remErr)
+			err = remErr
+			if track {
+				_ = persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, errors)
+			}
+			break
 		}
+
 		removed++
-		details = append(details, p.display)
-		output.GetDebug().State("Successfully removed font: %s", p.display)
+		details = append(details, display)
+		left = removeBasename(left, matchingFont)
+		output.GetDebug().State("Successfully removed font: %s", display)
+		if track {
+			if trackErr := persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, nil); trackErr != nil {
+				err = fmt.Errorf("removal tracking failed: %w", trackErr)
+				errors = append(errors, err.Error())
+				break
+			}
+		}
 	}
 
 	if params.OnProgress != nil {
@@ -526,7 +520,7 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 		})
 	}
 
-	if removed > 0 && ctx.Err() == nil {
+	if removed > 0 {
 		if params.OnProgress != nil {
 			params.OnProgress(ProgressUpdate{Phase: removeStepFinalize, Kind: ProgressFlag, Done: 0, Total: 1})
 		}
@@ -545,7 +539,13 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 		}
 	}
 
-	return removed, skipped, failed, details, errors
+	if track && err == nil && failed == 0 && len(left) == 0 {
+		if rmErr := installations.RemoveInstallation(params.FontID); rmErr != nil {
+			output.GetDebug().Error("remove installation registry entry: %v", rmErr)
+		}
+	}
+
+	return removed, skipped, failed, details, errors, err
 }
 
 // buildRemoveResult builds RemoveResult from removal outcomes
@@ -618,30 +618,36 @@ func removeFont(
 		result.Message = "Font not found"
 		return result, err
 	}
+	fontID := ""
+	if usedRegistry {
+		fontID = fontName
+	} else if installReg != nil {
+		if inst := installReg.FindByFontID(fontName); inst != nil {
+			fontID = fontName
+		}
+	}
 	if onProgress != nil {
 		onProgress(ProgressUpdate{Phase: removeStepScan, Kind: ProgressFlag, Done: 1, Total: 1})
 	}
 
 	// Remove font files
-	removed, skipped, failed, details, errors := removeFontFiles(RemoveFontFilesParams{
+	removed, skipped, failed, details, errors, remErr := removeFontFiles(RemoveFontFilesParams{
 		Ctx:                  ctx,
 		MatchingFonts:        matchingFonts,
 		FontManager:          fontManager,
 		Scope:                scope,
 		FontDir:              fontDir,
+		FontID:               fontID,
 		IsCriticalSystemFont: shared.IsCriticalSystemFont,
 		OnProgress:           onProgress,
 	})
 
 	res := buildRemoveResult(removed, skipped, failed, details, errors)
+	if remErr != nil {
+		return res, remErr
+	}
 	if err := ctx.Err(); err != nil {
 		return res, err
-	}
-	// Clear install record when every listed file is gone (removed or already absent) and none failed.
-	if usedRegistry && failed == 0 && removed == len(matchingFonts) && removed > 0 {
-		if rmErr := installations.RemoveInstallation(fontName); rmErr != nil {
-			output.GetDebug().Error("remove installation registry entry: %v", rmErr)
-		}
 	}
 	return res, nil
 }
@@ -1767,7 +1773,7 @@ Use --scope to set removal location:
 
 					output.GetDebug().State("Calling removeFont(%s, %s, %s)", fontInfo.SearchName, scopeLabelName, fontDir)
 					result, err := removeFont(
-						context.Background(),
+						cmd.Context(),
 						fontInfo.SearchName,
 						fontManager,
 						scopeType,
@@ -1779,6 +1785,9 @@ Use --scope to set removal location:
 					)
 
 					if err != nil {
+						if IsCancelErr(err) {
+							return FinishRemovalCancel([]string{fontInfo.SearchName}, scopeFlag)
+						}
 						output.GetDebug().State("Error removing font %s in %s: %v", fontInfo.SearchName, scopeLabelName, err)
 						if result != nil {
 							updateRemovalStatus(status, result)
@@ -1829,6 +1838,13 @@ Use --scope to set removal location:
 			title = OpRemovingFontsBothScopes
 		}
 
+		opCtx := cmd.Context()
+		if opCtx == nil {
+			opCtx = context.Background()
+		}
+		var incompleteCancelIDs []string
+		cancelledRemove := false
+
 		// Run unified progress for font removal (TUI mode)
 		fontsInOppositeScope := []string{} // Track fonts that still exist in opposite scope after removal
 		progressErr := components.RunProgressBar(
@@ -1837,7 +1853,7 @@ Use --scope to set removal location:
 			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
-				ctx, cancel := context.WithCancel(context.Background())
+				ctx, cancel := context.WithCancel(opCtx)
 				defer cancel()
 				go func() {
 					select {
@@ -1852,6 +1868,8 @@ Use --scope to set removal location:
 					// "all" scope - process each font+scope combination individually
 					for _, item := range fontScopeItems {
 						if err := ctx.Err(); err != nil {
+							cancelledRemove = true
+							incompleteCancelIDs = append(incompleteCancelIDs, item.FontName)
 							return shared.ErrOperationCancelled
 						}
 						// Send initial "in_progress" message
@@ -1890,7 +1908,12 @@ Use --scope to set removal location:
 							manifestProbe,
 							onProgress,
 						)
-						if errors.Is(err, context.Canceled) || errors.Is(err, shared.ErrOperationCancelled) {
+						if IsCancelErr(err) {
+							cancelledRemove = true
+							incompleteCancelIDs = append(incompleteCancelIDs, item.FontName)
+							if result != nil {
+								updateRemovalStatus(status, result)
+							}
 							return shared.ErrOperationCancelled
 						}
 
@@ -1957,6 +1980,8 @@ Use --scope to set removal location:
 					// Single scope - process each found font
 					for i, fontInfo := range foundFonts {
 						if err := ctx.Err(); err != nil {
+							cancelledRemove = true
+							incompleteCancelIDs = append(incompleteCancelIDs, fontInfo.SearchName)
 							return shared.ErrOperationCancelled
 						}
 						// Use proper font name from pre-extracted map
@@ -2116,7 +2141,12 @@ Use --scope to set removal location:
 							)
 
 							if err != nil {
-								if errors.Is(err, context.Canceled) || errors.Is(err, shared.ErrOperationCancelled) {
+								if IsCancelErr(err) {
+									cancelledRemove = true
+									incompleteCancelIDs = append(incompleteCancelIDs, fontName)
+									if result != nil {
+										updateRemovalStatus(status, result)
+									}
 									return shared.ErrOperationCancelled
 								}
 								if strings.Contains(err.Error(), "not found") {
@@ -2237,7 +2267,12 @@ Use --scope to set removal location:
 							)
 
 							if err != nil {
-								if errors.Is(err, context.Canceled) || errors.Is(err, shared.ErrOperationCancelled) {
+								if IsCancelErr(err) {
+									cancelledRemove = true
+									incompleteCancelIDs = append(incompleteCancelIDs, fontName)
+									if result != nil {
+										updateRemovalStatus(status, result)
+									}
 									return shared.ErrOperationCancelled
 								}
 								if strings.Contains(err.Error(), "not found") {
@@ -2347,13 +2382,15 @@ Use --scope to set removal location:
 
 		if progressErr != nil {
 			// Check if it was a cancellation
-			if errors.Is(progressErr, shared.ErrOperationCancelled) {
-				fmt.Printf("%s\n", ui.WarningText.Render("Removal cancelled."))
-				fmt.Println()
-				return nil // Don't return error for cancellation
+			if errors.Is(progressErr, shared.ErrOperationCancelled) || cancelledRemove {
+				if err := FinishRemovalCancel(incompleteCancelIDs, scopeFlag); err != nil {
+					return err
+				}
+				// Cancellation after all requested work finished — fall through to completion reporting.
+			} else {
+				GetLogger().Error("Failed to process font removal: %v", progressErr)
+				return progressErr
 			}
-			GetLogger().Error("Failed to process font removal: %v", progressErr)
-			return progressErr
 		}
 
 		GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
