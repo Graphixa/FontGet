@@ -101,10 +101,13 @@ func TestPlaceFontFileCopyAfterWriteTracksPartial(t *testing.T) {
 }
 
 func TestCheckDestinationCollisions(t *testing.T) {
-	if err := CheckDestinationCollisions([]string{`C:\a\Foo.ttf`, `C:\b\Foo.ttf`}); err == nil {
+	a := filepath.Join("dir-a", "Foo.ttf")
+	b := filepath.Join("dir-b", "Foo.ttf")
+	c := filepath.Join("dir-a", "Bar.ttf")
+	if err := CheckDestinationCollisions([]string{a, b}); err == nil {
 		t.Fatal("expected collision")
 	}
-	if err := CheckDestinationCollisions([]string{`C:\a\Foo.ttf`, `C:\a\Bar.ttf`}); err != nil {
+	if err := CheckDestinationCollisions([]string{a, c}); err != nil {
 		t.Fatal(err)
 	}
 }
