@@ -246,22 +246,6 @@ func resolveFontNameOrID(input string, repository *repo.Repository) string {
 	return input
 }
 
-// extractFontDisplayNameFromPath extracts the proper display name from a font file path
-// Uses font metadata (SFNT name table) for accurate font names, falls back to filename parsing
-func extractFontDisplayNameFromPath(fontPath string) string {
-	// Try to extract metadata from the font file first (most accurate)
-	if metadata, err := platform.ExtractFontMetadata(fontPath); err == nil {
-		if metadata.FamilyName != "" {
-			// Use FormatFontNameWithVariant to properly format the name with style
-			return shared.FormatFontNameWithVariant(metadata.FamilyName, metadata.StyleName)
-		}
-	}
-
-	// Fallback to filename parsing if metadata extraction fails
-	filename := filepath.Base(fontPath)
-	return shared.GetDisplayNameFromFilename(filename)
-}
-
 // extractFontFamilyNameFromPath extracts just the font family name (without variant) from a font file path
 // Uses font metadata (SFNT name table) for accurate font names, falls back to filename parsing
 func extractFontFamilyNameFromPath(fontPath string) string {

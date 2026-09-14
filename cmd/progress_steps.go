@@ -144,7 +144,6 @@ func OverallWorkPercent(itemIndex, itemCount int, u ProgressUpdate) float64 {
 		itemIndex = 0
 	}
 	if itemIndex >= itemCount {
-		itemIndex = itemCount - 1
 		return 100
 	}
 	frac := itemFrac(u)

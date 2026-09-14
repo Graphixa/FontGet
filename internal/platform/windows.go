@@ -434,9 +434,13 @@ func (m *windowsFontManager) removeFontFromRegistry(fontName string) error {
 func (m *windowsFontManager) openFontRegistryKey() (syscall.Handle, error) {
 	logger := logging.GetLogger()
 	var key syscall.Handle
-	ret, _, err := regCreateKeyEx.Call(
+	fontsKey, err := syscall.UTF16PtrFromString(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts`)
+	if err != nil {
+		return 0, fmt.Errorf("font registry path: %w", err)
+	}
+	ret, _, callErr := regCreateKeyEx.Call(
 		uintptr(HKEY_LOCAL_MACHINE),
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"))),
+		uintptr(unsafe.Pointer(fontsKey)),
 		0,
 		0,
 		0,
@@ -446,8 +450,8 @@ func (m *windowsFontManager) openFontRegistryKey() (syscall.Handle, error) {
 		0,
 	)
 	if ret != 0 {
-		logger.Error("Failed to open registry key: %v", err)
-		return 0, fmt.Errorf("failed to open registry key: %w", err)
+		logger.Error("Failed to open registry key: %v", callErr)
+		return 0, fmt.Errorf("failed to open registry key: %w", callErr)
 	}
 	logger.Debug("Registry key opened successfully")
 	return key, nil
