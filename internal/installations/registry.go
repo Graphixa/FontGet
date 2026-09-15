@@ -82,7 +82,7 @@ type Installation struct {
 }
 
 // Bump when the persisted JSON contract changes incompatibly.
-const schemaVersion = "1.0"
+const schemaVersion = "1.1"
 
 func normalizeFamilyGroups(in []FamilyGroup) []FamilyGroup {
 	if len(in) == 0 {
