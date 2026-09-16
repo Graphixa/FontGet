@@ -328,6 +328,19 @@ func updateRemovalStatus(status *RemovalStatus, result *RemoveResult) {
 	status.Failed += result.Failed
 }
 
+// removalExitAfterSummary returns a non-nil AlreadyPrinted error when any requested
+// removal failed or fonts were not found. Summary output is assumed already shown.
+func removalExitAfterSummary(failedCount, totalCount, notFoundCount int) error {
+	failedCount += notFoundCount
+	if failedCount <= 0 {
+		return nil
+	}
+	return shared.AlreadyPrinted(&shared.FontRemovalError{
+		FailedCount: failedCount,
+		TotalCount:  totalCount,
+	})
+}
+
 // findFontFilesForRemoval finds all font files matching the font name.
 // The bool is true when paths came from the installation registry (exact FontGet provenance).
 func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, scope platform.InstallationScope, repository *repo.Repository, installReg *installations.Registry, manifestProbe installations.ManifestFontIDProbe) ([]string, bool, error) {
@@ -676,9 +689,6 @@ func removeFont(
 	res := buildRemoveResult(removed, skipped, failed, details, errors)
 	if remErr != nil {
 		return res, remErr
-	}
-	if err := ctx.Err(); err != nil {
-		return res, err
 	}
 	return res, nil
 }
@@ -1230,7 +1240,7 @@ Use --scope to set removal location:
 		if len(scopes) == 1 && scopes[0] == platform.MachineScope {
 			if err := cmdutils.CheckElevation(cmd, fontManager, platform.MachineScope); err != nil {
 				if errors.Is(err, cmdutils.ErrElevationRequired) {
-					return nil // Already printed user-friendly message
+					return shared.AlreadyPrinted(err)
 				}
 				output.GetVerbose().Error("%v", err)
 				output.GetDebug().Error("checkElevation() failed: %v", err)
@@ -1288,7 +1298,7 @@ Use --scope to set removal location:
 				}
 			}
 			fmt.Println()
-			return nil // Already printed user-friendly message
+			return shared.AlreadyPrinted(fmt.Errorf("cannot remove protected system fonts"))
 		}
 		foundFonts = removableFonts
 
@@ -1762,7 +1772,7 @@ Use --scope to set removal location:
 					}, true)
 				}
 			}
-			return nil
+			return shared.AlreadyPrinted(&shared.FontNotFoundError{FontName: strings.Join(notFoundFonts, ", ")})
 		}
 
 		// For --all scope, require elevation upfront
@@ -1770,7 +1780,7 @@ Use --scope to set removal location:
 			// Check elevation first
 			if err := cmdutils.CheckElevation(cmd, fontManager, platform.MachineScope); err != nil {
 				if errors.Is(err, cmdutils.ErrElevationRequired) {
-					return nil // Already printed user-friendly message
+					return shared.AlreadyPrinted(err)
 				}
 				output.GetVerbose().Error("%v", err)
 				output.GetDebug().Error("checkElevation() failed for --scope all: %v", err)
@@ -1825,6 +1835,10 @@ Use --scope to set removal location:
 						output.GetDebug().State("Error removing font %s in %s: %v", fontInfo.SearchName, scopeLabelName, err)
 						if result != nil {
 							updateRemovalStatus(status, result)
+							// Tracking/lock failures may leave Failed==0 after a successful delete.
+							if result.Failed == 0 {
+								status.Failed++
+							}
 							// Show failed variants if available
 							_, _, failedFiles := processRemoveResult(result)
 							if len(failedFiles) > 0 {
@@ -1833,6 +1847,8 @@ Use --scope to set removal location:
 									output.GetDebug().State(" - %s", file)
 								}
 							}
+						} else {
+							status.Failed++
 						}
 						continue
 					}
@@ -1860,7 +1876,7 @@ Use --scope to set removal location:
 
 			GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
 				status.Removed, status.Skipped, status.Failed)
-			return nil
+			return removalExitAfterSummary(status.Failed, len(foundFonts)+len(notFoundFonts), len(notFoundFonts))
 		}
 
 		// Determine title based on scope
@@ -2844,9 +2860,7 @@ Use --scope to set removal location:
 			FailedLabel:  "Failed",
 		}, output.IsVerboseOutputEnabled())
 
-		// Don't return error for removal failures since we already show detailed status report
-		// This prevents duplicate error messages while maintaining proper exit codes
-		return nil
+		return removalExitAfterSummary(status.Failed, len(foundFonts)+len(notFoundFonts), len(notFoundFonts))
 	},
 }
 

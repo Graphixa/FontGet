@@ -288,3 +288,228 @@ func TestTrackingFailureStopsBeforeNextFile(t *testing.T) {
 		t.Fatal("must not install next file after tracking failure")
 	}
 }
+
+func TestInstallRetryPreservesRetainedInventory(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+
+	write := func(name, fam, style string) string {
+		p := filepath.Join(staging.Root, name)
+		if err := os.WriteFile(p, testutil.MinimalTTF(fam, style), 0644); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	pathA := write("Alpha-Regular.ttf", "Alpha", "Regular")
+	pathB := write("Beta-Regular.ttf", "Beta", "Regular")
+	pathC := write("Gamma-Regular.ttf", "Gamma", "Regular")
+	expected := []string{"Alpha-Regular.ttf", "Beta-Regular.ttf", "Gamma-Regular.ttf"}
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	fm1 := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel1}
+	track1 := newInstallTracker("test.retry", nil, platform.UserScope, fontDir, expected)
+	_, _, _, _, _, _, _, err = installDownloadedFonts(ctx1, []string{pathA, pathB, pathC}, fm1, platform.UserScope, fontDir, false, nil, nil, track1)
+	if err == nil {
+		t.Fatal("expected cancel after A")
+	}
+
+	// Restage B/C (A already installed; staging copies are consumed).
+	pathB = write("Beta-Regular.ttf", "Beta", "Regular")
+	pathC = write("Gamma-Regular.ttf", "Gamma", "Regular")
+	pathA2 := write("Alpha-Regular.ttf", "Alpha", "Regular")
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	fm2 := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel2}
+	track2 := newInstallTracker("test.retry", nil, platform.UserScope, fontDir, expected)
+	_, skipped, _, _, _, _, _, err := installDownloadedFonts(ctx2, []string{pathA2, pathB, pathC}, fm2, platform.UserScope, fontDir, false, nil, nil, track2)
+	if err == nil {
+		t.Fatal("expected cancel after B")
+	}
+	if skipped != 1 {
+		t.Fatalf("expected skip A, got skipped=%d", skipped)
+	}
+
+	reg, loadErr := installations.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	inst := reg.FindByFontID("test.retry")
+	if inst == nil || !inst.IsIncomplete() {
+		t.Fatalf("expected incomplete record: %+v", inst)
+	}
+	bases := inst.BasenamesForDir(fontDir)
+	have := map[string]bool{}
+	for _, b := range bases {
+		have[strings.ToLower(b)] = true
+	}
+	if !have["alpha-regular.ttf"] || !have["beta-regular.ttf"] {
+		t.Fatalf("A and B must remain tracked, got %#v", bases)
+	}
+	if have["gamma-regular.ttf"] {
+		t.Fatal("C must not be tracked yet")
+	}
+	if len(inst.Remaining) != 1 || !strings.EqualFold(inst.Remaining[0], "Gamma-Regular.ttf") {
+		t.Fatalf("C must remain outstanding: %#v", inst.Remaining)
+	}
+
+	removed, _, _, _, _, remErr := removeFontFiles(RemoveFontFilesParams{
+		Ctx:           context.Background(),
+		MatchingFonts: bases,
+		FontManager:   &removeTrackingFM{dir: fontDir},
+		Scope:         platform.UserScope,
+		FontDir:       fontDir,
+		FontID:        "test.retry",
+	})
+	if remErr != nil {
+		t.Fatal(remErr)
+	}
+	if removed != 2 {
+		t.Fatalf("removal must remove A and B, got %d", removed)
+	}
+	reg, _ = installations.Load()
+	if reg.FindByFontID("test.retry") != nil {
+		t.Fatal("package record must be cleared after full removal")
+	}
+}
+
+func TestInstallRetryReconcilesExternallyDeletedTrackedFile(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	a := filepath.Join(fontDir, "Alpha-Regular.ttf")
+	b := filepath.Join(fontDir, "Beta-Regular.ttf")
+	if err := os.WriteFile(a, testutil.MinimalTTF("Alpha", "Regular"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(b, testutil.MinimalTTF("Beta", "Regular"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installations.UpsertInstallation(installations.UpsertParams{
+		FontID: "test.ext",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: a, SFNT: installations.SFNTSnapshot{Family: "Alpha", Style: "Regular"}},
+			{Path: b, SFNT: installations.SFNTSnapshot{Family: "Beta", Style: "Regular"}},
+		},
+		Status:    installations.StatusIncompleteInstall,
+		Remaining: []string{"Gamma-Regular.ttf"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(a); err != nil {
+		t.Fatal(err)
+	}
+
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+	pathA := filepath.Join(staging.Root, "Alpha-Regular.ttf")
+	pathB := filepath.Join(staging.Root, "Beta-Regular.ttf")
+	pathC := filepath.Join(staging.Root, "Gamma-Regular.ttf")
+	for _, tc := range []struct {
+		path, fam, style string
+	}{
+		{pathA, "Alpha", "Regular"},
+		{pathB, "Beta", "Regular"},
+		{pathC, "Gamma", "Regular"},
+	} {
+		if err := os.WriteFile(tc.path, testutil.MinimalTTF(tc.fam, tc.style), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	fm := &copyFontManager{dir: fontDir}
+	track := newInstallTracker("test.ext", nil, platform.UserScope, fontDir, []string{"Alpha-Regular.ttf", "Beta-Regular.ttf", "Gamma-Regular.ttf"})
+	installed, skipped, failed, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB, pathC}, fm, platform.UserScope, fontDir, false, nil, nil, track)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed != 0 || installed != 2 || skipped != 1 {
+		t.Fatalf("want reinstall A + skip B + install C; installed=%d skipped=%d failed=%d", installed, skipped, failed)
+	}
+	reg, loadErr := installations.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	inst := reg.FindByFontID("test.ext")
+	if inst == nil || inst.IsIncomplete() {
+		t.Fatalf("expected complete install after retry: %+v", inst)
+	}
+	if len(inst.BasenamesForDir(fontDir)) != 3 {
+		t.Fatalf("expected A,B,C tracked: %#v", inst.BasenamesForDir(fontDir))
+	}
+}
+
+func TestInstallCancelOnFinalFileStillSucceeds(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	fm := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel}
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+	pathA := filepath.Join(staging.Root, "Only-Regular.ttf")
+	if err := os.WriteFile(pathA, testutil.MinimalTTF("Only", "Regular"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	track := newInstallTracker("test.last", nil, platform.UserScope, fontDir, []string{"Only-Regular.ttf"})
+	installed, _, _, _, _, _, _, err := installDownloadedFonts(ctx, []string{pathA}, fm, platform.UserScope, fontDir, false, nil, nil, track)
+	if err != nil {
+		t.Fatalf("late cancel after final file must not fail: %v", err)
+	}
+	if installed != 1 {
+		t.Fatalf("installed=%d", installed)
+	}
+	reg, _ := installations.Load()
+	inst := reg.FindByFontID("test.last")
+	if inst == nil || inst.IsIncomplete() {
+		t.Fatalf("expected complete record: %+v", inst)
+	}
+}
+
+func TestRemoveCancelOnFinalFileStillSucceeds(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	a := filepath.Join(fontDir, "Only-Regular.ttf")
+	if err := os.WriteFile(a, testutil.MinimalTTF("Only", "Regular"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installations.RecordInstallation(installations.RecordParams{
+		FontID: "test.rmlast",
+		Scope:  "user",
+		Files:  []installations.InstalledFontFile{{Path: a, SFNT: installations.SFNTSnapshot{Family: "Only", Style: "Regular"}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	fm := &removeCancelFM{
+		removeTrackingFM: &removeTrackingFM{dir: fontDir},
+		after:            cancel,
+	}
+	removed, _, _, _, _, err := removeFontFiles(RemoveFontFilesParams{
+		Ctx:           ctx,
+		MatchingFonts: []string{"Only-Regular.ttf"},
+		FontManager:   fm,
+		Scope:         platform.UserScope,
+		FontDir:       fontDir,
+		FontID:        "test.rmlast",
+	})
+	if err != nil {
+		t.Fatalf("late cancel after final file must not fail: %v", err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed=%d", removed)
+	}
+}

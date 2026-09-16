@@ -15,6 +15,7 @@ import (
 const (
 	HWND_BROADCAST     = 0xFFFF
 	HKEY_LOCAL_MACHINE = 0x80000002
+	KEY_QUERY_VALUE    = 0x0001
 	KEY_WRITE          = 0x20006
 	REG_SZ             = 1
 )
@@ -30,6 +31,8 @@ var (
 	removeFontResource = gdi32.NewProc("RemoveFontResourceW")
 	regCreateKeyEx     = advapi32.NewProc("RegCreateKeyExW")
 	regSetValueEx      = advapi32.NewProc("RegSetValueExW")
+	regQueryValueEx    = advapi32.NewProc("RegQueryValueExW")
+	regDeleteValue     = advapi32.NewProc("RegDeleteValueW")
 	regCloseKey        = advapi32.NewProc("RegCloseKey")
 	getDesktopWindow   = user32.NewProc("GetDesktopWindow")
 )

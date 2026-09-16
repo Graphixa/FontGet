@@ -232,3 +232,32 @@ func packageBasenamesFromRegistry(fontID, fontDir string) []string {
 	}
 	return dedupeBasenameList(out)
 }
+
+// reconcileTrackedPresent returns tracked Files under fontDir that still exist.
+// Confirmed missing files are dropped. Unexpected stat/read errors are returned.
+func reconcileTrackedPresent(fontID, fontDir string) ([]string, error) {
+	fontID = strings.TrimSpace(fontID)
+	if fontID == "" {
+		return nil, nil
+	}
+	reg, err := installations.Load()
+	if err != nil {
+		return nil, err
+	}
+	inst := reg.FindByFontID(fontID)
+	if inst == nil {
+		return nil, nil
+	}
+	var present []string
+	for _, base := range inst.BasenamesForDir(fontDir) {
+		full := filepath.Join(fontDir, base)
+		if _, err := os.Stat(full); err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, fmt.Errorf("reconcile tracked inventory: %s: %w", base, err)
+		}
+		present = append(present, base)
+	}
+	return dedupeBasenameList(present), nil
+}

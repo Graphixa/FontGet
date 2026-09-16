@@ -1061,6 +1061,14 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		return 0, 0, len(fontPaths), nil, []string{collErr.Error()}, 0, nil, collErr
 	}
 
+	if track != nil {
+		retained, recErr := reconcileTrackedPresent(track.fontID, fontDir)
+		if recErr != nil {
+			return 0, 0, 0, nil, []string{recErr.Error()}, 0, nil, recErr
+		}
+		present = retained
+	}
+
 	batchOpts := &platform.InstallFontOptions{SkipPostInstallCacheRefresh: true}
 
 	total := len(fontPaths)
@@ -1215,10 +1223,6 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		})
 	}
 
-	if err == nil && ctx.Err() != nil {
-		err = ctx.Err()
-	}
-
 	if installed > 0 || (err != nil && len(present) > 0) {
 		if onProgress != nil {
 			onProgress(ProgressUpdate{Phase: installStepFinalize, Kind: ProgressFlag, Done: 0, Total: 1})
@@ -1355,7 +1359,7 @@ func installFont(
 	}
 	track := newInstallTracker(fontID, fontFiles, installScope, fontDir, expected)
 
-		if force {
+	if force {
 		existing := packageBasenamesFromRegistry(fontID, fontDir)
 		if len(existing) > 0 {
 			if onProgress != nil {
