@@ -449,16 +449,12 @@ type RemoveFontFilesParams struct {
 
 // removeFontFiles removes font files one at a time (unregister + delete + track).
 // Cancellation finishes the current file, then stops before starting another.
+// Caller must hold installations.LockDestination for params.FontDir when mutating a real font directory.
 func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string, err error) {
 	ctx := params.Ctx
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	unlock, lockErr := installations.LockDestination(ctx, params.FontDir)
-	if lockErr != nil {
-		return 0, 0, len(params.MatchingFonts), nil, []string{lockErr.Error()}, lockErr
-	}
-	defer unlock()
 
 	opts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
 	total := len(params.MatchingFonts)
@@ -667,6 +663,15 @@ func removeFont(
 	if onProgress != nil {
 		onProgress(ProgressUpdate{Phase: removeStepScan, Kind: ProgressFlag, Done: 1, Total: 1})
 	}
+
+	unlock, lockErr := installations.LockDestination(ctx, fontDir)
+	if lockErr != nil {
+		result := buildRemoveResult(0, 0, 0, nil, []string{lockErr.Error()})
+		result.Status = StatusFailed
+		result.Message = "Failed to lock destination"
+		return result, lockErr
+	}
+	defer unlock()
 
 	// Remove font files
 	removed, skipped, failed, details, errors, remErr := removeFontFiles(RemoveFontFilesParams{
