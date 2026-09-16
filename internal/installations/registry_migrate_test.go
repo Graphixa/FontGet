@@ -27,7 +27,7 @@ func TestMigrateV1_0ToV1_1_renamesNerdFontIDs(t *testing.T) {
 			},
 		},
 	}
-	if err := migrateV1_0ToV1_1(reg); err != nil {
+	if err := applyFontIDRenames(reg, nerdFontsV1ToV2JSON); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := reg.Installations["nerd.cascadia-code"]; ok {
@@ -64,7 +64,7 @@ func TestMigrateV1_0ToV1_1_destinationExistsDropsFrom(t *testing.T) {
 			},
 		},
 	}
-	if err := migrateV1_0ToV1_1(reg); err != nil {
+	if err := applyFontIDRenames(reg, nerdFontsV1ToV2JSON); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := reg.Installations["nerd.cascadia-code"]; ok {

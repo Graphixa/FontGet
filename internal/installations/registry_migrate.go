@@ -32,7 +32,9 @@ func buildRegistryMigrations() []registryMigrationStep {
 		return []registryMigrationStep{
 			{from: "", to: "1.0"},
 			{from: "1", to: "1.0"},
-			{from: "1.0", to: "1.1", fn: migrateV1_0ToV1_1},
+			{from: "1.0", to: "1.1", fn: func(reg *Registry) error {
+				return applyFontIDRenames(reg, nerdFontsV1ToV2JSON)
+			}},
 		}
 	default:
 		panic(fmt.Sprintf("installations: schemaVersion %q has no migration definition — edit buildRegistryMigrations in registry_migrate.go", schemaVersion))
@@ -78,22 +80,14 @@ func CurrentRegistrySchemaVersion() string {
 	return schemaVersion
 }
 
-type fontIDRenameDoc struct {
-	Renames []fontIDRename `json:"renames"`
-}
-
-type fontIDRename struct {
-	From        string `json:"from"`
-	To          string `json:"to"`
-	CatalogName string `json:"catalog_name"`
-}
-
-func migrateV1_0ToV1_1(reg *Registry) error {
-	return applyFontIDRenames(reg, nerdFontsV1ToV2JSON)
-}
-
 func applyFontIDRenames(reg *Registry, raw []byte) error {
-	var doc fontIDRenameDoc
+	var doc struct {
+		Renames []struct {
+			From        string `json:"from"`
+			To          string `json:"to"`
+			CatalogName string `json:"catalog_name"`
+		} `json:"renames"`
+	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return fmt.Errorf("parse font id renames: %w", err)
 	}
@@ -111,7 +105,6 @@ func applyFontIDRenames(reg *Registry, raw []byte) error {
 			continue
 		}
 		if _, exists := reg.Installations[to]; exists {
-			// Destination already tracked — drop the legacy key.
 			delete(reg.Installations, from)
 			continue
 		}

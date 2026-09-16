@@ -342,15 +342,12 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 		}
 	}
 
-	isFontID := strings.Contains(strings.TrimSpace(fontName), ".") || (manifestProbe != nil && manifestProbe(fontName))
-
 	// Resolve Font ID to font name if needed (supports both Font IDs and font names)
 	searchName := resolveFontNameOrID(fontName, repository)
 	if searchName != fontName {
 		output.GetDebug().State("Resolved font name: %s -> %s", fontName, searchName)
 	}
 
-	// Find font files in the specified scope
 	output.GetDebug().State("Calling findFontFamilyFiles(%s, %s)", searchName, scope)
 	matchingFonts, walkErr := findFontFamilyFiles(searchName, fontManager, scope)
 	if walkErr != nil {
@@ -358,7 +355,6 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 	}
 	output.GetDebug().State("Found %d matching font file(s)", len(matchingFonts))
 
-	// If no direct matches, try repository search
 	if len(matchingFonts) == 0 && repository != nil {
 		output.GetDebug().State("No direct matches found, trying repository search for: %s", searchName)
 		results, err := repository.SearchFonts(searchName, "false")
@@ -376,7 +372,7 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 
 	// Font IDs must not delete another source's faces after base-name stripping
 	// (e.g. nerd.iosevka must not remove plain Fontsource Iosevka).
-	if isFontID && len(matchingFonts) > 0 {
+	if installations.ShouldConsultRegistryForRemoval(fontName, installReg, manifestProbe) && len(matchingFonts) > 0 {
 		fontDir := fontManager.GetFontDir(scope)
 		matchingFonts = filterBasenamesForFontID(matchingFonts, fontDir, fontName)
 		output.GetDebug().State("After Font ID SFNT filter: %d file(s) for %q", len(matchingFonts), fontName)
@@ -398,17 +394,8 @@ func sfntLooksLikeNerdFont(family string) bool {
 }
 
 // sfntFamilyAllowedForFontID rejects obvious cross-source collisions before catalog matching.
-// Nerd IDs require a Nerd-looking SFNT family; non-Nerd IDs must not take Nerd faces.
 func sfntFamilyAllowedForFontID(family, targetFontID string) bool {
-	nerdID := isNerdFontID(targetFontID)
-	nerdFace := sfntLooksLikeNerdFont(family)
-	if nerdID && !nerdFace {
-		return false
-	}
-	if !nerdID && nerdFace {
-		return false
-	}
-	return true
+	return isNerdFontID(targetFontID) == sfntLooksLikeNerdFont(family)
 }
 
 // filterBasenamesForFontID keeps only faces whose SFNT family classifies as targetFontID.
@@ -420,14 +407,15 @@ func filterBasenamesForFontID(basenames []string, fontDir, targetFontID string) 
 	}
 	out := make([]string, 0, len(basenames))
 	for _, base := range basenames {
-		path := filepath.Join(fontDir, base)
-		family := extractFontFamilyNameFromPath(path)
-		if !sfntFamilyAllowedForFontID(family, targetFontID) {
-			output.GetDebug().State("Font ID filter: skip %q family %q (source class mismatch for %q)", base, family, targetFontID)
-			continue
+		family := extractFontFamilyNameFromPath(filepath.Join(fontDir, base))
+		ok := false
+		if index == nil {
+			ok = sfntFamilyAllowedForFontID(family, targetFontID)
+		} else {
+			ok = checkFontMatchesFontID(family, targetFontID, index)
 		}
-		if index != nil && !checkFontMatchesFontID(family, targetFontID, index) {
-			output.GetDebug().State("Font ID filter: skip %q family %q (catalog match ≠ %q)", base, family, targetFontID)
+		if !ok {
+			output.GetDebug().State("Font ID filter: skip %q family %q for %q", base, family, targetFontID)
 			continue
 		}
 		out = append(out, base)
