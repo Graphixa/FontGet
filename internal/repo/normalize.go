@@ -1,4 +1,4 @@
-package normalize
+package repo
 
 import "strings"
 

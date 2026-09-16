@@ -1,35 +1,9 @@
 package cmdutils
 
 import (
-	"fmt"
-
 	"fontget/internal/output"
 	"fontget/internal/repo"
 )
-
-// GetRepository gets the font repository (standard caching/refresh policy in repo).
-// Returns standardized error handling for repository initialization.
-//
-// logger can be nil (for testing or when logging is not needed).
-//
-// NOTE: This function is tested via integration tests (see cmd/integration_test.go)
-// because it depends on package-level repo functions that are difficult to mock.
-func GetRepository(logger Logger) (*repo.Repository, error) {
-	output.GetVerbose().Info("Loading font repository")
-	output.GetDebug().State("Calling repo.GetRepository()")
-	r, err := repo.GetRepository()
-
-	if err != nil {
-		if logger != nil {
-			logger.Error("Failed to get repository: %v", err)
-		}
-		output.GetVerbose().Error("%v", err)
-		output.GetDebug().Error("repo.GetRepository() failed: %v", err)
-		return nil, fmt.Errorf("unable to load font repository: %w", err)
-	}
-
-	return r, nil
-}
 
 // MatchInstalledFontsToRepository matches installed fonts to repository entries.
 // This is reusable for list and export commands.

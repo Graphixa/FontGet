@@ -236,14 +236,14 @@ func (m *PreviewModel) View(width int) string {
 	// Make it look like fontget info with multiple sections
 	// Labels are colored, but content values use terminal default (no color)
 	cardContent := strings.Builder{}
-	cardContent.WriteString(previewStyles.CardLabel.Render("Name:") + " " + "Example Font")
-	cardContent.WriteString("\n")
-	cardContent.WriteString(previewStyles.CardLabel.Render("ID:") + " " + "example.font")
-	cardContent.WriteString("\n")
-	cardContent.WriteString("\n") // Empty line for spacing
-	cardContent.WriteString(previewStyles.CardLabel.Render("Category:") + " " + "Sans Serif")
-	cardContent.WriteString("\n")
-	cardContent.WriteString(previewStyles.CardLabel.Render("Tags:") + " " + "modern, clean")
+	cardContent.WriteString(previewStyles.CardLabel.Render("Name:"))
+	cardContent.WriteString(" Example Font\n")
+	cardContent.WriteString(previewStyles.CardLabel.Render("ID:"))
+	cardContent.WriteString(" example.font\n\n")
+	cardContent.WriteString(previewStyles.CardLabel.Render("Category:"))
+	cardContent.WriteString(" Sans Serif\n")
+	cardContent.WriteString(previewStyles.CardLabel.Render("Tags:"))
+	cardContent.WriteString(" modern, clean")
 
 	// Render card with preview theme's CardTitle style (not global ui.CardTitle)
 	cardWidth := width - 2

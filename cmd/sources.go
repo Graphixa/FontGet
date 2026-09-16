@@ -13,7 +13,6 @@ import (
 
 	"fontget/internal/components"
 	"fontget/internal/config"
-	"fontget/internal/functions"
 	"fontget/internal/output"
 	"fontget/internal/repo"
 	"fontget/internal/shared"
@@ -146,7 +145,7 @@ var sourcesInfoCmd = &cobra.Command{
 		sb.WriteString("\n")
 		if sourcesDir != "" {
 			sb.WriteString(ui.CardLabel.Render("Total Cache Size: "))
-			sb.WriteString(ui.Text.Render(formatFileSize(totalCacheSize)))
+			sb.WriteString(ui.Text.Render(shared.FormatFileSize(totalCacheSize)))
 			sb.WriteString("\n\n")
 		} else {
 			sb.WriteString("\n")
@@ -370,7 +369,7 @@ func runSourcesUpdateVerbose() error {
 	}
 
 	// Get enabled sources
-	enabledSources := functions.GetEnabledSourcesInOrder(manifest)
+	enabledSources := GetEnabledSourcesInOrder(manifest)
 	if len(enabledSources) == 0 {
 		return fmt.Errorf("no sources are enabled")
 	}
@@ -561,20 +560,6 @@ func isValidSourceFile(filePath string) bool {
 	return json.Unmarshal(data, &jsonData) == nil
 }
 
-// formatFileSize formats cache/directory sizes for sources output (KMGTPE). See shared.FormatFileSize for the narrower KB/MB helper used elsewhere.
-func formatFileSize(size int64) string {
-	const unit = 1024
-	if size < unit {
-		return fmt.Sprintf("%d B", size)
-	}
-	div, exp := int64(unit), 0
-	for n := size / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "KMGTPE"[exp])
-}
-
 func getDirSize(dir string) int64 {
 	var size int64
 	filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
@@ -666,7 +651,7 @@ If validation fails, run 'fontget sources update' to refresh the source files.`,
 				if isValidSourceFile(filePath) {
 					// Get file size for display
 					if info, err := os.Stat(filePath); err == nil {
-						size := formatFileSize(info.Size())
+						size := shared.FormatFileSize(info.Size())
 						fmt.Printf("  %s %s (%s) | %s\n",
 							ui.SuccessText.Render("✓"),
 							entry.Name(),

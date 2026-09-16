@@ -342,7 +342,8 @@ var BuiltInSourceNames = []string{
 }
 
 // mergeBuiltInSourcesFromDefaults inserts any missing built-in source rows from the current defaults
-// (enabled, URL, prefix, priority). Returns true if the manifest was modified.
+// and refreshes URL/filename/prefix/priority for existing built-ins (Enabled is preserved).
+// Returns true if the manifest was modified.
 func mergeBuiltInSourcesFromDefaults(m *Manifest) (bool, error) {
 	def, err := createDefaultManifest()
 	if err != nil {
@@ -353,10 +354,22 @@ func mergeBuiltInSourcesFromDefaults(m *Manifest) (bool, error) {
 	}
 	changed := false
 	for name, cfg := range def.Sources {
-		if _, exists := m.Sources[name]; !exists {
+		existing, exists := m.Sources[name]
+		if !exists {
 			m.Sources[name] = cfg
 			changed = true
+			continue
 		}
+		// CLI forbids editing built-in URL/prefix/priority; keep Enabled, sync the rest from this binary.
+		if existing.URL == cfg.URL && existing.Filename == cfg.Filename && existing.Prefix == cfg.Prefix && existing.Priority == cfg.Priority {
+			continue
+		}
+		existing.URL = cfg.URL
+		existing.Filename = cfg.Filename
+		existing.Prefix = cfg.Prefix
+		existing.Priority = cfg.Priority
+		m.Sources[name] = existing
+		changed = true
 	}
 	return changed, nil
 }

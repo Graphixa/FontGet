@@ -123,7 +123,7 @@ The AUR package builds FontGet from source. You need an [AUR helper](https://wik
 
 ## Build and Install from Source
 
-For instructions on building FontGet from source, see the [Build Guide](development/BUILD.md).
+For instructions on building FontGet from source, see the [Build Guide](development/build-guide.md).
 
 ### Prerequisites
 

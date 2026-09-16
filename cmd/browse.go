@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"fontget/internal/cmdutils"
+	"fontget/internal/output"
 	"fontget/internal/platform"
+	"fontget/internal/repo"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -29,9 +31,16 @@ Flags --scope (-s) and --force (-f) match fontget add (user/machine install scop
 			return err
 		}
 
-		r, err := cmdutils.GetRepository(GetLogger())
+		output.GetVerbose().Info("Loading font repository")
+		output.GetDebug().State("Calling repo.GetRepository()")
+		r, err := repo.GetRepository()
 		if err != nil {
-			return err
+			if lg := GetLogger(); lg != nil {
+				lg.Error("Failed to get repository: %v", err)
+			}
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %w", err)
 		}
 
 		fontManager, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })

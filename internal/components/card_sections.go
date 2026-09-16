@@ -6,8 +6,8 @@ import (
 
 	"fontget/internal/ui"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/cellbuf"
 )
 
 // CardInnerContentWidth is the display width available for card body text inside
@@ -69,7 +69,7 @@ func formatPlainSection(sec CardSection, inner int) []string {
 		rw = 1
 	}
 	valStyled := ui.Text.Render(sec.Value)
-	wrapped := cellbuf.Wrap(valStyled, rw, "")
+	wrapped := lipgloss.NewStyle().Width(rw).Render(valStyled)
 	parts := strings.Split(wrapped, "\n")
 	out := make([]string, 0, len(parts))
 	indent := strings.Repeat(" ", wPref)

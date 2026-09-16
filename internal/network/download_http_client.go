@@ -83,9 +83,7 @@ func ShouldRetryGoDownloadStatus(code int) bool {
 	switch code {
 	case http.StatusTooManyRequests: // 429
 		return true
-	case http.StatusBadGateway: // 502
-		return true
-	case http.StatusServiceUnavailable: // 503
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
 		return true
 	default:
 		return false

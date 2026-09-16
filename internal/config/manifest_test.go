@@ -72,7 +72,7 @@ func TestMergeBuiltInSourcesFromDefaults(t *testing.T) {
 		t.Fatalf("mergeBuiltInSourcesFromDefaults: %v", err)
 	}
 	if !changed {
-		t.Fatal("expected merge to report changes when built-ins are missing")
+		t.Fatal("expected merge to report changes when built-ins are missing or stale")
 	}
 	if len(m.Sources) != 6 {
 		t.Fatalf("len(Sources) = %d, want 6", len(m.Sources))
@@ -88,12 +88,22 @@ func TestMergeBuiltInSourcesFromDefaults(t *testing.T) {
 		}
 	}
 
-	// Existing entries must be untouched
-	if m.Sources["Google Fonts"].URL != "https://example.com/google.json" {
-		t.Errorf("Google Fonts URL was overwritten")
+	def, err := createDefaultManifest()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Built-in location fields refresh from defaults; Enabled is preserved.
+	if m.Sources["Google Fonts"].URL != def.Sources["Google Fonts"].URL {
+		t.Errorf("Google Fonts URL = %q want default %q", m.Sources["Google Fonts"].URL, def.Sources["Google Fonts"].URL)
 	}
 	if m.Sources["Nerd Fonts"].Enabled {
 		t.Errorf("Nerd Fonts Enabled should remain false")
+	}
+	if m.Sources["Nerd Fonts"].Filename != "nerd-fonts-v2.json" {
+		t.Errorf("Nerd Fonts Filename = %q want nerd-fonts-v2.json", m.Sources["Nerd Fonts"].Filename)
+	}
+	if m.Sources["Nerd Fonts"].URL != def.Sources["Nerd Fonts"].URL {
+		t.Errorf("Nerd Fonts URL = %q want default %q", m.Sources["Nerd Fonts"].URL, def.Sources["Nerd Fonts"].URL)
 	}
 
 	changedAgain, err := mergeBuiltInSourcesFromDefaults(m)

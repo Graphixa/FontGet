@@ -20,7 +20,7 @@
 | Doc | Description |
 |-----|----------------|
 | [Contributing](contributing.md) | How to contribute, build from source, run tests |
-| [Build](development/BUILD.md) | Build and release steps |
+| [Build](development/build-guide.md) | Build and release steps |
 | [Codebase](development/codebase.md) | High-level layout and where things live |
 | [Style guide](development/style-guide.md) | Theming, UI styles, theme config |
 | [Theming](development/theming.md) | Theme files, structure, and configuration |

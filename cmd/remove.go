@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -10,7 +11,6 @@ import (
 	"fontget/internal/cmdutils"
 	"fontget/internal/components"
 	"fontget/internal/installations"
-	"fontget/internal/normalize"
 	"fontget/internal/output"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
@@ -79,7 +79,7 @@ type RemoveResult struct {
 //
 // Returns the original name if no suffix pattern is found
 func extractBaseFontName(familyName string) string {
-	return normalize.BaseFamilyName(familyName)
+	return repo.BaseFamilyName(familyName)
 }
 
 // ProgressCallback is a function type for reporting progress during font finding
@@ -217,7 +217,7 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 
 // normalizeFontName normalizes a font name for comparison
 func normalizeFontName(name string) string {
-	return normalize.FontKey(name)
+	return repo.FontKey(name)
 }
 
 // resolveFontNameOrID resolves a Font ID to a font name, or returns the original if it's already a font name
@@ -244,22 +244,6 @@ func resolveFontNameOrID(input string, repository *repo.Repository) string {
 
 	// Font ID not found in repository, return original (will be handled as font name)
 	return input
-}
-
-// extractFontDisplayNameFromPath extracts the proper display name from a font file path
-// Uses font metadata (SFNT name table) for accurate font names, falls back to filename parsing
-func extractFontDisplayNameFromPath(fontPath string) string {
-	// Try to extract metadata from the font file first (most accurate)
-	if metadata, err := platform.ExtractFontMetadata(fontPath); err == nil {
-		if metadata.FamilyName != "" {
-			// Use FormatFontNameWithVariant to properly format the name with style
-			return shared.FormatFontNameWithVariant(metadata.FamilyName, metadata.StyleName)
-		}
-	}
-
-	// Fallback to filename parsing if metadata extraction fails
-	filename := filepath.Base(fontPath)
-	return shared.GetDisplayNameFromFilename(filename)
 }
 
 // extractFontFamilyNameFromPath extracts just the font family name (without variant) from a font file path
@@ -358,6 +342,8 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 		}
 	}
 
+	isFontID := strings.Contains(strings.TrimSpace(fontName), ".") || (manifestProbe != nil && manifestProbe(fontName))
+
 	// Resolve Font ID to font name if needed (supports both Font IDs and font names)
 	searchName := resolveFontNameOrID(fontName, repository)
 	if searchName != fontName {
@@ -388,6 +374,14 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 		}
 	}
 
+	// Font IDs must not delete another source's faces after base-name stripping
+	// (e.g. nerd.iosevka must not remove plain Fontsource Iosevka).
+	if isFontID && len(matchingFonts) > 0 {
+		fontDir := fontManager.GetFontDir(scope)
+		matchingFonts = filterBasenamesForFontID(matchingFonts, fontDir, fontName)
+		output.GetDebug().State("After Font ID SFNT filter: %d file(s) for %q", len(matchingFonts), fontName)
+	}
+
 	if len(matchingFonts) == 0 {
 		return nil, false, fmt.Errorf("font not found: %s", fontName)
 	}
@@ -395,72 +389,176 @@ func findFontFilesForRemoval(fontName string, fontManager platform.FontManager, 
 	return matchingFonts, false, nil
 }
 
+func isNerdFontID(fontID string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(fontID)), "nerd.")
+}
+
+func sfntLooksLikeNerdFont(family string) bool {
+	return strings.Contains(strings.ToLower(family), "nerd")
+}
+
+// sfntFamilyAllowedForFontID rejects obvious cross-source collisions before catalog matching.
+// Nerd IDs require a Nerd-looking SFNT family; non-Nerd IDs must not take Nerd faces.
+func sfntFamilyAllowedForFontID(family, targetFontID string) bool {
+	nerdID := isNerdFontID(targetFontID)
+	nerdFace := sfntLooksLikeNerdFont(family)
+	if nerdID && !nerdFace {
+		return false
+	}
+	if !nerdID && nerdFace {
+		return false
+	}
+	return true
+}
+
+// filterBasenamesForFontID keeps only faces whose SFNT family classifies as targetFontID.
+func filterBasenamesForFontID(basenames []string, fontDir, targetFontID string) []string {
+	index, indexErr := repo.BuildFontIndexForMatching()
+	if indexErr != nil {
+		output.GetDebug().State("Font ID filter: index unavailable (%v); using Nerd/non-Nerd SFNT gate only", indexErr)
+		index = nil
+	}
+	out := make([]string, 0, len(basenames))
+	for _, base := range basenames {
+		path := filepath.Join(fontDir, base)
+		family := extractFontFamilyNameFromPath(path)
+		if !sfntFamilyAllowedForFontID(family, targetFontID) {
+			output.GetDebug().State("Font ID filter: skip %q family %q (source class mismatch for %q)", base, family, targetFontID)
+			continue
+		}
+		if index != nil && !checkFontMatchesFontID(family, targetFontID, index) {
+			output.GetDebug().State("Font ID filter: skip %q family %q (catalog match ≠ %q)", base, family, targetFontID)
+			continue
+		}
+		out = append(out, base)
+	}
+	return out
+}
+
 // RemoveFontFilesParams contains parameters for removeFontFiles function
 type RemoveFontFilesParams struct {
+	Ctx                  context.Context
 	MatchingFonts        []string
 	FontManager          platform.FontManager
 	Scope                platform.InstallationScope
 	FontDir              string
+	FontID               string // catalog id when known (for incomplete tracking)
 	IsCriticalSystemFont func(string) bool
-	OnProgress           StepProgressFunc
+	OnProgress           ProgressFunc
 }
 
-// removeFontFiles removes font files from system
-func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string) {
-	batchOpts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
+// removeFontFiles removes font files one at a time (unregister + delete + track).
+// Cancellation finishes the current file, then stops before starting another.
+// Caller must hold installations.LockDestination for params.FontDir when mutating a real font directory.
+func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int, details []string, errors []string, err error) {
+	ctx := params.Ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
+	opts := &platform.RemoveFontOptions{SkipPostRemoveCacheRefresh: true}
 	total := len(params.MatchingFonts)
-	for i, matchingFont := range params.MatchingFonts {
-		if params.OnProgress != nil && total > 0 {
-			params.OnProgress(removeStepRemove, float64(i)/float64(total))
-		}
-		// Construct full font path for metadata extraction
-		fontPath := filepath.Join(params.FontDir, matchingFont)
+	left := append([]string(nil), params.MatchingFonts...)
+	track := strings.TrimSpace(params.FontID) != ""
 
-		// Check for protected system fonts - ALWAYS enforced
-		// Critical system fonts should never be removable for system stability
+	for i, matchingFont := range params.MatchingFonts {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+			if track {
+				_ = persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, errors)
+			}
+			break
+		}
+		if params.OnProgress != nil && total > 0 {
+			params.OnProgress(ProgressUpdate{
+				Phase: removeStepRemove,
+				Kind:  ProgressCount,
+				Done:  float64(i),
+				Total: float64(total),
+			})
+		}
+		fontPath := filepath.Join(params.FontDir, matchingFont)
+		display := shared.GetDisplayNameFromFilename(matchingFont)
+
 		if params.IsCriticalSystemFont != nil && params.IsCriticalSystemFont(matchingFont) {
 			skipped++
-			fontDisplayName := extractFontDisplayNameFromPath(fontPath)
-			details = append(details, fontDisplayName+" (Skipped - Protected system font)")
+			details = append(details, display+" (Skipped - Protected system font)")
+			left = removeBasename(left, matchingFont)
 			continue
 		}
-
-		fontDisplayName := extractFontDisplayNameFromPath(fontPath)
-
-		// Remove font
-		output.GetDebug().State("Calling fontManager.RemoveFont(%s, %s)", matchingFont, params.Scope)
-		err := params.FontManager.RemoveFont(matchingFont, params.Scope, batchOpts)
-
-		if err != nil {
-			// Actual removal failure (cache flush is handled once after the batch)
-			failed++
-			var errorMsg string
-			errStr := err.Error()
-			if containsAny(errStr, []string{"in use", "access denied", "permission"}) {
-				errorMsg = "Font is in use or access denied"
-			} else {
-				errorMsg = "Failed to remove existing font"
+		if _, statErr := os.Stat(fontPath); os.IsNotExist(statErr) {
+			removed++
+			details = append(details, display+" (already gone)")
+			output.GetDebug().State("Font file already absent, counting as removed: %s", matchingFont)
+			left = removeBasename(left, matchingFont)
+			if track {
+				if trackErr := persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, nil); trackErr != nil {
+					err = fmt.Errorf("removal tracking failed: %w", trackErr)
+					errors = append(errors, err.Error())
+					break
+				}
 			}
-			errors = append(errors, errorMsg)
-			details = append(details, fontDisplayName+" (Failed)")
-			output.GetDebug().Error("fontManager.RemoveFont() failed for %s: %v", matchingFont, err)
 			continue
 		}
 
-		output.GetDebug().State("Successfully removed font: %s", fontDisplayName)
+		output.GetDebug().State("Removing font: %s (%s)", matchingFont, params.Scope)
+		if remErr := params.FontManager.RemoveFont(matchingFont, params.Scope, opts); remErr != nil {
+			if strings.Contains(remErr.Error(), "font not found") || strings.Contains(remErr.Error(), "cannot find the file") {
+				removed++
+				details = append(details, display+" (already gone)")
+				left = removeBasename(left, matchingFont)
+				if track {
+					if trackErr := persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, nil); trackErr != nil {
+						err = fmt.Errorf("removal tracking failed: %w", trackErr)
+						errors = append(errors, err.Error())
+						break
+					}
+				}
+				continue
+			}
+			failed++
+			errStr := remErr.Error()
+			if containsAny(errStr, []string{"in use", "access denied", "permission", "used by another"}) {
+				errors = append(errors, "Font is in use or access denied")
+			} else if strings.Contains(strings.ToLower(errStr), "restore registration") {
+				errors = append(errors, "Failed to delete font and restore registration")
+			} else {
+				errors = append(errors, "Failed to remove existing font")
+			}
+			details = append(details, display+" (Failed)")
+			output.GetDebug().Error("RemoveFont failed for %s: %v", matchingFont, remErr)
+			err = remErr
+			if track {
+				_ = persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, errors)
+			}
+			break
+		}
+
 		removed++
-		details = append(details, fontDisplayName)
+		details = append(details, display)
+		left = removeBasename(left, matchingFont)
+		output.GetDebug().State("Successfully removed font: %s", display)
+		if track {
+			if trackErr := persistRemoveState(params.FontID, string(params.Scope), params.FontDir, left, left, nil); trackErr != nil {
+				err = fmt.Errorf("removal tracking failed: %w", trackErr)
+				errors = append(errors, err.Error())
+				break
+			}
+		}
 	}
 
 	if params.OnProgress != nil {
-		params.OnProgress(removeStepRemove, 1)
+		params.OnProgress(ProgressUpdate{
+			Phase: removeStepRemove,
+			Kind:  ProgressCount,
+			Done:  float64(total),
+			Total: float64(max(total, 1)),
+		})
 	}
 
-	// Single cache refresh / font-change notification after all removals (avoids pkill fontd / fc-cache / WM_FONTCHANGE per file)
 	if removed > 0 {
 		if params.OnProgress != nil {
-			params.OnProgress(removeStepFinalize, 0)
+			params.OnProgress(ProgressUpdate{Phase: removeStepFinalize, Kind: ProgressFlag, Done: 0, Total: 1})
 		}
 		if flushErr := params.FontManager.FlushFontCache(params.Scope); flushErr != nil {
 			errStr := strings.ToLower(flushErr.Error())
@@ -473,11 +571,17 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 			}
 		}
 		if params.OnProgress != nil {
-			params.OnProgress(removeStepFinalize, 1)
+			params.OnProgress(ProgressUpdate{Phase: removeStepFinalize, Kind: ProgressFlag, Done: 1, Total: 1})
 		}
 	}
 
-	return removed, skipped, failed, details, errors
+	if track && err == nil && failed == 0 && len(left) == 0 {
+		if rmErr := installations.RemoveInstallation(params.FontID); rmErr != nil {
+			output.GetDebug().Error("remove installation registry entry: %v", rmErr)
+		}
+	}
+
+	return removed, skipped, failed, details, errors, err
 }
 
 // buildRemoveResult builds RemoveResult from removal outcomes
@@ -522,6 +626,7 @@ func buildRemoveResult(removed, skipped, failed int, details []string, errors []
 //   - RemoveResult: Contains removed/skipped/failed counts and details
 //   - error: Removal error if the operation fails
 func removeFont(
+	ctx context.Context,
 	fontName string,
 	fontManager platform.FontManager,
 	scope platform.InstallationScope,
@@ -529,11 +634,17 @@ func removeFont(
 	repository *repo.Repository,
 	installReg *installations.Registry,
 	manifestProbe installations.ManifestFontIDProbe,
-	onProgress StepProgressFunc,
+	onProgress ProgressFunc,
 ) (*RemoveResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	// Find font files for removal
 	if onProgress != nil {
-		onProgress(removeStepScan, 0)
+		onProgress(ProgressUpdate{Phase: removeStepScan, Kind: ProgressFlag, Done: 0, Total: 1})
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	matchingFonts, usedRegistry, err := findFontFilesForRemoval(fontName, fontManager, scope, repository, installReg, manifestProbe)
 	if err != nil {
@@ -543,25 +654,43 @@ func removeFont(
 		result.Message = "Font not found"
 		return result, err
 	}
+	fontID := ""
+	if usedRegistry {
+		fontID = fontName
+	} else if installations.ShouldConsultRegistryForRemoval(fontName, installReg, manifestProbe) {
+		fontID = fontName
+	}
 	if onProgress != nil {
-		onProgress(removeStepScan, 1)
+		onProgress(ProgressUpdate{Phase: removeStepScan, Kind: ProgressFlag, Done: 1, Total: 1})
 	}
 
+	unlock, lockErr := installations.LockDestination(ctx, fontDir)
+	if lockErr != nil {
+		result := buildRemoveResult(0, 0, 0, nil, []string{lockErr.Error()})
+		result.Status = StatusFailed
+		result.Message = "Failed to lock destination"
+		return result, lockErr
+	}
+	defer unlock()
+
 	// Remove font files
-	removed, skipped, failed, details, errors := removeFontFiles(RemoveFontFilesParams{
+	removed, skipped, failed, details, errors, remErr := removeFontFiles(RemoveFontFilesParams{
+		Ctx:                  ctx,
 		MatchingFonts:        matchingFonts,
 		FontManager:          fontManager,
 		Scope:                scope,
 		FontDir:              fontDir,
+		FontID:               fontID,
 		IsCriticalSystemFont: shared.IsCriticalSystemFont,
 		OnProgress:           onProgress,
 	})
 
 	res := buildRemoveResult(removed, skipped, failed, details, errors)
-	if usedRegistry && failed == 0 && removed == len(matchingFonts) && removed > 0 {
-		if rmErr := installations.RemoveInstallation(fontName); rmErr != nil {
-			output.GetDebug().Error("remove installation registry entry: %v", rmErr)
-		}
+	if remErr != nil {
+		return res, remErr
+	}
+	if err := ctx.Err(); err != nil {
+		return res, err
 	}
 	return res, nil
 }
@@ -576,6 +705,9 @@ type FontInfo struct {
 // This is more accurate than checking metadata strings and works for all Font ID variants.
 // Returns true if the font's Font ID matches the target Font ID.
 func checkFontMatchesFontID(fontFamilyName string, targetFontID string, fontIndex repo.FontIndex) bool {
+	if !sfntFamilyAllowedForFontID(fontFamilyName, targetFontID) {
+		return false
+	}
 	return repo.MatchFontFamilyToFontID(fontFamilyName, targetFontID, fontIndex)
 }
 
@@ -1436,13 +1568,7 @@ Use --scope to set removal location:
 
 									// Render table with priority configuration
 									tableConfig := components.TableConfig{
-										Columns: []components.ColumnConfig{
-											{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-											{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-											{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-											{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-											{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-										},
+										Columns: components.DefaultFontTableColumns(),
 										Rows:     tableRows,
 										Width:    0,   // Auto-detect terminal width
 										MaxWidth: 120, // Maximum width
@@ -1588,13 +1714,7 @@ Use --scope to set removal location:
 
 									// Render table with priority configuration
 									tableConfig := components.TableConfig{
-										Columns: []components.ColumnConfig{
-											{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-											{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-											{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-											{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-											{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-										},
+										Columns: components.DefaultFontTableColumns(),
 										Rows:     tableRows,
 										Width:    0,   // Auto-detect terminal width
 										MaxWidth: 120, // Maximum width
@@ -1699,6 +1819,7 @@ Use --scope to set removal location:
 
 					output.GetDebug().State("Calling removeFont(%s, %s, %s)", fontInfo.SearchName, scopeLabelName, fontDir)
 					result, err := removeFont(
+						cmd.Context(),
 						fontInfo.SearchName,
 						fontManager,
 						scopeType,
@@ -1710,6 +1831,9 @@ Use --scope to set removal location:
 					)
 
 					if err != nil {
+						if IsCancelErr(err) {
+							return FinishRemovalCancel([]string{fontInfo.SearchName}, scopeFlag)
+						}
 						output.GetDebug().State("Error removing font %s in %s: %v", fontInfo.SearchName, scopeLabelName, err)
 						if result != nil {
 							updateRemovalStatus(status, result)
@@ -1760,6 +1884,13 @@ Use --scope to set removal location:
 			title = OpRemovingFontsBothScopes
 		}
 
+		opCtx := cmd.Context()
+		if opCtx == nil {
+			opCtx = context.Background()
+		}
+		var incompleteCancelIDs []string
+		cancelledRemove := false
+
 		// Run unified progress for font removal (TUI mode)
 		fontsInOppositeScope := []string{} // Track fonts that still exist in opposite scope after removal
 		progressErr := components.RunProgressBar(
@@ -1768,10 +1899,25 @@ Use --scope to set removal location:
 			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
+				ctx, cancel := context.WithCancel(opCtx)
+				defer cancel()
+				go func() {
+					select {
+					case <-cancelChan:
+						cancel()
+					case <-ctx.Done():
+					}
+				}()
+
 				// Process items based on scope mode
 				if len(scopes) > 1 {
 					// "all" scope - process each font+scope combination individually
 					for _, item := range fontScopeItems {
+						if err := ctx.Err(); err != nil {
+							cancelledRemove = true
+							incompleteCancelIDs = append(incompleteCancelIDs, item.FontName)
+							return shared.ErrOperationCancelled
+						}
 						// Send initial "in_progress" message
 						send(components.ItemUpdateMsg{
 							Index:   item.ItemIndex,
@@ -1783,27 +1929,22 @@ Use --scope to set removal location:
 						GetLogger().Info("Processing font: %s in %s scope", item.FontName, item.ScopeLabel)
 
 						fontDir := fontManager.GetFontDir(item.ScopeType)
-						lastStep := ""
-						lastBucket := -1
-						onProgress := func(step string, stepPct float64) {
-							bucket := int(shared.Clamp01(stepPct) * 20.0)
-							if step == lastStep && bucket == lastBucket {
+						var th progressThrottle
+						onProgress := func(u ProgressUpdate) {
+							pct := OverallWorkPercent(item.ItemIndex, len(operationItems), u)
+							if !th.ShouldSend(u, pct) {
 								return
 							}
-							lastStep = step
-							lastBucket = bucket
-
 							send(components.ItemUpdateMsg{
 								Index:   item.ItemIndex,
 								Name:    item.ProperName,
 								Status:  "in_progress",
-								Message: step + "...",
+								Message: FormatProgressActivity(u.Phase, u.Detail),
 							})
-							send(components.ProgressUpdateMsg{
-								Percent: OverallRemovePercent(item.ItemIndex, len(operationItems), step, stepPct),
-							})
+							send(components.ProgressUpdateMsg{Percent: pct})
 						}
 						result, err := removeFont(
+							ctx,
 							item.FontName,
 							fontManager,
 							item.ScopeType,
@@ -1813,6 +1954,14 @@ Use --scope to set removal location:
 							manifestProbe,
 							onProgress,
 						)
+						if IsCancelErr(err) {
+							cancelledRemove = true
+							incompleteCancelIDs = append(incompleteCancelIDs, item.FontName)
+							if result != nil {
+								updateRemovalStatus(status, result)
+							}
+							return shared.ErrOperationCancelled
+						}
 
 						// Collect variants for display (only in verbose mode)
 						scopeVariants := []string{}
@@ -1871,11 +2020,16 @@ Use --scope to set removal location:
 						})
 
 						// Update progress percentage
-						send(components.ProgressUpdateMsg{Percent: OverallRemovePercent(item.ItemIndex, len(operationItems), removeStepCompleted, 1)})
+						send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(item.ItemIndex, len(operationItems), ProgressUpdate{Phase: removeStepCompleted})})
 					}
 				} else {
 					// Single scope - process each found font
 					for i, fontInfo := range foundFonts {
+						if err := ctx.Err(); err != nil {
+							cancelledRemove = true
+							incompleteCancelIDs = append(incompleteCancelIDs, fontInfo.SearchName)
+							return shared.ErrOperationCancelled
+						}
 						// Use proper font name from pre-extracted map
 						properFontName := fontInfo.ProperName
 						fontName := fontInfo.SearchName
@@ -2011,16 +2165,17 @@ Use --scope to set removal location:
 
 							// Process removal from user scope
 							fontDir := fontManager.GetFontDir(platform.UserScope)
-							onProgress := func(step string, stepPct float64) {
+							onProgress := func(u ProgressUpdate) {
 								// In this special mode we already drive percent via scan math; only update the step label.
 								send(components.ItemUpdateMsg{
 									Index:   i,
 									Name:    properFontName,
 									Status:  "in_progress",
-									Message: step + "...",
+									Message: FormatProgressActivity(u.Phase, u.Detail),
 								})
 							}
 							result, err := removeFont(
+								ctx,
 								fontName,
 								fontManager,
 								platform.UserScope,
@@ -2032,6 +2187,14 @@ Use --scope to set removal location:
 							)
 
 							if err != nil {
+								if IsCancelErr(err) {
+									cancelledRemove = true
+									incompleteCancelIDs = append(incompleteCancelIDs, fontName)
+									if result != nil {
+										updateRemovalStatus(status, result)
+									}
+									return shared.ErrOperationCancelled
+								}
 								if strings.Contains(err.Error(), "not found") {
 									// Font not found - mark as failed and continue
 									fontStatus = StatusFailed
@@ -2123,26 +2286,22 @@ Use --scope to set removal location:
 							fontDir := fontManager.GetFontDir(scopeType)
 
 							// Remove the font using the removeFont helper (it will handle Font ID resolution internally)
-							lastStep := ""
-							lastBucket := -1
-							onProgress := func(step string, stepPct float64) {
-								bucket := int(shared.Clamp01(stepPct) * 20.0)
-								if step == lastStep && bucket == lastBucket {
+							var th progressThrottle
+							onProgress := func(u ProgressUpdate) {
+								pct := OverallWorkPercent(i, len(foundFonts), u)
+								if !th.ShouldSend(u, pct) {
 									return
 								}
-								lastStep = step
-								lastBucket = bucket
 								send(components.ItemUpdateMsg{
 									Index:   i,
 									Name:    properFontName,
 									Status:  "in_progress",
-									Message: step + "...",
+									Message: FormatProgressActivity(u.Phase, u.Detail),
 								})
-								send(components.ProgressUpdateMsg{
-									Percent: OverallRemovePercent(i, len(foundFonts), step, stepPct),
-								})
+								send(components.ProgressUpdateMsg{Percent: pct})
 							}
 							result, err := removeFont(
+								ctx,
 								fontName,
 								fontManager,
 								scopeType,
@@ -2154,6 +2313,14 @@ Use --scope to set removal location:
 							)
 
 							if err != nil {
+								if IsCancelErr(err) {
+									cancelledRemove = true
+									incompleteCancelIDs = append(incompleteCancelIDs, fontName)
+									if result != nil {
+										updateRemovalStatus(status, result)
+									}
+									return shared.ErrOperationCancelled
+								}
 								if strings.Contains(err.Error(), "not found") {
 									fontStatus = StatusFailed
 									statusMessage = "Font not found"
@@ -2261,13 +2428,15 @@ Use --scope to set removal location:
 
 		if progressErr != nil {
 			// Check if it was a cancellation
-			if errors.Is(progressErr, shared.ErrOperationCancelled) {
-				fmt.Printf("%s\n", ui.WarningText.Render("Removal cancelled."))
-				fmt.Println()
-				return nil // Don't return error for cancellation
+			if errors.Is(progressErr, shared.ErrOperationCancelled) || cancelledRemove {
+				if err := FinishRemovalCancel(incompleteCancelIDs, scopeFlag); err != nil {
+					return err
+				}
+				// Cancellation after all requested work finished — fall through to completion reporting.
+			} else {
+				GetLogger().Error("Failed to process font removal: %v", progressErr)
+				return progressErr
 			}
-			GetLogger().Error("Failed to process font removal: %v", progressErr)
-			return progressErr
 		}
 
 		GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
@@ -2469,13 +2638,7 @@ Use --scope to set removal location:
 
 							// Render table with priority configuration
 							tableConfig := components.TableConfig{
-								Columns: []components.ColumnConfig{
-									{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-									{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-									{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-									{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-									{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-								},
+								Columns: components.DefaultFontTableColumns(),
 								Rows:     tableRows,
 								Width:    0,   // Auto-detect terminal width
 								MaxWidth: 120, // Maximum width
@@ -2622,13 +2785,7 @@ Use --scope to set removal location:
 
 							// Render table with priority configuration
 							tableConfig := components.TableConfig{
-								Columns: []components.ColumnConfig{
-									{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-									{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-									{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-									{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-									{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-								},
+								Columns: components.DefaultFontTableColumns(),
 								Rows:     tableRows,
 								Width:    0,   // Auto-detect terminal width
 								MaxWidth: 120, // Maximum width
