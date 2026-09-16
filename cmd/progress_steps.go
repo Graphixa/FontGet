@@ -12,8 +12,8 @@ import (
 type ProgressKind int
 
 const (
-	ProgressBytes ProgressKind = iota // download
-	ProgressCount                     // extract / install / remove / backup file counts
+	ProgressBytes ProgressKind = iota // single-stream bytes (known size only for bar math)
+	ProgressCount                     // work units / file counts
 	ProgressFlag                      // precheck / finalize (0 → 1)
 )
 
@@ -23,7 +23,7 @@ type ProgressUpdate struct {
 	Detail string
 	Kind   ProgressKind
 	Done   float64
-	Total  float64 // 0 = unknown for this pulse
+	Total  float64 // 0 = unknown; never treat unknown bytes as complete
 }
 
 // ProgressFunc reports progress. Implementations must be lightweight.
@@ -45,14 +45,35 @@ const (
 )
 
 // Reserved bar segments for a single item (monotonic; install/remove owns most of the bar).
+// Download + extract share one prep band so multi-archive packages never jump backwards.
 const (
 	segPrecheckEnd   = 0.02
-	segDownloadEnd   = 0.25
-	segExtractEnd    = 0.35
+	segPrepEnd       = 0.35 // download+extract preparation
 	segFilesEnd      = 0.98
 	segFinalizeEnd   = 1.00
-	segRemoveScanEnd = 0.35 // scan uses the whole prelude band
+	segRemoveScanEnd = 0.35
+
+	prepDownloadWeight = 0.75
+	prepExtractWeight  = 0.25
+
+	// Aliases: prep band replaced the old split download/extract segments.
+	segDownloadEnd = segPrepEnd
+	segExtractEnd  = segPrepEnd
 )
+
+// DownloadFromSourceMessage is the only user-facing label during download/extract prep.
+func DownloadFromSourceMessage(sourceName string) string {
+	sourceName = strings.TrimSpace(sourceName)
+	if sourceName == "" {
+		return installStepDownload + "..."
+	}
+	return "Downloading from " + sourceName
+}
+
+// isInstallPrepPhase reports download or extract (shared prep band).
+func isInstallPrepPhase(phase string) bool {
+	return phase == installStepDownload || phase == installStepExtract
+}
 
 // FormatProgressActivity builds the status line for progress UIs.
 func FormatProgressActivity(phase, detail string) string {
@@ -79,19 +100,38 @@ func CountDetail(i, n int, name string) string {
 	return fmt.Sprintf("%d/%d %s", i, n, filepath.Base(name))
 }
 
+// prepDownloadUnitFrac is progress within one download/extract unit during download [0, prepDownloadWeight].
+// Unknown Content-Length returns 0 (activity via Detail only); never invents completion.
+func prepDownloadUnitFrac(doneBytes, totalBytes int64) float64 {
+	if totalBytes <= 0 {
+		return 0
+	}
+	return prepDownloadWeight * shared.Clamp01(float64(doneBytes)/float64(totalBytes))
+}
+
+// prepExtractUnitFrac is progress within one unit during extraction [prepDownloadWeight, 1].
+// Unknown totals hold at prepDownloadWeight until the unit succeeds.
+func prepExtractUnitFrac(done, total int) float64 {
+	if total <= 0 {
+		return prepDownloadWeight
+	}
+	return prepDownloadWeight + prepExtractWeight*shared.Clamp01(float64(done)/float64(total))
+}
+
 // phaseFrac returns progress within the active phase in [0,1].
 func phaseFrac(u ProgressUpdate) float64 {
 	switch u.Kind {
 	case ProgressFlag:
-		if u.Done >= 1 || (u.Total > 0 && u.Done >= u.Total) {
+		if u.Total > 0 {
+			return shared.Clamp01(u.Done / u.Total)
+		}
+		if u.Done >= 1 {
 			return 1
 		}
 		return shared.Clamp01(u.Done)
 	case ProgressBytes, ProgressCount:
 		if u.Total <= 0 {
-			if u.Done >= 1 {
-				return 1
-			}
+			// Unknown size: never treat bytes received as phase-complete.
 			return 0
 		}
 		return shared.Clamp01(u.Done / u.Total)
@@ -105,12 +145,10 @@ func segmentRange(phase string) (start, end float64) {
 	switch phase {
 	case installStepPrecheck:
 		return 0, segPrecheckEnd
-	case installStepDownload:
-		return segPrecheckEnd, segDownloadEnd
-	case installStepExtract:
-		return segDownloadEnd, segExtractEnd
+	case installStepDownload, installStepExtract:
+		return segPrecheckEnd, segPrepEnd
 	case installStepInstall, removeStepRemove:
-		return segExtractEnd, segFilesEnd
+		return segPrepEnd, segFilesEnd
 	case installStepFinalize:
 		return segFilesEnd, segFinalizeEnd
 	case removeStepScan:
@@ -118,7 +156,7 @@ func segmentRange(phase string) (start, end float64) {
 	case installStepCompleted, removeStepCompleted:
 		return 1, 1
 	default:
-		return segExtractEnd, segFilesEnd
+		return segPrepEnd, segFilesEnd
 	}
 }
 

@@ -715,8 +715,8 @@ Use --scope to set installation location:
 							return
 						}
 						msg := FormatProgressActivity(u.Phase, u.Detail)
-						if u.Phase == installStepDownload && u.Detail == "" {
-							msg = "Downloading from " + fontGroup.SourceName
+						if isInstallPrepPhase(u.Phase) || u.Phase == removeStepRemove {
+							msg = DownloadFromSourceMessage(fontGroup.SourceName)
 						}
 						send(components.ItemUpdateMsg{
 							Index:   itemIndex,
@@ -960,26 +960,56 @@ func archiveSourcePrefixFromFontID(fontID string) string {
 	return strings.ToLower(fontID[:i])
 }
 
-// downloadFontVariants downloads all variants of a font family
+// downloadFontVariants downloads all variants of a font family.
+// Progress is work-unit prep across downloads: (completed + unitFrac) / N inside the shared
+// download+extract band. Retries reuse the same unit share; progress is monotonic and only
+// advances to the next unit after successful download+extract validation.
 func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, staging *platform.OperationStaging, fontID string, archiveSourcePrefix string, downloadOpts *repo.DownloadFontOptions, onProgress ProgressFunc) ([]string, error) {
 	start := time.Now()
 	var allFontPaths []string
 
-	total := len(fontFiles)
+	n := len(fontFiles)
+	var highWater float64 // monotonic prep Done (work units)
+
+	emitPrep := func(phase, detail string, completed int, unitFrac float64) {
+		if onProgress == nil || n == 0 {
+			return
+		}
+		done := float64(completed) + shared.Clamp01(unitFrac)
+		if done > float64(n) {
+			done = float64(n)
+		}
+		if done < highWater {
+			done = highWater
+		} else {
+			highWater = done
+		}
+		onProgress(ProgressUpdate{
+			Phase:  phase,
+			Detail: detail,
+			Kind:   ProgressCount,
+			Done:   done,
+			Total:  float64(n),
+		})
+	}
+
 	for i, fontFile := range fontFiles {
 		if ctx != nil {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
 		}
-		if onProgress != nil && total > 0 {
-			onProgress(ProgressUpdate{
-				Phase: installStepDownload,
-				Kind:  ProgressCount,
-				Done:  float64(i),
-				Total: float64(total),
-			})
+		unitHigh := 0.0
+		bumpUnit := func(phase, detail string, unitFrac float64) {
+			if unitFrac < unitHigh {
+				unitFrac = unitHigh
+			} else {
+				unitHigh = unitFrac
+			}
+			emitPrep(phase, detail, i, unitFrac)
 		}
+		emitPrep(installStepDownload, "", i, 0)
+
 		opts := downloadOpts
 		if opts == nil {
 			opts = &repo.DownloadFontOptions{}
@@ -992,25 +1022,10 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 		opts.ArchiveFontID = fontID
 		if onProgress != nil {
 			opts.OnBytesDownloaded = func(doneBytes int64, totalBytes int64) {
-				onProgress(ProgressUpdate{
-					Phase: installStepDownload,
-					Kind:  ProgressBytes,
-					Done:  float64(doneBytes),
-					Total: float64(totalBytes),
-				})
+				bumpUnit(installStepDownload, "", prepDownloadUnitFrac(doneBytes, totalBytes))
 			}
 			opts.OnExtractProgress = func(done int, total int) {
-				t := float64(total)
-				if total <= 0 {
-					// Package-mode streams (e.g. nerd tar.xz) don't know M until EOF.
-					t = float64(done + 12)
-				}
-				onProgress(ProgressUpdate{
-					Phase: installStepExtract,
-					Kind:  ProgressCount,
-					Done:  float64(done),
-					Total: t,
-				})
+				bumpUnit(installStepExtract, "", prepExtractUnitFrac(done, total))
 			}
 		}
 
@@ -1025,15 +1040,16 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 			output.GetDebug().State("repo.DownloadAndExtractFont() failed for variant %s: %v", fontFile.Variant, err)
 			return nil, err
 		}
+		// Unit complete only after successful validation/extract.
+		emitPrep(installStepExtract, "", i+1, 0)
 		allFontPaths = append(allFontPaths, fontPaths...)
 		if len(fontPaths) > 1 {
 			output.GetDebug().State("Extracted %d file(s) from variant: %s", len(fontPaths), fontFile.Variant)
 		}
 	}
 
-	if onProgress != nil {
-		onProgress(ProgressUpdate{Phase: installStepDownload, Kind: ProgressBytes, Done: 1, Total: 0})
-		onProgress(ProgressUpdate{Phase: installStepExtract, Kind: ProgressCount, Done: 1, Total: 0})
+	if onProgress != nil && n > 0 {
+		emitPrep(installStepExtract, "", n, 0)
 	}
 	output.GetDebug().State("downloadFontVariants: files=%d extracted=%d total=%dms", len(fontFiles), len(allFontPaths), time.Since(start).Milliseconds())
 	return allFontPaths, nil
@@ -1337,7 +1353,7 @@ func installFont(
 	}
 	archivePrefix := archiveSourcePrefixFromFontID(fontID)
 	if onProgress != nil {
-		onProgress(ProgressUpdate{Phase: installStepDownload, Kind: ProgressBytes, Done: 0, Total: 1})
+		onProgress(ProgressUpdate{Phase: installStepDownload, Kind: ProgressCount, Done: 0, Total: float64(max(1, len(fontFiles)))})
 	}
 	allFontPaths, downloadErr := downloadFontVariants(ctx, fontFiles, staging, fontID, archivePrefix, downloadOpts, onProgress)
 	if downloadErr != nil {

@@ -13,10 +13,10 @@ import (
 // ErrRegistryValueAbsent means the Fonts registry value was already gone (idempotent OK).
 var ErrRegistryValueAbsent = errors.New("registry font value absent")
 
-// registryFontValue is a captured machine-scope Fonts registry entry.
+// registryFontValue is a captured machine-scope Fonts registry entry (raw bytes + type).
 type registryFontValue struct {
 	Name  string
-	Data  string
+	Raw   []byte
 	Type  uint32
 	Found bool
 }

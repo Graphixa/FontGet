@@ -25,10 +25,11 @@ import (
 // This is kept separate from OperationStatus for command-specific clarity and backward compatibility.
 // It provides clearer field names (Removed vs Success) for the remove command context.
 type RemovalStatus struct {
-	Removed int
-	Skipped int
-	Failed  int
-	Details []string
+	Removed  int
+	Skipped  int
+	Failed   int
+	HadError bool // true when any removeFont call returned a non-cancel error (incl. tracking/lock)
+	Details  []string
 }
 
 // Status constants for removal operations
@@ -328,12 +329,35 @@ func updateRemovalStatus(status *RemovalStatus, result *RemoveResult) {
 	status.Failed += result.Failed
 }
 
+// applyRemoveOutcome records file counts and marks HadError on any non-cancel operation error.
+func applyRemoveOutcome(status *RemovalStatus, result *RemoveResult, err error) {
+	if status == nil {
+		return
+	}
+	updateRemovalStatus(status, result)
+	if err != nil && !IsCancelErr(err) {
+		status.HadError = true
+	}
+}
+
 // removalExitAfterSummary returns a non-nil AlreadyPrinted error when any requested
 // removal failed or fonts were not found. Summary output is assumed already shown.
-func removalExitAfterSummary(failedCount, totalCount, notFoundCount int) error {
+func removalExitAfterSummary(status *RemovalStatus, totalCount, notFoundCount int) error {
+	failedCount := 0
+	hadError := false
+	if status != nil {
+		failedCount = status.Failed
+		hadError = status.HadError
+	}
 	failedCount += notFoundCount
+	if failedCount <= 0 && hadError {
+		failedCount = 1
+	}
 	if failedCount <= 0 {
 		return nil
+	}
+	if totalCount < failedCount {
+		totalCount = failedCount
 	}
 	return shared.AlreadyPrinted(&shared.FontRemovalError{
 		FailedCount: failedCount,
@@ -1833,28 +1857,18 @@ Use --scope to set removal location:
 							return FinishRemovalCancel([]string{fontInfo.SearchName}, scopeFlag)
 						}
 						output.GetDebug().State("Error removing font %s in %s: %v", fontInfo.SearchName, scopeLabelName, err)
-						if result != nil {
-							updateRemovalStatus(status, result)
-							// Tracking/lock failures may leave Failed==0 after a successful delete.
-							if result.Failed == 0 {
-								status.Failed++
+						applyRemoveOutcome(status, result, err)
+						_, _, failedFiles := processRemoveResult(result)
+						if len(failedFiles) > 0 {
+							output.GetDebug().State("Failed variants:")
+							for _, file := range failedFiles {
+								output.GetDebug().State(" - %s", file)
 							}
-							// Show failed variants if available
-							_, _, failedFiles := processRemoveResult(result)
-							if len(failedFiles) > 0 {
-								output.GetDebug().State("Failed variants:")
-								for _, file := range failedFiles {
-									output.GetDebug().State(" - %s", file)
-								}
-							}
-						} else {
-							status.Failed++
 						}
 						continue
 					}
 
-					// Update status
-					updateRemovalStatus(status, result)
+					applyRemoveOutcome(status, result, nil)
 
 					// Show detailed result information in debug mode
 					logRemoveResultDetails(result, fontInfo.SearchName, scopeLabelName)
@@ -1876,7 +1890,7 @@ Use --scope to set removal location:
 
 			GetLogger().Info("Removal complete - Removed: %d, Skipped: %d, Failed: %d",
 				status.Removed, status.Skipped, status.Failed)
-			return removalExitAfterSummary(status.Failed, len(foundFonts)+len(notFoundFonts), len(notFoundFonts))
+			return removalExitAfterSummary(status, len(foundFonts)+len(notFoundFonts), len(notFoundFonts))
 		}
 
 		// Determine title based on scope
@@ -1927,7 +1941,7 @@ Use --scope to set removal location:
 							Index:   item.ItemIndex,
 							Name:    item.ProperName,
 							Status:  "in_progress",
-							Message: "Removing...",
+							Message: "",
 						})
 
 						GetLogger().Info("Processing font: %s in %s scope", item.FontName, item.ScopeLabel)
@@ -1943,7 +1957,7 @@ Use --scope to set removal location:
 								Index:   item.ItemIndex,
 								Name:    item.ProperName,
 								Status:  "in_progress",
-								Message: FormatProgressActivity(u.Phase, u.Detail),
+								Message: "",
 							})
 							send(components.ProgressUpdateMsg{Percent: pct})
 						}
@@ -1969,30 +1983,21 @@ Use --scope to set removal location:
 
 						// Collect variants for display (only in verbose mode)
 						scopeVariants := []string{}
-						if verbose {
+						if verbose && result != nil {
 							scopeVariants = result.Details
 						}
 
-						// Determine status
 						scopeStatus := StatusCompleted
 						scopeMessage := "Removed"
 						if err != nil {
 							if strings.Contains(err.Error(), "not found") {
-								// Font not found in this scope - skip (shouldn't happen since we checked)
 								continue
 							}
+							applyRemoveOutcome(status, result, err)
 							scopeStatus = StatusFailed
 							scopeMessage = err.Error()
-							status.Failed++
-							if result != nil {
-								status.Failed += result.Failed
-								status.Skipped += result.Skipped
-							}
 						} else if result != nil {
-							status.Removed += result.Success
-							status.Skipped += result.Skipped
-							status.Failed += result.Failed
-
+							applyRemoveOutcome(status, result, nil)
 							switch result.Status {
 							case StatusFailed:
 								scopeStatus = StatusFailed
@@ -2170,12 +2175,12 @@ Use --scope to set removal location:
 							// Process removal from user scope
 							fontDir := fontManager.GetFontDir(platform.UserScope)
 							onProgress := func(u ProgressUpdate) {
-								// In this special mode we already drive percent via scan math; only update the step label.
+								// In this special mode we already drive percent via scan math; omit Removing... labels.
 								send(components.ItemUpdateMsg{
 									Index:   i,
 									Name:    properFontName,
 									Status:  "in_progress",
-									Message: FormatProgressActivity(u.Phase, u.Detail),
+									Message: "",
 								})
 							}
 							result, err := removeFont(
@@ -2199,32 +2204,23 @@ Use --scope to set removal location:
 									}
 									return shared.ErrOperationCancelled
 								}
+								applyRemoveOutcome(status, result, err)
 								if strings.Contains(err.Error(), "not found") {
-									// Font not found - mark as failed and continue
 									fontStatus = StatusFailed
 									statusMessage = "Font not found"
 									allErrors = append(allErrors, "Font not found")
-									status.Failed++
-									// Continue to next font instead of exiting
 								} else {
 									fontStatus = StatusFailed
 									statusMessage = err.Error()
-									// Add error message
 									allErrors = append(allErrors, err.Error())
 									if result != nil {
-										status.Failed += result.Failed
 										allErrors = append(allErrors, result.Errors...)
 									}
 								}
 							} else {
-								status.Removed += result.Success
-								status.Skipped += result.Skipped
-								status.Failed += result.Failed
-
-								// Collect errors
+								applyRemoveOutcome(status, result, nil)
 								allErrors = append(allErrors, result.Errors...)
 
-								// Collect variants for display (only in verbose mode)
 								if verbose {
 									allRemovedVariants = append(allRemovedVariants, result.Details...)
 								}
@@ -2300,7 +2296,7 @@ Use --scope to set removal location:
 									Index:   i,
 									Name:    properFontName,
 									Status:  "in_progress",
-									Message: FormatProgressActivity(u.Phase, u.Detail),
+									Message: "",
 								})
 								send(components.ProgressUpdateMsg{Percent: pct})
 							}
@@ -2325,29 +2321,23 @@ Use --scope to set removal location:
 									}
 									return shared.ErrOperationCancelled
 								}
+								applyRemoveOutcome(status, result, err)
 								if strings.Contains(err.Error(), "not found") {
 									fontStatus = StatusFailed
 									statusMessage = "Font not found"
 									allErrors = append(allErrors, "Font not found")
-									status.Failed++
 								} else {
 									fontStatus = StatusFailed
 									statusMessage = err.Error()
 									allErrors = append(allErrors, err.Error())
 									if result != nil {
-										status.Failed += result.Failed
 										allErrors = append(allErrors, result.Errors...)
 									}
 								}
 							} else {
-								status.Removed += result.Success
-								status.Skipped += result.Skipped
-								status.Failed += result.Failed
-
-								// Collect errors
+								applyRemoveOutcome(status, result, nil)
 								allErrors = append(allErrors, result.Errors...)
 
-								// Collect variants for display (only in verbose mode)
 								if verbose {
 									allRemovedVariants = append(allRemovedVariants, result.Details...)
 								}
@@ -2860,7 +2850,7 @@ Use --scope to set removal location:
 			FailedLabel:  "Failed",
 		}, output.IsVerboseOutputEnabled())
 
-		return removalExitAfterSummary(status.Failed, len(foundFonts)+len(notFoundFonts), len(notFoundFonts))
+		return removalExitAfterSummary(status, len(foundFonts)+len(notFoundFonts), len(notFoundFonts))
 	},
 }
 

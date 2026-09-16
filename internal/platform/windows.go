@@ -403,7 +403,7 @@ func (m *windowsFontManager) captureFontRegistryValue(fontName string) (registry
 		}
 		return registryFontValue{}, err
 	}
-	return registryFontValue{Name: valueName, Data: data, Type: typ, Found: true}, nil
+	return registryFontValue{Name: valueName, Raw: data, Type: typ, Found: true}, nil
 }
 
 func (m *windowsFontManager) restoreFontRegistryValue(v registryFontValue) error {
@@ -415,7 +415,7 @@ func (m *windowsFontManager) restoreFontRegistryValue(v registryFontValue) error
 		return err
 	}
 	defer regCloseKey.Call(uintptr(key))
-	return m.setRegistryValueTyped(key, v.Name, v.Data, v.Type)
+	return m.setRegistryValueRaw(key, v.Name, v.Raw, v.Type)
 }
 
 // openFontRegistryKey opens the Windows font registry key for writing
@@ -445,12 +445,16 @@ func (m *windowsFontManager) openFontRegistryKey() (syscall.Handle, error) {
 	return key, nil
 }
 
-// setRegistryValue sets a registry value with proper error handling
+// setRegistryValue sets a REG_SZ value using the UTF-16 encoded byte length (not UTF-8 len).
 func (m *windowsFontManager) setRegistryValue(key syscall.Handle, valueName, value string) error {
-	return m.setRegistryValueTyped(key, valueName, value, REG_SZ)
+	u16, err := syscall.UTF16FromString(value)
+	if err != nil {
+		return fmt.Errorf("failed to convert value to UTF16: %w", err)
+	}
+	return m.setRegistryValueRaw(key, valueName, uint16SliceAsBytes(u16), REG_SZ)
 }
 
-func (m *windowsFontManager) setRegistryValueTyped(key syscall.Handle, valueName, value string, typ uint32) error {
+func (m *windowsFontManager) setRegistryValueRaw(key syscall.Handle, valueName string, data []byte, typ uint32) error {
 	logger := logging.GetLogger()
 
 	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
@@ -459,22 +463,20 @@ func (m *windowsFontManager) setRegistryValueTyped(key syscall.Handle, valueName
 		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
 	}
 
-	valuePtr, err := syscall.UTF16PtrFromString(value)
-	if err != nil {
-		logger.Error("Failed to convert value to UTF16: %v", err)
-		return fmt.Errorf("failed to convert value to UTF16: %w", err)
-	}
-
 	if typ == 0 {
 		typ = REG_SZ
+	}
+	var dataPtr uintptr
+	if len(data) > 0 {
+		dataPtr = uintptr(unsafe.Pointer(&data[0]))
 	}
 	ret, _, err := regSetValueEx.Call(
 		uintptr(key),
 		uintptr(unsafe.Pointer(valueNamePtr)),
 		0,
 		uintptr(typ),
-		uintptr(unsafe.Pointer(valuePtr)),
-		uintptr((len(value)+1)*2),
+		dataPtr,
+		uintptr(len(data)),
 	)
 	if ret != 0 {
 		logger.Error("Failed to set registry value: %v", err)
@@ -483,10 +485,31 @@ func (m *windowsFontManager) setRegistryValueTyped(key syscall.Handle, valueName
 	return nil
 }
 
-func (m *windowsFontManager) queryRegistryValue(key syscall.Handle, valueName string) (string, uint32, error) {
+func uint16SliceAsBytes(u []uint16) []byte {
+	if len(u) == 0 {
+		return nil
+	}
+	b := make([]byte, len(u)*2)
+	for i, v := range u {
+		b[i*2] = byte(v)
+		b[i*2+1] = byte(v >> 8)
+	}
+	return b
+}
+
+// regSZByteLen returns the REG_SZ cbData for s (UTF-16 code units including NUL, times 2).
+func regSZByteLen(s string) (int, error) {
+	u16, err := syscall.UTF16FromString(s)
+	if err != nil {
+		return 0, err
+	}
+	return len(u16) * 2, nil
+}
+
+func (m *windowsFontManager) queryRegistryValue(key syscall.Handle, valueName string) ([]byte, uint32, error) {
 	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to convert value name to UTF16: %w", err)
+		return nil, 0, fmt.Errorf("failed to convert value name to UTF16: %w", err)
 	}
 	var typ uint32
 	var dataLen uint32
@@ -500,14 +523,14 @@ func (m *windowsFontManager) queryRegistryValue(key syscall.Handle, valueName st
 	)
 	if ret != 0 {
 		if ret == 2 { // ERROR_FILE_NOT_FOUND
-			return "", 0, ErrRegistryValueAbsent
+			return nil, 0, ErrRegistryValueAbsent
 		}
-		return "", 0, fmt.Errorf("failed to query registry value: %w", callErr)
+		return nil, 0, fmt.Errorf("failed to query registry value: %w", callErr)
 	}
 	if dataLen == 0 {
-		return "", typ, nil
+		return nil, typ, nil
 	}
-	buf := make([]uint16, (dataLen+1)/2)
+	buf := make([]byte, dataLen)
 	ret, _, callErr = regQueryValueEx.Call(
 		uintptr(key),
 		uintptr(unsafe.Pointer(valueNamePtr)),
@@ -518,11 +541,14 @@ func (m *windowsFontManager) queryRegistryValue(key syscall.Handle, valueName st
 	)
 	if ret != 0 {
 		if ret == 2 {
-			return "", 0, ErrRegistryValueAbsent
+			return nil, 0, ErrRegistryValueAbsent
 		}
-		return "", 0, fmt.Errorf("failed to query registry value: %w", callErr)
+		return nil, 0, fmt.Errorf("failed to query registry value: %w", callErr)
 	}
-	return syscall.UTF16ToString(buf), typ, nil
+	if int(dataLen) < len(buf) {
+		buf = buf[:dataLen]
+	}
+	return buf, typ, nil
 }
 
 // deleteRegistryValue deletes a registry value with proper error handling

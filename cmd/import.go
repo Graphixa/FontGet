@@ -639,8 +639,8 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 							return
 						}
 						msg := FormatProgressActivity(u.Phase, u.Detail)
-						if u.Phase == installStepDownload && u.Detail == "" {
-							msg = "Downloading from " + fontGroup.SourceName
+						if isInstallPrepPhase(u.Phase) || u.Phase == removeStepRemove {
+							msg = DownloadFromSourceMessage(fontGroup.SourceName)
 						}
 						send(components.ItemUpdateMsg{
 							Index:   itemIndex,

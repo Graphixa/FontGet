@@ -1,6 +1,25 @@
 package cmd
 
-import "testing"
+import (
+	"testing"
+
+	"fontget/internal/shared"
+)
+
+func TestDownloadFromSourceMessage(t *testing.T) {
+	if got := DownloadFromSourceMessage("Google Fonts"); got != "Downloading from Google Fonts" {
+		t.Fatalf("got %q", got)
+	}
+	if got := DownloadFromSourceMessage("  "); got != "Downloading..." {
+		t.Fatalf("empty source got %q", got)
+	}
+	if !isInstallPrepPhase(installStepDownload) || !isInstallPrepPhase(installStepExtract) {
+		t.Fatal("prep phases")
+	}
+	if isInstallPrepPhase(installStepInstall) {
+		t.Fatal("install is not prep")
+	}
+}
 
 func TestFormatProgressActivity(t *testing.T) {
 	if got := FormatProgressActivity("Installing", ""); got != "Installing..." {
@@ -19,10 +38,10 @@ func TestCountDetail(t *testing.T) {
 
 func TestOverallWorkPercent_DownloadThenInstall(t *testing.T) {
 	midDL := OverallWorkPercent(0, 1, ProgressUpdate{
-		Phase: installStepDownload, Kind: ProgressBytes, Done: 50, Total: 100,
+		Phase: installStepDownload, Kind: ProgressCount, Done: 0.5, Total: 1,
 	})
-	if midDL < 2 || midDL > 25 {
-		t.Fatalf("mid download %% = %v, want in (2,25)", midDL)
+	if midDL < 2 || midDL > 35 {
+		t.Fatalf("mid download %% = %v, want in (2,35)", midDL)
 	}
 
 	startInst := OverallWorkPercent(0, 1, ProgressUpdate{
@@ -91,5 +110,59 @@ func TestProgressThrottle(t *testing.T) {
 	u.Detail = "1/2 a.ttf"
 	if !th.ShouldSend(u, 4) {
 		t.Fatal("detail change should send")
+	}
+}
+
+func TestPhaseFrac_UnknownBytesNeverComplete(t *testing.T) {
+	if got := phaseFrac(ProgressUpdate{Kind: ProgressBytes, Done: 1, Total: 0}); got != 0 {
+		t.Fatalf("1 byte unknown size must not complete phase, got %v", got)
+	}
+	if got := phaseFrac(ProgressUpdate{Kind: ProgressBytes, Done: 1e9, Total: -1}); got != 0 {
+		t.Fatalf("unknown total must stay 0, got %v", got)
+	}
+	if got := phaseFrac(ProgressUpdate{Kind: ProgressBytes, Done: 50, Total: 100}); shared.Clamp01(got) != 0.5 {
+		t.Fatalf("known size mid = %v", got)
+	}
+}
+
+func TestPrepUnitFracs(t *testing.T) {
+	if got := prepDownloadUnitFrac(50, 100); got < 0.37 || got > 0.38 {
+		t.Fatalf("half download = %v want ~0.375", got)
+	}
+	if got := prepDownloadUnitFrac(100, -1); got != 0 {
+		t.Fatalf("unknown download = %v want 0", got)
+	}
+	if got := prepExtractUnitFrac(0, 0); got != prepDownloadWeight {
+		t.Fatalf("unknown extract hold = %v", got)
+	}
+	if got := prepExtractUnitFrac(1, 2); got < 0.87 || got > 0.88 {
+		t.Fatalf("half extract = %v want ~0.875", got)
+	}
+}
+
+func TestMultiArchivePrepIsMonotonic(t *testing.T) {
+	// Two downloads: end of first unit must be below mid of second; no reset to prep start.
+	endFirst := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepExtract, Kind: ProgressCount, Done: 1, Total: 2,
+	})
+	midSecond := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepDownload, Kind: ProgressCount, Done: 1.5, Total: 2,
+	})
+	if midSecond <= endFirst {
+		t.Fatalf("second download must advance past first unit: endFirst=%v midSecond=%v", endFirst, midSecond)
+	}
+	startSecond := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepDownload, Kind: ProgressCount, Done: 1, Total: 2,
+	})
+	if startSecond < endFirst-0.01 {
+		t.Fatalf("starting second unit must not jump backwards: endFirst=%v startSecond=%v", endFirst, startSecond)
+	}
+}
+
+func TestDownloadExtractSharePrepBand(t *testing.T) {
+	ds, de := segmentRange(installStepDownload)
+	es, ee := segmentRange(installStepExtract)
+	if ds != es || de != ee || de != segPrepEnd {
+		t.Fatalf("download/extract must share prep band, got dl=(%v,%v) ex=(%v,%v)", ds, de, es, ee)
 	}
 }

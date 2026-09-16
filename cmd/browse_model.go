@@ -417,6 +417,12 @@ func browseNormalizeSourceLabel(s string) string {
 	return s
 }
 
+// browseKeepOpErr preserves install/remove outcomes. Late context cancellation after a
+// successful helper return must not become ErrOperationCancelled.
+func browseKeepOpErr(opErr error) error {
+	return opErr
+}
+
 func browseResultFromInstall(fontName, source string, msg installFinishedMsg, scope platform.InstallationScope, force bool) (title string, errorTitle bool, body string) {
 	fontName = strings.TrimSpace(fontName)
 	if fontName == "" {
@@ -581,14 +587,15 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 			if !th.ShouldSend(u, pct) {
 				return
 			}
-			ch <- browseOpProgressMsg{phase: FormatProgressActivity(u.Phase, u.Detail), percent: pct}
+			phase := FormatProgressActivity(u.Phase, u.Detail)
+			if isInstallPrepPhase(u.Phase) || u.Phase == removeStepRemove {
+				phase = DownloadFromSourceMessage(sourceLabel)
+			}
+			ch <- browseOpProgressMsg{phase: phase, percent: pct}
 		}
 
 		ir, ierr := installFont(ctx, res.Fonts, res.FontID, fm, scope, force, fontDir, nil, true, onProgress, nil)
-		if ctx.Err() != nil && ierr == nil {
-			ierr = shared.ErrOperationCancelled
-		}
-		ch <- installFinishedMsg{result: ir, err: ierr, fontID: fontID}
+		ch <- installFinishedMsg{result: ir, err: browseKeepOpErr(ierr), fontID: fontID}
 	}()
 	return m.waitForOpMsg()
 }
@@ -596,7 +603,7 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.removing = true
 	m.statusProgress = -1
-	m.statusPhase = "Removing"
+	m.statusPhase = ""
 	m.removingFontName = fontName
 	if sourceLabel == "" {
 		sourceLabel = shared.PlaceholderNA
@@ -625,14 +632,11 @@ func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) t
 			if !th.ShouldSend(u, pct) {
 				return
 			}
-			ch <- browseOpProgressMsg{phase: FormatProgressActivity(u.Phase, u.Detail), percent: pct}
+			ch <- browseOpProgressMsg{phase: "", percent: pct}
 		}
 		installReg, _ := m.cachedInstallRegistry()
 		rr, err := removeFont(ctx, fontID, fm, scope, fontDir, repository, installReg, m.cachedManifestFontIDProbe(), onProgress)
-		if ctx.Err() != nil && err == nil {
-			err = shared.ErrOperationCancelled
-		}
-		ch <- uninstallFinishedMsg{result: rr, err: err, fontID: fontID}
+		ch <- uninstallFinishedMsg{result: rr, err: browseKeepOpErr(err), fontID: fontID}
 	}()
 	return m.waitForOpMsg()
 }
@@ -1217,9 +1221,6 @@ func (m *browseModel) View() string {
 			maxOuter = components.DefaultStatusPopupMaxOuter
 		}
 		phase := strings.TrimSpace(m.statusPhase)
-		if phase == "" {
-			phase = "Removing"
-		}
 		mid := fmt.Sprintf("'%s' from '%s'", m.removingFontName, m.removingSourceLabel)
 		popup := components.RenderStatusPopupPlain(phase, mid, m.statusProgress, maxOuter)
 		view = components.Composite(popup, view, components.Center, components.Center, 0, 0)
