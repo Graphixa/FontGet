@@ -233,16 +233,19 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 1: Collect fonts (0-20% progress)
-			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Scanning", "")})
-			send(components.ProgressUpdateMsg{Percent: 5.0})
+			// Prep band: scan → group → match → filter (constant title; no activity thrash).
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0, Total: 1,
+			})})
 			output.GetVerbose().Info("Scanning fonts to determine export scope...")
 			fonts, collectErr := collectFonts(scopes, fontManager, "", true) // Suppress verbose - we have our own high-level message
 			if collectErr != nil {
 				return fmt.Errorf("unable to collect fonts: %w", collectErr)
 			}
 			output.GetDebug().State("Total fonts to export: %d", len(fonts))
-			send(components.ProgressUpdateMsg{Percent: 20.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.25, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -251,11 +254,11 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 2: Group by family (20-30% progress)
-			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Grouping", "")})
 			families := groupByFamily(fonts)
 			output.GetVerbose().Info("Grouped into %d font families", len(families))
-			send(components.ProgressUpdateMsg{Percent: 30.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.4, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -264,15 +267,16 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 3: Match installed fonts to repository (30-50% progress)
+			// Phase 3: Match installed fonts to repository
 			var names []string
 			for k := range families {
 				names = append(names, k)
 			}
 			sort.Strings(names)
 
-			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Matching", "")})
-			send(components.ProgressUpdateMsg{Percent: 35.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.5, Total: 1,
+			})})
 			matches, matchErr := cmdutils.MatchInstalledFontsToRepository(names, GetLogger(), shared.IsCriticalSystemFont)
 			if matchErr != nil {
 				// Continue without matches if exportAll is true
@@ -281,7 +285,9 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 				}
 				matches = make(map[string]*repo.InstalledFontMatch)
 			}
-			send(components.ProgressUpdateMsg{Percent: 50.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.75, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -290,8 +296,6 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 4: Populate match data and filter fonts (50-60% progress)
-			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Filtering", "")})
 			populateFontMatchData(families, matches)
 
 			fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter := filterFontsForExport(FilterFontsForExportParams{
@@ -313,7 +317,9 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			// Update total items now that we know the count
 			// This will make it show "Exporting Fonts (0 of y)" immediately
 			send(components.TotalItemsUpdateMsg{TotalItems: totalFamilies})
-			send(components.ProgressUpdateMsg{Percent: 60.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 1, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -322,8 +328,6 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 5: Perform the actual export operation (60-100% progress)
-			send(components.TitleUpdateMsg{Title: FormatProgressActivity("Writing", "")})
 			params := ExportProgressParams{
 				FontManager:      fontManager,
 				Scopes:           scopes,
@@ -409,15 +413,16 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 	}
 
 	if send != nil {
-		send(components.TitleUpdateMsg{Title: FormatProgressActivity("Building", "")})
-		send(components.ProgressUpdateMsg{Percent: 70.0})
+		send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+			Phase: exportStepWrite, Kind: ProgressCount, Done: 0, Total: 1,
+		})})
 	}
 
 	// Build export manifest
 	manifest, totalVariants := buildExportManifest(
 		params.FontIDGroups, params.MatchFilter, params.SourceFilter, params.OnlyMatched, params.SkippedSystem, params.SkippedUnmatched, params.SkippedByFilter)
 
-	// Mark families complete with i/N activity (70–95%)
+	// Mark families complete within the write band (prep already finished at 40%).
 	if send != nil {
 		n := len(manifest.Fonts)
 		for i, font := range manifest.Fonts {
@@ -432,11 +437,9 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 			if label == "" && len(font.FamilyNames) > 0 {
 				label = font.FamilyNames[0]
 			}
-			pct := 70.0
-			if n > 0 {
-				pct = 70.0 + (float64(i+1)/float64(n))*25.0
-			}
-			send(components.ProgressUpdateMsg{Percent: pct})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepWrite, Kind: ProgressCount, Done: float64(i + 1), Total: float64(max(n, 1)),
+			})})
 			send(components.ItemUpdateMsg{
 				Index:  i,
 				Name:   label,
@@ -456,8 +459,9 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 	}
 
 	if send != nil {
-		send(components.TitleUpdateMsg{Title: FormatProgressActivity("Writing", "manifest")})
-		send(components.ProgressUpdateMsg{Percent: 95.0})
+		send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+			Phase: exportStepWrite, Kind: ProgressCount, Done: 1, Total: 1,
+		})})
 	}
 
 	// Write manifest
@@ -490,8 +494,7 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 	output.GetVerbose().Info("Export file written successfully")
 
 	if send != nil {
-		send(components.TitleUpdateMsg{Title: "Exporting Fonts"})
-		send(components.ProgressUpdateMsg{Percent: 100.0})
+		send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{Phase: exportStepDone})})
 	}
 
 	return manifest.Fonts, totalVariants, nil

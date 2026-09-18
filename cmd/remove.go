@@ -505,10 +505,22 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 		fontPath := filepath.Join(params.FontDir, matchingFont)
 		display := shared.GetDisplayNameFromFilename(matchingFont)
 
+		advanceRemove := func() {
+			if params.OnProgress != nil && total > 0 {
+				params.OnProgress(ProgressUpdate{
+					Phase: removeStepRemove,
+					Kind:  ProgressCount,
+					Done:  float64(i + 1),
+					Total: float64(total),
+				})
+			}
+		}
+
 		if params.IsCriticalSystemFont != nil && params.IsCriticalSystemFont(matchingFont) {
 			skipped++
 			details = append(details, display+" (Skipped - Protected system font)")
 			left = removeBasename(left, matchingFont)
+			advanceRemove()
 			continue
 		}
 		if _, statErr := os.Stat(fontPath); os.IsNotExist(statErr) {
@@ -523,6 +535,7 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 					break
 				}
 			}
+			advanceRemove()
 			continue
 		}
 
@@ -539,6 +552,7 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 						break
 					}
 				}
+				advanceRemove()
 				continue
 			}
 			failed++
@@ -570,6 +584,7 @@ func removeFontFiles(params RemoveFontFilesParams) (removed, skipped, failed int
 				break
 			}
 		}
+		advanceRemove()
 	}
 
 	if params.OnProgress != nil {
@@ -1941,7 +1956,7 @@ Use --scope to set removal location:
 							Index:   item.ItemIndex,
 							Name:    item.ProperName,
 							Status:  "in_progress",
-							Message: "",
+							Message: progressLabelRemove,
 						})
 
 						GetLogger().Info("Processing font: %s in %s scope", item.FontName, item.ScopeLabel)
@@ -1953,12 +1968,15 @@ Use --scope to set removal location:
 							if !th.ShouldSend(u, pct) {
 								return
 							}
-							send(components.ItemUpdateMsg{
-								Index:   item.ItemIndex,
-								Name:    item.ProperName,
-								Status:  "in_progress",
-								Message: "",
-							})
+							itemMsg := components.ItemUpdateMsg{
+								Index:  item.ItemIndex,
+								Name:   item.ProperName,
+								Status: "in_progress",
+							}
+							if msg := ProgressActivityLabel(u, ""); msg != "" {
+								itemMsg.Message = msg
+							}
+							send(itemMsg)
 							send(components.ProgressUpdateMsg{Percent: pct})
 						}
 						result, err := removeFont(
@@ -2063,25 +2081,10 @@ Use --scope to set removal location:
 						if len(scopes) == 1 && scopes[0] == platform.UserScope {
 							// Resolve Font ID to font name if needed
 							searchName := resolveFontNameOrID(fontName, r)
-							// Create progress callback for finding phase (0-50% of total progress)
-							// Split progress between machine and user scope checks
-							findingProgress := 0.0
-							progressCb := func(percent float64) {
-								// percent is 0-50 from findFontFamilyFiles, map to 0-25 for each scope
-								// First scope (machine) uses 0-25%, second scope (user) uses 25-50%
-								if findingProgress < 25.0 {
-									// Machine scope: 0-25%
-									findingProgress = percent * 0.5 // Map 0-50% to 0-25%
-								} else {
-									// User scope: 25-50%
-									findingProgress = 25.0 + (percent * 0.5) // Map 0-50% to 25-50%
-								}
-								// Calculate overall progress: finding (0-50%) + base progress from font index
-								baseProgress := float64(i) / float64(len(foundFonts)) * 100
-								totalProgress := baseProgress + (findingProgress / float64(len(foundFonts)))
-								send(components.ProgressUpdateMsg{Percent: totalProgress})
-							}
-							// Check both scopes efficiently with progress updates
+							// Finding is label-only — do not drive the bar here (avoids a parallel
+							// 0–50% scheme that jumps backwards before OverallWorkPercent removal).
+							progressCb := func(float64) {}
+							// Check both scopes efficiently
 							machineFonts, werr := findFontFamilyFiles(searchName, fontManager, platform.MachineScope, progressCb)
 							if werr != nil {
 								if log := GetLogger(); log != nil {
@@ -2089,7 +2092,6 @@ Use --scope to set removal location:
 								}
 								machineFonts = nil
 							}
-							findingProgress = 25.0 // Set to 25% after machine scope completes
 							userFonts, werr2 := findFontFamilyFiles(searchName, fontManager, platform.UserScope, progressCb)
 							if werr2 != nil {
 								if log := GetLogger(); log != nil {
@@ -2110,7 +2112,6 @@ Use --scope to set removal location:
 										}
 										machineFonts = nil
 									}
-									findingProgress = 25.0
 									userFonts, werr2 = findFontFamilyFiles(repoSearchName, fontManager, platform.UserScope, progressCb)
 									if werr2 != nil {
 										if log := GetLogger(); log != nil {
@@ -2120,11 +2121,6 @@ Use --scope to set removal location:
 									}
 								}
 							}
-							// Finding phase complete - ensure we're at 50% for this font
-							findingProgress = 50.0
-							baseProgress := float64(i) / float64(len(foundFonts)) * 100
-							totalProgress := baseProgress + (findingProgress / float64(len(foundFonts)))
-							send(components.ProgressUpdateMsg{Percent: totalProgress})
 
 							// Handle different scenarios
 							// Heuristic filename walk often misses Nerd-style installs; installation registry
@@ -2136,52 +2132,50 @@ Use --scope to set removal location:
 								fontStatus = StatusFailed
 								statusMessage = "Font not found"
 								status.Failed++
-								// Send update with proper name and update progress
-								// Note: ErrorMessage is set directly, no need to append to allErrors since we continue
 								send(components.ItemUpdateMsg{
 									Index:        i,
-									Name:         properFontName, // Use proper name from map
+									Name:         properFontName,
 									Status:       fontStatus,
 									Message:      statusMessage,
 									ErrorMessage: "Font not found",
 								})
-								// Update progress percentage (finding complete at 50%, this is a failure so stay at 50%)
-								percent = 50.0 + (float64(i+1) / float64(len(foundFonts)) * 50.0)
-								send(components.ProgressUpdateMsg{Percent: percent})
-								// Continue to next font instead of exiting
+								send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(i, len(foundFonts), ProgressUpdate{Phase: removeStepCompleted})})
 								continue
 							} else if len(userFonts) == 0 && len(machineFonts) > 0 {
 								// Font only exists in machine scope
 								status.Skipped++
 								fontStatus = StatusSkipped
 								statusMessage = "Only installed in machine scope"
-								// Send update before continuing
 								send(components.ItemUpdateMsg{
 									Index:   i,
 									Name:    properFontName,
 									Status:  fontStatus,
 									Message: statusMessage,
 								})
-								// Update progress percentage (finding complete at 50%, this is a skip so stay at 50%)
-								percent = 50.0 + (float64(i+1) / float64(len(foundFonts)) * 50.0)
-								send(components.ProgressUpdateMsg{Percent: percent})
+								send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(i, len(foundFonts), ProgressUpdate{Phase: removeStepCompleted})})
 								continue
 							}
 							// Note: We'll check if font still exists in opposite scope AFTER removal
 							// Don't track here to avoid duplicates
 
-							// properFontName already set from fontInfo.ProperName
-
 							// Process removal from user scope
 							fontDir := fontManager.GetFontDir(platform.UserScope)
+							var th progressThrottle
 							onProgress := func(u ProgressUpdate) {
-								// In this special mode we already drive percent via scan math; omit Removing... labels.
-								send(components.ItemUpdateMsg{
-									Index:   i,
-									Name:    properFontName,
-									Status:  "in_progress",
-									Message: "",
-								})
+								pct := OverallWorkPercent(i, len(foundFonts), u)
+								if !th.ShouldSend(u, pct) {
+									return
+								}
+								itemMsg := components.ItemUpdateMsg{
+									Index:  i,
+									Name:   properFontName,
+									Status: "in_progress",
+								}
+								if msg := ProgressActivityLabel(u, ""); msg != "" {
+									itemMsg.Message = msg
+								}
+								send(itemMsg)
+								send(components.ProgressUpdateMsg{Percent: pct})
 							}
 							result, err := removeFont(
 								ctx,
@@ -2292,12 +2286,15 @@ Use --scope to set removal location:
 								if !th.ShouldSend(u, pct) {
 									return
 								}
-								send(components.ItemUpdateMsg{
-									Index:   i,
-									Name:    properFontName,
-									Status:  "in_progress",
-									Message: "",
-								})
+								itemMsg := components.ItemUpdateMsg{
+									Index:  i,
+									Name:   properFontName,
+									Status: "in_progress",
+								}
+								if msg := ProgressActivityLabel(u, ""); msg != "" {
+									itemMsg.Message = msg
+								}
+								send(itemMsg)
 								send(components.ProgressUpdateMsg{Percent: pct})
 							}
 							result, err := removeFont(

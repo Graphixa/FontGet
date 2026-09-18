@@ -29,45 +29,121 @@ type ProgressUpdate struct {
 // ProgressFunc reports progress. Implementations must be lightweight.
 type ProgressFunc func(ProgressUpdate)
 
-// Legacy phase name constants (UI labels + segment keys).
+// Internal phase keys (not user-facing labels).
 const (
-	installStepPrecheck  = "Checking installed"
-	installStepDownload  = "Downloading"
-	installStepExtract   = "Extracting"
-	installStepInstall   = "Installing"
-	installStepFinalize  = "Finalizing"
-	installStepCompleted = "Installed"
+	installStepPrecheck    = "Checking installed"
+	installStepDownload    = "Downloading"
+	installStepExtract     = "Extracting"
+	installStepForceRemove = "ForceRemoving"
+	installStepInstall     = "Installing"
+	installStepFinalize    = "InstallFinalizing"
+	installStepCompleted   = "Installed"
 
 	removeStepScan      = "Scanning"
 	removeStepRemove    = "Removing"
-	removeStepFinalize  = "Finalizing"
+	removeStepFinalize  = "RemoveFinalizing"
 	removeStepCompleted = "Removed"
+
+	exportStepPrep = "ExportPrep"
+	exportStepWrite = "ExportWrite"
+	exportStepDone  = "ExportDone"
+
+	backupStepFiles = "BackupFiles"
+	backupStepDone  = "BackupDone"
 )
 
-// Reserved bar segments for a single item (monotonic; install/remove owns most of the bar).
-// Download + extract share one prep band so multi-archive packages never jump backwards.
+// Exact user-facing activity labels (checklist).
 const (
-	segPrecheckEnd   = 0.02
-	segPrepEnd       = 0.35 // download+extract preparation
-	segFilesEnd      = 0.98
-	segFinalizeEnd   = 1.00
-	segRemoveScanEnd = 0.35
+	progressLabelExtract = "Extracting..."
+	progressLabelRemove  = "Removing fonts..."
+	progressLabelExport  = "Exporting font list..."
+	progressLabelBackup  = "Backing up fonts..."
+	progressLabelCancel  = "Cancelling..."
+)
+
+// Reserved bar segments for a single package/item (monotonic).
+// Prep aggregates downloads+extracts; force-remove band is reserved even when unused.
+const (
+	segPrecheckEnd      = 0.02
+	segPrepEnd          = 0.28 // download+extract preparation
+	segForceRemoveEnd   = 0.38 // force reinstall removal (idle when not force)
+	segFilesEnd         = 0.98
+	segFinalizeEnd      = 1.00
+	segRemoveScanEnd    = 0.35
 
 	prepDownloadWeight = 0.75
 	prepExtractWeight  = 0.25
+
+	// Export: prep (scan/group/match/filter) then write, then finalize after file flush.
+	segExportPrepEnd  = 0.40
+	segExportWriteEnd = 0.98
+
+	// Backup: file copy band, finalize after archive close.
+	segBackupFilesEnd = 0.98
 
 	// Aliases: prep band replaced the old split download/extract segments.
 	segDownloadEnd = segPrepEnd
 	segExtractEnd  = segPrepEnd
 )
 
-// DownloadFromSourceMessage is the only user-facing label during download/extract prep.
+// DownloadFromSourceMessage is the user-facing download label.
 func DownloadFromSourceMessage(sourceName string) string {
 	sourceName = strings.TrimSpace(sourceName)
 	if sourceName == "" {
-		return installStepDownload + "..."
+		return "Downloading..."
 	}
-	return "Downloading from " + sourceName
+	return "Downloading from " + sourceName + "..."
+}
+
+// InstallingVariantMessage is the user-facing install label (1-based current).
+func InstallingVariantMessage(current, total int) string {
+	if total < 1 {
+		total = 1
+	}
+	if current < 1 {
+		current = 1
+	}
+	if current > total {
+		current = total
+	}
+	return fmt.Sprintf("Installing variant (%d of %d)...", current, total)
+}
+
+// ProgressActivityLabel returns the exact checklist label for a progress pulse.
+// Empty means keep the previous activity text (brief internal steps).
+func ProgressActivityLabel(u ProgressUpdate, sourceName string) string {
+	switch u.Phase {
+	case installStepDownload:
+		return DownloadFromSourceMessage(sourceName)
+	case installStepExtract:
+		return progressLabelExtract
+	case installStepInstall:
+		total := int(u.Total)
+		if total <= 0 {
+			return ""
+		}
+		// Done is completed count; current file is Done+1 while work is in flight.
+		cur := int(u.Done) + 1
+		if u.Done >= u.Total {
+			cur = total
+		}
+		return InstallingVariantMessage(cur, total)
+	case installStepForceRemove, removeStepRemove:
+		return progressLabelRemove
+	case removeStepScan:
+		// Brief scan: keep prior label / avoid chatter.
+		return ""
+	case installStepPrecheck, installStepFinalize, removeStepFinalize:
+		return ""
+	case exportStepPrep, exportStepWrite, exportStepDone:
+		return progressLabelExport
+	case backupStepFiles, backupStepDone:
+		return progressLabelBackup
+	case installStepCompleted, removeStepCompleted:
+		return ""
+	default:
+		return ""
+	}
 }
 
 // isInstallPrepPhase reports download or extract (shared prep band).
@@ -75,7 +151,7 @@ func isInstallPrepPhase(phase string) bool {
 	return phase == installStepDownload || phase == installStepExtract
 }
 
-// FormatProgressActivity builds the status line for progress UIs.
+// FormatProgressActivity builds a generic status line (legacy helpers / tests).
 func FormatProgressActivity(phase, detail string) string {
 	phase = strings.TrimSpace(phase)
 	detail = strings.TrimSpace(detail)
@@ -101,7 +177,7 @@ func CountDetail(i, n int, name string) string {
 }
 
 // prepDownloadUnitFrac is progress within one download/extract unit during download [0, prepDownloadWeight].
-// Unknown Content-Length returns 0 (activity via Detail only); never invents completion.
+// Unknown Content-Length returns 0 (activity via label only); never invents completion.
 func prepDownloadUnitFrac(doneBytes, totalBytes int64) float64 {
 	if totalBytes <= 0 {
 		return 0
@@ -140,29 +216,42 @@ func phaseFrac(u ProgressUpdate) float64 {
 	}
 }
 
-// segmentRange returns [start,end) in 0..1 for a phase label.
+// segmentRange returns [start,end) in 0..1 for a phase key.
 func segmentRange(phase string) (start, end float64) {
 	switch phase {
 	case installStepPrecheck:
 		return 0, segPrecheckEnd
 	case installStepDownload, installStepExtract:
 		return segPrecheckEnd, segPrepEnd
-	case installStepInstall, removeStepRemove:
-		return segPrepEnd, segFilesEnd
+	case installStepForceRemove:
+		return segPrepEnd, segForceRemoveEnd
+	case installStepInstall:
+		return segForceRemoveEnd, segFilesEnd
 	case installStepFinalize:
 		return segFilesEnd, segFinalizeEnd
 	case removeStepScan:
 		return 0, segRemoveScanEnd
-	case installStepCompleted, removeStepCompleted:
+	case removeStepRemove:
+		return segRemoveScanEnd, segFilesEnd
+	case removeStepFinalize:
+		return segFilesEnd, segFinalizeEnd
+	case exportStepPrep:
+		return 0, segExportPrepEnd
+	case exportStepWrite:
+		return segExportPrepEnd, segExportWriteEnd
+	case exportStepDone, backupStepDone, installStepCompleted, removeStepCompleted:
 		return 1, 1
+	case backupStepFiles:
+		return 0, segBackupFilesEnd
 	default:
-		return segPrepEnd, segFilesEnd
+		return segForceRemoveEnd, segFilesEnd
 	}
 }
 
 // itemFrac maps a ProgressUpdate to 0..1 progress within one catalog item.
 func itemFrac(u ProgressUpdate) float64 {
-	if u.Phase == installStepCompleted || u.Phase == removeStepCompleted {
+	if u.Phase == installStepCompleted || u.Phase == removeStepCompleted ||
+		u.Phase == exportStepDone || u.Phase == backupStepDone {
 		return 1
 	}
 	start, end := segmentRange(u.Phase)
@@ -189,6 +278,21 @@ func OverallWorkPercent(itemIndex, itemCount int, u ProgressUpdate) float64 {
 	return shared.Clamp01(overall) * 100
 }
 
+// remapForceInstallProgress keeps force-reinstall removal inside the install force-remove
+// band. Without this, removeFontFiles' removeStepFinalize maps to 98–100% and the bar
+// appears to complete, then install starts again near 38%.
+func remapForceInstallProgress(u ProgressUpdate) ProgressUpdate {
+	switch u.Phase {
+	case removeStepRemove:
+		u.Phase = installStepForceRemove
+		return u
+	case removeStepFinalize, removeStepScan, removeStepCompleted:
+		return ProgressUpdate{Phase: installStepForceRemove, Kind: ProgressCount, Done: 1, Total: 1}
+	default:
+		return u
+	}
+}
+
 // OverallInstallPercent maps a simple phase fraction for install (used by thin callers).
 func OverallInstallPercent(itemIndex, itemCount int, phase string, phasePct float64) float64 {
 	return OverallWorkPercent(itemIndex, itemCount, ProgressUpdate{
@@ -206,6 +310,24 @@ func OverallRemovePercent(itemIndex, itemCount int, phase string, phasePct float
 		Kind:  ProgressFlag,
 		Done:  shared.Clamp01(phasePct),
 		Total: 1,
+	})
+}
+
+// OverallExportPercent maps export work to 0..100 for a single-command bar.
+func OverallExportPercent(u ProgressUpdate) float64 {
+	return OverallWorkPercent(0, 1, u)
+}
+
+// OverallBackupPercent maps backup file work to 0..100; finalized only after archive close.
+func OverallBackupPercent(doneFiles, totalFiles int, finalized bool) float64 {
+	if finalized {
+		return 100
+	}
+	return OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: backupStepFiles,
+		Kind:  ProgressCount,
+		Done:  float64(doneFiles),
+		Total: float64(max(totalFiles, 1)),
 	})
 }
 

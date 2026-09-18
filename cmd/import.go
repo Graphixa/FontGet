@@ -626,7 +626,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 					send(components.ItemUpdateMsg{
 						Index:   itemIndex,
 						Status:  "in_progress",
-						Message: "Downloading from " + fontGroup.SourceName,
+						Message: DownloadFromSourceMessage(fontGroup.SourceName),
 					})
 
 					percent := float64(itemIndex) / float64(len(fontsToInstall)) * 100
@@ -638,15 +638,13 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						if !th.ShouldSend(u, pct) {
 							return
 						}
-						msg := FormatProgressActivity(u.Phase, u.Detail)
-						if isInstallPrepPhase(u.Phase) || u.Phase == removeStepRemove {
-							msg = DownloadFromSourceMessage(fontGroup.SourceName)
+						if msg := ProgressActivityLabel(u, fontGroup.SourceName); msg != "" {
+							send(components.ItemUpdateMsg{
+								Index:   itemIndex,
+								Status:  "in_progress",
+								Message: msg,
+							})
 						}
-						send(components.ItemUpdateMsg{
-							Index:   itemIndex,
-							Status:  "in_progress",
-							Message: msg,
-						})
 						send(components.ProgressUpdateMsg{Percent: pct})
 					}
 					result, err := installFont(

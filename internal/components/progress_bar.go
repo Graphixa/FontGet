@@ -201,7 +201,9 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.Items[msg.Index].Name = msg.Name
 			}
 			m.Items[msg.Index].Status = msg.Status
-			m.Items[msg.Index].StatusMessage = msg.Message
+			if msg.Message != "" {
+				m.Items[msg.Index].StatusMessage = msg.Message
+			}
 			if msg.ErrorMessage != "" {
 				m.Items[msg.Index].ErrorMessage = msg.ErrorMessage
 			}
@@ -257,8 +259,11 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.quitting = true
 		m.err = msg.err
-		// Ensure progress is at 100% when operation completes
-		cmd := m.ProgressBar.SetPercent(1.0)
+		// Reach 100% only on successful completion — never fabricate progress on failure/cancel.
+		var cmd tea.Cmd
+		if msg.err == nil {
+			cmd = m.ProgressBar.SetPercent(1.0)
+		}
 		// For progress bars without items, quit immediately (no delay needed)
 		// For progress bars with items, show final state briefly before quitting
 		if m.TotalItems == 0 {
@@ -268,12 +273,17 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Show final state with items, then quit after a brief delay
 		// Reduced from 2s to 300ms for better responsiveness
-		return m, tea.Batch(
-			cmd,
-			tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
-				return quitMsg{}
-			}),
-		)
+		if cmd != nil {
+			return m, tea.Batch(
+				cmd,
+				tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
+					return quitMsg{}
+				}),
+			)
+		}
+		return m, tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg {
+			return quitMsg{}
+		})
 
 	case quitMsg:
 		// Handle explicit quit message
@@ -635,26 +645,41 @@ func RunProgressBar(title string, items []OperationItem, verboseMode bool, debug
 
 func runPlainProgressBar(items []OperationItem, operation func(send func(msg tea.Msg), cancelChan <-chan struct{}) error) error {
 	cancelChan := make(chan struct{})
+	trace := os.Getenv("FONTGET_PROGRESS_TRACE") == "1"
+	var lastPct float64 = -1
 	send := func(msg tea.Msg) {
-		update, ok := msg.(ItemUpdateMsg)
-		if !ok || update.Index < 0 || update.Index >= len(items) {
-			return
-		}
-		name := items[update.Index].Name
-		if update.Name != "" {
-			name = update.Name
-		}
-		switch update.Status {
-		case "failed":
-			if update.ErrorMessage != "" {
-				fmt.Printf("%s: failed: %s\n", name, update.ErrorMessage)
-			} else {
-				fmt.Printf("%s: failed\n", name)
+		switch update := msg.(type) {
+		case ProgressUpdateMsg:
+			if trace {
+				fmt.Fprintf(os.Stderr, "[progress] %5.1f%%\n", update.Percent)
+				if lastPct >= 0 && update.Percent+0.05 < lastPct {
+					fmt.Fprintf(os.Stderr, "[progress] RESET %.1f%% → %.1f%%\n", lastPct, update.Percent)
+				}
+				lastPct = update.Percent
 			}
-		case "completed":
-			fmt.Printf("%s: installed\n", name)
-		case "skipped":
-			fmt.Printf("%s: skipped\n", name)
+		case ItemUpdateMsg:
+			if update.Index < 0 || update.Index >= len(items) {
+				return
+			}
+			name := items[update.Index].Name
+			if update.Name != "" {
+				name = update.Name
+			}
+			if trace && update.Message != "" {
+				fmt.Fprintf(os.Stderr, "[progress] %s — %s\n", name, update.Message)
+			}
+			switch update.Status {
+			case "failed":
+				if update.ErrorMessage != "" {
+					fmt.Printf("%s: failed: %s\n", name, update.ErrorMessage)
+				} else {
+					fmt.Printf("%s: failed\n", name)
+				}
+			case "completed":
+				fmt.Printf("%s: installed\n", name)
+			case "skipped":
+				fmt.Printf("%s: skipped\n", name)
+			}
 		}
 	}
 	return operation(send, cancelChan)

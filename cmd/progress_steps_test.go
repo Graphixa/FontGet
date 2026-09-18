@@ -7,7 +7,7 @@ import (
 )
 
 func TestDownloadFromSourceMessage(t *testing.T) {
-	if got := DownloadFromSourceMessage("Google Fonts"); got != "Downloading from Google Fonts" {
+	if got := DownloadFromSourceMessage("Google Fonts"); got != "Downloading from Google Fonts..." {
 		t.Fatalf("got %q", got)
 	}
 	if got := DownloadFromSourceMessage("  "); got != "Downloading..." {
@@ -18,6 +18,31 @@ func TestDownloadFromSourceMessage(t *testing.T) {
 	}
 	if isInstallPrepPhase(installStepInstall) {
 		t.Fatal("install is not prep")
+	}
+}
+
+func TestProgressActivityLabel(t *testing.T) {
+	cases := []struct {
+		u    ProgressUpdate
+		src  string
+		want string
+	}{
+		{ProgressUpdate{Phase: installStepDownload}, "Google Fonts", "Downloading from Google Fonts..."},
+		{ProgressUpdate{Phase: installStepExtract}, "", progressLabelExtract},
+		{ProgressUpdate{Phase: installStepInstall, Done: 0, Total: 10}, "", "Installing variant (1 of 10)..."},
+		{ProgressUpdate{Phase: installStepInstall, Done: 9, Total: 10}, "", "Installing variant (10 of 10)..."},
+		{ProgressUpdate{Phase: installStepInstall, Done: 10, Total: 10}, "", "Installing variant (10 of 10)..."},
+		{ProgressUpdate{Phase: installStepForceRemove}, "", progressLabelRemove},
+		{ProgressUpdate{Phase: removeStepRemove}, "", progressLabelRemove},
+		{ProgressUpdate{Phase: removeStepScan}, "", ""},
+		{ProgressUpdate{Phase: installStepPrecheck}, "", ""},
+		{ProgressUpdate{Phase: exportStepPrep}, "", progressLabelExport},
+		{ProgressUpdate{Phase: backupStepFiles}, "", progressLabelBackup},
+	}
+	for _, tc := range cases {
+		if got := ProgressActivityLabel(tc.u, tc.src); got != tc.want {
+			t.Fatalf("phase %q: got %q want %q", tc.u.Phase, got, tc.want)
+		}
 	}
 }
 
@@ -40,21 +65,21 @@ func TestOverallWorkPercent_DownloadThenInstall(t *testing.T) {
 	midDL := OverallWorkPercent(0, 1, ProgressUpdate{
 		Phase: installStepDownload, Kind: ProgressCount, Done: 0.5, Total: 1,
 	})
-	if midDL < 2 || midDL > 35 {
-		t.Fatalf("mid download %% = %v, want in (2,35)", midDL)
+	if midDL < 2 || midDL > 28 {
+		t.Fatalf("mid download %% = %v, want in (2,28)", midDL)
 	}
 
 	startInst := OverallWorkPercent(0, 1, ProgressUpdate{
 		Phase: installStepInstall, Kind: ProgressCount, Done: 0, Total: 400,
 	})
-	if startInst < 34 || startInst > 36 {
-		t.Fatalf("install start %% = %v, want ~35", startInst)
+	if startInst < 37 || startInst > 39 {
+		t.Fatalf("install start %% = %v, want ~38", startInst)
 	}
 
 	midInst := OverallWorkPercent(0, 1, ProgressUpdate{
 		Phase: installStepInstall, Kind: ProgressCount, Done: 200, Total: 400,
 	})
-	wantMid := 35 + (98-35)*0.5
+	wantMid := segForceRemoveEnd*100 + (segFilesEnd-segForceRemoveEnd)*100*0.5
 	if midInst < wantMid-2 || midInst > wantMid+2 {
 		t.Fatalf("install mid %% = %v, want ~%v", midInst, wantMid)
 	}
@@ -65,12 +90,78 @@ func TestOverallWorkPercent_DownloadThenInstall(t *testing.T) {
 	}
 }
 
+func TestOverallWorkPercent_ForceRemoveThenInstall(t *testing.T) {
+	endPrep := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepDownload, Kind: ProgressCount, Done: 1, Total: 1,
+	})
+	midForce := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepForceRemove, Kind: ProgressCount, Done: 0.5, Total: 1,
+	})
+	if midForce <= endPrep {
+		t.Fatalf("force remove must continue after prep: prep=%v force=%v", endPrep, midForce)
+	}
+	startInst := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepInstall, Kind: ProgressCount, Done: 0, Total: 10,
+	})
+	if startInst < midForce {
+		t.Fatalf("install must not reset below force remove: force=%v install=%v", midForce, startInst)
+	}
+}
+
 func TestOverallWorkPercent_MultiItem(t *testing.T) {
 	got := OverallWorkPercent(1, 2, ProgressUpdate{
 		Phase: installStepInstall, Kind: ProgressCount, Done: 0, Total: 10,
 	})
-	if got < 65 || got > 70 {
-		t.Fatalf("multi-item %% = %v, want ~67.5", got)
+	// package 2 starts at 50% + force-remove band (38%) → ~69%
+	if got < 68 || got > 70 {
+		t.Fatalf("multi-item %% = %v, want ~69", got)
+	}
+	pkg1Done := OverallWorkPercent(0, 2, ProgressUpdate{Phase: installStepCompleted})
+	if pkg1Done != 50 {
+		t.Fatalf("package 1 complete = %v want 50", pkg1Done)
+	}
+	if got < pkg1Done {
+		t.Fatalf("package 2 must continue from package 1 endpoint")
+	}
+}
+
+func TestForceRemoveFinalizeDoesNotCompleteBar(t *testing.T) {
+	// Reproduce google.lekton --force: after prep, removal finalize must not hit 100%
+	// before install, or the bar looks like it completes then restarts.
+	endPrep := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepDownload, Kind: ProgressCount, Done: 1, Total: 1,
+	})
+	midForce := OverallWorkPercent(0, 1, remapForceInstallProgress(ProgressUpdate{
+		Phase: removeStepRemove, Kind: ProgressCount, Done: 1, Total: 2,
+	}))
+	endForceFiles := OverallWorkPercent(0, 1, remapForceInstallProgress(ProgressUpdate{
+		Phase: removeStepRemove, Kind: ProgressCount, Done: 2, Total: 2,
+	}))
+	// Bug: raw removeStepFinalize jumps to ~100%.
+	rawFinalize := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: removeStepFinalize, Kind: ProgressFlag, Done: 1, Total: 1,
+	})
+	if rawFinalize < 98 {
+		t.Fatalf("sanity: raw remove finalize should be ~100, got %v", rawFinalize)
+	}
+	mappedFinalize := OverallWorkPercent(0, 1, remapForceInstallProgress(ProgressUpdate{
+		Phase: removeStepFinalize, Kind: ProgressFlag, Done: 1, Total: 1,
+	}))
+	startInstall := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepInstall, Kind: ProgressCount, Done: 0, Total: 2,
+	})
+
+	seq := []float64{endPrep, midForce, endForceFiles, mappedFinalize, startInstall}
+	for i := 1; i < len(seq); i++ {
+		if seq[i]+0.01 < seq[i-1] {
+			t.Fatalf("progress reset at step %d: %v → %v (seq=%v)", i, seq[i-1], seq[i], seq)
+		}
+	}
+	if mappedFinalize >= 90 {
+		t.Fatalf("mapped force finalize must stay in force band, got %v (raw was %v)", mappedFinalize, rawFinalize)
+	}
+	if startInstall+0.01 < mappedFinalize {
+		t.Fatalf("install must not restart below force end: finalize=%v install=%v", mappedFinalize, startInstall)
 	}
 }
 
@@ -92,6 +183,39 @@ func TestOverallRemovePercent_Bounds(t *testing.T) {
 	}
 	if got := OverallRemovePercent(99, 2, removeStepCompleted, 1); got != 100 {
 		t.Fatalf("got %v want 100", got)
+	}
+}
+
+func TestOverallExportPercent_NoPrematureComplete(t *testing.T) {
+	prep := OverallExportPercent(ProgressUpdate{Phase: exportStepPrep, Kind: ProgressFlag, Done: 1, Total: 1})
+	if prep < 39 || prep > 41 {
+		t.Fatalf("prep end = %v want ~40", prep)
+	}
+	writeMid := OverallExportPercent(ProgressUpdate{Phase: exportStepWrite, Kind: ProgressCount, Done: 1, Total: 2})
+	if writeMid <= prep {
+		t.Fatalf("write must advance past prep: prep=%v write=%v", prep, writeMid)
+	}
+	if writeMid >= 100 {
+		t.Fatalf("write mid must not be 100: %v", writeMid)
+	}
+	done := OverallExportPercent(ProgressUpdate{Phase: exportStepDone})
+	if done != 100 {
+		t.Fatalf("done = %v want 100", done)
+	}
+}
+
+func TestOverallBackupPercent_FinalizeOnlyAfterClose(t *testing.T) {
+	mid := OverallBackupPercent(5, 10, false)
+	if mid < 48 || mid > 50 {
+		t.Fatalf("mid backup = %v want ~49", mid)
+	}
+	allFiles := OverallBackupPercent(10, 10, false)
+	if allFiles >= 100 {
+		t.Fatalf("all files archived must leave headroom for finalize: %v", allFiles)
+	}
+	done := OverallBackupPercent(10, 10, true)
+	if done != 100 {
+		t.Fatalf("finalized = %v want 100", done)
 	}
 }
 
@@ -164,5 +288,17 @@ func TestDownloadExtractSharePrepBand(t *testing.T) {
 	es, ee := segmentRange(installStepExtract)
 	if ds != es || de != ee || de != segPrepEnd {
 		t.Fatalf("download/extract must share prep band, got dl=(%v,%v) ex=(%v,%v)", ds, de, es, ee)
+	}
+}
+
+func TestSingleVariantDoesNotFillPrepBand(t *testing.T) {
+	// One of four download units at full unit progress should sit at 25% of prep band, not 100%.
+	got := OverallWorkPercent(0, 1, ProgressUpdate{
+		Phase: installStepDownload, Kind: ProgressCount, Done: 1, Total: 4,
+	})
+	prepSpan := (segPrepEnd - segPrecheckEnd) * 100
+	want := segPrecheckEnd*100 + prepSpan*0.25
+	if got < want-1 || got > want+1 {
+		t.Fatalf("unit 1/4 complete = %v want ~%v (must not fill entire prep)", got, want)
 	}
 }

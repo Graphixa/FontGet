@@ -548,7 +548,7 @@ func (m *browseModel) waitForOpMsg() tea.Cmd {
 func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.installing = true
 	m.statusProgress = 0
-	m.statusPhase = "Installing"
+	m.statusPhase = DownloadFromSourceMessage(sourceLabel)
 	m.installPopupFontName = fontName
 	if sourceLabel == "" {
 		sourceLabel = shared.PlaceholderNA
@@ -587,10 +587,7 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 			if !th.ShouldSend(u, pct) {
 				return
 			}
-			phase := FormatProgressActivity(u.Phase, u.Detail)
-			if isInstallPrepPhase(u.Phase) || u.Phase == removeStepRemove {
-				phase = DownloadFromSourceMessage(sourceLabel)
-			}
+			phase := ProgressActivityLabel(u, sourceLabel)
 			ch <- browseOpProgressMsg{phase: phase, percent: pct}
 		}
 
@@ -603,7 +600,7 @@ func (m *browseModel) startInstallByID(fontID, fontName, sourceLabel string) tea
 func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) tea.Cmd {
 	m.removing = true
 	m.statusProgress = -1
-	m.statusPhase = ""
+	m.statusPhase = progressLabelRemove
 	m.removingFontName = fontName
 	if sourceLabel == "" {
 		sourceLabel = shared.PlaceholderNA
@@ -632,7 +629,7 @@ func (m *browseModel) startUninstallByID(fontID, fontName, sourceLabel string) t
 			if !th.ShouldSend(u, pct) {
 				return
 			}
-			ch <- browseOpProgressMsg{phase: "", percent: pct}
+			ch <- browseOpProgressMsg{phase: ProgressActivityLabel(u, ""), percent: pct}
 		}
 		installReg, _ := m.cachedInstallRegistry()
 		rr, err := removeFont(ctx, fontID, fm, scope, fontDir, repository, installReg, m.cachedManifestFontIDProbe(), onProgress)
@@ -1012,7 +1009,7 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.installing && !m.removing {
 			return m, nil
 		}
-		if m.statusPhase == "Cancelling..." {
+		if m.statusPhase == progressLabelCancel {
 			return m, m.waitForOpMsg()
 		}
 		if strings.TrimSpace(msg.phase) != "" {
@@ -1059,7 +1056,7 @@ func (m *browseModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.opCancel()
 					m.opCancel = nil
 				}
-				m.statusPhase = "Cancelling..."
+				m.statusPhase = progressLabelCancel
 				return m, m.waitForOpMsg()
 			}
 		}
