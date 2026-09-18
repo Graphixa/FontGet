@@ -1131,6 +1131,9 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 					}
 				}
 				emitInstallProgress(i + 1)
+				if tc != nil && tc.afterTrackedSkip != nil {
+					tc.afterTrackedSkip()
+				}
 				continue
 			}
 		}
@@ -1271,6 +1274,9 @@ type installTestControl struct {
 	failRegister       bool
 	failAfterMutations int // fail when len(mutations) >= N; 0 = off
 	failProvenance     bool
+	// afterTrackedSkip runs after a successful skip+persist. Tests cancel ctx here so the
+	// next loop iteration sees ctx.Err() before processing the following file.
+	afterTrackedSkip func()
 }
 
 // buildInstallResult builds InstallResult from installation outcomes

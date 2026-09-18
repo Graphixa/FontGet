@@ -290,6 +290,8 @@ func TestTrackingFailureStopsBeforeNextFile(t *testing.T) {
 }
 
 func TestInstallRetryPreservesRetainedInventory(t *testing.T) {
+	// Critical timing: cancel after skipping A (tracking update done), before B is processed.
+	// Cancelling after B would re-add B and hide inventory-loss bugs on skip+persist of A.
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 	fontDir := t.TempDir()
@@ -299,40 +301,64 @@ func TestInstallRetryPreservesRetainedInventory(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = staging.Cleanup() })
 
-	write := func(name, fam, style string) string {
+	pathA := filepath.Join(fontDir, "Alpha-Regular.ttf")
+	pathB := filepath.Join(fontDir, "Beta-Regular.ttf")
+	if err := os.WriteFile(pathA, testutil.MinimalTTF("Alpha", "Regular"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pathB, testutil.MinimalTTF("Beta", "Regular"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	expected := []string{"Alpha-Regular.ttf", "Beta-Regular.ttf", "Gamma-Regular.ttf"}
+	if err := installations.UpsertInstallation(installations.UpsertParams{
+		FontID: "test.retry",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: pathA, SFNT: installations.SFNTSnapshot{Family: "Alpha", Style: "Regular"}},
+			{Path: pathB, SFNT: installations.SFNTSnapshot{Family: "Beta", Style: "Regular"}},
+		},
+		Status:    installations.StatusIncompleteInstall,
+		Remaining: []string{"Gamma-Regular.ttf"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	writeStage := func(name, fam, style string) string {
 		p := filepath.Join(staging.Root, name)
 		if err := os.WriteFile(p, testutil.MinimalTTF(fam, style), 0644); err != nil {
 			t.Fatal(err)
 		}
 		return p
 	}
-	pathA := write("Alpha-Regular.ttf", "Alpha", "Regular")
-	pathB := write("Beta-Regular.ttf", "Beta", "Regular")
-	pathC := write("Gamma-Regular.ttf", "Gamma", "Regular")
-	expected := []string{"Alpha-Regular.ttf", "Beta-Regular.ttf", "Gamma-Regular.ttf"}
+	stageA := writeStage("Alpha-Regular.ttf", "Alpha", "Regular")
+	stageB := writeStage("Beta-Regular.ttf", "Beta", "Regular")
+	stageC := writeStage("Gamma-Regular.ttf", "Gamma", "Regular")
 
-	ctx1, cancel1 := context.WithCancel(context.Background())
-	fm1 := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel1}
-	track1 := newInstallTracker("test.retry", nil, platform.UserScope, fontDir, expected)
-	_, _, _, _, _, _, _, err = installDownloadedFonts(ctx1, []string{pathA, pathB, pathC}, fm1, platform.UserScope, fontDir, false, nil, nil, track1)
-	if err == nil {
-		t.Fatal("expected cancel after A")
+	ctx, cancel := context.WithCancel(context.Background())
+	fm := &copyFontManager{dir: fontDir}
+	track := newInstallTracker("test.retry", nil, platform.UserScope, fontDir, expected)
+	tc := &installTestControl{
+		afterTrackedSkip: cancel, // fire only after A's skip+persist; B must not start
 	}
-
-	// Restage B/C (A already installed; staging copies are consumed).
-	pathB = write("Beta-Regular.ttf", "Beta", "Regular")
-	pathC = write("Gamma-Regular.ttf", "Gamma", "Regular")
-	pathA2 := write("Alpha-Regular.ttf", "Alpha", "Regular")
-
-	ctx2, cancel2 := context.WithCancel(context.Background())
-	fm2 := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel2}
-	track2 := newInstallTracker("test.retry", nil, platform.UserScope, fontDir, expected)
-	_, skipped, _, _, _, _, _, err := installDownloadedFonts(ctx2, []string{pathA2, pathB, pathC}, fm2, platform.UserScope, fontDir, false, nil, nil, track2)
+	_, skipped, _, _, _, _, _, err := installDownloadedFonts(
+		ctx, []string{stageA, stageB, stageC}, fm, platform.UserScope, fontDir, false, nil, tc, track)
 	if err == nil {
-		t.Fatal("expected cancel after B")
+		t.Fatal("expected cancellation after skipping A")
+	}
+	if !IsCancelErr(err) {
+		t.Fatalf("want cancel error, got %v", err)
 	}
 	if skipped != 1 {
-		t.Fatalf("expected skip A, got skipped=%d", skipped)
+		t.Fatalf("expected skip A only, got skipped=%d", skipped)
+	}
+	if _, statErr := os.Stat(pathA); statErr != nil {
+		t.Fatalf("A must still exist: %v", statErr)
+	}
+	if _, statErr := os.Stat(pathB); statErr != nil {
+		t.Fatalf("B must still exist: %v", statErr)
+	}
+	if _, statErr := os.Stat(filepath.Join(fontDir, "Gamma-Regular.ttf")); !os.IsNotExist(statErr) {
+		t.Fatal("C must not have been installed")
 	}
 
 	reg, loadErr := installations.Load()
@@ -349,7 +375,7 @@ func TestInstallRetryPreservesRetainedInventory(t *testing.T) {
 		have[strings.ToLower(b)] = true
 	}
 	if !have["alpha-regular.ttf"] || !have["beta-regular.ttf"] {
-		t.Fatalf("A and B must remain tracked, got %#v", bases)
+		t.Fatalf("A and B must remain tracked after skip+cancel, got %#v", bases)
 	}
 	if have["gamma-regular.ttf"] {
 		t.Fatal("C must not be tracked yet")
@@ -361,7 +387,7 @@ func TestInstallRetryPreservesRetainedInventory(t *testing.T) {
 	removed, _, _, _, _, remErr := removeFontFiles(RemoveFontFilesParams{
 		Ctx:           context.Background(),
 		MatchingFonts: bases,
-		FontManager:   &removeTrackingFM{dir: fontDir},
+		FontManager:   &copyFontManager{dir: fontDir},
 		Scope:         platform.UserScope,
 		FontDir:       fontDir,
 		FontID:        "test.retry",
@@ -371,6 +397,12 @@ func TestInstallRetryPreservesRetainedInventory(t *testing.T) {
 	}
 	if removed != 2 {
 		t.Fatalf("removal must remove A and B, got %d", removed)
+	}
+	if _, statErr := os.Stat(pathA); !os.IsNotExist(statErr) {
+		t.Fatal("A must be removed from disk")
+	}
+	if _, statErr := os.Stat(pathB); !os.IsNotExist(statErr) {
+		t.Fatal("B must be removed from disk")
 	}
 	reg, _ = installations.Load()
 	if reg.FindByFontID("test.retry") != nil {
