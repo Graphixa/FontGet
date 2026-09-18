@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"fontget/internal/installations"
 	"fontget/internal/platform"
 	"fontget/internal/repo"
 	"fontget/internal/shared"
@@ -363,4 +364,123 @@ func TestInstallProvenanceFailRollsBackCurrentFile(t *testing.T) {
 		}
 		t.Fatalf("provenance failure left installed file %s", e.Name())
 	}
+}
+
+// recordingFontManager records remove/install order for force-replace lock regressions.
+type recordingFontManager struct {
+	*copyFontManager
+	ops []string
+}
+
+func (m *recordingFontManager) RemoveFont(fontName string, scope platform.InstallationScope, opts *platform.RemoveFontOptions) error {
+	m.ops = append(m.ops, "remove:"+fontName)
+	return m.copyFontManager.RemoveFont(fontName, scope, opts)
+}
+
+func (m *recordingFontManager) InstallFont(fontPath string, scope platform.InstallationScope, force bool, opts *platform.InstallFontOptions) error {
+	m.ops = append(m.ops, "install:"+filepath.Base(fontPath))
+	return m.copyFontManager.InstallFont(fontPath, scope, force, opts)
+}
+
+func TestInstallFontForceReplaceTrackedPackageUnderSingleLock(t *testing.T) {
+	// Regression: force must not re-acquire LockDestination while installFont already holds it.
+	// Nested lock waits on itself until the short deadline; production lock timeout is 30s.
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+
+	oldPayload := testutil.MinimalTTF("OldFace", "Regular")
+	newPayload := testutil.MinimalTTF("NewFace", "Bold")
+	if bytes.Equal(oldPayload, newPayload) {
+		t.Fatal("fixtures must differ")
+	}
+
+	existing := filepath.Join(fontDir, "Face.ttf")
+	if err := os.WriteFile(existing, oldPayload, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installations.RecordInstallation(installations.RecordParams{
+		FontID: "test.force-lock",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: existing, SFNT: installations.SFNTSnapshot{Family: "OldFace", Style: "Regular"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "font/ttf")
+		_, _ = w.Write(newPayload)
+	}))
+	t.Cleanup(srv.Close)
+
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+
+	fm := &recordingFontManager{copyFontManager: &copyFontManager{dir: fontDir}}
+	files := []repo.FontFile{{
+		Name:        "NewFace",
+		Variant:     "Bold",
+		Path:        "Face.ttf",
+		DownloadURL: srv.URL + "/Face.ttf",
+	}}
+
+	// Shorter than the 30s production lock wait so nested-lock regressions fail promptly.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	res, err := installFont(ctx, files, "test.force-lock", fm, platform.UserScope, true, fontDir, staging, true, nil, nil)
+	if err != nil {
+		t.Fatalf("force replace under single lock: %v", err)
+	}
+	if res == nil || res.Status != InstallStatusCompleted || res.Success != 1 {
+		t.Fatalf("expected completed force install: %+v", res)
+	}
+	if len(fm.ops) != 2 || !strings.HasPrefix(fm.ops[0], "remove:") || !strings.HasPrefix(fm.ops[1], "install:") {
+		t.Fatalf("want remove then install, got %#v", fm.ops)
+	}
+	if fm.ops[0] != "remove:Face.ttf" {
+		t.Fatalf("must remove tracked Face.ttf first, got %q", fm.ops[0])
+	}
+	installedBase := strings.TrimPrefix(fm.ops[1], "install:")
+	if installedBase == "" {
+		t.Fatal("missing install basename")
+	}
+
+	if _, statErr := os.Stat(existing); !os.IsNotExist(statErr) {
+		t.Fatal("old tracked Face.ttf must be gone after force remove")
+	}
+	dest := filepath.Join(fontDir, installedBase)
+	got, readErr := os.ReadFile(dest)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(got, newPayload) {
+		t.Fatal("destination must contain replacement content")
+	}
+
+	reg, loadErr := installations.Load()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	inst := reg.FindByFontID("test.force-lock")
+	if inst == nil || inst.IsIncomplete() {
+		t.Fatalf("expected complete tracked install: %+v", inst)
+	}
+	bases := inst.BasenamesForDir(fontDir)
+	if len(bases) != 1 || !strings.EqualFold(bases[0], installedBase) {
+		t.Fatalf("registry files: %#v want %q", bases, installedBase)
+	}
+
+	lockCtx, lockCancel := context.WithTimeout(context.Background(), time.Second)
+	defer lockCancel()
+	unlock, lockErr := installations.LockDestination(lockCtx, fontDir)
+	if lockErr != nil {
+		t.Fatalf("destination lock must be free after force install: %v", lockErr)
+	}
+	unlock()
 }
