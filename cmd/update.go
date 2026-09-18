@@ -10,8 +10,8 @@ import (
 	"fontget/internal/update"
 	"fontget/internal/version"
 
-	"github.com/blang/semver"
 	"github.com/spf13/cobra"
+	"golang.org/x/mod/semver"
 )
 
 // Version prefix constant (could be v, or ver)
@@ -210,12 +210,10 @@ func handleUpdateToVersion(targetVersion string, autoYes bool) error {
 
 	// Parse versions to detect downgrades (ignore parse errors gracefully)
 	isDowngrade := false
-	if curr, errCurr := semver.Parse(currentVersion); errCurr == nil {
-		if tgt, errTgt := semver.Parse(targetVersion); errTgt == nil {
-			if tgt.LT(curr) {
-				isDowngrade = true
-			}
-		}
+	curr := "v" + strings.TrimPrefix(strings.TrimSpace(currentVersion), "v")
+	tgt := "v" + strings.TrimPrefix(strings.TrimSpace(targetVersion), "v")
+	if semver.IsValid(curr) && semver.IsValid(tgt) && semver.Compare(tgt, curr) < 0 {
+		isDowngrade = true
 	}
 
 	// Show update information with styled labels

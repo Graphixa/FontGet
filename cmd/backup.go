@@ -550,10 +550,9 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 					}
 				}
 
-				// Update progress after each file for smooth progress bar (if callback provided)
+				// Update progress after each file (leave headroom for archive finalize).
 				if send != nil && totalFiles > 0 {
-					percent := float64(processedFiles) / float64(totalFiles) * 100
-					send(components.ProgressUpdateMsg{Percent: percent})
+					send(components.ProgressUpdateMsg{Percent: OverallBackupPercent(processedFiles, totalFiles, false)})
 				}
 			}
 
@@ -612,6 +611,10 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 		if IsDebug() {
 			output.GetDebug().State("Archive moved successfully to: %s", zipPath)
 		}
+	}
+
+	if send != nil {
+		send(components.ProgressUpdateMsg{Percent: OverallBackupPercent(processedFiles, totalFiles, true)})
 	}
 
 	output.GetVerbose().Info("Backup archive created: %d font families, %d files", familyCount, fileCount)

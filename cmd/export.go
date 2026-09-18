@@ -233,15 +233,19 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 1: Collect fonts (0-20% progress)
-			send(components.ProgressUpdateMsg{Percent: 5.0})
+			// Prep band: scan → group → match → filter (constant title; no activity thrash).
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0, Total: 1,
+			})})
 			output.GetVerbose().Info("Scanning fonts to determine export scope...")
 			fonts, collectErr := collectFonts(scopes, fontManager, "", true) // Suppress verbose - we have our own high-level message
 			if collectErr != nil {
 				return fmt.Errorf("unable to collect fonts: %w", collectErr)
 			}
 			output.GetDebug().State("Total fonts to export: %d", len(fonts))
-			send(components.ProgressUpdateMsg{Percent: 20.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.25, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -250,10 +254,11 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 2: Group by family (20-30% progress)
 			families := groupByFamily(fonts)
 			output.GetVerbose().Info("Grouped into %d font families", len(families))
-			send(components.ProgressUpdateMsg{Percent: 30.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.4, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -262,14 +267,16 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 3: Match installed fonts to repository (30-50% progress)
+			// Phase 3: Match installed fonts to repository
 			var names []string
 			for k := range families {
 				names = append(names, k)
 			}
 			sort.Strings(names)
 
-			send(components.ProgressUpdateMsg{Percent: 35.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.5, Total: 1,
+			})})
 			matches, matchErr := cmdutils.MatchInstalledFontsToRepository(names, GetLogger(), shared.IsCriticalSystemFont)
 			if matchErr != nil {
 				// Continue without matches if exportAll is true
@@ -278,7 +285,9 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 				}
 				matches = make(map[string]*repo.InstalledFontMatch)
 			}
-			send(components.ProgressUpdateMsg{Percent: 50.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 0.75, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -287,7 +296,6 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 4: Populate match data and filter fonts (50-60% progress)
 			populateFontMatchData(families, matches)
 
 			fontIDGroups, skippedSystem, skippedUnmatched, skippedByFilter := filterFontsForExport(FilterFontsForExportParams{
@@ -309,7 +317,9 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			// Update total items now that we know the count
 			// This will make it show "Exporting Fonts (0 of y)" immediately
 			send(components.TotalItemsUpdateMsg{TotalItems: totalFamilies})
-			send(components.ProgressUpdateMsg{Percent: 60.0})
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepPrep, Kind: ProgressFlag, Done: 1, Total: 1,
+			})})
 
 			// Check for cancellation
 			select {
@@ -318,7 +328,6 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 			default:
 			}
 
-			// Phase 5: Perform the actual export operation (60-100% progress)
 			params := ExportProgressParams{
 				FontManager:      fontManager,
 				Scopes:           scopes,
@@ -403,13 +412,40 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 		}
 	}
 
+	if send != nil {
+		send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+			Phase: exportStepWrite, Kind: ProgressCount, Done: 0, Total: 1,
+		})})
+	}
+
 	// Build export manifest
 	manifest, totalVariants := buildExportManifest(
 		params.FontIDGroups, params.MatchFilter, params.SourceFilter, params.OnlyMatched, params.SkippedSystem, params.SkippedUnmatched, params.SkippedByFilter)
 
-	// Update progress
+	// Mark families complete within the write band (prep already finished at 40%).
 	if send != nil {
-		send(components.ProgressUpdateMsg{Percent: 50.0})
+		n := len(manifest.Fonts)
+		for i, font := range manifest.Fonts {
+			if cancelChan != nil {
+				select {
+				case <-cancelChan:
+					return nil, 0, shared.ErrOperationCancelled
+				default:
+				}
+			}
+			label := font.FontID
+			if label == "" && len(font.FamilyNames) > 0 {
+				label = font.FamilyNames[0]
+			}
+			send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+				Phase: exportStepWrite, Kind: ProgressCount, Done: float64(i + 1), Total: float64(max(n, 1)),
+			})})
+			send(components.ItemUpdateMsg{
+				Index:  i,
+				Name:   label,
+				Status: "completed",
+			})
+		}
 	}
 
 	// Check for cancellation before writing
@@ -420,6 +456,12 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 		default:
 			// Continue processing
 		}
+	}
+
+	if send != nil {
+		send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{
+			Phase: exportStepWrite, Kind: ProgressCount, Done: 1, Total: 1,
+		})})
 	}
 
 	// Write manifest
@@ -451,17 +493,8 @@ func performExportWithProgress(params ExportProgressParams, send func(msg tea.Ms
 	GetLogger().Info("Export file written successfully: %s", params.OutputFile)
 	output.GetVerbose().Info("Export file written successfully")
 
-	// Update progress to 100%
 	if send != nil {
-		send(components.ProgressUpdateMsg{Percent: 100.0})
-		// Mark all items as completed so the count shows correctly
-		// The progress bar component counts items with status "completed", "failed", or "skipped"
-		for i := 0; i < params.TotalFamilies; i++ {
-			send(components.ItemUpdateMsg{
-				Index:  i,
-				Status: "completed",
-			})
-		}
+		send(components.ProgressUpdateMsg{Percent: OverallExportPercent(ProgressUpdate{Phase: exportStepDone})})
 	}
 
 	return manifest.Fonts, totalVariants, nil

@@ -77,28 +77,24 @@ func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope,
 
 	targetPath := filepath.Join(targetDir, fontName)
 
-	// Check if font is already installed
-	if _, err := os.Stat(targetPath); err == nil {
-		if !force {
-			return fmt.Errorf("font already installed: %s", fontName)
-		}
-		// Remove the existing file if force is true
-		if err := os.Remove(targetPath); err != nil {
-			return fmt.Errorf("failed to overwrite existing font: %w", err)
-		}
+	mut, err := placeFontFile(fontPath, targetPath, force, opts)
+	if err != nil {
+		return err
 	}
-
-	// Copy the font file to the target directory
-	if err := copyFile(fontPath, targetPath); err != nil {
-		return fmt.Errorf("failed to copy font file: %w", err)
+	mut.FontName = fontName
+	mut.Scope = scope
+	if opts != nil && opts.Mutation != nil {
+		*opts.Mutation = mut
+	}
+	if opts != nil && opts.FailPoint == InstallFailRegister {
+		_ = RollbackMutation(mut)
+		return failPointError(InstallFailRegister)
 	}
 
 	skipCache := opts != nil && opts.SkipPostInstallCacheRefresh
 	if !skipCache {
-		// Update the font cache
 		if err := m.updateFontCache(scope); err != nil {
-			// Clean up the file if cache update fails
-			os.Remove(targetPath)
+			_ = RollbackMutation(mut)
 			return fmt.Errorf("failed to update font cache: %w", err)
 		}
 	}
@@ -121,7 +117,12 @@ func (m *linuxFontManager) RemoveFont(fontName string, scope InstallationScope, 
 
 	fontPath := filepath.Join(targetDir, fontName)
 
-	// Delete the font file
+	if opts != nil && opts.UnregisterOnly {
+		return nil
+	}
+
+	// Delete the font file. No separate registration API on Linux (unlike Windows GDI).
+	// Cancellation boundaries and user-facing messages are handled in cmd/.
 	if err := os.Remove(fontPath); err != nil {
 		return fmt.Errorf("failed to remove font file: %w", err)
 	}

@@ -7,7 +7,6 @@ import (
 
 	"fontget/internal/components"
 	"fontget/internal/config"
-	"fontget/internal/functions"
 	"fontget/internal/output"
 	"fontget/internal/ui"
 
@@ -16,12 +15,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// SourceItem represents a source in the TUI
-// This type is now defined in internal/functions/sort.go for consistency
+// Source helpers (SourceItem, validation, sorting) live in sources_helpers.go.
 
 // sourcesModel represents the main model for the sources management TUI
 type sourcesModel struct {
-	sources       []functions.SourceItem
+	sources       []SourceItem
 	cursor        int
 	manifest      *config.Manifest
 	state         string // "list", "add", "edit", "confirm", "save_confirm", "builtin_warning"
@@ -60,7 +58,7 @@ func NewSourcesModel() (*sourcesModel, error) {
 	sm.sources = convertManifestToSourceItems(manifest)
 
 	// Sort sources using the centralized sorting function
-	functions.SortSources(sm.sources)
+	SortSources(sm.sources)
 
 	// Initialize checkbox list
 	sm.initCheckboxList()
@@ -98,7 +96,7 @@ func NewSourcesModel() (*sourcesModel, error) {
 
 // updateInputWidths updates the width of text inputs based on terminal size
 func (m *sourcesModel) updateInputWidths() {
-	width := functions.CalculateInputWidth(m.width)
+	width := CalculateInputWidth(m.width)
 	m.nameInput.Width = width
 	m.urlInput.Width = width
 	m.prefixInput.Width = width
@@ -476,10 +474,10 @@ func (m *sourcesModel) resetForm() {
 }
 
 // convertManifestToSourceItems converts manifest sources to SourceItem slice
-func convertManifestToSourceItems(manifest *config.Manifest) []functions.SourceItem {
-	var sources []functions.SourceItem
+func convertManifestToSourceItems(manifest *config.Manifest) []SourceItem {
+	var sources []SourceItem
 	for name, source := range manifest.Sources {
-		sources = append(sources, functions.SourceItem{
+		sources = append(sources, SourceItem{
 			Name:      name,
 			Prefix:    source.Prefix,
 			URL:       source.URL,
@@ -556,7 +554,7 @@ func (m *sourcesModel) validateForm() bool {
 	}
 
 	// Use centralized validation
-	result := functions.ValidateSourceForm(name, url, prefix, m.sources, editingIndex)
+	result := ValidateSourceForm(name, url, prefix, m.sources, editingIndex)
 
 	if !result.IsValid {
 		m.err = result.GetFirstError()
@@ -565,7 +563,7 @@ func (m *sourcesModel) validateForm() bool {
 
 	// Auto-generate prefix if empty
 	if prefix == "" {
-		generatedPrefix := functions.AutoGeneratePrefix(name)
+		generatedPrefix := AutoGeneratePrefix(name)
 		m.prefixInput.SetValue(generatedPrefix)
 	}
 
@@ -586,7 +584,7 @@ func (m *sourcesModel) addSource() {
 	}
 
 	// Assign priority to custom sources (100+ to ensure they come after built-in sources)
-	newSource := functions.SourceItem{
+	newSource := SourceItem{
 		Name:      name,
 		Prefix:    prefix,
 		URL:       url,
@@ -596,10 +594,10 @@ func (m *sourcesModel) addSource() {
 	}
 
 	m.sources = append(m.sources, newSource)
-	functions.SortSources(m.sources)
+	SortSources(m.sources)
 
 	// Find the new source's position using the utility function
-	m.cursor = functions.FindSourceIndex(m.sources, name)
+	m.cursor = FindSourceIndex(m.sources, name)
 
 	// Reinitialize checkbox list to reflect new source
 	m.initCheckboxList()
@@ -623,10 +621,10 @@ func (m *sourcesModel) updateSource() {
 	m.sources[m.editingIndex].Prefix = prefix
 
 	// Re-sort sources using the centralized sorting function
-	functions.SortSources(m.sources)
+	SortSources(m.sources)
 
 	// Find the updated source's position using the utility function
-	m.cursor = functions.FindSourceIndex(m.sources, name)
+	m.cursor = FindSourceIndex(m.sources, name)
 
 	// Reinitialize checkbox list to reflect updated source
 	m.initCheckboxList()

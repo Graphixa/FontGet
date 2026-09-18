@@ -258,9 +258,16 @@ Use -s without a value to list sources.`,
 		}
 		output.GetDebug().State("Starting font search with parameters: query='%s', category='%s', source='%s'", query, category, source)
 
-		r, err := cmdutils.GetRepository(GetLogger())
+		output.GetVerbose().Info("Loading font repository")
+		output.GetDebug().State("Calling repo.GetRepository()")
+		r, err := repo.GetRepository()
 		if err != nil {
-			return err
+			if lg := GetLogger(); lg != nil {
+				lg.Error("Failed to get repository: %v", err)
+			}
+			output.GetVerbose().Error("%v", err)
+			output.GetDebug().Error("repo.GetRepository() failed: %v", err)
+			return fmt.Errorf("unable to load font repository: %w", err)
 		}
 
 		// Handle source-only search (no query, no category)
@@ -475,13 +482,7 @@ Use -s without a value to list sources.`,
 
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
-			Columns: []components.ColumnConfig{
-				{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
-				{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0}, // Highest priority, don't trim
-				{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-				{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-				{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0}, // Lowest priority
-			},
+			Columns: components.DefaultFontTableColumns(),
 			Rows:     tableRows,
 			Width:    0,   // Auto-detect terminal width
 			MaxWidth: 120, // Maximum width

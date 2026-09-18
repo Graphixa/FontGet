@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"unicode"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -155,7 +155,7 @@ func wrapParagraph(text string, width int, indent string) []string {
 		}
 
 		// Calculate display width (accounting for potential multi-byte characters)
-		testWidth := calculateDisplayWidth(testLine)
+		testWidth := ansi.StringWidth(testLine)
 
 		if testWidth <= width {
 			currentLine = testLine
@@ -166,7 +166,7 @@ func wrapParagraph(text string, width int, indent string) []string {
 				currentLine = word
 			} else {
 				// Word itself is longer than width - add it anyway and break if needed
-				if calculateDisplayWidth(word) > width {
+				if ansi.StringWidth(word) > width {
 					// Break long word (preserve as much as possible)
 					lines = append(lines, indent+word)
 					currentLine = ""
@@ -183,29 +183,6 @@ func wrapParagraph(text string, width int, indent string) []string {
 	}
 
 	return lines
-}
-
-// calculateDisplayWidth calculates the display width of a string
-// This accounts for multi-byte characters and ANSI escape codes
-func calculateDisplayWidth(s string) int {
-	// Simple implementation: count runes (works for most cases)
-	// For more accurate width calculation with emoji/wide chars, we'd need
-	// a library like github.com/mattn/go-runewidth, but we'll keep it simple
-	// for now to avoid dependencies
-	width := 0
-	for _, r := range s {
-		if unicode.IsPrint(r) {
-			// Most characters are 1 width, but some (like emoji) are 2
-			// For now, we'll use a simple heuristic
-			if r > 0x1F000 && r < 0x1FAFF {
-				// Emoji range - typically 2 width
-				width += 2
-			} else {
-				width++
-			}
-		}
-	}
-	return width
 }
 
 // stripMarkdown removes markdown formatting from text while preserving content

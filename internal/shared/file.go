@@ -6,24 +6,18 @@ import (
 	"strings"
 )
 
-// FormatFileSize formats bytes for general display (B / KB / MB at 1024 base).
-// cmd/sources.go also defines formatFileSize (full KMGTPE range for cache sizes); outputs differ intentionally—unify only with tests.
+// FormatFileSize formats bytes for display (B / KB / MB / GB / TB / PB / EB at 1024 base).
 func FormatFileSize(bytes int64) string {
-	if bytes == 0 {
-		return ""
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
 	}
-
-	const (
-		KB = 1024
-		MB = KB * 1024
-	)
-
-	if bytes >= MB {
-		return fmt.Sprintf("%.1fMB", float64(bytes)/float64(MB))
-	} else if bytes >= KB {
-		return fmt.Sprintf("%.0fKB", float64(bytes)/float64(KB))
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
 	}
-	return fmt.Sprintf("%dB", bytes)
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 // SanitizeForZipPath sanitizes a string for use as a path component in a zip archive.

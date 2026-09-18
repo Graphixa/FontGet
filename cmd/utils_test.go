@@ -7,7 +7,6 @@ import (
 	"fontget/internal/cmdutils"
 	"fontget/internal/output"
 	"fontget/internal/platform"
-	"fontget/internal/repo"
 	"fontget/internal/shared"
 )
 
@@ -162,55 +161,6 @@ func TestFontRemovalError(t *testing.T) {
 	expected := "failed to remove 1 out of 5 fonts"
 	if err.Error() != expected {
 		t.Errorf("FontRemovalError.Error() = %q, expected %q", err.Error(), expected)
-	}
-}
-
-func TestConfigurationError(t *testing.T) {
-	tests := []struct {
-		name     string
-		field    string
-		value    string
-		hint     string
-		expected string
-	}{
-		{
-			name:     "without hint",
-			field:    "scope",
-			value:    "invalid",
-			hint:     "",
-			expected: "configuration error in field 'scope' with value 'invalid'",
-		},
-		{
-			name:     "with hint",
-			field:    "scope",
-			value:    "invalid",
-			hint:     "must be 'user' or 'machine'",
-			expected: "configuration error in field 'scope' with value 'invalid': must be 'user' or 'machine'",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := &shared.ConfigurationError{
-				Field: tt.field,
-				Value: tt.value,
-				Hint:  tt.hint,
-			}
-			if err.Error() != tt.expected {
-				t.Errorf("ConfigurationError.Error() = %q, expected %q", err.Error(), tt.expected)
-			}
-		})
-	}
-}
-
-func TestElevationError(t *testing.T) {
-	err := &shared.ElevationError{
-		Operation: "install",
-		Platform:  "windows",
-	}
-	expected := "elevation required for operation 'install' on platform 'windows'"
-	if err.Error() != expected {
-		t.Errorf("ElevationError.Error() = %q, expected %q", err.Error(), expected)
 	}
 }
 
@@ -431,43 +381,5 @@ func TestArchiveSourcePrefixFromFontID(t *testing.T) {
 	}
 	if got := archiveSourcePrefixFromFontID(".onlytail"); got != "" {
 		t.Fatalf("got %q want empty", got)
-	}
-}
-
-func TestCloneDownloadOptsForProgress_preservesOnResponseHeaders(t *testing.T) {
-	called := false
-	in := &repo.DownloadFontOptions{
-		SuppressVerboseProgressLine: true,
-		OnResponseHeaders:           func(repo.HTTPResponseInfo) { called = true },
-	}
-	out := cloneDownloadOptsForProgress(in, "fontshare", "fontshare.foo")
-	if out.ArchiveSourcePrefix != "fontshare" {
-		t.Fatalf("ArchiveSourcePrefix: got %q", out.ArchiveSourcePrefix)
-	}
-	if out.ArchiveFontID != "fontshare.foo" {
-		t.Fatalf("ArchiveFontID: got %q", out.ArchiveFontID)
-	}
-	if !out.SuppressVerboseProgressLine {
-		t.Fatal("SuppressVerboseProgressLine lost")
-	}
-	if out.OnResponseHeaders == nil {
-		t.Fatal("OnResponseHeaders dropped")
-	}
-	out.OnResponseHeaders(repo.HTTPResponseInfo{})
-	if !called {
-		t.Fatal("OnResponseHeaders should be the same callback")
-	}
-}
-
-func TestCloneDownloadOptsForProgress_nilIncoming(t *testing.T) {
-	out := cloneDownloadOptsForProgress(nil, "league", "league.fanwood")
-	if out.ArchiveSourcePrefix != "league" {
-		t.Fatalf("got %q", out.ArchiveSourcePrefix)
-	}
-	if out.ArchiveFontID != "league.fanwood" {
-		t.Fatalf("ArchiveFontID: got %q", out.ArchiveFontID)
-	}
-	if out.OnResponseHeaders != nil {
-		t.Fatal("expected nil OnResponseHeaders")
 	}
 }

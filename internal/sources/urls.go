@@ -11,8 +11,9 @@ const (
 	// GoogleFontsURL is the URL for Google Fonts source data
 	GoogleFontsURL = BaseURL + "/google-fonts.json"
 
-	// NerdFontsURL is the URL for Nerd Fonts source data
-	NerdFontsURL = BaseURL + "/nerd-fonts.json"
+	// NerdFontsURL is the URL for Nerd Fonts source data (v2 catalog: patched names/ids).
+	// Legacy v1 remains at .../nerd-fonts.json for older FontGet binaries.
+	NerdFontsURL = BaseURL + "/nerd-fonts-v2.json"
 
 	// LeagueOfMoveableTypeURL is the URL for The League of Moveable Type source data
 	LeagueOfMoveableTypeURL = BaseURL + "/league-of-moveable-type.json"
@@ -44,7 +45,7 @@ func DefaultSources() map[string]SourceInfo {
 			URL:      NerdFontsURL,
 			Prefix:   "nerd",
 			Enabled:  true,
-			Filename: "nerd-fonts.json",
+			Filename: "nerd-fonts-v2.json",
 			Priority: 2,
 		},
 		"The League of Moveable Type": {

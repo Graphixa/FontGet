@@ -56,7 +56,9 @@ func TestListInstalledFonts_WindowsUserAndSystemDirs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListInstalledFonts %s (%s): %v", scope, dir, err)
 		}
-		if len(names) == 0 {
+		// Fresh Windows accounts (including CI runners) often have no user-installed
+		// fonts. System fonts should always be present.
+		if scope == MachineScope && len(names) == 0 {
 			t.Fatalf("%s font dir %s: expected installed fonts", scope, dir)
 		}
 	}

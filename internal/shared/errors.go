@@ -41,32 +41,46 @@ func (e *FontRemovalError) Error() string {
 	return fmt.Sprintf("failed to remove %d out of %d fonts", e.FailedCount, e.TotalCount)
 }
 
-// ConfigurationError represents configuration-related errors
-type ConfigurationError struct {
-	Field string
-	Value string
-	Hint  string
+// Classified operation errors. Callers should use errors.Is; do not match message text.
+var (
+	// ErrOperationCancelled is a sentinel error used to indicate that an operation was cancelled by the user.
+	ErrOperationCancelled = errors.New("operation cancelled")
+
+	// ErrRecoveryRequired is returned when installation rollback could not fully restore prior state.
+	ErrRecoveryRequired = errors.New("installation recovery required")
+)
+
+// DisplayedError wraps an error whose user-facing message has already been printed.
+// The process should still exit non-zero, but the entry point must not print it again.
+type DisplayedError struct {
+	Cause error
 }
 
-func (e *ConfigurationError) Error() string {
-	if e.Hint != "" {
-		return fmt.Sprintf("configuration error in field '%s' with value '%s': %s", e.Field, e.Value, e.Hint)
+func (e *DisplayedError) Error() string {
+	if e == nil || e.Cause == nil {
+		return "error already displayed"
 	}
-	return fmt.Sprintf("configuration error in field '%s' with value '%s'", e.Field, e.Value)
+	return e.Cause.Error()
 }
 
-// ElevationError represents elevation-related errors
-type ElevationError struct {
-	Operation string
-	Platform  string
+func (e *DisplayedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
 }
 
-func (e *ElevationError) Error() string {
-	return fmt.Sprintf("elevation required for operation '%s' on platform '%s'", e.Operation, e.Platform)
+// AlreadyPrinted wraps err so the executable entry point skips duplicate output.
+func AlreadyPrinted(err error) error {
+	if err == nil {
+		return nil
+	}
+	var displayed *DisplayedError
+	if errors.As(err, &displayed) {
+		return err
+	}
+	return &DisplayedError{Cause: err}
 }
-
-// ErrOperationCancelled is a sentinel error used to indicate that an operation was cancelled by the user.
-var ErrOperationCancelled = errors.New("operation cancelled")
 
 // ErrExportCancelled is a sentinel error used to indicate that an export operation was cancelled by the user.
 var ErrExportCancelled = errors.New("export cancelled")

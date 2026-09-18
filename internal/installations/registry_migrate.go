@@ -1,9 +1,14 @@
 package installations
 
 import (
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+//go:embed migrations/001-nerd-fonts-v1-to-v2.json
+var nerdFontsV1ToV2JSON []byte
 
 // registryMigrationStep advances schema_version by one hop. Steps are applied in order until
 // reg.SchemaVersion matches schemaVersion (see schemaVersion in registry.go).
@@ -21,21 +26,15 @@ func init() {
 
 // buildRegistryMigrations defines every allowed schema_version transition for this binary.
 // When you bump schemaVersion, add a new switch case and chain older versions → newer (one hop per `from`).
-//
-// Example for bumping from "1.0" to "2.0":
-//
-//	case "2.0":
-//		return []registryMigrationStep{
-//			{from: "", to: "1.0"},
-//			{from: "1", to: "1.0"},
-//			{from: "1.0", to: "2.0", fn: migrateV1_0ToV2_0},
-//		}
 func buildRegistryMigrations() []registryMigrationStep {
 	switch schemaVersion {
-	case "1.0":
+	case "1.1":
 		return []registryMigrationStep{
-			{from: "", to: schemaVersion},
-			{from: "1", to: schemaVersion},
+			{from: "", to: "1.0"},
+			{from: "1", to: "1.0"},
+			{from: "1.0", to: "1.1", fn: func(reg *Registry) error {
+				return applyFontIDRenames(reg, nerdFontsV1ToV2JSON)
+			}},
 		}
 	default:
 		panic(fmt.Sprintf("installations: schemaVersion %q has no migration definition — edit buildRegistryMigrations in registry_migrate.go", schemaVersion))
@@ -79,4 +78,42 @@ func applyRegistryMigrations(reg *Registry) (changed bool, err error) {
 // CurrentRegistrySchemaVersion returns the schema_version string this binary reads and writes.
 func CurrentRegistrySchemaVersion() string {
 	return schemaVersion
+}
+
+func applyFontIDRenames(reg *Registry, raw []byte) error {
+	var doc struct {
+		Renames []struct {
+			From        string `json:"from"`
+			To          string `json:"to"`
+			CatalogName string `json:"catalog_name"`
+		} `json:"renames"`
+	}
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return fmt.Errorf("parse font id renames: %w", err)
+	}
+	if reg.Installations == nil {
+		reg.Installations = make(map[string]*Installation)
+	}
+	for _, r := range doc.Renames {
+		from := strings.ToLower(strings.TrimSpace(r.From))
+		to := strings.ToLower(strings.TrimSpace(r.To))
+		if from == "" || to == "" || from == to {
+			continue
+		}
+		inst, ok := reg.Installations[from]
+		if !ok {
+			continue
+		}
+		if _, exists := reg.Installations[to]; exists {
+			delete(reg.Installations, from)
+			continue
+		}
+		delete(reg.Installations, from)
+		inst.FontID = to
+		if name := strings.TrimSpace(r.CatalogName); name != "" {
+			inst.CatalogName = name
+		}
+		reg.Installations[to] = inst
+	}
+	return nil
 }

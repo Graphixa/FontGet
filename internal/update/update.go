@@ -11,7 +11,7 @@ import (
 	"fontget/internal/logging"
 	"fontget/internal/version"
 
-	"github.com/blang/semver"
+	"golang.org/x/mod/semver"
 )
 
 // executablePath resolves the current binary. Tests override this.
@@ -51,11 +51,11 @@ func CheckForUpdates() (*UpdateResult, error) {
 
 	currentVersion, err := parseVersion(currentVersionStr)
 	if err != nil {
-		needsUpdate := latestVersion.String() != currentVersionStr
+		needsUpdate := latestVersion != currentVersionStr
 		return &UpdateResult{
 			Available:   true,
 			Current:     currentVersionStr,
-			Latest:      latestVersion.String(),
+			Latest:      latestVersion,
 			NeedsUpdate: needsUpdate,
 		}, nil
 	}
@@ -63,8 +63,8 @@ func CheckForUpdates() (*UpdateResult, error) {
 	return &UpdateResult{
 		Available:   true,
 		Current:     currentVersionStr,
-		Latest:      latestVersion.String(),
-		NeedsUpdate: latestVersion.GT(currentVersion),
+		Latest:      latestVersion,
+		NeedsUpdate: versionGreater(latestVersion, currentVersion),
 	}, nil
 }
 
@@ -95,8 +95,8 @@ func UpdateToVersion(targetVersion string) error {
 	return applyVersion(client, targetSemver)
 }
 
-func applyVersion(client *releaseClient, releaseVersion semver.Version) error {
-	archiveName := currentArchiveName(releaseVersion.String())
+func applyVersion(client *releaseClient, releaseVersion string) error {
+	archiveName := currentArchiveName(releaseVersion)
 	ctx := context.Background()
 	checksumBytes, err := client.checksums(ctx, releaseVersion)
 	if err != nil {
@@ -149,18 +149,31 @@ func cleanupOldBinary(execPath string) {
 	}
 }
 
-// parseVersion parses a version string to semver.Version.
+// parseVersion parses a version string to a canonical semver without a "v" prefix.
 // Handles "dev" (and other dev-prefixed strings) and versions with or without a "v" prefix.
-func parseVersion(versionStr string) (semver.Version, error) {
+func parseVersion(versionStr string) (string, error) {
 	trimmed := strings.TrimSpace(versionStr)
 	if trimmed == "" {
-		return semver.Version{}, fmt.Errorf("empty version")
+		return "", fmt.Errorf("empty version")
 	}
 	if trimmed == "dev" || strings.HasPrefix(trimmed, "dev-") || strings.HasPrefix(trimmed, "dev+") {
-		return semver.MustParse("0.0.0"), nil
+		return "0.0.0", nil
 	}
+	mod := toModVersion(trimmed)
+	if !semver.IsValid(mod) {
+		return "", fmt.Errorf("invalid semantic version %q", versionStr)
+	}
+	return strings.TrimPrefix(semver.Canonical(mod), "v"), nil
+}
+
+func toModVersion(versionStr string) string {
+	trimmed := strings.TrimSpace(versionStr)
 	trimmed = strings.TrimPrefix(trimmed, "v")
-	return semver.Parse(trimmed)
+	return "v" + trimmed
+}
+
+func versionGreater(a, b string) bool {
+	return semver.Compare(toModVersion(a), toModVersion(b)) > 0
 }
 
 // mapLibraryError converts update errors to user-friendly messages

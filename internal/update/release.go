@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/blang/semver"
+	"golang.org/x/mod/semver"
 )
 
 const (
@@ -60,7 +60,7 @@ func newReleaseClient() (*releaseClient, error) {
 // latestVersion resolves GitHub's stable-release permalink without following
 // the redirect. The redirect target is treated only as a version identifier;
 // all asset URLs are constructed locally from the validated tag.
-func (c *releaseClient) latestVersion(ctx context.Context) (semver.Version, error) {
+func (c *releaseClient) latestVersion(ctx context.Context) (string, error) {
 	latest := *c.baseURL
 	latest.Path = strings.TrimRight(c.baseURL.Path, "/") + "/latest"
 	latest.RawQuery = ""
@@ -71,7 +71,7 @@ func (c *releaseClient) latestVersion(ctx context.Context) (semver.Version, erro
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, latest.String(), nil)
 	if err != nil {
-		return semver.Version{}, fmt.Errorf("failed to create latest-release request: %w", err)
+		return "", fmt.Errorf("failed to create latest-release request: %w", err)
 	}
 	req.Header.Set("User-Agent", updateUserAgent)
 
@@ -82,33 +82,33 @@ func (c *releaseClient) latestVersion(ctx context.Context) (semver.Version, erro
 
 	resp, err := noRedirect.Do(req)
 	if err != nil {
-		return semver.Version{}, fmt.Errorf("failed to resolve latest release: %w", err)
+		return "", fmt.Errorf("failed to resolve latest release: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return semver.Version{}, errReleaseNotFound
+		return "", errReleaseNotFound
 	}
 	if !isRedirectStatus(resp.StatusCode) {
-		return semver.Version{}, fmt.Errorf("latest release returned HTTP %d instead of a redirect", resp.StatusCode)
+		return "", fmt.Errorf("latest release returned HTTP %d instead of a redirect", resp.StatusCode)
 	}
 
 	location := resp.Header.Get("Location")
 	if location == "" {
-		return semver.Version{}, fmt.Errorf("latest release redirect did not include Location")
+		return "", fmt.Errorf("latest release redirect did not include Location")
 	}
 	return parseLatestRedirect(c.baseURL, location)
 }
 
-func (c *releaseClient) checksums(ctx context.Context, version semver.Version) ([]byte, error) {
+func (c *releaseClient) checksums(ctx context.Context, version string) ([]byte, error) {
 	return c.downloadAsset(ctx, version, "checksums.txt", maxChecksumsBytes, releaseRequestTimeout)
 }
 
-func (c *releaseClient) archive(ctx context.Context, version semver.Version, name string) ([]byte, error) {
+func (c *releaseClient) archive(ctx context.Context, version string, name string) ([]byte, error) {
 	return c.downloadAsset(ctx, version, name, maxReleaseAssetBytes, archiveDownloadTimeout)
 }
 
-func (c *releaseClient) downloadAsset(ctx context.Context, version semver.Version, name string, limit int64, timeout time.Duration) ([]byte, error) {
+func (c *releaseClient) downloadAsset(ctx context.Context, version string, name string, limit int64, timeout time.Duration) ([]byte, error) {
 	assetURL, err := c.assetURL(version, name)
 	if err != nil {
 		return nil, err
@@ -147,13 +147,13 @@ func (c *releaseClient) downloadAsset(ctx context.Context, version semver.Versio
 	return body, nil
 }
 
-func (c *releaseClient) assetURL(version semver.Version, name string) (*url.URL, error) {
+func (c *releaseClient) assetURL(version string, name string) (*url.URL, error) {
 	if name == "" || name != url.PathEscape(name) || strings.ContainsAny(name, `/\`) {
 		return nil, fmt.Errorf("invalid release asset name %q", name)
 	}
 
 	u := *c.baseURL
-	u.Path = strings.TrimRight(c.baseURL.Path, "/") + "/download/v" + version.String() + "/" + name
+	u.Path = strings.TrimRight(c.baseURL.Path, "/") + "/download/v" + version + "/" + name
 	u.RawQuery = ""
 	u.Fragment = ""
 	if err := validateDownloadURL(&u, c.baseURL); err != nil {
@@ -162,35 +162,35 @@ func (c *releaseClient) assetURL(version semver.Version, name string) (*url.URL,
 	return &u, nil
 }
 
-func parseLatestRedirect(base *url.URL, location string) (semver.Version, error) {
+func parseLatestRedirect(base *url.URL, location string) (string, error) {
 	target, err := base.Parse(location)
 	if err != nil {
-		return semver.Version{}, fmt.Errorf("invalid latest release redirect: %w", err)
+		return "", fmt.Errorf("invalid latest release redirect: %w", err)
 	}
 	if target.User != nil || target.RawQuery != "" || target.Fragment != "" {
-		return semver.Version{}, fmt.Errorf("latest release redirect contains unexpected URL components")
+		return "", fmt.Errorf("latest release redirect contains unexpected URL components")
 	}
 	if !strings.EqualFold(target.Scheme, base.Scheme) || !strings.EqualFold(target.Host, base.Host) {
-		return semver.Version{}, fmt.Errorf("latest release redirected to unexpected origin %q", target.Host)
+		return "", fmt.Errorf("latest release redirected to unexpected origin %q", target.Host)
 	}
 
 	tagPrefix := strings.TrimRight(base.Path, "/") + "/tag/v"
 	if !strings.HasPrefix(target.EscapedPath(), tagPrefix) {
-		return semver.Version{}, fmt.Errorf("latest release redirected to unexpected path %q", target.EscapedPath())
+		return "", fmt.Errorf("latest release redirected to unexpected path %q", target.EscapedPath())
 	}
 	rawVersion := strings.TrimPrefix(target.EscapedPath(), tagPrefix)
 	if rawVersion == "" || strings.Contains(rawVersion, "/") {
-		return semver.Version{}, fmt.Errorf("latest release redirect contains invalid version %q", rawVersion)
+		return "", fmt.Errorf("latest release redirect contains invalid version %q", rawVersion)
 	}
 	decodedVersion, err := url.PathUnescape(rawVersion)
 	if err != nil {
-		return semver.Version{}, fmt.Errorf("latest release redirect contains invalid version encoding: %w", err)
+		return "", fmt.Errorf("latest release redirect contains invalid version encoding: %w", err)
 	}
-	version, err := semver.Parse(decodedVersion)
-	if err != nil {
-		return semver.Version{}, fmt.Errorf("latest release redirect contains invalid semantic version %q: %w", decodedVersion, err)
+	mod := "v" + strings.TrimPrefix(decodedVersion, "v")
+	if !semver.IsValid(mod) {
+		return "", fmt.Errorf("latest release redirect contains invalid semantic version %q", decodedVersion)
 	}
-	return version, nil
+	return strings.TrimPrefix(semver.Canonical(mod), "v"), nil
 }
 
 func validateReleaseBaseURL(base *url.URL) error {

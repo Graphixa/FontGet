@@ -14,6 +14,7 @@ fontget.exe
 *.json
 !.gosec.json
 !build/winres.json
+!internal/installations/migrations/*.json
 *exe.old
 *exe~
 

@@ -101,7 +101,7 @@ func TestParseLatestRedirect(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got.String() != tc.want {
+			if got != tc.want {
 				t.Fatalf("got %q, want %q", got, tc.want)
 			}
 		})
@@ -221,7 +221,7 @@ func TestLatestVersionDiscovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.String() != "1.2.3" {
+	if got != "1.2.3" {
 		t.Fatalf("got %q, want 1.2.3", got)
 	}
 }
@@ -500,7 +500,7 @@ func TestParseVersion(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%q: %v", tc.input, err)
 		}
-		if got.String() != tc.want {
+		if got != tc.want {
 			t.Fatalf("%q: got %q, want %q", tc.input, got, tc.want)
 		}
 	}

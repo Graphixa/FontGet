@@ -1,0 +1,128 @@
+{
+  "schema_version": "1",
+  "source": "Nerd Fonts",
+  "nerd_fonts_release": "v3.5.1",
+  "generated_at": "2026-09-15T15:18:39.602Z",
+  "renames": [
+    {
+      "from": "nerd.annotation-mono",
+      "to": "nerd.annotationmono",
+      "catalog_name": "AnnotationM NF"
+    },
+    {
+      "from": "nerd.anonymous-pro",
+      "to": "nerd.anonymice",
+      "catalog_name": "AnonymicePro Nerd Font"
+    },
+    {
+      "from": "nerd.atkinson-hyperlegible-mono",
+      "to": "nerd.atkynson-mono",
+      "catalog_name": "AtkynsonMono NF"
+    },
+    {
+      "from": "nerd.big-blue-terminal",
+      "to": "nerd.bigblue-terminal",
+      "catalog_name": "BigBlueTermPlus Nerd Font"
+    },
+    {
+      "from": "nerd.cascadia-code",
+      "to": "nerd.caskaydia-cove",
+      "catalog_name": "CaskaydiaCove Nerd Font"
+    },
+    {
+      "from": "nerd.cascadia-mono",
+      "to": "nerd.caskaydia-mono",
+      "catalog_name": "CaskaydiaMono NF"
+    },
+    {
+      "from": "nerd.daddytime-mono",
+      "to": "nerd.daddy-time-mono",
+      "catalog_name": "DaddyTimeMono Nerd Font"
+    },
+    {
+      "from": "nerd.gohu",
+      "to": "nerd.gohufont",
+      "catalog_name": "GohuFont 14 Nerd Font"
+    },
+    {
+      "from": "nerd.google-sans-code",
+      "to": "nerd.googlesanscode",
+      "catalog_name": "GoogleSansCode NF"
+    },
+    {
+      "from": "nerd.hasklig",
+      "to": "nerd.hasklug",
+      "catalog_name": "Hasklug Nerd Font"
+    },
+    {
+      "from": "nerd.heavydata",
+      "to": "nerd.heavy-data",
+      "catalog_name": "HeavyData Nerd Font"
+    },
+    {
+      "from": "nerd.hermit",
+      "to": "nerd.hurmit",
+      "catalog_name": "Hurmit Nerd Font"
+    },
+    {
+      "from": "nerd.ia-writer",
+      "to": "nerd.im-writing",
+      "catalog_name": "iMWritingMono Nerd Font"
+    },
+    {
+      "from": "nerd.ibm-plex-mono",
+      "to": "nerd.blex-mono",
+      "catalog_name": "BlexMono Nerd Font"
+    },
+    {
+      "from": "nerd.intel-one-mono",
+      "to": "nerd.intone-mono",
+      "catalog_name": "IntoneMono Nerd Font"
+    },
+    {
+      "from": "nerd.liberation-mono",
+      "to": "nerd.liberation",
+      "catalog_name": "LiterationMono Nerd Font"
+    },
+    {
+      "from": "nerd.m-plus",
+      "to": "nerd.m",
+      "catalog_name": "M+1Code Nerd Font"
+    },
+    {
+      "from": "nerd.meslo",
+      "to": "nerd.meslo-lg",
+      "catalog_name": "MesloLGM Nerd Font"
+    },
+    {
+      "from": "nerd.monaspace",
+      "to": "nerd.monaspice",
+      "catalog_name": "MonaspiceNe NF"
+    },
+    {
+      "from": "nerd.proggyclean",
+      "to": "nerd.proggy-clean-tt",
+      "catalog_name": "ProggyClean Nerd Font"
+    },
+    {
+      "from": "nerd.recursive",
+      "to": "nerd.recursive-mono",
+      "catalog_name": "RecMonoSmCasual Nerd Font"
+    },
+    {
+      "from": "nerd.share-tech-mono",
+      "to": "nerd.shure-tech-mono",
+      "catalog_name": "ShureTechMono Nerd Font"
+    },
+    {
+      "from": "nerd.source-code-pro",
+      "to": "nerd.sauce-code-pro",
+      "catalog_name": "SauceCodePro Nerd Font"
+    },
+    {
+      "from": "nerd.terminus",
+      "to": "nerd.terminess-ttf",
+      "catalog_name": "Terminess Nerd Font"
+    }
+  ]
+}

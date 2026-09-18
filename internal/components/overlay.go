@@ -48,20 +48,6 @@ type OverlayOptions struct {
 	BorderWidth int  // Width of the border (0 = auto, will calculate from content)
 }
 
-// NewOverlay creates a new overlay model
-func NewOverlay(foreground, background tea.Model, xPos, yPos Position, xOffset, yOffset int) *OverlayModel {
-	return &OverlayModel{
-		Foreground:  foreground,
-		Background:  background,
-		XPosition:   xPos,
-		YPosition:   yPos,
-		XOffset:     xOffset,
-		YOffset:     yOffset,
-		ShowBorder:  false,
-		BorderWidth: 0,
-	}
-}
-
 // NewOverlayWithOptions creates a new overlay model with options
 func NewOverlayWithOptions(foreground, background tea.Model, xPos, yPos Position, xOffset, yOffset int, options OverlayOptions) *OverlayModel {
 	return &OverlayModel{

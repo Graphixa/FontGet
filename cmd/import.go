@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,16 +33,15 @@ type ImportResult struct {
 // loadAndValidateManifest loads and validates an export manifest file
 func loadAndValidateManifest(manifestFile string) (*ExportManifest, error) {
 	// Check if file exists
-	exists, err := cmdutils.CheckFileExists(manifestFile)
-	if err != nil {
+	if _, err := os.Stat(manifestFile); err != nil {
+		if os.IsNotExist(err) {
+			cmdutils.PrintErrorf("Manifest file not found: '%s'", ui.InfoText.Render(manifestFile))
+			fmt.Println()
+			return nil, fmt.Errorf("manifest file not found: %s", manifestFile)
+		}
 		cmdutils.PrintErrorf("Unable to check manifest file: %v", err)
 		fmt.Println()
 		return nil, err
-	}
-	if !exists {
-		cmdutils.PrintErrorf("Manifest file not found: '%s'", ui.InfoText.Render(manifestFile))
-		fmt.Println()
-		return nil, fmt.Errorf("manifest file not found: %s", manifestFile)
 	}
 
 	// Read manifest file
@@ -592,61 +592,101 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		// Run unified progress for download and install
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		debug, _ := cmd.Flags().GetBool("debug")
+		var incompleteCancelIDs []string
+		cancelled := false
 		progressErr := components.RunProgressBar(
 			title,
 			operationItems,
 			verbose, // Verbose mode: show operational details and file/variant listings
 			debug,   // Debug mode: show technical details
 			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
+				opCtx := cmd.Context()
+				if opCtx == nil {
+					opCtx = context.Background()
+				}
+				ctx, cancel := context.WithCancel(opCtx)
+				defer cancel()
+				go func() {
+					select {
+					case <-cancelChan:
+						cancel()
+					case <-ctx.Done():
+					}
+				}()
+
 				// Process each font group
 				for itemIndex, fontGroup := range fontsToInstall {
+					if err := ctx.Err(); err != nil {
+						cancelled = true
+						for j := itemIndex; j < len(fontsToInstall); j++ {
+							incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
+						}
+						return shared.ErrOperationCancelled
+					}
 					send(components.ItemUpdateMsg{
 						Index:   itemIndex,
 						Status:  "in_progress",
-						Message: "Downloading from " + fontGroup.SourceName,
+						Message: DownloadFromSourceMessage(fontGroup.SourceName),
 					})
 
 					percent := float64(itemIndex) / float64(len(fontsToInstall)) * 100
 					send(components.ProgressUpdateMsg{Percent: percent})
 
-					// Install the font
-					lastStep := ""
-					lastPctBucket := -1
-					onProgress := func(step string, stepPct float64) {
-						bucket := int(shared.Clamp01(stepPct) * 20.0)
-						if step == lastStep && bucket == lastPctBucket {
+					var th progressThrottle
+					onProgress := func(u ProgressUpdate) {
+						pct := OverallWorkPercent(itemIndex, len(fontsToInstall), u)
+						if !th.ShouldSend(u, pct) {
 							return
 						}
-						lastStep = step
-						lastPctBucket = bucket
-
-						msg := step + "..."
-						if step == installStepDownload {
-							msg = "Downloading from " + fontGroup.SourceName
+						if msg := ProgressActivityLabel(u, fontGroup.SourceName); msg != "" {
+							send(components.ItemUpdateMsg{
+								Index:   itemIndex,
+								Status:  "in_progress",
+								Message: msg,
+							})
 						}
-
-						send(components.ItemUpdateMsg{
-							Index:   itemIndex,
-							Status:  "in_progress",
-							Message: msg,
-						})
-						send(components.ProgressUpdateMsg{
-							Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), step, stepPct),
-						})
+						send(components.ProgressUpdateMsg{Percent: pct})
 					}
 					result, err := installFont(
+						ctx,
 						fontGroup.Fonts,
 						fontGroup.FontID,
 						fontManager,
 						installScope,
 						force,
 						fontDir,
+						nil,
 						true,
 						onProgress,
+						nil,
 					)
 
 					if err != nil {
-						status.Failed += result.Failed
+						if IsCancelErr(err) {
+							cancelled = true
+							incompleteCancelIDs = append(incompleteCancelIDs, fontGroup.FontID)
+							for j := itemIndex + 1; j < len(fontsToInstall); j++ {
+								incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
+							}
+							if result != nil {
+								status.Installed += result.Success
+								status.Skipped += result.Skipped
+								status.Failed += result.Failed
+							}
+							send(components.ItemUpdateMsg{
+								Index:   itemIndex,
+								Status:  "failed",
+								Message: "Cancelled",
+							})
+							return shared.ErrOperationCancelled
+						}
+						if result != nil {
+							status.Failed += result.Failed
+							status.Installed += result.Success
+							status.Skipped += result.Skipped
+						} else {
+							status.Failed++
+						}
 						GetLogger().Error("Failed to process font %s: %v", fontGroup.FontName, err)
 						errorMsg := err.Error()
 						send(components.ItemUpdateMsg{
@@ -680,7 +720,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 						Scope:        "", // Empty for single-scope operations (cleaner output)
 					})
 
-					send(components.ProgressUpdateMsg{Percent: OverallInstallPercent(itemIndex, len(fontsToInstall), installStepCompleted, 1)})
+					send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(itemIndex, len(fontsToInstall), ProgressUpdate{Phase: installStepCompleted})})
 				}
 
 				return nil
@@ -688,15 +728,15 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		)
 
 		if progressErr != nil {
-			// Check if it was a cancellation
-			if errors.Is(progressErr, shared.ErrOperationCancelled) {
-				cmdutils.PrintWarning("Import cancelled.")
+			if errors.Is(progressErr, shared.ErrOperationCancelled) || cancelled {
+				if err := FinishInstallationCancel(incompleteCancelIDs, string(installScope), force); err != nil {
+					return err
+				}
+			} else {
+				cmdutils.PrintErrorf("%v", progressErr)
 				fmt.Println()
-				return nil // Don't return error for cancellation
+				return nil
 			}
-			cmdutils.PrintErrorf("%v", progressErr)
-			fmt.Println()
-			return nil
 		}
 
 		// Show source availability warnings at the bottom (after progress bar, before status report)
@@ -746,13 +786,16 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 		output.GetDebug().State("Calling installFont(%s, %s, %s, %v, %s)", fontGroup.FontID, scopeLabel, fontDir, force, "...")
 
 		result, err := installFont(
+			context.Background(),
 			fontGroup.Fonts,
 			fontGroup.FontID,
 			fontManager,
 			installScope,
 			force,
 			fontDir,
+			nil,
 			false,
+			nil,
 			nil,
 		)
 

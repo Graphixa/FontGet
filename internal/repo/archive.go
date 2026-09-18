@@ -3,6 +3,7 @@ package repo
 import (
 	"archive/tar"
 	"archive/zip"
+	"context"
 	"fmt"
 	"io"
 	"io/fs"
@@ -101,6 +102,9 @@ func ExtractArchive(archivePath, destDir string) ([]string, error) {
 
 // ExtractOptions configures ExtractArchiveWithOptions.
 type ExtractOptions struct {
+	// Context cancels extraction between archive members. Nil uses Background.
+	Context context.Context
+
 	// OnFontFileExtracted is called after each font file is extracted.
 	// total is the number of font files that will be extracted when known, otherwise -1.
 	OnFontFileExtracted func(done int, total int)
@@ -111,6 +115,13 @@ type ExtractOptions struct {
 	// Selection, when set, enables source-aware / agnostic (or Nerd package-mode) selection
 	// before ZIP and compressed-TAR extraction. 7Z still walks extracted contents under hard budgets.
 	Selection *ArchiveSelectionContext
+}
+
+func extractContext(opts *ExtractOptions) context.Context {
+	if opts != nil && opts.Context != nil {
+		return opts.Context
+	}
+	return context.Background()
 }
 
 // ExtractArchiveWithOptions extracts an archive file to the specified directory, with optional progress callbacks.
@@ -213,6 +224,9 @@ func extractZIP(archivePath, destDir string, opts *ExtractOptions) ([]string, er
 	done := 0
 
 	for _, file := range reader.File {
+		if err := extractContext(opts).Err(); err != nil {
+			return extractedFiles, err
+		}
 		if file.FileInfo().IsDir() || strings.HasSuffix(file.Name, "/") {
 			continue
 		}
@@ -332,6 +346,10 @@ func extractCompressedTARPackageMode(
 	}
 
 	for {
+		if err := extractContext(opts).Err(); err != nil {
+			cleanupWritten()
+			return nil, err
+		}
 		header, err := tr.Next()
 		if err == io.EOF {
 			break
@@ -465,6 +483,9 @@ func extractSelectedCompressedTAR(
 	done := 0
 
 	for {
+		if err := extractContext(opts).Err(); err != nil {
+			return extractedFiles, err
+		}
 		header, err := tr.Next()
 		if err == io.EOF {
 			break
@@ -536,7 +557,7 @@ func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, err
 	}
 	defer os.RemoveAll(tmp)
 
-	cmd := exec.Command(tool, "x", "-y", "-o"+tmp, archivePath)
+	cmd := exec.CommandContext(extractContext(opts), tool, "x", "-y", "-o"+tmp, archivePath)
 	out, runErr := cmd.CombinedOutput()
 	if runErr != nil {
 		return nil, fmt.Errorf("7z extraction failed: %w (%s)", runErr, strings.TrimSpace(string(out)))
@@ -553,6 +574,9 @@ func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, err
 	seenDest := make(map[string]string)
 
 	walkErr := filepath.WalkDir(tmp, func(p string, d fs.DirEntry, walkErr error) error {
+		if err := extractContext(opts).Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}

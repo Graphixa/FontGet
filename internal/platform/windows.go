@@ -4,6 +4,7 @@
 package platform
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -86,40 +87,56 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 	targetPath := filepath.Join(targetDir, fontName)
 	logger.Debug("Target path: %s", targetPath)
 
-	// Check if font is already installed
-	logger.Debug("Checking if font is already installed...")
+	existed := false
 	if _, err := os.Stat(targetPath); err == nil {
-		if !force {
-			logger.Warn("Font already installed at %s", targetPath)
-			return fmt.Errorf("font already installed: %s", fontName)
+		existed = true
+		if force {
+			logger.Debug("Unregistering existing font before safe replacement...")
+			if rerr := RemoveFontResource(targetPath); rerr == nil {
+				if opts != nil && opts.Mutation != nil {
+					opts.Mutation.PriorResourceRemoved = true
+				}
+			}
 		}
-		logger.Debug("Font exists, removing due to force flag...")
-		// Remove the existing file if force is true
-		if err := os.Remove(targetPath); err != nil {
-			logger.Error("Failed to overwrite existing font at %s: %v", targetPath, err)
-			return fmt.Errorf("failed to overwrite existing font: %w", err)
-		}
-		logger.Debug("Existing font removed successfully")
 	}
 
-	// Copy the font file to the target directory
-	logger.Debug("Copying font file to target directory...")
-	if err := copyFile(fontPath, targetPath); err != nil {
-		logger.Error("Failed to copy font file from %s to %s: %v", fontPath, targetPath, err)
-		return fmt.Errorf("failed to copy font file: %w", err)
+	logger.Debug("Placing font file at destination...")
+	mut, err := placeFontFile(fontPath, targetPath, force, opts)
+	if err != nil {
+		logger.Error("Failed to place font file at %s: %v", targetPath, err)
+		if existed {
+			_ = AddFontResource(targetPath)
+		}
+		return err
 	}
-	logger.Debug("Font file copied successfully")
+	mut.FontName = fontName
+	mut.Scope = scope
+	if existed && force {
+		mut.PriorResourceRemoved = true
+	}
+	if opts != nil && opts.Mutation != nil {
+		*opts.Mutation = mut
+	}
 
-	// Add the font to the system
+	if opts != nil && opts.FailPoint == InstallFailRegister {
+		_ = RollbackMutation(mut)
+		return failPointError(InstallFailRegister)
+	}
+
 	logger.Debug("Adding font resource...")
 	if err := AddFontResource(targetPath); err != nil {
 		logger.Error("Failed to add font resource at %s: %v", targetPath, err)
-		// Clean up on error
-		logger.Debug("Cleaning up after failed font resource addition...")
-		if removeErr := os.Remove(targetPath); removeErr != nil {
-			logger.Error("Failed to clean up font file after resource addition failure: %v", removeErr)
+		if rbErr := RollbackMutation(mut); rbErr != nil {
+			logger.Error("Rollback after register failure: %v", rbErr)
 		}
 		return fmt.Errorf("failed to add font resource: %w", err)
+	}
+	mut.ResourceRegistered = true
+	if opts != nil && opts.Mutation != nil {
+		opts.Mutation.ResourceRegistered = true
+		opts.Mutation.FontName = fontName
+		opts.Mutation.Scope = scope
+		opts.Mutation.PriorResourceRemoved = mut.PriorResourceRemoved
 	}
 	logger.Debug("Font resource added successfully")
 
@@ -128,13 +145,49 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		logger.Debug("Adding font to registry...")
 		if err := m.addFontToRegistry(fontName, targetPath); err != nil {
 			logger.Error("Failed to add font to registry: %v", err)
-			// Clean up on error
-			logger.Debug("Cleaning up after failed registry addition...")
 			RemoveFontResource(targetPath)
-			os.Remove(targetPath)
+			mut.ResourceRegistered = false
+			if rbErr := RollbackMutation(mut); rbErr != nil {
+				logger.Error("Rollback after registry failure: %v", rbErr)
+			}
 			return fmt.Errorf("failed to add font to registry: %w", err)
 		}
+		mut.RegistryAdded = true
+		if opts != nil && opts.Mutation != nil {
+			opts.Mutation.RegistryAdded = true
+			opts.Mutation.ResourceRegistered = true
+		}
 		logger.Debug("Font added to registry successfully")
+	}
+
+	destPath := targetPath
+	fname := fontName
+	priorRemoved := mut.PriorResourceRemoved
+	registryAdded := mut.RegistryAdded
+	resourceRegistered := mut.ResourceRegistered
+	mut.UndoRegistration = func() error {
+		if registryAdded {
+			_ = m.removeFontFromRegistry(fname)
+		}
+		if resourceRegistered {
+			_ = RemoveFontResource(destPath)
+		}
+		return nil
+	}
+	mut.RestoreRegistration = func() error {
+		if priorRemoved {
+			return AddFontResource(destPath)
+		}
+		return nil
+	}
+	if opts != nil && opts.Mutation != nil {
+		opts.Mutation.UndoRegistration = mut.UndoRegistration
+		opts.Mutation.RestoreRegistration = mut.RestoreRegistration
+		opts.Mutation.RegistryAdded = registryAdded
+		opts.Mutation.ResourceRegistered = resourceRegistered
+		opts.Mutation.PriorResourceRemoved = priorRemoved
+		opts.Mutation.FontName = fname
+		opts.Mutation.Scope = scope
 	}
 
 	skipNotify := opts != nil && opts.SkipPostInstallCacheRefresh
@@ -143,13 +196,21 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 		logger.Debug("Notifying system about font change...")
 		if err := NotifyFontChange(); err != nil {
 			logger.Error("Failed to notify font change: %v", err)
-			// Clean up on error
-			logger.Debug("Cleaning up after failed notification...")
-			RemoveFontResource(targetPath)
-			if scope == MachineScope {
-				m.removeFontFromRegistry(fontName)
+			if scope == MachineScope && mut.RegistryAdded {
+				_ = m.removeFontFromRegistry(fontName)
+				mut.RegistryAdded = false
 			}
-			os.Remove(targetPath)
+			if mut.ResourceRegistered {
+				_ = RemoveFontResource(targetPath)
+				mut.ResourceRegistered = false
+			}
+			if opts != nil && opts.Mutation != nil {
+				opts.Mutation.ResourceRegistered = false
+				opts.Mutation.RegistryAdded = false
+			}
+			if rbErr := RollbackMutation(mut); rbErr != nil {
+				logger.Error("Rollback after notify failure: %v", rbErr)
+			}
 			return fmt.Errorf("failed to notify font change: %w", err)
 		}
 		logger.Debug("Font change notification sent successfully")
@@ -177,63 +238,35 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 	fontPath := filepath.Join(targetDir, fontName)
 	logger.Debug("Target path: %s", fontPath)
 
-	// Check if font exists
 	if _, err := os.Stat(fontPath); os.IsNotExist(err) {
 		logger.Error("Font not found at path: %s", fontPath)
 		return fmt.Errorf("font not found: %s", fontName)
 	}
 
-	// Remove the font resource
-	logger.Debug("Removing font resource...")
-	if err := RemoveFontResource(fontPath); err != nil {
-		// Check if the error is because the font isn't loaded as a resource
-		// This is normal and shouldn't prevent font removal
-		if strings.Contains(err.Error(), "error code: 0") || strings.Contains(err.Error(), "The operation completed successfully") {
-			logger.Debug("Font resource not loaded, continuing with file removal")
-		} else {
-			logger.Error("Failed to remove font resource from path %s: %v", fontPath, err)
-			return fmt.Errorf("failed to remove font resource: %w", err)
-		}
-	} else {
-		logger.Debug("Font resource removed successfully")
-	}
-
-	// Remove from registry if machine scope
-	if scope == MachineScope {
-		logger.Debug("Removing font from registry...")
-		if err := m.removeFontFromRegistry(fontName); err != nil {
-			logger.Error("Failed to remove font from registry: %v", err)
-			// Continue with file removal even if registry removal fails
-		} else {
-			logger.Debug("Font removed from registry successfully")
-		}
-	}
-
-	// Delete the font file
-	logger.Debug("Removing font file...")
-	if err := os.Remove(fontPath); err != nil {
-		logger.Error("Failed to remove font file at path %s: %v", fontPath, err)
-		// Try to restore the font resource if file deletion fails
-		if restoreErr := AddFontResource(fontPath); restoreErr != nil {
-			logger.Error("Failed to restore font resource after file deletion failure: %v", restoreErr)
-		}
-		return fmt.Errorf("failed to remove font file: %w", err)
-	}
-	logger.Debug("Font file removed successfully")
-
+	unregisterOnly := opts != nil && opts.UnregisterOnly
 	skipNotify := opts != nil && opts.SkipPostRemoveCacheRefresh
-	if !skipNotify {
-		// Notify other applications about the font removal
-		// Only send WM_FONTCHANGE to the desktop window to avoid hangs from full window enumeration.
-		// Enumerating all windows can hang or be extremely slow on some systems.
-		logger.Debug("Notifying system about font change...")
-		if err := NotifyFontChange(); err != nil {
-			logger.Error("Failed to notify system about font change: %v", err)
-			return fmt.Errorf("failed to notify font change: %w", err)
-		}
-		logger.Debug("Font change notification sent successfully")
+	ops := machineRemoveOps{
+		RemoveGDI:      RemoveFontResource,
+		AddGDI:         AddFontResource,
+		RemoveFile:     os.Remove,
+		NotifyChange:   NotifyFontChange,
+		UnregisterOnly: unregisterOnly,
+		SkipNotify:     skipNotify,
+	}
+	if scope == MachineScope {
+		ops.CaptureReg = m.captureFontRegistryValue
+		ops.DeleteReg = m.removeFontFromRegistry
+		ops.RestoreReg = m.restoreFontRegistryValue
+	} else {
+		ops.CaptureReg = func(string) (registryFontValue, error) { return registryFontValue{}, nil }
+		ops.DeleteReg = func(string) error { return nil }
+		ops.RestoreReg = func(registryFontValue) error { return nil }
 	}
 
+	if err := removeMachineScopedFont(fontName, fontPath, ops); err != nil {
+		logger.Error("Font removal failed for %s: %v", fontName, err)
+		return err
+	}
 	logger.Info("Font removal completed successfully")
 	return nil
 }
@@ -354,31 +387,74 @@ func (m *windowsFontManager) removeFontFromRegistry(fontName string) error {
 	return nil
 }
 
+// captureFontRegistryValue reads the existing Fonts registry entry for fontName (exact prior state).
+func (m *windowsFontManager) captureFontRegistryValue(fontName string) (registryFontValue, error) {
+	valueName := fontName + " (TrueType)"
+	key, err := m.openFontRegistryKey()
+	if err != nil {
+		return registryFontValue{}, err
+	}
+	defer regCloseKey.Call(uintptr(key))
+
+	data, typ, err := m.queryRegistryValue(key, valueName)
+	if err != nil {
+		if errors.Is(err, ErrRegistryValueAbsent) {
+			return registryFontValue{Name: valueName, Found: false}, nil
+		}
+		return registryFontValue{}, err
+	}
+	return registryFontValue{Name: valueName, Raw: data, Type: typ, Found: true}, nil
+}
+
+func (m *windowsFontManager) restoreFontRegistryValue(v registryFontValue) error {
+	if !v.Found || v.Name == "" {
+		return nil
+	}
+	key, err := m.openFontRegistryKey()
+	if err != nil {
+		return err
+	}
+	defer regCloseKey.Call(uintptr(key))
+	return m.setRegistryValueRaw(key, v.Name, v.Raw, v.Type)
+}
+
 // openFontRegistryKey opens the Windows font registry key for writing
 func (m *windowsFontManager) openFontRegistryKey() (syscall.Handle, error) {
 	logger := logging.GetLogger()
 	var key syscall.Handle
-	ret, _, err := regCreateKeyEx.Call(
+	fontsKey, err := syscall.UTF16PtrFromString(`SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts`)
+	if err != nil {
+		return 0, fmt.Errorf("font registry path: %w", err)
+	}
+	ret, _, callErr := regCreateKeyEx.Call(
 		uintptr(HKEY_LOCAL_MACHINE),
-		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr("SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts"))),
+		uintptr(unsafe.Pointer(fontsKey)),
 		0,
 		0,
 		0,
-		uintptr(KEY_WRITE),
+		uintptr(KEY_WRITE|KEY_QUERY_VALUE),
 		0,
 		uintptr(unsafe.Pointer(&key)),
 		0,
 	)
 	if ret != 0 {
-		logger.Error("Failed to open registry key: %v", err)
-		return 0, fmt.Errorf("failed to open registry key: %w", err)
+		logger.Error("Failed to open registry key: %v", callErr)
+		return 0, fmt.Errorf("failed to open registry key: %w", callErr)
 	}
 	logger.Debug("Registry key opened successfully")
 	return key, nil
 }
 
-// setRegistryValue sets a registry value with proper error handling
+// setRegistryValue sets a REG_SZ value using the UTF-16 encoded byte length (not UTF-8 len).
 func (m *windowsFontManager) setRegistryValue(key syscall.Handle, valueName, value string) error {
+	u16, err := syscall.UTF16FromString(value)
+	if err != nil {
+		return fmt.Errorf("failed to convert value to UTF16: %w", err)
+	}
+	return m.setRegistryValueRaw(key, valueName, uint16SliceAsBytes(u16), REG_SZ)
+}
+
+func (m *windowsFontManager) setRegistryValueRaw(key syscall.Handle, valueName string, data []byte, typ uint32) error {
 	logger := logging.GetLogger()
 
 	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
@@ -387,25 +463,92 @@ func (m *windowsFontManager) setRegistryValue(key syscall.Handle, valueName, val
 		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
 	}
 
-	valuePtr, err := syscall.UTF16PtrFromString(value)
-	if err != nil {
-		logger.Error("Failed to convert value to UTF16: %v", err)
-		return fmt.Errorf("failed to convert value to UTF16: %w", err)
+	if typ == 0 {
+		typ = REG_SZ
 	}
-
+	var dataPtr uintptr
+	if len(data) > 0 {
+		dataPtr = uintptr(unsafe.Pointer(&data[0]))
+	}
 	ret, _, err := regSetValueEx.Call(
 		uintptr(key),
 		uintptr(unsafe.Pointer(valueNamePtr)),
 		0,
-		uintptr(REG_SZ),
-		uintptr(unsafe.Pointer(valuePtr)),
-		uintptr((len(value)+1)*2),
+		uintptr(typ),
+		dataPtr,
+		uintptr(len(data)),
 	)
 	if ret != 0 {
 		logger.Error("Failed to set registry value: %v", err)
 		return fmt.Errorf("failed to set registry value: %w", err)
 	}
 	return nil
+}
+
+func uint16SliceAsBytes(u []uint16) []byte {
+	if len(u) == 0 {
+		return nil
+	}
+	b := make([]byte, len(u)*2)
+	for i, v := range u {
+		b[i*2] = byte(v)
+		b[i*2+1] = byte(v >> 8)
+	}
+	return b
+}
+
+// regSZByteLen returns the REG_SZ cbData for s (UTF-16 code units including NUL, times 2).
+func regSZByteLen(s string) (int, error) {
+	u16, err := syscall.UTF16FromString(s)
+	if err != nil {
+		return 0, err
+	}
+	return len(u16) * 2, nil
+}
+
+func (m *windowsFontManager) queryRegistryValue(key syscall.Handle, valueName string) ([]byte, uint32, error) {
+	valueNamePtr, err := syscall.UTF16PtrFromString(valueName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to convert value name to UTF16: %w", err)
+	}
+	var typ uint32
+	var dataLen uint32
+	ret, _, callErr := regQueryValueEx.Call(
+		uintptr(key),
+		uintptr(unsafe.Pointer(valueNamePtr)),
+		0,
+		uintptr(unsafe.Pointer(&typ)),
+		0,
+		uintptr(unsafe.Pointer(&dataLen)),
+	)
+	if ret != 0 {
+		if ret == 2 { // ERROR_FILE_NOT_FOUND
+			return nil, 0, ErrRegistryValueAbsent
+		}
+		return nil, 0, fmt.Errorf("failed to query registry value: %w", callErr)
+	}
+	if dataLen == 0 {
+		return nil, typ, nil
+	}
+	buf := make([]byte, dataLen)
+	ret, _, callErr = regQueryValueEx.Call(
+		uintptr(key),
+		uintptr(unsafe.Pointer(valueNamePtr)),
+		0,
+		uintptr(unsafe.Pointer(&typ)),
+		uintptr(unsafe.Pointer(&buf[0])),
+		uintptr(unsafe.Pointer(&dataLen)),
+	)
+	if ret != 0 {
+		if ret == 2 {
+			return nil, 0, ErrRegistryValueAbsent
+		}
+		return nil, 0, fmt.Errorf("failed to query registry value: %w", callErr)
+	}
+	if int(dataLen) < len(buf) {
+		buf = buf[:dataLen]
+	}
+	return buf, typ, nil
 }
 
 // deleteRegistryValue deletes a registry value with proper error handling
@@ -418,12 +561,14 @@ func (m *windowsFontManager) deleteRegistryValue(key syscall.Handle, valueName s
 		return fmt.Errorf("failed to convert value name to UTF16: %w", err)
 	}
 
-	regDeleteValue := syscall.NewLazyDLL("advapi32.dll").NewProc("RegDeleteValueW")
 	ret, _, err := regDeleteValue.Call(
 		uintptr(key),
 		uintptr(unsafe.Pointer(valueNamePtr)),
 	)
 	if ret != 0 {
+		if ret == 2 { // ERROR_FILE_NOT_FOUND
+			return ErrRegistryValueAbsent
+		}
 		logger.Error("Failed to delete registry value: %v", err)
 		return fmt.Errorf("failed to delete registry value: %w", err)
 	}

@@ -187,22 +187,3 @@ func RunConfirmWithOptions(title, message, confirmText, cancelText string, useAl
 
 	return false, nil
 }
-
-// DeleteConfirm runs a delete confirmation dialog
-func DeleteConfirm(itemName string) (bool, error) {
-	title := "Confirm Deletion"
-	message := fmt.Sprintf("Are you sure you want to delete '%s'?", ui.TableSourceName.Render(itemName))
-	return RunConfirm(title, message)
-}
-
-// SaveConfirm runs a save confirmation dialog
-func SaveConfirm() (bool, error) {
-	title := "Save Changes"
-	message := "You have unsaved changes. Do you want to save before exiting?"
-	return RunConfirmWithOptions(title, message, "Save", "Discard", true, true)
-}
-
-// WarningConfirm runs a warning confirmation dialog
-func WarningConfirm(title, message string) (bool, error) {
-	return RunConfirm(title, message)
-}
