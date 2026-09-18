@@ -80,10 +80,6 @@ const (
 
 	// Backup: file copy band, finalize after archive close.
 	segBackupFilesEnd = 0.98
-
-	// Aliases: prep band replaced the old split download/extract segments.
-	segDownloadEnd = segPrepEnd
-	segExtractEnd  = segPrepEnd
 )
 
 // DownloadFromSourceMessage is the user-facing download label.
