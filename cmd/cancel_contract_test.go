@@ -12,6 +12,7 @@ import (
 	"fontget/internal/platform"
 	"fontget/internal/shared"
 	"fontget/internal/testutil"
+	"fontget/internal/ui"
 )
 
 func TestIncompleteInstallDoesNotSatisfyAlreadyInstalled(t *testing.T) {
@@ -216,7 +217,7 @@ func TestFinishRemovalCancel_exitStatus(t *testing.T) {
 }
 
 func TestIsCancelErr(t *testing.T) {
-	if !IsCancelErr(context.Canceled) || !IsCancelErr(shared.ErrOperationCancelled) {
+	if !IsCancelErr(context.Canceled) || !IsCancelErr(shared.ErrOperationCancelled) || !IsCancelErr(ui.ErrCancelled) {
 		t.Fatal("expected cancel detection")
 	}
 	if IsCancelErr(errors.New("other")) || IsCancelErr(nil) {

@@ -547,6 +547,9 @@ func GetRepository() (*Repository, error) {
 		if err != nil {
 			return nil, err
 		}
+		if manifest == nil {
+			return nil, fmt.Errorf("internal: empty manifest after sources update")
+		}
 
 		// Update the timestamp
 		if uerr := config.UpdateSourcesLastUpdated(); uerr != nil {
@@ -606,6 +609,9 @@ func GetRepositoryWithRefresh() (*Repository, error) {
 	})
 	if err != nil {
 		return nil, err
+	}
+	if manifest == nil {
+		return nil, fmt.Errorf("internal: empty manifest after sources update")
 	}
 
 	// Update the timestamp
@@ -911,6 +917,9 @@ func (r *Repository) filterByCategory(results []SearchResult, category string) [
 
 // GetAllCategories returns all unique categories from all sources in the manifest
 func (r *Repository) GetAllCategories() []string {
+	if r == nil || r.manifest == nil {
+		return nil
+	}
 	categorySet := make(map[string]bool)
 
 	for _, source := range r.manifest.Sources {

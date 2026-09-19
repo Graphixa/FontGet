@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -8,6 +9,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// ErrCancelled is returned when the user interrupts a spinner with Ctrl+C.
+// Callers that need FontGet's shared cancel sentinel should map this error.
+var ErrCancelled = errors.New("operation cancelled")
 
 // spinnerModel is a minimal bubbletea spinner model for blocking operations
 type spinnerModel struct {
@@ -90,8 +95,9 @@ func (m *spinnerModel) startOperation() tea.Cmd {
 func (m *spinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// Allow cancellation with Ctrl+C
+		// Allow cancellation with Ctrl+C — must not look like success (doneMsg).
 		if msg.Type == tea.KeyCtrlC {
+			m.err = ErrCancelled
 			m.quitting = true
 			return m, tea.Quit
 		}
@@ -145,6 +151,9 @@ func (m *spinnerModel) View() string {
 	if m.quitting {
 		// Operation complete - show result
 		if m.err != nil {
+			if errors.Is(m.err, ErrCancelled) {
+				return fmt.Sprintf("\r%s %s\n", WarningText.Render("○"), "Cancelled.")
+			}
 			// Show error with red X
 			return fmt.Sprintf("\r%s %s\n", ErrorText.Render("✗"), ErrorText.Render(m.err.Error()))
 		}

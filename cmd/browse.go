@@ -35,6 +35,9 @@ Flags --scope (-s) and --force (-f) match fontget add (user/machine install scop
 		output.GetDebug().State("Calling repo.GetRepository()")
 		r, err := repo.GetRepository()
 		if err != nil {
+			if IsCancelErr(err) {
+				return nil
+			}
 			if lg := GetLogger(); lg != nil {
 				lg.Error("Failed to get repository: %v", err)
 			}

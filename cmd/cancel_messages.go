@@ -23,7 +23,7 @@ const (
 
 // IsCancelErr reports user cancellation (context or FontGet sentinel).
 func IsCancelErr(err error) bool {
-	return err != nil && (errors.Is(err, shared.ErrOperationCancelled) || errors.Is(err, context.Canceled))
+	return err != nil && (errors.Is(err, shared.ErrOperationCancelled) || errors.Is(err, context.Canceled) || errors.Is(err, ui.ErrCancelled))
 }
 
 func shellQuoteArg(arg string) string {
