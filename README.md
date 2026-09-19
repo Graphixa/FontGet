@@ -75,7 +75,7 @@ More installation options can be found in the [Installation Guide](docs/installa
 winget install --id "Graphixa.FontGet"
 ```
 
-**[Chocolatey](https://chocolatey.org/)** (coming soon)
+**[Chocolatey](https://chocolatey.org/)**
 
 ```powershell
 choco install fontget
