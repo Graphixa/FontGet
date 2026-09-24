@@ -154,7 +154,7 @@ chocolateys:
 
 # Winget (Windows) - Automated PRs to microsoft/winget-pkgs
 winget:
-  - name: fontget
+  - name: FontGet
     # Publisher name (required)
     publisher: Graphixa
     
