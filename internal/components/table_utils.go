@@ -50,9 +50,9 @@ func DefaultFontTableColumns() []ColumnConfig {
 	return []ColumnConfig{
 		{Header: "Font Name", Truncatable: true, Hideable: false, MinWidth: 18, Priority: 2, PercentWidth: 26.0},
 		{Header: "Font ID", Truncatable: false, Hideable: false, Priority: 1, PercentWidth: 34.0},
-		{Header: "Categories", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 3, PercentWidth: 15.0},
-		{Header: "License", Truncatable: true, MaxWidth: 8, Hideable: true, Priority: 4, PercentWidth: 10.0},
-		{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 15.0},
+		{Header: "Categories", Truncatable: true, MaxWidth: 13, Hideable: true, Priority: 3, PercentWidth: 12.0},
+		{Header: "License", Truncatable: true, MaxWidth: 16, Hideable: true, Priority: 4, PercentWidth: 12.0},
+		{Header: "Source", Truncatable: true, MaxWidth: 14, Hideable: true, Priority: 5, PercentWidth: 16.0},
 	}
 }
 
