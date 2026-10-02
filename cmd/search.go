@@ -115,19 +115,13 @@ var searchCmd = &cobra.Command{
 	Short:         "Search for available fonts",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Search for fonts from all configured sources.
+	Long: `Search fonts from configured sources.
 
-Use --category to filter by category (e.g., "Sans Serif", "Serif", "Monospace").
-Use --source to filter by source (short ID like "google", "nerd", "league", "fontshare", "fontsource", "squirrel", or full name like "Google Fonts").
-Use -c without a value to list categories.
-Use -s without a value to list sources.`,
+Use -c / --category and -s / --source to filter. Pass -c or -s alone to list categories or sources.`,
 	Example: `  fontget search fira
   fontget search "Fira Sans"
   fontget search -c "Sans Serif"
-  fontget search "roboto" -c "Sans Serif"
-  fontget search "fira" -s google
-  fontget search "fira" -s "Google Fonts"
-  fontget search -s google
+  fontget search "Fi" -s google
   fontget search -c
   fontget search -s`,
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -481,7 +475,7 @@ Use -s without a value to list sources.`,
 
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
-			Columns: components.DefaultFontTableColumns(),
+			Columns:  components.DefaultFontTableColumns(),
 			Rows:     tableRows,
 			Width:    0,   // Auto-detect terminal width
 			MaxWidth: 120, // Maximum width
@@ -503,9 +497,9 @@ Use -s without a value to list sources.`,
 
 func init() {
 	rootCmd.AddCommand(searchCmd)
-	searchCmd.Flags().StringP("category", "c", "", "Filter by font category (use without value to see all available categories)")
+	searchCmd.Flags().StringP("category", "c", "", "Filter by category (omit value to list)")
 	searchCmd.Flags().Lookup("category").NoOptDefVal = "list"
-	searchCmd.Flags().StringP("source", "s", "", "Filter by source (short ID like \"google\", \"nerd\", \"league\", \"fontshare\", \"fontsource\", \"squirrel\" or full name like \"Google Fonts\")")
+	searchCmd.Flags().StringP("source", "s", "", "Filter by source ID or name (omit value to list)")
 	searchCmd.Flags().Lookup("source").NoOptDefVal = "list"
 
 	// Helper function for category completion (shared by both short and long flags)

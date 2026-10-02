@@ -42,20 +42,13 @@ var listCmd = &cobra.Command{
 	Use:          "list [query]",
 	Short:        "List installed fonts",
 	SilenceUsage: true,
-	Long: `List fonts installed on your system.
+	Long: `List fonts installed on your system (user and machine by default).
 
-By default, shows fonts from both user and system-wide installations.
-Results can be filtered by font family name, Font ID, type, or scope.
-Use --fontget-installed to show only fonts installed by FontGet (from the installation registry).
-
-The query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto").
-
-Name queries (the common case, e.g. "jet") are matched against SFNT family names and file names before catalog join so the whole OS font set is not parsed or matched. If that produces no rows, list falls back to a full collect + catalog join and then filters by Font ID (e.g. "google.roboto", or a source prefix like "google" when no family/file name contains the query).`,
+Filter with a name or Font ID query, or with --type, --scope, and --fontget-installed.`,
 	Example: `  fontget list
   fontget list "jet"
-  fontget list roboto -t ttf
+  fontget list "roboto" -t ttf
   fontget list "google.roboto"
-  fontget list "fira" -x
   fontget list -s user
   fontget list --fontget-installed`,
 	Args: func(cmd *cobra.Command, args []string) error {
@@ -859,8 +852,8 @@ func filterFontsByFamilyAndID(families map[string][]ParsedFont, familyFilter str
 
 func init() {
 	rootCmd.AddCommand(listCmd)
-	listCmd.Flags().StringP("scope", "s", "", "Filter by installation scope (user or machine). Default: show all scopes")
-	listCmd.Flags().StringP("type", "t", "", "Filter by font type (TTF, OTF, etc.)")
-	listCmd.Flags().BoolP("expand", "x", false, "Show font styles in hierarchical view")
-	listCmd.Flags().Bool("fontget-installed", false, "Show only fonts installed by FontGet")
+	listCmd.Flags().StringP("scope", "s", "", "Filter by scope (user or machine)")
+	listCmd.Flags().StringP("type", "t", "", "Filter by type (TTF, OTF, etc.)")
+	listCmd.Flags().BoolP("expand", "x", false, "Show styles in a hierarchical view")
+	listCmd.Flags().Bool("fontget-installed", false, "Only fonts installed by FontGet")
 }

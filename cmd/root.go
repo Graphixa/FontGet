@@ -35,11 +35,13 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "fontget <command> [options]",
+	Use:   "fontget [command]",
 	Short: "A command-line tool for managing fonts",
-	Long:  `FontGet is a powerful command-line font manager for installing and managing fonts on your system.`,
-	Example: `  fontget --wizard
-  fontget --logs`,
+	Long:  `FontGet is a command-line font manager for installing and managing fonts.`,
+	Example: `  fontget browse
+  fontget --wizard
+  fontget --logs
+  fontget add "Roboto" --accept-agreements --accept-defaults`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if wizard {
@@ -371,20 +373,23 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	// Add verbose flag - shows detailed operation information including file/variant listings (user-friendly)
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed verbose output of operations")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show detailed operation output")
 
 	// Add debug flag - shows full diagnostic logs with timestamps (for developers)
-	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show styled debug diagnostics in the output")
+	rootCmd.PersistentFlags().BoolVar(&debug, "debug", false, "Show debug diagnostics")
 
 	// Add logs flag (non-persistent - only available on root command)
 	rootCmd.Flags().BoolVar(&logs, "logs", false, "Open logs directory")
 
 	// Add wizard flag (not persistent - only applies to root command)
-	rootCmd.Flags().BoolVar(&wizard, "wizard", false, "Run the setup wizard to configure FontGet")
+	rootCmd.Flags().BoolVar(&wizard, "wizard", false, "Run the setup wizard")
 
-	// Automation / CI: available on all commands (e.g. fontget add X --accept-agreements --accept-defaults)
-	rootCmd.PersistentFlags().BoolVar(&acceptAgreements, "accept-agreements", false, "Accept the FontGet terms of use without showing the prompt (for scripts/CI)")
-	rootCmd.PersistentFlags().BoolVar(&acceptDefaults, "accept-defaults", false, "Use defaults and skip setup wizard (for scripts/CI; pair with --accept-agreements)")
+	// Automation / CI: persistent so they work on any command; hidden from subcommand
+	// help so day-to-day Options stay uncluttered. Documented on root help (Long) and via env.
+	rootCmd.PersistentFlags().BoolVar(&acceptAgreements, "accept-agreements", false, "Accept terms without a prompt (scripts/CI)")
+	rootCmd.PersistentFlags().BoolVar(&acceptDefaults, "accept-defaults", false, "Skip setup wizard (scripts/CI; use with --accept-agreements)")
+	_ = rootCmd.PersistentFlags().MarkHidden("accept-agreements")
+	_ = rootCmd.PersistentFlags().MarkHidden("accept-defaults")
 
 	// Inject flag checkers into output package to avoid circular imports
 	output.SetVerboseChecker(IsVerbose)
@@ -395,7 +400,8 @@ func init() {
 		return strings.ReplaceAll(s, "[flags]", "[options]")
 	})
 
-	// Set custom help template
+	// Local Options first; inherited globals second (same layout as stock Cobra / gh / kubectl).
+	// Automation / CI block is root-only (not .HasParent) and sits below Options.
 	rootCmd.SetHelpTemplate(`{{if .Runnable}}
 Usage: {{replaceFlags .UseLine}}
 {{end}}{{with (or .Long .Short)}}
@@ -403,25 +409,38 @@ Usage: {{replaceFlags .UseLine}}
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
-{{end}}{{end}}{{end}}{{if .HasAvailableFlags}}
+{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
 Options:
-{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasAvailableInheritedFlags}}
+Global Options:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if not .HasParent}}
+Automation / CI:
+  --accept-agreements    Accept the FontGet terms of use without a prompt
+  --accept-defaults      Skip the setup wizard (use with --accept-agreements)
 {{end}}{{if .HasExample}}
 Examples:
 {{.Example}}
 {{end}}
 `)
 
-	// Set custom usage template with extra spacing
 	rootCmd.SetUsageTemplate(`{{if .Runnable}}
 Usage: {{replaceFlags .UseLine}}
 {{end}}{{if .HasAvailableSubCommands}}
 Available Commands:
 {{range .Commands}}{{if .IsAvailableCommand}}  {{rpad .Name .NamePadding }} {{.Short}}
 {{end}}{{end}}
-{{end}}{{if .HasAvailableFlags}}
+{{end}}{{if .HasAvailableLocalFlags}}
 Options:
-{{.Flags.FlagUsages | trimTrailingWhitespaces}}
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if .HasAvailableInheritedFlags}}
+Global Options:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}
+{{end}}{{if not .HasParent}}
+Automation / CI:
+  --accept-agreements    Accept the FontGet terms of use without a prompt
+  --accept-defaults      Skip the setup wizard (use with --accept-agreements)
 {{end}}{{if .HasExample}}
 Examples:
 {{.Example}}

@@ -213,7 +213,7 @@ func showGroupedFontNotFoundWithSuggestions(notFoundFonts []string) {
 
 			// Render table with priority configuration
 			tableConfig := components.TableConfig{
-				Columns: components.DefaultFontTableColumns(),
+				Columns:  components.DefaultFontTableColumns(),
 				Rows:     tableRows,
 				Width:    0,   // Auto-detect terminal width
 				MaxWidth: 120, // Maximum width
@@ -310,7 +310,7 @@ func showFontNotFoundWithSuggestions(fontName string, similar []string) {
 
 		// Render table with priority configuration
 		tableConfig := components.TableConfig{
-			Columns: components.DefaultFontTableColumns(),
+			Columns:  components.DefaultFontTableColumns(),
 			Rows:     tableRows,
 			Width:    0,   // Auto-detect terminal width
 			MaxWidth: 120, // Maximum width
@@ -455,7 +455,7 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 
 	// Render table with priority configuration
 	tableConfig := components.TableConfig{
-		Columns: components.DefaultFontTableColumns(),
+		Columns:  components.DefaultFontTableColumns(),
 		Rows:     tableRows,
 		Width:    0,   // Auto-detect terminal width
 		MaxWidth: 120, // Maximum width
@@ -473,20 +473,17 @@ var addCmd = &cobra.Command{
 	Short:         "Install fonts from configured sources",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Install one or multiple fonts in a single command.
-
-Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
-Font names with spaces must be wrapped in quotes (e.g., "Open Sans").
+	Long: `Install fonts by name or Font ID (e.g. "Roboto", "google.roboto").
 
 Use --scope to set installation location:
-  - user (default): Install for current user only
-  - machine: Install system-wide (requires administrator privileges)`,
+  user (default)   Current user
+  machine          System-wide (requires admin)`,
+
 	Example: `  fontget add "Roboto"
   fontget add "google.roboto"
-  fontget add "Open Sans" "Fira Sans" "Noto Sans"
-  fontget add "roboto firasans notosans"
-  fontget add "Open Sans" -s machine
-  fontget add "roboto" -f`,
+  fontget add "google.roboto" "nerd.hack"
+  fontget add "google.open-sans" -s machine
+  fontget add "roboto" --force`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Only handle empty query case
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
@@ -1589,5 +1586,5 @@ func checkInstalledViaRegistry(fontID string, scope platform.InstallationScope) 
 func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.Flags().StringP("scope", "s", "", "Installation scope (user or machine)")
-	addCmd.Flags().BoolP("force", "f", false, "Force installation even if font is already installed")
+	addCmd.Flags().BoolP("force", "f", false, "Reinstall even if already installed")
 }

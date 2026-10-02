@@ -1177,21 +1177,16 @@ var removeCmd = &cobra.Command{
 	Short:         "Remove fonts from your system",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Remove one or multiple fonts from your system.
+	Long: `Remove fonts by name or Font ID (e.g. "Roboto", "google.roboto").
 
-Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
-Font names with spaces must be wrapped in quotes (e.g., "Open Sans").
-
-Use --scope to set removal location:
-  - user (default): Remove from current user only
-  - machine: Remove system-wide (requires administrator privileges)
-  - all: Remove from both user and machine scopes`,
+Scopes:
+  user (default)   Current user
+  machine          System-wide (requires admin)
+  all              Both user and machine`,
 	Example: `  fontget remove "Roboto"
   fontget remove "google.roboto"
-  fontget remove "Open Sans" "Fira Sans" "Noto Sans"
-  fontget remove "roboto" "firasans" "notosans"
-  fontget remove "Open Sans" -s machine
-  fontget remove "Roboto" -s user`,
+  fontget remove "Open Sans" "Fira Sans"
+  fontget remove "Open Sans" -s machine`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			fmt.Printf("%s\n", ui.RenderError("A font ID is required"))

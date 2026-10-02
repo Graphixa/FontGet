@@ -61,21 +61,15 @@ type ExportMetadata struct {
 
 var exportCmd = &cobra.Command{
 	Use:           "export [output-file]",
-	Short:         "Export installed fonts to a manifest file",
+	Short:         "Export installed fonts to a manifest",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Export installed fonts to a JSON manifest file for restoring fonts on another system.
+	Long: `Export installed fonts to a JSON manifest for restore via 'fontget import'.
 
-By default, exports fonts that match repository entries (Font IDs available).
-Use --all to export all installed fonts, including those without Font IDs.
-
-System fonts are always excluded from exports.
-
-Use flags to filter by match string, source, or include all installed fonts.
-The output file can be specified as a positional argument or using the -o flag.`,
+By default, only fonts with Font IDs are exported. Use --all to include the rest.
+System fonts are always excluded. Output path can be positional or -o.`,
 	Example: `  fontget export fonts.json
   fontget export -o D:\Exports
-  fontget export -o D:\Exports\my-fonts.json
   fontget export fonts.json --match "Roboto"
   fontget export fonts.json --source "Google Fonts"
   fontget export fonts.json --all`,
@@ -828,9 +822,9 @@ func performFullExportWithResult(fontManager platform.FontManager, scopes []plat
 func init() {
 	rootCmd.AddCommand(exportCmd)
 	exportCmd.Flags().StringP("output", "o", "", "Output file path (default: fonts-export.json)")
-	exportCmd.Flags().StringP("match", "m", "", "Export fonts that match the specified string")
-	exportCmd.Flags().StringP("source", "s", "", "Filter by font source (e.g., 'Google Fonts')")
-	exportCmd.Flags().BoolP("all", "a", false, "Export all installed fonts (including those without Font IDs)")
-	exportCmd.Flags().Bool("matched", false, "Export only fonts that match repository entries (default, cannot be used with --all)")
-	exportCmd.Flags().BoolP("force", "f", false, "Force overwrite existing file without confirmation")
+	exportCmd.Flags().StringP("match", "m", "", "Export fonts matching this string")
+	exportCmd.Flags().StringP("source", "s", "", "Filter by source (e.g. Google Fonts)")
+	exportCmd.Flags().BoolP("all", "a", false, "Include fonts without Font IDs")
+	exportCmd.Flags().Bool("matched", false, "Only fonts with Font IDs (default; not with --all)")
+	exportCmd.Flags().BoolP("force", "f", false, "Overwrite existing file without confirmation")
 }

@@ -444,13 +444,12 @@ func createImportOperationItems(fontsToInstall []FontToInstall) []components.Ope
 
 var importCmd = &cobra.Command{
 	Use:           "import <manifest-file>",
-	Short:         "Import fonts from an export manifest file",
+	Short:         "Import fonts from a manifest",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Import fonts from a FontGet export manifest file.
+	Long: `Install fonts from a JSON manifest created by 'fontget export'.
 
-The manifest file should be a JSON file created by the 'export' command.
-Fonts are installed using their Font IDs. Missing fonts are skipped with a warning.`,
+Fonts are installed by Font ID. Missing fonts are skipped with a warning.`,
 	Example: `  fontget import fonts.json
   fontget import fonts.json --scope user
   fontget import fonts.json --force`,
@@ -883,6 +882,6 @@ func importFontsInDebugMode(fontManager platform.FontManager, fontsToInstall []F
 
 func init() {
 	rootCmd.AddCommand(importCmd)
-	importCmd.Flags().StringP("scope", "s", "", "Installation scope override (user or machine)")
-	importCmd.Flags().BoolP("force", "f", false, "Force installation even if font is already installed")
+	importCmd.Flags().StringP("scope", "s", "", "Installation scope (user or machine)")
+	importCmd.Flags().BoolP("force", "f", false, "Reinstall even if already installed")
 }

@@ -25,14 +25,11 @@ const (
 
 var completionCmd = &cobra.Command{
 	Use:   "completion [shell]",
-	Short: "Generate or install shell completion scripts",
-	Long: `Generate or install shell completion scripts.
+	Short: "Generate or install shell completion",
+	Long: `Generate or install completion for bash, zsh, fish, or PowerShell.
 
-Supports bash, zsh, fish, and PowerShell.
-Use --install to auto-install completion for your shell.
-When no shell is provided with --install, FontGet auto-detects your current shell.
-
-For zsh, --install prepends a small fpath block to the top of ~/.zshrc so completions load before compinit (required for Oh My Zsh and similar setups on macOS).`,
+Use --install to write the script into your shell config (auto-detects the shell if omitted).
+For zsh, --install adds an fpath block at the top of ~/.zshrc so completion loads before compinit.`,
 	Example: `  fontget completion bash
   fontget completion --install
   fontget completion bash --install`,
@@ -91,7 +88,7 @@ For zsh, --install prepends a small fpath block to the top of ~/.zshrc so comple
 }
 
 func init() {
-	completionCmd.Flags().BoolVar(&completionInstallFlag, "install", false, "Install completion script to shell configuration file")
+	completionCmd.Flags().BoolVar(&completionInstallFlag, "install", false, "Install completion into your shell config")
 	rootCmd.AddCommand(completionCmd)
 }
 

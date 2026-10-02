@@ -16,15 +16,14 @@ import (
 
 var infoCmd = &cobra.Command{
 	Use:           "info <font-id>",
-	Short:         "Display detailed information about a font",
+	Short:         "Show details for a font",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Display detailed information about a font.
+	Long: `Show font metadata (name, ID, source, variants, license, categories).
 
-Shows font metadata including name, ID, source, variants, license, and categories.
-Use --license to show only license information.`,
+Use --license to show license information only.`,
 	Example: `  fontget info "Noto Sans"
-  fontget info "Roboto" -l`,
+  fontget info Roboto -l`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
 			fmt.Printf("\n%s\n", ui.RenderError("A font ID is required"))
@@ -283,5 +282,5 @@ func init() {
 	rootCmd.AddCommand(infoCmd)
 
 	// Add flags
-	infoCmd.Flags().BoolP("license", "l", false, "Show license information only")
+	infoCmd.Flags().BoolP("license", "l", false, "Show license only")
 }

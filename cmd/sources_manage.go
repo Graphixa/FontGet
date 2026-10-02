@@ -990,12 +990,9 @@ func (m sourcesModel) builtinWarningView() string {
 
 // sourcesManageCmd handles the Bubble Tea source management
 var sourcesManageCmd = &cobra.Command{
-	Use:   "manage",
-	Short: "Interactive source management with TUI",
-	Long: `Launch an interactive TUI for managing font sources.
-
-Enable or disable sources, add custom sources, edit source details, and delete custom sources.
-Built-in sources can be viewed but not deleted.`,
+	Use:          "manage",
+	Short:        "Interactive source manager",
+	Long:         `Manage sources in a terminal UI (enable/disable, add, edit, delete custom sources).`,
 	Example:      `  fontget sources manage`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,

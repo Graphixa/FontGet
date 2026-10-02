@@ -182,15 +182,13 @@ func formatConfigLabel(key string) string {
 
 var configCmd = &cobra.Command{
 	Use:          "config",
-	Short:        "Manage FontGet settings and configuration",
+	Short:        "Manage configuration",
 	SilenceUsage: true,
-	Long: `Manage FontGet application configuration settings.
-
-View and edit the configuration file (config.yaml), including editor preferences,
-logging settings, and other application behavior.`,
-	Example: `  fontget config info              # Show configuration information
-  fontget config edit              # Open config.yaml in default editor
-  fontget config validate          # Validate configuration file`,
+	Long:         `View and edit settings in config.yaml.`,
+	Example: `  fontget config info
+  fontget config edit
+  fontget config set theme.name catppuccin
+  fontget config validate`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// If no subcommand is provided, show help
 		return cmd.Help()
@@ -199,9 +197,9 @@ logging settings, and other application behavior.`,
 
 var configInfoCmd = &cobra.Command{
 	Use:          "info",
-	Short:        "Show configuration information",
+	Short:        "Show configuration",
 	SilenceUsage: true,
-	Long:         `Display current FontGet configuration settings.`,
+	Long:         `Show the current configuration.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
 		logger := GetLogger()
@@ -263,9 +261,9 @@ var configInfoCmd = &cobra.Command{
 
 var configEditCmd = &cobra.Command{
 	Use:          "edit",
-	Short:        "Open configuration file in default editor",
+	Short:        "Edit config.yaml in your editor",
 	SilenceUsage: true,
-	Long:         `Open the configuration file (config.yaml) in your default editor.`,
+	Long:         `Open config.yaml in your default editor.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get logger after it's been initialized
 		logger := GetLogger()
@@ -432,11 +430,9 @@ func getDefaultEditorForOS() string {
 
 var configValidateCmd = &cobra.Command{
 	Use:          "validate",
-	Short:        "Validate configuration file integrity",
+	Short:        "Validate config.yaml",
 	SilenceUsage: true,
-	Long: `Validate the configuration file and report any issues.
-
-Use 'fontget config edit' to fix issues, or 'fontget config reset' to restore defaults.`,
+	Long:         `Check config.yaml for errors. Use 'fontget config edit' or 'fontget config reset' to fix issues.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration validation operation")
 
@@ -527,10 +523,7 @@ var configResetCmd = &cobra.Command{
 	Use:          "reset",
 	Short:        "Reset configuration to defaults",
 	SilenceUsage: true,
-	Long: `Reset the configuration file to default values.
-
-Replaces the config with defaults while preserving log files.
-Useful when the file is corrupted or you want to start fresh.`,
+	Long:         `Replace config.yaml with defaults. Log files are kept.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting configuration reset operation")
 
@@ -622,15 +615,12 @@ Useful when the file is corrupted or you want to start fresh.`,
 }
 
 var configSetCmd = &cobra.Command{
-	Use:   "set [key] [value]",
+	Use:   "set <key> <value>",
 	Short: "Set a configuration value",
-	Long: `Set a single configuration value by dotted key (e.g. theme.name, logging.logpath).
-Keys are case-insensitive. Value is parsed to the correct type for that key.
-
-Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`,
+	Long:  `Set a configuration value by dotted key (section.field).`,
 	Example: `  fontget config set theme.name catppuccin
   fontget config set theme.use256colorspace true
-  fontget config set configuration.defaulteditor "code"
+  fontget config set configuration.defaulteditor code
   fontget config set search.resultlimit 50`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -743,4 +733,16 @@ func init() {
 	configCmd.AddCommand(configValidateCmd)
 	configCmd.AddCommand(configResetCmd)
 	configCmd.AddCommand(configSetCmd)
+
+	// Append settable keys to help so --help matches runtime validation.
+	keys := config.SettableKeys()
+	var b strings.Builder
+	b.WriteString(configSetCmd.Long)
+	b.WriteString("\n\nKeys:\n")
+	for _, k := range keys {
+		b.WriteString("  ")
+		b.WriteString(k)
+		b.WriteByte('\n')
+	}
+	configSetCmd.Long = strings.TrimRight(b.String(), "\n")
 }

@@ -36,15 +36,13 @@ type backupResult struct {
 
 var backupCmd = &cobra.Command{
 	Use:           "backup [output-path]",
-	Short:         "Backup installed font files to a zip archive",
+	Short:         "Backup installed fonts to a zip archive",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Backup installed font files to a zip archive organized by source and family name.
+	Long: `Backup installed fonts to a zip archive (by source and family).
 
-Automatically detects accessible scopes (user-only for regular users, both scopes for administrators).
-Fonts are deduplicated across scopes. System fonts are always excluded.
-
-Use --scope to specify which scopes to backup when providing an output path.`,
+Uses accessible scopes by default (user only, or user+machine when elevated).
+Fonts are deduplicated; system fonts are excluded.`,
 	Example: `  fontget backup
   fontget backup fonts-backup.zip
   fontget backup D:\Backups\my-fonts.zip --force
@@ -791,7 +789,7 @@ func parseScopeFlag(scopeFlag string, availableScopes []platform.InstallationSco
 }
 
 func init() {
-	backupCmd.Flags().BoolP("force", "f", false, "Force overwrite existing archive without confirmation")
-	backupCmd.Flags().StringP("scope", "s", "", "Scope to backup: 'user', 'machine', or 'both' (default: all accessible)")
+	backupCmd.Flags().BoolP("force", "f", false, "Overwrite existing archive without confirmation")
+	backupCmd.Flags().StringP("scope", "s", "", "Scope to backup: user, machine, or both")
 	rootCmd.AddCommand(backupCmd)
 }

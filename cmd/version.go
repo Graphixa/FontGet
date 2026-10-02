@@ -13,13 +13,11 @@ var versionReleaseNotes bool
 
 var versionCmd = &cobra.Command{
 	Use:          "version",
-	Short:        "Show FontGet version information",
+	Short:        "Show version",
 	SilenceUsage: true,
-	Long: `Display FontGet version and build information.
-
-Shows the current version number. Use --debug to see commit hash and build date.
-Use --release-notes to get a link to the release notes for this version.`,
-	Example: `  fontget version`,
+	Long:         `Show the FontGet version. Use --debug for build details, --release-notes for a link.`,
+	Example:      `  fontget version
+  fontget version --release-notes`,
 	Args:    cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
 		// Primary version line - styled with main info color.
@@ -55,6 +53,6 @@ Use --release-notes to get a link to the release notes for this version.`,
 }
 
 func init() {
-	versionCmd.Flags().BoolVar(&versionReleaseNotes, "release-notes", false, "Show release notes link for this version")
+	versionCmd.Flags().BoolVar(&versionReleaseNotes, "release-notes", false, "Show release notes URL")
 	rootCmd.AddCommand(versionCmd)
 }

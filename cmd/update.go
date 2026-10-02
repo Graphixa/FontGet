@@ -27,17 +27,15 @@ var (
 
 var updateCmd = &cobra.Command{
 	Use:          "update",
-	Short:        "Update FontGet to the latest version",
+	Short:        "Update FontGet",
 	SilenceUsage: true,
-	Long: `Check for FontGet updates and optionally install them.
+	Long: `Check for updates and install them after confirmation.
 
-By default, checks for updates and prompts for confirmation before installing.
-Use --check to only check without installing, or -y to auto-confirm updates.
-Verifies checksums and handles binary replacement safely.`,
-	Example: `  fontget update                # Check and prompt for update
-  fontget update --check        # Only check, don't install
-  fontget update -y             # Auto-confirm update
-  fontget update --version 1.2.3  # Update to specific version`,
+Use --check to check only, -y to skip the prompt, or --version for a specific release.`,
+	Example: `  fontget update
+  fontget update --check
+  fontget update -y
+  fontget update --version 1.2.3`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		logger := GetLogger()
@@ -65,9 +63,9 @@ Verifies checksums and handles binary replacement safely.`,
 }
 
 func init() {
-	updateCmd.Flags().BoolVarP(&updateCheckOnly, "check", "c", false, "Only check for updates, don't install")
-	updateCmd.Flags().BoolVarP(&updateAutoYes, "yes", "y", false, "Skip confirmation prompt and auto-confirm update")
-	updateCmd.Flags().StringVar(&updateVersion, "version", "", "Update to specific version (e.g., 1.2.3)")
+	updateCmd.Flags().BoolVarP(&updateCheckOnly, "check", "c", false, "Check only; do not install")
+	updateCmd.Flags().BoolVarP(&updateAutoYes, "yes", "y", false, "Skip confirmation prompt")
+	updateCmd.Flags().StringVar(&updateVersion, "version", "", "Update to a specific version (e.g. 1.2.3)")
 
 	rootCmd.AddCommand(updateCmd)
 }

@@ -15,15 +15,10 @@ import (
 
 var browseCmd = &cobra.Command{
 	Use:   "browse",
-	Short: "Interactive font catalog: search, filter by category, install or remove",
-	Long: `Browse the font catalog in the terminal: search, view font license and source details, and
-install or remove fonts. Installation behavior matches fontget add (scope, force).
+	Short: "Interactive font catalog",
+	Long: `Browse, search, and install or remove fonts in a terminal UI.
 
-In the TUI, use Tab / Shift+Tab to cycle the category filter (All, then each category from your manifest,
-including custom sources). Type in the search box to narrow results; an empty search with a category
-shows all fonts in that category.
-
-Flags --scope (-s) and --force (-f) match fontget add (user/machine install scope; force reinstall).`,
+Tab / Shift+Tab cycles categories. --scope and --force match fontget add.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting browse TUI")
 
@@ -96,5 +91,5 @@ Flags --scope (-s) and --force (-f) match fontget add (user/machine install scop
 func init() {
 	rootCmd.AddCommand(browseCmd)
 	browseCmd.Flags().StringP("scope", "s", "", "Installation scope (user or machine)")
-	browseCmd.Flags().BoolP("force", "f", false, "Force installation even if font is already installed")
+	browseCmd.Flags().BoolP("force", "f", false, "Reinstall even if already installed")
 }

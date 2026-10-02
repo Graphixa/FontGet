@@ -23,7 +23,7 @@ const (
 var themeCmd = &cobra.Command{
 	Use:     "theme",
 	Short:   "Interactive theme selector",
-	Long:    `Launch an interactive TUI to select and preview themes with live preview.`,
+	Long:    `Pick a theme in a terminal UI with live preview.`,
 	Example: `  fontget theme`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Initialize theme manager if not already done

@@ -17,13 +17,12 @@ import (
 
 var sourcesAddCmd = &cobra.Command{
 	Use:   "add",
-	Short: "Add a font source",
-	Long: `Add a custom font source. Name and URL are required; prefix and priority are optional.
-Prefix defaults to a slug from the name (lowercase, spaces to hyphens). Priority defaults to the next available (custom sources start after built-in).
+	Short: "Add a custom font source",
+	Long: `Add a custom font source. Name and URL are required.
 
-Use 'fontget sources add --help' to see all flags.`,
+Prefix defaults from the name; priority defaults after built-in sources.`,
 	Example: `  fontget sources add --name "My Source" --url https://example.com/fonts.json
-  fontget sources add --name "My Source" --url https://example.com/sources.json --prefix mysrc --priority 10`,
+  fontget sources add --name "My Source" --url https://example.com/fonts.json --prefix mysrc --priority 10`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	RunE:          runSourcesAdd,
@@ -32,8 +31,7 @@ Use 'fontget sources add --help' to see all flags.`,
 var sourcesRemoveCmd = &cobra.Command{
 	Use:   "remove",
 	Short: "Remove a custom font source",
-	Long: `Remove a custom font source by name or prefix. Built-in sources cannot be removed.
-Use --force or --yes to skip the confirmation prompt (for scripts).`,
+	Long:  `Remove a custom source by name or prefix. Built-in sources cannot be removed.`,
 	Example: `  fontget sources remove --name "My Source"
   fontget sources remove --name mysource --force`,
 	SilenceUsage:  true,
@@ -44,7 +42,7 @@ Use --force or --yes to skip the confirmation prompt (for scripts).`,
 var sourcesEnableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Enable a font source",
-	Long:  `Enable a font source by name or prefix. Works for both built-in and custom sources.`,
+	Long:  `Enable a built-in or custom source by name or prefix.`,
 	Example: `  fontget sources enable --name "Nerd Fonts"
   fontget sources enable --name nerd`,
 	SilenceUsage:  true,
@@ -55,7 +53,7 @@ var sourcesEnableCmd = &cobra.Command{
 var sourcesDisableCmd = &cobra.Command{
 	Use:   "disable",
 	Short: "Disable a font source",
-	Long:  `Disable a font source by name or prefix. Works for both built-in and custom sources.`,
+	Long:  `Disable a built-in or custom source by name or prefix.`,
 	Example: `  fontget sources disable --name "Nerd Fonts"
   fontget sources disable --name nerd`,
 	SilenceUsage:  true,
@@ -65,10 +63,11 @@ var sourcesDisableCmd = &cobra.Command{
 
 var sourcesSetCmd = &cobra.Command{
 	Use:   "set",
-	Short: "Update a custom source's properties",
-	Long: `Update URL, prefix, or priority of a custom font source by name or prefix. Built-in sources cannot be modified (use enable/disable to change availability).
-At least one of --url, --prefix, or --priority must be provided.`,
-	Example: `  fontget sources set --name "My Source" --url https://new.example.com/fonts.json
+	Short: "Update a custom source",
+	Long: `Update a custom source's URL, prefix, or priority (by name or prefix).
+
+Built-in sources cannot be modified. Provide at least one of --url, --prefix, or --priority.`,
+	Example: `  fontget sources set --name "My Source" --url https://example.com/fonts.json
   fontget sources set --name mysource --priority 5 --prefix mysource`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -83,26 +82,26 @@ func initSourcesCLI() {
 	sourcesCmd.AddCommand(sourcesSetCmd)
 
 	sourcesAddCmd.Flags().StringP("name", "n", "", "Source name (required)")
-	sourcesAddCmd.Flags().StringP("url", "u", "", "Source URL (required, must be http(s)://)")
-	sourcesAddCmd.Flags().StringP("prefix", "p", "", "Source prefix (optional; default from name)")
-	sourcesAddCmd.Flags().Int("priority", 0, "Priority, lower = higher priority (optional; default next available)")
+	sourcesAddCmd.Flags().StringP("url", "u", "", "Source URL (required; http or https)")
+	sourcesAddCmd.Flags().StringP("prefix", "p", "", "Source prefix (default: from name)")
+	sourcesAddCmd.Flags().Int("priority", 0, "Priority (lower is higher; default: next available)")
 	_ = sourcesAddCmd.MarkFlagRequired("name")
 	_ = sourcesAddCmd.MarkFlagRequired("url")
 
-	sourcesRemoveCmd.Flags().StringP("name", "n", "", "Source name or prefix to remove (required)")
-	sourcesRemoveCmd.Flags().BoolP("force", "f", false, "Skip confirmation prompt")
-	sourcesRemoveCmd.Flags().BoolP("yes", "y", false, "Skip confirmation prompt")
+	sourcesRemoveCmd.Flags().StringP("name", "n", "", "Source name or prefix (required)")
+	sourcesRemoveCmd.Flags().BoolP("force", "f", false, "Skip confirmation")
+	sourcesRemoveCmd.Flags().BoolP("yes", "y", false, "Skip confirmation")
 	_ = sourcesRemoveCmd.MarkFlagRequired("name")
 
-	sourcesEnableCmd.Flags().StringP("name", "n", "", "Source name or prefix to enable (required)")
+	sourcesEnableCmd.Flags().StringP("name", "n", "", "Source name or prefix (required)")
 	_ = sourcesEnableCmd.MarkFlagRequired("name")
 
-	sourcesDisableCmd.Flags().StringP("name", "n", "", "Source name or prefix to disable (required)")
+	sourcesDisableCmd.Flags().StringP("name", "n", "", "Source name or prefix (required)")
 	_ = sourcesDisableCmd.MarkFlagRequired("name")
 
-	sourcesSetCmd.Flags().StringP("name", "n", "", "Source name or prefix to update (required)")
-	sourcesSetCmd.Flags().StringP("url", "u", "", "New source URL")
-	sourcesSetCmd.Flags().StringP("prefix", "p", "", "New source prefix")
+	sourcesSetCmd.Flags().StringP("name", "n", "", "Source name or prefix (required)")
+	sourcesSetCmd.Flags().StringP("url", "u", "", "New URL")
+	sourcesSetCmd.Flags().StringP("prefix", "p", "", "New prefix")
 	sourcesSetCmd.Flags().Int("priority", -1, "New priority (positive integer)")
 	_ = sourcesSetCmd.MarkFlagRequired("name")
 }
