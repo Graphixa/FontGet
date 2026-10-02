@@ -144,6 +144,10 @@ var rootCmd = &cobra.Command{
 			}
 		}()
 
+		// Windows: enable VT so lipgloss-styled CLI output (list/search tables) renders
+		// after Bubble Tea spinners restore console mode. No-op on Unix / non-TTY.
+		ui.EnableANSIConsole()
+
 		// Initialize theme system (non-blocking - uses fast timeout)
 		// Theme detection happens quickly and doesn't delay command execution
 		if err := ui.InitThemeManager(); err != nil {
