@@ -112,6 +112,30 @@ func ValidateRequired(value, fieldName string) error {
 	return nil
 }
 
+// ValidateSourceName validates a custom source display name.
+// Allows letters, numbers, spaces, hyphens, and underscores. Rejects quotes,
+// path separators, and other special characters that break filenames or UX.
+func ValidateSourceName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ValidationError{Field: "Name", Message: "Name is required"}
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == ' ' || r == '-' || r == '_':
+		default:
+			return ValidationError{
+				Field:   "Name",
+				Message: "Name can only contain letters, numbers, spaces, hyphens, and underscores",
+			}
+		}
+	}
+	return nil
+}
+
 // ValidateURL validates that a string looks like a URL
 func ValidateURL(url string) error {
 	url = strings.TrimSpace(url)
@@ -154,7 +178,7 @@ func ValidateSourceForm(name, url, prefix string, existingSources []SourceItem, 
 	result := ValidationResult{IsValid: true, Errors: []ValidationError{}}
 
 	// Validate name
-	if err := ValidateRequired(name, "Name"); err != nil {
+	if err := ValidateSourceName(name); err != nil {
 		if validationErr, ok := err.(ValidationError); ok {
 			result.AddError("Name", validationErr.Message)
 		} else {

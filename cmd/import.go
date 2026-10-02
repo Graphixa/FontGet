@@ -37,11 +37,11 @@ func loadAndValidateManifest(manifestFile string) (*ExportManifest, error) {
 		if os.IsNotExist(err) {
 			cmdutils.PrintErrorf("Manifest file not found: '%s'", ui.InfoText.Render(manifestFile))
 			fmt.Println()
-			return nil, fmt.Errorf("manifest file not found: %s", manifestFile)
+			return nil, shared.AlreadyPrinted(fmt.Errorf("manifest file not found: %s", manifestFile))
 		}
 		cmdutils.PrintErrorf("Unable to check manifest file: %v", err)
 		fmt.Println()
-		return nil, err
+		return nil, shared.AlreadyPrinted(err)
 	}
 
 	// Read manifest file
@@ -54,26 +54,26 @@ func loadAndValidateManifest(manifestFile string) (*ExportManifest, error) {
 	if err != nil {
 		cmdutils.PrintErrorf("Unable to read manifest file: %v", err)
 		fmt.Println()
-		return nil, fmt.Errorf("unable to read manifest file: %w", err)
+		return nil, shared.AlreadyPrinted(fmt.Errorf("unable to read manifest file: %w", err))
 	}
 
 	var exportManifest ExportManifest
 	if err := json.Unmarshal(data, &exportManifest); err != nil {
 		cmdutils.PrintErrorf("Unable to parse manifest file: %v", err)
 		fmt.Println()
-		return nil, fmt.Errorf("unable to parse manifest file: %w", err)
+		return nil, shared.AlreadyPrinted(fmt.Errorf("unable to parse manifest file: %w", err))
 	}
 
 	// Validate manifest structure
 	if exportManifest.Version == "" {
 		cmdutils.PrintError("Invalid manifest: missing version")
 		fmt.Println()
-		return nil, fmt.Errorf("invalid manifest: missing version")
+		return nil, shared.AlreadyPrinted(fmt.Errorf("invalid manifest: missing version"))
 	}
 	if len(exportManifest.Fonts) == 0 {
 		cmdutils.PrintError("Manifest contains no fonts to import")
 		fmt.Println()
-		return nil, fmt.Errorf("manifest contains no fonts to import")
+		return nil, shared.AlreadyPrinted(fmt.Errorf("manifest contains no fonts to import"))
 	}
 
 	return &exportManifest, nil
@@ -327,7 +327,7 @@ func resolveInstallScope(cmd *cobra.Command, fontManager platform.FontManager) (
 		if installScope != platform.UserScope && installScope != platform.MachineScope {
 			cmdutils.PrintErrorf("Invalid scope '%s'. Valid options are: 'user' or 'machine'", scope)
 			fmt.Println()
-			return platform.UserScope, "", fmt.Errorf("invalid scope: %s", scope)
+			return platform.UserScope, "", shared.AlreadyPrinted(fmt.Errorf("invalid scope: %s", scope))
 		}
 	}
 
@@ -443,9 +443,10 @@ func createImportOperationItems(fontsToInstall []FontToInstall) []components.Ope
 }
 
 var importCmd = &cobra.Command{
-	Use:          "import <manifest-file>",
-	Short:        "Import fonts from an export manifest file",
-	SilenceUsage: true,
+	Use:           "import <manifest-file>",
+	Short:         "Import fonts from an export manifest file",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `Import fonts from a FontGet export manifest file.
 
 The manifest file should be a JSON file created by the 'export' command.
@@ -458,7 +459,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 			cmdutils.PrintError("A manifest file is required")
 			cmdutils.PrintInfo("Use 'fontget import --help' for more information.")
 			fmt.Println()
-			return nil
+			return shared.AlreadyPrinted(fmt.Errorf("a manifest file is required"))
 		}
 		return nil
 	},
@@ -478,7 +479,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		// Load and validate manifest
 		exportManifest, err := loadAndValidateManifest(manifestFile)
 		if err != nil {
-			return nil // Error already printed
+			return err
 		}
 
 		// Get flags
@@ -493,17 +494,17 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 		// Resolve installation scope
 		installScope, scope, err := resolveInstallScope(cmd, fontManager)
 		if err != nil {
-			return nil // Error already printed
+			return err
 		}
 
 		// Check elevation
 		if err := cmdutils.CheckElevation(cmd, fontManager, installScope); err != nil {
 			if errors.Is(err, cmdutils.ErrElevationRequired) {
-				return nil
+				return shared.AlreadyPrinted(err)
 			}
 			cmdutils.PrintErrorf("Unable to verify system permissions: %v", err)
 			fmt.Println()
-			return nil
+			return shared.AlreadyPrinted(err)
 		}
 
 		// Get font directory
@@ -735,7 +736,7 @@ Fonts are installed using their Font IDs. Missing fonts are skipped with a warni
 			} else {
 				cmdutils.PrintErrorf("%v", progressErr)
 				fmt.Println()
-				return nil
+				return shared.AlreadyPrinted(progressErr)
 			}
 		}
 

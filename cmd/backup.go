@@ -298,7 +298,7 @@ func runBackupWithProgressBar(fontManager platform.FontManager, scopes []platfor
 		// Print error with proper styling (Cobra won't print it since SilenceErrors is true)
 		cmdutils.PrintErrorf("%v", progressErr)
 		fmt.Println()
-		return progressErr
+		return shared.AlreadyPrinted(progressErr)
 	}
 
 	// Show success message after progress bar completes

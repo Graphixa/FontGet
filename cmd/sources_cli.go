@@ -9,6 +9,7 @@ import (
 	"fontget/internal/cmdutils"
 	"fontget/internal/config"
 	"fontget/internal/output"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -126,7 +127,7 @@ func runSourcesAdd(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Cannot load sources manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	existing := convertManifestToSourceItems(manifest)
@@ -135,7 +136,7 @@ func runSourcesAdd(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("%s", result.GetFirstError())
 		fmt.Println()
-		return fmt.Errorf("validation: %s", result.GetFirstError())
+		return shared.AlreadyPrinted(fmt.Errorf("validation: %s", result.GetFirstError()))
 	}
 
 	if prefix == "" {
@@ -160,7 +161,7 @@ func runSourcesAdd(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Failed to save manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	fmt.Println()
@@ -184,7 +185,7 @@ func runSourcesRemove(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Cannot load sources manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	resolvedName, err := resolveSourceName(manifest, name)
@@ -192,7 +193,7 @@ func runSourcesRemove(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Source %q not found.", name)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 	name = resolvedName
 
@@ -200,14 +201,14 @@ func runSourcesRemove(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Cannot remove built-in source %q. Only custom sources can be removed.", name)
 		fmt.Println()
-		return fmt.Errorf("cannot remove built-in source")
+		return shared.AlreadyPrinted(fmt.Errorf("cannot remove built-in source"))
 	}
 
 	if _, exists := manifest.Sources[name]; !exists {
 		fmt.Println()
 		cmdutils.PrintErrorf("Source %q not found.", name)
 		fmt.Println()
-		return fmt.Errorf("source not found")
+		return shared.AlreadyPrinted(fmt.Errorf("source not found"))
 	}
 
 	if !skipConfirm {
@@ -230,7 +231,7 @@ func runSourcesRemove(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Failed to save manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	fmt.Println()
@@ -247,7 +248,7 @@ func runSourcesEnable(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Cannot load sources manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	resolvedName, err := resolveSourceName(manifest, name)
@@ -255,7 +256,7 @@ func runSourcesEnable(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Source %q not found.", name)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 	name = resolvedName
 
@@ -267,7 +268,7 @@ func runSourcesEnable(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Failed to save manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	fmt.Println()
@@ -284,7 +285,7 @@ func runSourcesDisable(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Cannot load sources manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	resolvedName, err := resolveSourceName(manifest, name)
@@ -292,7 +293,7 @@ func runSourcesDisable(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Source %q not found.", name)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 	name = resolvedName
 
@@ -304,7 +305,7 @@ func runSourcesDisable(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Failed to save manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	fmt.Println()
@@ -328,7 +329,7 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("At least one of --url, --prefix, or --priority must be provided.")
 		fmt.Println()
-		return fmt.Errorf("no properties to update")
+		return shared.AlreadyPrinted(fmt.Errorf("no properties to update"))
 	}
 
 	manifest, err := config.LoadManifest()
@@ -336,7 +337,7 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Cannot load sources manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	resolvedName, err := resolveSourceName(manifest, name)
@@ -344,7 +345,7 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Source %q not found.", name)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 	name = resolvedName
 
@@ -352,7 +353,7 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Cannot modify built-in source %q. Use sources enable/disable to change availability.", name)
 		fmt.Println()
-		return fmt.Errorf("cannot modify built-in source")
+		return shared.AlreadyPrinted(fmt.Errorf("cannot modify built-in source"))
 	}
 
 	source := manifest.Sources[name]
@@ -363,14 +364,14 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 			fmt.Println()
 			cmdutils.PrintErrorf("%v", err)
 			fmt.Println()
-			return err
+			return shared.AlreadyPrinted(err)
 		}
 		for i, s := range existing {
 			if s.URL == url && (i != editingIndex) {
 				fmt.Println()
 				cmdutils.PrintErrorf("Another source already has URL %q.", url)
 				fmt.Println()
-				return fmt.Errorf("duplicate URL")
+				return shared.AlreadyPrinted(fmt.Errorf("duplicate URL"))
 			}
 		}
 		source.URL = url
@@ -381,14 +382,14 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 			fmt.Println()
 			cmdutils.PrintErrorf("%v", err)
 			fmt.Println()
-			return err
+			return shared.AlreadyPrinted(err)
 		}
 		for i, s := range existing {
 			if s.Prefix == prefix && (i != editingIndex) {
 				fmt.Println()
 				cmdutils.PrintErrorf("Another source already has prefix %q.", prefix)
 				fmt.Println()
-				return fmt.Errorf("duplicate prefix")
+				return shared.AlreadyPrinted(fmt.Errorf("duplicate prefix"))
 			}
 		}
 		source.Prefix = prefix
@@ -398,7 +399,7 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 			fmt.Println()
 			cmdutils.PrintErrorf("Priority must be a positive integer.")
 			fmt.Println()
-			return fmt.Errorf("invalid priority")
+			return shared.AlreadyPrinted(fmt.Errorf("invalid priority"))
 		}
 		source.Priority = priority
 	}
@@ -409,7 +410,7 @@ func runSourcesSet(cmd *cobra.Command, _ []string) error {
 		fmt.Println()
 		cmdutils.PrintErrorf("Failed to save manifest: %v", err)
 		fmt.Println()
-		return err
+		return shared.AlreadyPrinted(err)
 	}
 
 	fmt.Println()

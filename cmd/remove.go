@@ -1172,10 +1172,11 @@ func parseFontName(filename string) (family, style string) {
 }
 
 var removeCmd = &cobra.Command{
-	Use:          "remove <font-id> [<font-id2> <font-id3> ...]",
-	Aliases:      []string{"uninstall"},
-	Short:        "Remove fonts from your system",
-	SilenceUsage: true,
+	Use:           "remove <font-id> [<font-id2> <font-id3> ...]",
+	Aliases:       []string{"uninstall"},
+	Short:         "Remove fonts from your system",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `Remove one or multiple fonts from your system.
 
 Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
@@ -1196,7 +1197,7 @@ Use --scope to set removal location:
 			fmt.Printf("%s\n", ui.RenderError("A font ID is required"))
 			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget remove --help' for more information."))
 			fmt.Println()
-			return nil
+			return shared.AlreadyPrinted(fmt.Errorf("a font ID is required"))
 		}
 		return nil
 	},
@@ -1207,7 +1208,7 @@ Use --scope to set removal location:
 		fmt.Println()
 
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			return nil
+			return shared.AlreadyPrinted(fmt.Errorf("a font ID is required"))
 		}
 
 		fontManager, err := platform.NewFontManager()

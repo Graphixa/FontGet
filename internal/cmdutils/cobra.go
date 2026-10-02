@@ -52,8 +52,8 @@ func PrintElevationHelp(cmd *cobra.Command, platform string) {
 // It checks if the specified scope requires elevation, verifies if the process is already elevated,
 // and prints platform-specific elevation instructions if elevation is needed.
 //
-// Returns ErrElevationRequired if elevation is needed but not present (caller should return nil
-// to avoid duplicate error messages, as help has already been printed).
+// Returns ErrElevationRequired if elevation is needed but not present (caller should return
+// shared.AlreadyPrinted(err) so main skips a duplicate print; help has already been printed).
 //
 // Parameters:
 //   - cmd: Cobra command for printing help messages

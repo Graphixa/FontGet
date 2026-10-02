@@ -14,6 +14,7 @@ import (
 	"fontget/internal/components"
 	"fontget/internal/config"
 	"fontget/internal/output"
+	"fontget/internal/shared"
 	"fontget/internal/ui"
 
 	"github.com/spf13/cobra"
@@ -655,7 +656,7 @@ Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`
 				fmt.Println()
 				fmt.Printf("%s\n", validationErr.Error())
 				fmt.Println()
-				return err
+				return shared.AlreadyPrinted(err)
 			}
 			var validationErrors config.ValidationErrors
 			if errors.As(err, &validationErrors) {
@@ -664,12 +665,12 @@ Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`
 				fmt.Println()
 				fmt.Printf("%s\n", validationErrors.Error())
 				fmt.Println()
-				return err
+				return shared.AlreadyPrinted(err)
 			}
 			cmdutils.PrintErrorf("Cannot load config: %v", err)
 			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget config edit' or 'fontget config reset'."))
 			fmt.Println()
-			return err
+			return shared.AlreadyPrinted(err)
 		}
 
 		if err := config.SetConfigKey(cfg, key, value); err != nil {
@@ -678,7 +679,7 @@ Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`
 			fmt.Println()
 			cmdutils.PrintErrorf("%v", err)
 			fmt.Println()
-			return err
+			return shared.AlreadyPrinted(err)
 		}
 
 		if err := config.ValidateUserPreferences(cfg); err != nil {
@@ -696,7 +697,7 @@ Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`
 				fmt.Printf("%v\n", err)
 			}
 			fmt.Println()
-			return err
+			return shared.AlreadyPrinted(err)
 		}
 
 		// Theme name: check that the theme exists (embedded or user)
@@ -708,13 +709,13 @@ Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`
 				fmt.Println()
 				cmdutils.PrintErrorf("Could not verify theme: %v", errTheme)
 				fmt.Println()
-				return errTheme
+				return shared.AlreadyPrinted(errTheme)
 			}
 			if !exists {
 				fmt.Println()
 				cmdutils.PrintErrorf("Theme %q not found (use 'fontget theme' to list themes).", value)
 				fmt.Println()
-				return fmt.Errorf("theme %q not found", value)
+				return shared.AlreadyPrinted(fmt.Errorf("theme %q not found", value))
 			}
 		}
 
@@ -724,7 +725,7 @@ Use 'fontget config set --help' for a list of valid keys, or see docs/usage.md.`
 			fmt.Println()
 			cmdutils.PrintErrorf("Failed to save config: %v", err)
 			fmt.Println()
-			return err
+			return shared.AlreadyPrinted(err)
 		}
 
 		fmt.Println()

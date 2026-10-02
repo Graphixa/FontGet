@@ -15,9 +15,10 @@ import (
 )
 
 var infoCmd = &cobra.Command{
-	Use:          "info <font-id>",
-	Short:        "Display detailed information about a font",
-	SilenceUsage: true,
+	Use:           "info <font-id>",
+	Short:         "Display detailed information about a font",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `Display detailed information about a font.
 
 Shows font metadata including name, ID, source, variants, license, and categories.
@@ -29,7 +30,7 @@ Use --license to show only license information.`,
 			fmt.Printf("\n%s\n", ui.RenderError("A font ID is required"))
 			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget info --help' for more information."))
 			fmt.Println()
-			return nil
+			return shared.AlreadyPrinted(fmt.Errorf("a font ID is required"))
 		}
 		return nil
 	},
@@ -159,7 +160,9 @@ Use --license to show only license information.`,
 				allFonts := repo.GetAllFontsCached()
 				if len(allFonts) == 0 {
 					output.GetDebug().Error("Could not get list of available fonts for suggestions")
-					return fmt.Errorf("%s", ui.RenderError(fmt.Sprintf("Font '%s' not found", fontID)))
+					fmt.Printf("%s\n", ui.RenderError(fmt.Sprintf("Font '%s' not found", fontID)))
+					fmt.Println()
+					return shared.AlreadyPrinted(fmt.Errorf("font %q not found", fontID))
 				}
 
 				// Find similar fonts using the same method as add command

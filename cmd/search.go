@@ -111,9 +111,10 @@ func logDebugScoreBreakdown(result repo.SearchResult, query string, index, total
 }
 
 var searchCmd = &cobra.Command{
-	Use:          "search <query>",
-	Short:        "Search for available fonts",
-	SilenceUsage: true,
+	Use:           "search <query>",
+	Short:         "Search for available fonts",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `Search for fonts from all configured sources.
 
 Use --category to filter by category (e.g., "Sans Serif", "Serif", "Monospace").
@@ -145,9 +146,7 @@ Use -s without a value to list sources.`,
 			fmt.Printf("\n%s\n", ui.RenderError("A search query, category, or source is required"))
 			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget search --help' for more information."))
 			fmt.Println()
-			// Return nil since we've already printed the error message
-			// This prevents Cobra from printing a duplicate error
-			return nil
+			return shared.AlreadyPrinted(fmt.Errorf("a search query, category, or source is required"))
 		}
 
 		// Validate source if provided (check both source ID and source name)
@@ -156,7 +155,7 @@ Use -s without a value to list sources.`,
 			fmt.Printf("\n%s\n", ui.RenderError(fmt.Sprintf("Source '%s' not found. Use 'fontget sources info' to see available sources.", source)))
 			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget search --help' for more information."))
 			fmt.Println()
-			return nil
+			return shared.AlreadyPrinted(fmt.Errorf("source %q not found", source))
 		}
 		return nil
 	},

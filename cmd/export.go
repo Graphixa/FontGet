@@ -60,9 +60,10 @@ type ExportMetadata struct {
 }
 
 var exportCmd = &cobra.Command{
-	Use:          "export [output-file]",
-	Short:        "Export installed fonts to a manifest file",
-	SilenceUsage: true,
+	Use:           "export [output-file]",
+	Short:         "Export installed fonts to a manifest file",
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	Long: `Export installed fonts to a JSON manifest file for restoring fonts on another system.
 
 By default, exports fonts that match repository entries (Font IDs available).
@@ -361,7 +362,7 @@ func runExportWithProgressBar(fontManager platform.FontManager, scopes []platfor
 		// Print error with proper styling (Cobra won't print it since SilenceErrors is true)
 		cmdutils.PrintErrorf("%v", progressErr)
 		fmt.Println()
-		return progressErr
+		return shared.AlreadyPrinted(progressErr)
 	}
 
 	// Check if no fonts were found (this happens if totalFamilies is 0)
