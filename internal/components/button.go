@@ -103,18 +103,18 @@ func (bg ButtonGroup) Render() string {
 // HandleKey handles keyboard input for button navigation
 // Returns: action string if button was activated, "" otherwise
 func (bg *ButtonGroup) HandleKey(key string) string {
-	// When left/right is pressed, give focus to buttons
-	if key == "left" || key == "right" || key == "h" || key == "l" {
+	// Horizontal nav keys give focus to buttons (arrows, vim, and tab)
+	if key == "left" || key == "right" || key == "h" || key == "l" || key == "tab" || key == "shift+tab" {
 		bg.HasFocus = true
 	}
 
 	switch key {
-	case "left", "h":
+	case "left", "h", "shift+tab":
 		if bg.Selected > 0 {
 			bg.Selected--
 		}
 		return ""
-	case "right", "l":
+	case "right", "l", "tab":
 		if bg.Selected < len(bg.Buttons)-1 {
 			bg.Selected++
 		}

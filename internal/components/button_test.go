@@ -193,6 +193,30 @@ func TestButtonGroup_HandleKey(t *testing.T) {
 			wantHasFocus: true,
 		},
 		{
+			name: "tab moves selection right like right arrow",
+			group: &ButtonGroup{
+				Buttons:  []Button{{Text: "Install"}, {Text: "Close"}},
+				Selected: 0,
+				HasFocus: false,
+			},
+			key:          "tab",
+			wantAction:   "",
+			wantSelected: 1,
+			wantHasFocus: true,
+		},
+		{
+			name: "shift+tab moves selection left like left arrow",
+			group: &ButtonGroup{
+				Buttons:  []Button{{Text: "Install"}, {Text: "Close"}},
+				Selected: 1,
+				HasFocus: false,
+			},
+			key:          "shift+tab",
+			wantAction:   "",
+			wantSelected: 0,
+			wantHasFocus: true,
+		},
+		{
 			name: "enter without focus doesn't activate",
 			group: &ButtonGroup{
 				Buttons: []Button{
