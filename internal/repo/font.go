@@ -732,7 +732,7 @@ func attemptDownloadAndExtract(font *FontFile, targetDir string, opts *DownloadF
 		return []string{downloadedPath}, nil
 	}
 
-	// It's an archive: ZIP and compressed TAR select before extract; 7Z streams with hard budgets.
+	// It's an archive: ZIP and compressed TAR select before extract.
 	extractDir := filepath.Join(targetDir, "extracted")
 	cleanupStaging := func(primary error) error {
 		var cleanupNotes []string
@@ -993,7 +993,7 @@ func convertFontInfoToFontFiles(font FontInfo, fontID string) ([]FontFile, error
 // isArchiveFile checks if a URL points to an archive file
 func isArchiveFile(downloadURL string) bool {
 	ext := strings.ToLower(filepath.Ext(downloadURL))
-	if ext == ".zip" || ext == ".xz" || ext == ".7z" || strings.HasSuffix(strings.ToLower(downloadURL), ".tar.xz") {
+	if ext == ".zip" || ext == ".xz" || strings.HasSuffix(strings.ToLower(downloadURL), ".tar.xz") {
 		return true
 	}
 	if u, err := url.Parse(downloadURL); err == nil && strings.Contains(strings.ToLower(u.Path), "/fontfacekit/") {

@@ -25,8 +25,6 @@ func InferArchiveTypeFromHeaders(contentType string, contentDisposition string) 
 			switch mediaType {
 			case "application/zip", "application/x-zip-compressed":
 				return ArchiveTypeZIP
-			case "application/x-7z-compressed":
-				return ArchiveType7Z
 			case "application/gzip", "application/x-gzip":
 				return ArchiveTypeTARGZ
 			}
@@ -35,9 +33,6 @@ func InferArchiveTypeFromHeaders(contentType string, contentDisposition string) 
 			ctLower := strings.ToLower(ct)
 			if strings.HasPrefix(ctLower, "application/zip") || strings.HasPrefix(ctLower, "application/x-zip-compressed") {
 				return ArchiveTypeZIP
-			}
-			if strings.HasPrefix(ctLower, "application/x-7z-compressed") {
-				return ArchiveType7Z
 			}
 			if strings.HasPrefix(ctLower, "application/gzip") || strings.HasPrefix(ctLower, "application/x-gzip") {
 				return ArchiveTypeTARGZ
@@ -58,9 +53,6 @@ func InferArchiveTypeFromHeaders(contentType string, contentDisposition string) 
 	}
 	if strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz") || strings.HasSuffix(lower, ".gz") {
 		return ArchiveTypeTARGZ
-	}
-	if strings.HasSuffix(lower, ".7z") {
-		return ArchiveType7Z
 	}
 
 	// If it has some other extension, don't guess.

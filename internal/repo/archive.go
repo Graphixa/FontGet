@@ -6,9 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"strings"
@@ -22,7 +20,6 @@ const (
 	ArchiveTypeZIP
 	ArchiveTypeTARXZ
 	ArchiveTypeTARGZ
-	ArchiveType7Z
 )
 
 // DetectArchiveType detects the archive type based on file extension
@@ -31,8 +28,6 @@ func DetectArchiveType(filename string) ArchiveType {
 	switch ext {
 	case ".zip":
 		return ArchiveTypeZIP
-	case ".7z":
-		return ArchiveType7Z
 	case ".xz":
 		// Check if it's a .tar.xz file
 		if strings.HasSuffix(strings.ToLower(filename), ".tar.xz") {
@@ -87,11 +82,6 @@ func DetectArchiveTypeFromFile(path string) ArchiveType {
 		return ArchiveTypeTARGZ
 	}
 
-	// 7Z magic: 37 7A BC AF 27 1C
-	if len(b) >= 6 && b[0] == 0x37 && b[1] == 0x7A && b[2] == 0xBC && b[3] == 0xAF && b[4] == 0x27 && b[5] == 0x1C {
-		return ArchiveType7Z
-	}
-
 	return ArchiveTypeUnknown
 }
 
@@ -113,7 +103,7 @@ type ExtractOptions struct {
 	Policy *ExtractionPolicy
 
 	// Selection, when set, enables source-aware / agnostic (or Nerd package-mode) selection
-	// before ZIP and compressed-TAR extraction. 7Z still walks extracted contents under hard budgets.
+	// before ZIP and compressed-TAR extraction.
 	Selection *ArchiveSelectionContext
 }
 
@@ -138,8 +128,6 @@ func ExtractArchiveWithOptions(archivePath, destDir string, opts *ExtractOptions
 		return extractTARXZ(archivePath, destDir, opts)
 	case ArchiveTypeTARGZ:
 		return extractTARGZ(archivePath, destDir, opts)
-	case ArchiveType7Z:
-		return extract7Z(archivePath, destDir, opts)
 	default:
 		return nil, fmt.Errorf("unsupported archive format: %s", filepath.Ext(archivePath))
 	}
@@ -539,128 +527,4 @@ func extractSelectedCompressedTAR(
 		return nil, fmt.Errorf("no font files extracted from archive")
 	}
 	return extractedFiles, nil
-}
-
-// extract7Z extracts a 7Z archive using an external tool (7zz/7z) and returns extracted font files.
-// Full inspect-before-extract parity is not available via the CLI; hard output budgets still apply.
-func extract7Z(archivePath, destDir string, opts *ExtractOptions) ([]string, error) {
-	policy := resolveExtractionPolicy(opts)
-
-	tool, err := find7zTool()
-	if err != nil {
-		return nil, err
-	}
-
-	tmp, err := os.MkdirTemp("", "fontget-7z-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp extraction directory: %w", err)
-	}
-	defer os.RemoveAll(tmp)
-
-	cmd := exec.CommandContext(extractContext(opts), tool, "x", "-y", "-o"+tmp, archivePath)
-	out, runErr := cmd.CombinedOutput()
-	if runErr != nil {
-		return nil, fmt.Errorf("7z extraction failed: %w (%s)", runErr, strings.TrimSpace(string(out)))
-	}
-
-	if err := os.MkdirAll(destDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create destination directory: %w", err)
-	}
-
-	var extractedFiles []string
-	done := 0
-	var totalWritten int64
-	entryCount := 0
-	seenDest := make(map[string]string)
-
-	walkErr := filepath.WalkDir(tmp, func(p string, d fs.DirEntry, walkErr error) error {
-		if err := extractContext(opts).Err(); err != nil {
-			return err
-		}
-		if walkErr != nil {
-			return walkErr
-		}
-		if d.IsDir() {
-			return nil
-		}
-		entryCount++
-		if policy.MaxArchiveEntries > 0 && entryCount > policy.MaxArchiveEntries {
-			return fmt.Errorf("%w: exceeded %d entries", ErrArchiveEntryCountLimit, policy.MaxArchiveEntries)
-		}
-		if d.Type()&os.ModeSymlink != 0 {
-			return nil
-		}
-		if !isFontFile(d.Name()) {
-			return nil
-		}
-
-		rel, err := filepath.Rel(tmp, p)
-		if err != nil {
-			return err
-		}
-		rel = filepath.ToSlash(rel)
-		relSafe, ok := safeArchiveRelPath(rel)
-		if !ok {
-			return fmt.Errorf("%w: %q", ErrArchiveUnsafePath, rel)
-		}
-		key := destinationCollisionKey(relSafe)
-		if prev, exists := seenDest[key]; exists {
-			return fmt.Errorf("%w: %q and %q", ErrArchivePathCollision, prev, relSafe)
-		}
-		seenDest[key] = relSafe
-
-		if policy.MaxSelectedFiles > 0 && done >= policy.MaxSelectedFiles {
-			return fmt.Errorf("%w: selected %d (limit %d)", ErrArchiveSelectedFileLimit, done+1, policy.MaxSelectedFiles)
-		}
-
-		dst := filepath.Join(destDir, filepath.FromSlash(relSafe))
-		if err := ensureParentDir(dst); err != nil {
-			return err
-		}
-
-		info, err := os.Stat(p)
-		if err != nil {
-			return err
-		}
-		srcFile, err := os.Open(p)
-		if err != nil {
-			return err
-		}
-		var declared uint64
-		if sz := info.Size(); sz > 0 {
-			declared = uint64(sz)
-		}
-		n, err := copyExtractedFileWithDeclaredSize(dst, srcFile, relSafe, declared, policy, totalWritten)
-		_ = srcFile.Close()
-		if err != nil {
-			return err
-		}
-		totalWritten += n
-
-		extractedFiles = append(extractedFiles, dst)
-		done++
-		if opts != nil && opts.OnFontFileExtracted != nil {
-			opts.OnFontFileExtracted(done, -1)
-		}
-		return nil
-	})
-	if walkErr != nil {
-		return nil, fmt.Errorf("failed to walk extracted 7z contents: %w", walkErr)
-	}
-
-	if len(extractedFiles) == 0 {
-		return nil, fmt.Errorf("no font files found in archive")
-	}
-	return extractedFiles, nil
-}
-
-func find7zTool() (string, error) {
-	// Prefer 7zz (p7zip), then 7z.
-	if p, err := exec.LookPath("7zz"); err == nil {
-		return p, nil
-	}
-	if p, err := exec.LookPath("7z"); err == nil {
-		return p, nil
-	}
-	return "", fmt.Errorf("7z archive extraction requires '7zz' or '7z' on PATH")
 }

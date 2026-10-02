@@ -121,10 +121,10 @@ Example:
 
 > [!NOTE]
 > - Prefer explicit format keys when you publish multiple downloads for one variant:
->   `ttf` / `otf` (direct fonts), `tar_xz` (`.tar.xz`; FontGet-Sources canonical key), `zip`, `7z`.
+>   `ttf` / `otf` (direct fonts), `tar_xz` (`.tar.xz`; FontGet-Sources canonical key), `zip`.
 > - FontGet picks formats in that order and **retries the next published format** if download, extract, or validation fails.
 > - Alias keys `tar.xz` and `xz` are accepted and ranked with `tar_xz`.
-> - Supported archive URLs: `.zip`, `.tar.xz`, `.tar.gz`/`.tgz`, or `.7z` (7z needs `7zz`/`7z` on PATH).
+> - Supported archive URLs: `.zip`, `.tar.xz`, `.tar.gz`/`.tgz`. Other archive formats are not extracted.
 > - You may still put a zip URL under a `ttf`/`otf` key for simple custom sources; prefer real format keys when both zip and tar.xz exist.
 
 
@@ -187,8 +187,8 @@ fontget add "gh.iosevka"
 - Run `fontget sources update` and `fontget sources validate`.
 - If installs fail, run `fontget add <prefix>.<font-id> --debug` and look for the exact URL it tried.
 - Open that URL in a browser and confirm it downloads a real file (not HTML, not a 302-to-login, not a blocked 202/403/404).
-- Prefer format keys `ttf` / `otf` / `tar_xz` / `zip` / `7z` (FontGet prefers `tar_xz` over `zip` and retries the next key on failure).
-- Archive URLs can be `.zip`, `.tar.xz`, `.tar.gz`/`.tgz`, or `.7z` (7z extraction needs `7zz`/`7z` available).
+- Prefer format keys `ttf` / `otf` / `tar_xz` / `zip` (FontGet prefers `tar_xz` over `zip` and retries the next key on failure). A `7z` key is ignored.
+- Archive URLs can be `.zip`, `.tar.xz`, or `.tar.gz`/`.tgz`.
 
 
 ## Notes

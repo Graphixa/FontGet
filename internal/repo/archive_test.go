@@ -60,18 +60,6 @@ func TestDetectArchiveTypeFromFile_MagicBytes_AllSupported(t *testing.T) {
 			t.Fatalf("gz magic: got %v want %v", got, ArchiveTypeTARGZ)
 		}
 	}
-
-	// 7Z magic
-	{
-		p := filepath.Join(dir, "7z-as-ttf.ttf")
-		// 7Z magic: 37 7A BC AF 27 1C
-		if err := os.WriteFile(p, []byte{0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C, 0, 0}, 0644); err != nil {
-			t.Fatalf("7z write: %v", err)
-		}
-		if got := DetectArchiveTypeFromFile(p); got != ArchiveType7Z {
-			t.Fatalf("7z magic: got %v want %v", got, ArchiveType7Z)
-		}
-	}
 }
 
 func TestExtractArchiveWithOptions_TarGz(t *testing.T) {

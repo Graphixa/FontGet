@@ -6,13 +6,12 @@ import (
 )
 
 // Known FontGet-Sources / custom-source file-map keys, in download preference order.
-// Direct desktop fonts first; among archives prefer compact tar.xz before zip/7z.
+// Direct desktop fonts first; among archives prefer compact tar.xz before zip.
 const (
 	fileKeyTTF   = "ttf"
 	fileKeyOTF   = "otf"
 	fileKeyTarXZ = "tar_xz" // canonical FontGet-Sources key for .tar.xz
 	fileKeyZIP   = "zip"
-	fileKey7Z    = "7z"
 )
 
 // downloadCandidate is one ranked download URL from a source file map.
@@ -27,7 +26,6 @@ var downloadPreferenceTiers = [][]string{
 	{fileKeyTTF, fileKeyOTF},
 	{fileKeyTarXZ, "tar.xz", "xz"}, // tar.xz / xz are aliases for tar_xz
 	{fileKeyZIP},
-	{fileKey7Z},
 }
 
 // normalizeDownloadFileKey lowercases and maps archive aliases to canonical keys.

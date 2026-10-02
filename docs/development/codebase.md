@@ -69,7 +69,7 @@ go run github.com/securego/gosec/v2/cmd/gosec@latest ./...
 
 Treat that output as **informational triage**, not as the same bar as CI.
 
-**Subprocess and archive handling (invariants):** FontGet invokes external programs only with **`exec.Command` (or `CommandContext`) and discrete arguments**—not through a shell—so URLs and paths are passed as argv elements (e.g. download fallbacks in `internal/network/download_fallbacks.go`, 7z in `internal/repo/archive.go`, platform helpers in `internal/platform/platform.go`). User-supplied strings must not be concatenated into a single shell command line. Archive extraction applies **path safety** (e.g. `safeArchiveRelPath`, symlink skipping where applicable in `internal/repo/archive.go`) so extracted files stay under the intended destination tree; keep those checks when changing extraction code.
+**Subprocess and archive handling (invariants):** FontGet invokes external programs only with **`exec.Command` (or `CommandContext`) and discrete arguments**—not through a shell—so URLs and paths are passed as argv elements (e.g. download fallbacks in `internal/network/download_fallbacks.go`, platform helpers in `internal/platform/platform.go`). User-supplied strings must not be concatenated into a single shell command line. Archive extraction uses pure-Go ZIP / TAR.XZ / TAR.GZ readers only (no external archiver) and applies **path safety** (e.g. `safeArchiveRelPath`, symlink skipping where applicable in `internal/repo/archive.go`) so extracted files stay under the intended destination tree; keep those checks when changing extraction code.
 
 ---
 
@@ -662,10 +662,10 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - **Source Priority**: Handles multiple repository matches using predefined source priority order
 - **Nerd Fonts Support**: Special handling for Nerd Fonts naming conventions and variants
 - **Robust Download/Archive Handling**:
-  - Supported archives: ZIP, TAR.XZ, TAR.GZ, 7Z
+  - Supported archives: ZIP, TAR.XZ, TAR.GZ (pure Go; FontGet does not invoke an external archiver)
   - Archive detection uses extension, HTTP headers (Content-Type / Content-Disposition), and file magic bytes (final truth)
   - Prevents archives from being mis-installed as `.ttf` when upstream naming is misleading (notably Font Squirrel)
-  - **7Z extraction** uses external `7zz`/`7z` when available on PATH; otherwise extraction fails with a clear error
+  - Only ZIP / TAR.XZ / TAR.GZ are extracted; other formats are not treated as known archives
   - **Post-extract selection**: Validated font paths may be narrowed by `PickInstallableFontPathsFromArchive` (invoked from `DownloadAndExtractFont`) when an archive contains both desktop and web-kit trees or mixed static/variable layouts
 
 **Status**: ✅ Active - Core repository system

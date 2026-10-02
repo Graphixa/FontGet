@@ -96,7 +96,7 @@ func TestRankDownloadCandidates(t *testing.T) {
 				"ttf":    "https://example.com/a.ttf",
 				"tar_xz": "https://example.com/a.tar.xz",
 			},
-			want: []string{"ttf", "otf", "tar_xz", "zip", "7z"},
+			want: []string{"ttf", "otf", "tar_xz", "zip"},
 		},
 	}
 
