@@ -154,7 +154,7 @@ var sourcesInfoCmd = &cobra.Command{
 		if disabledCount > 0 {
 			sb.WriteString(ui.Text.Render(fmt.Sprintf(" (%d disabled)", disabledCount)))
 		}
-		cards = append(cards, components.CustomCard("Summary", sb.String()))
+		cards = append(cards, components.NewCard("Summary", sb.String()))
 
 		// Render Summary card only (no page title)
 		// Match the table width: terminal width, capped at 120 (same as table MaxWidth)

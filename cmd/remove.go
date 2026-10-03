@@ -97,6 +97,34 @@ func newRemovalManifestFontIDProbe() installations.ManifestFontIDProbe {
 	return repo.IsFontIDInCachedManifest
 }
 
+func oppositeInstallationScope(scope platform.InstallationScope) (platform.InstallationScope, string) {
+	switch scope {
+	case platform.UserScope:
+		return platform.MachineScope, "machine"
+	case platform.MachineScope:
+		return platform.UserScope, "user"
+	default:
+		return "", ""
+	}
+}
+
+func printInstalledFontSuggestionTable(prompt string, tableRows [][]string) bool {
+	if len(tableRows) == 0 {
+		return false
+	}
+	fmt.Printf("%s\n", ui.Text.Render(prompt))
+	fmt.Println(components.RenderStaticTable(components.TableConfig{
+		Columns:  components.DefaultFontTableColumns(),
+		Rows:     tableRows,
+		Width:    0,
+		MaxWidth: 120,
+		Mode:     components.TableModeStatic,
+		Padding:  1,
+	}))
+	fmt.Println()
+	return true
+}
+
 // findFontFamilyFiles returns a list of font files that belong to the given font family
 // If progressCallback is provided, it will be called periodically with progress (0-50% range)
 func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, scope platform.InstallationScope, progressCallback ...ProgressCallback) ([]string, error) {
@@ -924,13 +952,7 @@ func preEvaluateFontsForRemoval(
 		// BUT: If this is a Font ID (e.g., nerd.liberation-mono), prioritize finding the Font ID variant
 		// in the specified scope over the base font in opposite scope
 		if !fontFound && len(scopes) == 1 {
-			var oppositeScope platform.InstallationScope
-			switch scopes[0] {
-			case platform.UserScope:
-				oppositeScope = platform.MachineScope
-			case platform.MachineScope:
-				oppositeScope = platform.UserScope
-			}
+			oppositeScope, _ := oppositeInstallationScope(scopes[0])
 
 			if oppositeScope != "" {
 				// If it's a Font ID, try harder to find it in the specified scope using Font ID matching
@@ -1385,14 +1407,7 @@ Scopes:
 					oppositeScopeName := ""
 					if len(scopes) == 1 {
 						var oppositeScope platform.InstallationScope
-						switch scopes[0] {
-						case platform.UserScope:
-							oppositeScope = platform.MachineScope
-							oppositeScopeName = "machine"
-						case platform.MachineScope:
-							oppositeScope = platform.UserScope
-							oppositeScopeName = "user"
-						}
+						oppositeScope, oppositeScopeName = oppositeInstallationScope(scopes[0])
 
 						// Check each not found font in the opposite scope
 						if oppositeScope != "" {
@@ -1595,22 +1610,7 @@ Scopes:
 									}
 								}
 
-								// Always display table if we have suggestions
-								if len(tableRows) > 0 {
-									fmt.Printf("%s\n", ui.Text.Render("Did you mean any of these installed fonts?"))
-
-									// Render table with priority configuration
-									tableConfig := components.TableConfig{
-										Columns: components.DefaultFontTableColumns(),
-										Rows:     tableRows,
-										Width:    0,   // Auto-detect terminal width
-										MaxWidth: 120, // Maximum width
-										Mode:     components.TableModeStatic,
-										Padding:  1, // Default padding
-									}
-
-									fmt.Println(components.RenderStaticTable(tableConfig))
-									fmt.Println()
+								if printInstalledFontSuggestionTable("Did you mean any of these installed fonts?", tableRows) {
 									hasSuggestions = true
 								}
 							} else {
@@ -1740,24 +1740,11 @@ Scopes:
 									}
 								}
 
-								// Always display table if we have suggestions
 								if len(tableRows) > 0 {
 									fmt.Println()
-									fmt.Printf("%s\n", ui.Text.Render("Did you mean one of these installed fonts?"))
-
-									// Render table with priority configuration
-									tableConfig := components.TableConfig{
-										Columns: components.DefaultFontTableColumns(),
-										Rows:     tableRows,
-										Width:    0,   // Auto-detect terminal width
-										MaxWidth: 120, // Maximum width
-										Mode:     components.TableModeStatic,
-										Padding:  1, // Default padding
+									if printInstalledFontSuggestionTable("Did you mean one of these installed fonts?", tableRows) {
+										hasSuggestions = true
 									}
-
-									fmt.Println(components.RenderStaticTable(tableConfig))
-									fmt.Println()
-									hasSuggestions = true
 								}
 							} else {
 								hasSuggestions = false
@@ -2345,13 +2332,7 @@ Scopes:
 
 								// After successful removal, check if font still exists in opposite scope
 								if result.Success > 0 {
-									var oppositeScope platform.InstallationScope
-									switch scopeType {
-									case platform.UserScope:
-										oppositeScope = platform.MachineScope
-									case platform.MachineScope:
-										oppositeScope = platform.UserScope
-									}
+									oppositeScope, _ := oppositeInstallationScope(scopeType)
 									if oppositeScope != "" {
 										// Resolve Font ID to font name if needed
 										searchName := resolveFontNameOrID(fontName, r)
@@ -2619,22 +2600,7 @@ Scopes:
 							}
 						}
 
-						// Always display table if we have suggestions
-						if len(tableRows) > 0 {
-							fmt.Printf("%s\n", ui.Text.Render("Did you mean one of these installed fonts?"))
-
-							// Render table with priority configuration
-							tableConfig := components.TableConfig{
-								Columns: components.DefaultFontTableColumns(),
-								Rows:     tableRows,
-								Width:    0,   // Auto-detect terminal width
-								MaxWidth: 120, // Maximum width
-								Mode:     components.TableModeStatic,
-								Padding:  1, // Default padding
-							}
-
-							fmt.Println(components.RenderStaticTable(tableConfig))
-							fmt.Println()
+						if printInstalledFontSuggestionTable("Did you mean one of these installed fonts?", tableRows) {
 							hasSuggestions = true
 						}
 					} else {
@@ -2765,24 +2731,11 @@ Scopes:
 							}
 						}
 
-						// Always display table if we have suggestions
 						if len(tableRows) > 0 {
 							fmt.Println()
-							fmt.Printf("%s\n", ui.Text.Render("Did you mean one of these installed fonts?"))
-
-							// Render table with priority configuration
-							tableConfig := components.TableConfig{
-								Columns: components.DefaultFontTableColumns(),
-								Rows:     tableRows,
-								Width:    0,   // Auto-detect terminal width
-								MaxWidth: 120, // Maximum width
-								Mode:     components.TableModeStatic,
-								Padding:  1, // Default padding
+							if printInstalledFontSuggestionTable("Did you mean one of these installed fonts?", tableRows) {
+								hasSuggestions = true
 							}
-
-							fmt.Println(components.RenderStaticTable(tableConfig))
-							fmt.Println()
-							hasSuggestions = true
 						}
 					} else {
 						hasSuggestions = false
@@ -2800,18 +2753,8 @@ Scopes:
 
 		// Show fonts that still exist in opposite scope after removal (before status report)
 		// Skip in debug mode - already shown in debug logs
-		if len(fontsInOppositeScope) > 0 && !IsDebug() {
-			// Determine opposite scope name for display
-			var oppositeScopeName string
-			if len(scopes) == 1 {
-				switch scopes[0] {
-				case platform.UserScope:
-					oppositeScopeName = "machine"
-				case platform.MachineScope:
-					oppositeScopeName = "user"
-				}
-			}
-
+		if len(fontsInOppositeScope) > 0 && !IsDebug() && len(scopes) == 1 {
+			_, oppositeScopeName := oppositeInstallationScope(scopes[0])
 			if oppositeScopeName != "" {
 				// Remove duplicates from the list
 				seen := make(map[string]bool)

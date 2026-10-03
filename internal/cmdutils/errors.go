@@ -21,11 +21,6 @@ func PrintWarning(message string) {
 	fmt.Printf("%s\n", ui.WarningText.Render(message))
 }
 
-// PrintWarningf prints a formatted warning message with standardized formatting.
-func PrintWarningf(format string, args ...interface{}) {
-	PrintWarning(fmt.Sprintf(format, args...))
-}
-
 // PrintInfo prints an info message with standardized formatting.
 func PrintInfo(message string) {
 	fmt.Printf("%s\n", ui.Text.Render(message))

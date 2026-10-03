@@ -266,7 +266,7 @@ func (m themeSelectionModel) View() string {
 	footerHeight := 1
 
 	// Calculate layout using helper function
-	layoutConfig := LayoutConfig{
+	layoutConfig := ui.LayoutConfig{
 		TerminalWidth:  m.width,
 		TerminalHeight: m.height,
 		HeaderHeight:   headerHeight,
@@ -275,7 +275,7 @@ func (m themeSelectionModel) View() string {
 		SeparatorWidth: 1,
 	}
 
-	layout := CalculatePanelLayout(layoutConfig)
+	layout := ui.CalculatePanelLayout(layoutConfig)
 
 	// Build left panel content (theme list)
 	leftContent := m.renderLeftPanelContent(layout.LeftWidth, layout.PanelHeight)
@@ -286,7 +286,7 @@ func (m themeSelectionModel) View() string {
 	// Render combined panels with shared border and title
 	separatorColor := lipgloss.Color(colors.Placeholders)
 	borderColor := lipgloss.Color(colors.Placeholders)
-	combined := renderCombinedPanels(
+	combined := ui.RenderCombinedPanels(
 		titleText,
 		layout.LeftWidth,
 		layout.RightWidth,
@@ -414,7 +414,7 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 	}
 
 	// Calculate layout to get panel height (same as in View method)
-	layoutConfig := LayoutConfig{
+	layoutConfig := ui.LayoutConfig{
 		TerminalWidth:  m.width,
 		TerminalHeight: m.height,
 		HeaderHeight:   0, // title is inside the frame
@@ -422,7 +422,7 @@ func (m themeSelectionModel) adjustScrollForSelection() themeSelectionModel {
 		MarginWidth:    2, // 1 char on each side
 		SeparatorWidth: 1,
 	}
-	layout := CalculatePanelLayout(layoutConfig)
+	layout := ui.CalculatePanelLayout(layoutConfig)
 
 	// Available height = panel height - 2 (borders) - 2 (padding)
 	availableHeight := layout.PanelHeight - 2 - 2

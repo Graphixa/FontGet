@@ -735,48 +735,31 @@ func buildParsedFont(fontPath, fileName string, scope platform.InstallationScope
 	}
 }
 
-// parsedFontMergeAdapter bridges ParsedFont to installations.RegistryMergeMutableRow without copying merge fields.
-type parsedFontMergeAdapter struct {
-	p *ParsedFont
-}
-
-func (a *parsedFontMergeAdapter) BlankFontID() bool {
-	return strings.TrimSpace(a.p.FontID) == ""
-}
-func (a *parsedFontMergeAdapter) PathForMerge() string {
-	return strings.TrimSpace(a.p.Path)
-}
-func (a *parsedFontMergeAdapter) FamilyForMerge() string {
-	return strings.TrimSpace(a.p.Family)
-}
-func (a *parsedFontMergeAdapter) ApplyRepoCatalog(fontID, license string, categories []string, source string) {
-	a.p.FontID = fontID
-	a.p.License = license
-	a.p.Categories = append([]string(nil), categories...)
-	a.p.Source = source
-}
-
 // mergeInstallationRegistryIntoFamilies fills Font ID / source / license / categories from the
 // installation registry when repository matching left them empty (e.g. Nerd patched family names).
 func mergeInstallationRegistryIntoFamilies(families map[string][]ParsedFont, reg *installations.Registry) {
 	if reg == nil {
 		return
 	}
-	wrapped := make(map[string][]installations.RegistryMergeMutableRow, len(families))
-	for k, g := range families {
-		slots := make([]installations.RegistryMergeMutableRow, len(g))
-		for i := range g {
-			slots[i] = &parsedFontMergeAdapter{p: &families[k][i]}
+	for familyName, group := range families {
+		for i := range group {
+			if strings.TrimSpace(group[i].FontID) != "" {
+				continue
+			}
+			inst := installations.ResolveInstallationForCatalogMerge(reg, group[i].Path, group[i].Family)
+			if inst == nil {
+				continue
+			}
+			match, err := repo.MatchRepositoryFontByID(strings.TrimSpace(inst.FontID))
+			if err != nil || match == nil {
+				continue
+			}
+			families[familyName][i].FontID = match.FontID
+			families[familyName][i].License = match.License
+			families[familyName][i].Categories = append([]string(nil), match.Categories...)
+			families[familyName][i].Source = match.Source
 		}
-		wrapped[k] = slots
 	}
-	installations.MergeInstallationRegistryIntoFamilyGroups(wrapped, reg, func(instFontID string) (string, string, []string, string, bool) {
-		match, err := repo.MatchRepositoryFontByID(instFontID)
-		if err != nil || match == nil {
-			return "", "", nil, "", false
-		}
-		return match.FontID, match.License, append([]string(nil), match.Categories...), match.Source, true
-	})
 }
 
 // groupByFamily groups fonts by family name
