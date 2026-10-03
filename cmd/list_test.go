@@ -18,7 +18,7 @@ func TestListCmd_FontGetInstalledFlag(t *testing.T) {
 	if f.Shorthand != "" {
 		t.Fatalf("--fontget-installed must not have a shorthand, got %q", f.Shorthand)
 	}
-	if f.Usage != "Show only fonts installed by FontGet" {
+	if f.Usage != "Only fonts installed by FontGet" {
 		t.Fatalf("unexpected help text: %q", f.Usage)
 	}
 	if listCmd.Flags().ShorthandLookup("i") != nil {
