@@ -219,14 +219,12 @@ func mergeConfigValues(defaultConfig, loadedConfig *AppConfig) {
 // Format: "Section.OldField" -> "Section.NewField"
 var fieldRenameMap = map[string]string{
 	"Update.AutoCheck": "Update.CheckForUpdates",
-	// Add more renames here as needed
 }
 
 // fieldMoveMap maps old field locations to new locations for backward compatibility
 // Format: "OldSection.OldField" -> "NewSection.NewField"
 var fieldMoveMap = map[string]string{
 	"Configuration.EnablePopularitySort": "Search.EnablePopularitySort",
-	// Add more moves here as needed
 }
 
 // mergeStructFields merges fields within a struct section
