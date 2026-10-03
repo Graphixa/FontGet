@@ -144,41 +144,20 @@ func (m *ConfirmModel) GetResult() ModalResult {
 
 // RunConfirm runs a confirmation dialog
 func RunConfirm(title, message string) (bool, error) {
-	return RunConfirmWithOptions(title, message, "Yes", "No", true, true)
-}
-
-// RunConfirmWithOptions runs a confirmation dialog with custom options
-func RunConfirmWithOptions(title, message, confirmText, cancelText string, useAltScreen, showBorder bool) (bool, error) {
 	model := NewConfirmModel(title, message)
-	model.ConfirmText = confirmText
-	model.CancelText = cancelText
+	model.ConfirmText = "Yes"
+	model.CancelText = "No"
 
-	// Create a simple background (blank screen)
-	background := &BlankBackgroundModel{}
+	overlay := NewOverlayWithOptions(model, &BlankBackgroundModel{}, Center, Center, 0, 0, OverlayOptions{
+		ShowBorder:  true,
+		BorderWidth: 0,
+	})
 
-	// Create overlay options
-	options := OverlayOptions{
-		ShowBorder:  showBorder,
-		BorderWidth: 0, // Auto-calculate
-	}
-
-	// Create overlay with centered modal
-	overlay := NewOverlayWithOptions(model, background, Center, Center, 0, 0, options)
-
-	// Create program with optional alt screen
-	var program *tea.Program
-	if useAltScreen {
-		program = tea.NewProgram(overlay, tea.WithAltScreen())
-	} else {
-		program = tea.NewProgram(overlay)
-	}
-
-	finalModel, err := program.Run()
+	finalModel, err := tea.NewProgram(overlay, tea.WithAltScreen()).Run()
 	if err != nil {
 		return false, fmt.Errorf("failed to run confirmation dialog: %w", err)
 	}
 
-	// Extract the confirm model from the overlay
 	if overlayModel, ok := finalModel.(*OverlayModel); ok {
 		if confirmModel, ok := overlayModel.Foreground.(*ConfirmModel); ok {
 			return confirmModel.Confirmed, nil

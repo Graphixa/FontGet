@@ -1,15 +1,12 @@
 package ui
 
 import (
-	"fmt"
 	"os"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
 )
-
-// Utility functions for consistent UI rendering
 
 // CSI ED default (0): erase from cursor through end of display.
 // Appended after the frame so a shorter view clears leftover rows from a prior resize
@@ -28,41 +25,6 @@ func FillTerminalArea(view string, width, height int) string {
 		MaxHeight(height).
 		Render(view)
 	return out + eraseDisplayBelowCursor
-}
-
-// RenderTitleWithSubtitle renders a title with optional subtitle
-func RenderTitleWithSubtitle(title, subtitle string) string {
-	if subtitle == "" {
-		return PageTitle.Render(title) + "\n"
-	}
-	return PageTitle.Render(title) + "\n" +
-		Text.Render(subtitle) + "\n"
-}
-
-// RenderSearchResults renders search results with consistent formatting
-func RenderSearchResults(query string, count int) string {
-	return RenderTitleWithSubtitle(
-		"Font Search Results",
-		fmt.Sprintf("Found %d fonts matching '%s'", count, TableSourceName.Render(query)),
-	)
-}
-
-// RenderLoadingScreen renders a loading screen
-func RenderLoadingScreen(message string) string {
-	return fmt.Sprintf("\n%s\n\n%s\n\n%s",
-		PageTitle.Render("FontGet"),
-		Text.Render(message),
-		TextBold.Render("Please wait..."),
-	)
-}
-
-// RenderSuccessScreen renders a success screen
-func RenderSuccessScreen(title, message string) string {
-	return fmt.Sprintf("\n%s\n\n%s\n\n%s",
-		PageTitle.Render(title),
-		RenderSuccess(message),
-		TextBold.Render("Press 'Q' to quit"),
-	)
 }
 
 // RunSpinner runs a bubbletea spinner while the provided function executes

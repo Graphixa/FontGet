@@ -295,34 +295,3 @@ func LicenseInfoCard(license, url string) Card {
 	return NewCardWithSections("License Information", sections)
 }
 
-// CustomCard creates a custom card with the given title and content
-func CustomCard(title, content string) Card {
-	return NewCard(title, content)
-}
-
-// CustomCardWithSections creates a custom card with sections
-func CustomCardWithSections(title string, sections []CardSection) Card {
-	return NewCardWithSections(title, sections)
-}
-
-// ConfigurationInfoCard creates a card for configuration information
-func ConfigurationInfoCard(configPath, editor, usePopularitySort string) Card {
-	sections := []CardSection{
-		{Label: "Location", Value: configPath},
-		{Label: "Default Editor", Value: editor},
-		{Label: "Use Popularity Sort", Value: usePopularitySort},
-	}
-
-	return NewCardWithSections("Configuration Information", sections)
-}
-
-// LoggingConfigCard creates a card for logging configuration
-func LoggingConfigCard(logPath, maxSize, maxFiles string) Card {
-	sections := []CardSection{
-		{Label: "Log Path", Value: logPath},
-		{Label: "Max Log Size", Value: maxSize},
-		{Label: "Max Log Files", Value: maxFiles},
-	}
-
-	return NewCardWithSections("Log Settings", sections)
-}

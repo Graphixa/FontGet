@@ -12,7 +12,7 @@ type TableMode int
 
 const (
 	TableModeStatic  TableMode = iota // Static CLI rendering
-	TableModeDynamic                  // Dynamic TUI (for future)
+	TableModeDynamic                  // Dynamic TUI (browse)
 )
 
 // ColumnConfig defines column properties
@@ -39,10 +39,9 @@ type ColumnConfig struct {
 	MaxWidth     int     // Maximum column width (0 = no limit)
 	PercentWidth float64 // Percentage of available width (0 = not used)
 	Priority     int     // Priority for hiding/truncation (higher = hide/truncate last, 0 = default/lowest priority)
-	Hideable     bool    // Whether column can be hidden (default: true)
-	Truncatable  bool    // Whether content can be truncated (default: true). If false, column sizes to fit content
-	Wrap         bool    // Enable word wrapping (for future)
-	Align        string  // "left", "right", "center" (default: "left")
+	Hideable     bool   // Whether column can be hidden (default: true)
+	Truncatable  bool   // Whether content can be truncated (default: true). If false, column sizes to fit content
+	Align        string // "left", "right", "center" (default: "left")
 }
 
 // DefaultFontTableColumns returns the standard Name/ID/Categories/License/Source column layout.
