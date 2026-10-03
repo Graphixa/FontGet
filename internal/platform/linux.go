@@ -71,7 +71,7 @@ func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope,
 		return fmt.Errorf("invalid installation scope: %s", scope)
 	}
 
-	if err := ensureDir(targetDir); err != nil {
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to ensure font directory exists for scope %s at %q: %w", scope, targetDir, err)
 	}
 

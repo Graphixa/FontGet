@@ -9,12 +9,11 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 	"unicode/utf8"
 
 	"golang.org/x/image/font/sfnt"
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
 )
 
 // InstallationScope defines where fonts should be installed
@@ -105,51 +104,30 @@ type FontManager interface {
 }
 
 // Common helper functions
-func ensureDir(path string) error {
-	return os.MkdirAll(path, 0755)
-}
-
 func copyFile(src, dst string) error {
-	// Open source file
 	srcFile, err := os.Open(src)
 	if err != nil {
 		return fmt.Errorf("failed to open source file: %w", err)
 	}
 	defer srcFile.Close()
 
-	// Get source file info for permissions
 	srcInfo, err := srcFile.Stat()
 	if err != nil {
 		return fmt.Errorf("failed to get source file info: %w", err)
 	}
 
-	// Create destination file with same permissions
 	dstFile, err := os.OpenFile(dst, os.O_RDWR|os.O_CREATE|os.O_TRUNC, srcInfo.Mode())
 	if err != nil {
 		return fmt.Errorf("failed to create destination file: %w", err)
 	}
 	defer dstFile.Close()
 
-	// Copy file contents in chunks
-	buf := make([]byte, 32*1024) // 32KB buffer
-	for {
-		n, err := srcFile.Read(buf)
-		if err != nil && err != io.EOF {
-			return fmt.Errorf("failed to read source file: %w", err)
-		}
-		if n == 0 {
-			break
-		}
-		if _, err := dstFile.Write(buf[:n]); err != nil {
-			return fmt.Errorf("failed to write destination file: %w", err)
-		}
+	if _, err := io.Copy(dstFile, srcFile); err != nil {
+		return fmt.Errorf("failed to copy file: %w", err)
 	}
-
-	// Ensure all data is written to disk
 	if err := dstFile.Sync(); err != nil {
 		return fmt.Errorf("failed to sync destination file: %w", err)
 	}
-
 	return nil
 }
 
@@ -714,6 +692,16 @@ func parseFontNameImproved(filename string) (family, style string) {
 	// If we have multiple parts, assume the last part is the style
 	// and everything else is the family name
 	family = strings.Join(parts[:len(parts)-1], "-")
-	style = cases.Title(language.English, cases.NoLower).String(parts[len(parts)-1])
+	style = titleFirst(parts[len(parts)-1])
 	return family, style
+}
+
+// titleFirst uppercases the first letter; leaves the rest unchanged (cases.NoLower).
+func titleFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	return string(r)
 }

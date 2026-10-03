@@ -34,13 +34,13 @@ type windowsFontManager struct {
 func NewFontManager() (FontManager, error) {
 	// Get the Windows system font directory
 	systemFontDir := filepath.Join(os.Getenv("WINDIR"), "Fonts")
-	if err := ensureDir(systemFontDir); err != nil {
+	if err := os.MkdirAll(systemFontDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to ensure system font directory exists: %w", err)
 	}
 
 	// Get the user font directory
 	userFontDir := filepath.Join(os.Getenv("LOCALAPPDATA"), "Microsoft", "Windows", "Fonts")
-	if err := ensureDir(userFontDir); err != nil {
+	if err := os.MkdirAll(userFontDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to ensure user font directory exists: %w", err)
 	}
 
