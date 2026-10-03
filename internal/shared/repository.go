@@ -3,9 +3,7 @@ package shared
 import (
 	"fmt"
 	"strings"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
+	"unicode"
 
 	"fontget/internal/config"
 	"fontget/internal/repo"
@@ -91,8 +89,7 @@ func GetSourceNameFromID(fontID string) string {
 	// Load manifest to get the display name
 	manifest, err := config.LoadManifest()
 	if err != nil {
-		// Fallback to capitalized prefix if we can't load manifest
-		return cases.Title(language.English).String(sourcePrefix)
+		return titleWord(sourcePrefix)
 	}
 
 	// Find the source with matching prefix (case-insensitive)
@@ -102,8 +99,19 @@ func GetSourceNameFromID(fontID string) string {
 		}
 	}
 
-	// Fallback to capitalized prefix if not found
-	return cases.Title(language.English).String(sourcePrefix)
+	return titleWord(sourcePrefix)
+}
+
+func titleWord(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	r[0] = unicode.ToUpper(r[0])
+	for i := 1; i < len(r); i++ {
+		r[i] = unicode.ToLower(r[i])
+	}
+	return string(r)
 }
 
 // FindMatchesInRepository finds font matches using an already-loaded repository (performance optimization).

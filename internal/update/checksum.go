@@ -22,7 +22,7 @@ func parseChecksums(content []byte) (map[string]string, error) {
 			return nil, fmt.Errorf("invalid checksums.txt line %d", lineNumber+1)
 		}
 		sum := strings.ToLower(fields[0])
-		if len(sum) != 64 || !isHex(sum) {
+		if decoded, err := hex.DecodeString(sum); err != nil || len(decoded) != 32 {
 			return nil, fmt.Errorf("invalid SHA256 on checksums.txt line %d", lineNumber+1)
 		}
 		name := strings.TrimPrefix(fields[1], "*")
@@ -59,13 +59,4 @@ func verifySHA256(data []byte, expectedHex string) error {
 		return fmt.Errorf("checksum verification failed: expected %s, got %s", strings.ToLower(expectedHex), got)
 	}
 	return nil
-}
-
-func isHex(s string) bool {
-	for _, c := range s {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
 }
