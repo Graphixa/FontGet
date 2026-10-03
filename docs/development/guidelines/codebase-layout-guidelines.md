@@ -22,10 +22,12 @@ This document provides guidelines for organizing code in the FontGet codebase, e
 - **Is it pure and CLI-agnostic (could be used from tests or non-CLI code)?** → `internal/shared/`
 - **Is it domain/business logic tied to a subsystem?** → Put it in that domain package (e.g. `internal/repo/`, `internal/config/`, `internal/installations/`, `internal/platform/`, `internal/network/`)
 - **Is it built-in FontGet-Sources URLs, default source rows, or priority-ordered source names?** → `internal/sources/` (keep in sync with `internal/config` built-in names and `internal/repo` priority maps when adding a source)
-- **Is it feature-specific helper logic that doesn’t clearly belong to one domain package?** → `internal/functions/` (avoid using this as a grab-bag)
+- **Is it feature-specific helper logic that doesn’t clearly belong to one domain package?** → Prefer the owning domain package (`internal/repo/`, `internal/config/`, etc.) or keep it in `cmd/` if it is CLI-only (e.g. `SortSources` in `cmd/sources_helpers.go`). Do not invent a grab-bag package.
+- **Is it font-name / family string normalization for matching?** → `internal/repo/normalize.go` (`FontKey`, `BaseFamilyName`)
 - **Is it styling/layout/theme/table rendering helpers?** → `internal/ui/`
-- **Is it a reusable Bubble Tea widget (progress, forms, dialogs, etc.)?** → `internal/components/`
+- **Is it a reusable Bubble Tea widget (progress, tables, dialogs, etc.)?** → `internal/components/`
 - **Is it console output formatting/state (verbose/debug/status)?** → `internal/output/`
+- **Is it a shared test helper (fake home, minifont)?** → `internal/testutil/`
 
 ---
 
@@ -37,18 +39,20 @@ FontGet/
 ├── internal/               # Internal packages (not exported)
 │   ├── cmdutils/          # CLI-specific utilities
 │   ├── shared/            # General-purpose utilities
-│   ├── functions/         # Domain-specific utilities
 │   ├── platform/          # Platform abstraction layer
-│   ├── repo/              # Font repository management
-│   ├── installations/    # Install provenance (`installation_registry.json`) + schema migrations
+│   ├── repo/              # Font repository management (+ normalize helpers)
+│   ├── installations/     # Install provenance (`installation_registry.json`) + schema migrations
 │   ├── sources/           # Built-in source URLs and default manifest rows
 │   ├── config/            # Configuration management
 │   ├── network/           # HTTP download client and resilience helpers (used by repo)
-│   ├── normalize/         # Font name / family string normalization for matching
-│   ├── ui/                # User interface components
+│   ├── ui/                # User interface styling / theme
 │   ├── output/            # Output management (verbose/debug)
-│   ├── components/        # Reusable UI components
+│   ├── components/        # Reusable TUI / table widgets
 │   ├── logging/           # File logging system
+│   ├── onboarding/        # First-run wizard and Terms of Use
+│   ├── update/            # Self-update
+│   ├── templates/         # YAML theme templates
+│   ├── testutil/          # Shared test helpers
 │   └── ...                # Other internal packages
 └── docs/                  # Documentation
 ```
@@ -207,42 +211,6 @@ func FormatFileSize(bytes int64) string {
 
 ---
 
-### `internal/functions/` - Domain-Specific Utilities
-
-**Purpose**: Utilities that are specific to a particular domain or feature area (feature-focused helpers; not “shared utils”)
-
-**Contains**:
-- Source sorting utilities (`SortSources`)
-- Validation utilities (domain-specific validation)
-
-**When to Use**:
-- ✅ Utilities that are specific to a particular domain (e.g., sources management)
-- ✅ Code that operates on domain-specific types
-- ✅ Code that's tightly coupled to a specific feature area
-
-**When NOT to Use**:
-- ❌ General-purpose utilities (use `internal/shared/` instead)
-- ❌ CLI-specific code (use `internal/cmdutils/` instead)
-
-**Key Characteristics**:
-- Functions operate on domain-specific types (e.g., `SourceItem`)
-- Functions are specific to a feature area (e.g., sources management)
-- Functions might not be reusable outside their domain
-
-**Example**:
-```go
-// internal/functions/sort.go
-func SortSources(sources []SourceItem) {
-    // Domain-specific: operates on SourceItem type
-    // Specific to sources management feature
-    sort.Slice(sources, func(i, j int) bool {
-        // ... sorting logic
-    })
-}
-```
-
----
-
 ### `internal/ui/` - User Interface Components
 
 **Purpose**: UI styling, components, and table formatting
@@ -359,13 +327,13 @@ func SortSources(sources []SourceItem) {
 
 ---
 
-### `internal/normalize/` - Name normalization
+### Name normalization (in `internal/repo/`)
 
-**Purpose**: Small, pure string transforms for font matching (`FontKey`, family suffix stripping)
+**Purpose**: Small, pure string transforms for font matching (`FontKey`, `BaseFamilyName` / family suffix stripping) live in **`internal/repo/normalize.go`** — there is no separate `internal/normalize` package.
 
 **Guidelines**:
 - ✅ Matching-oriented normalization with no I/O
-- ❌ Repository orchestration (stays in `internal/repo/`)
+- ❌ Do not reintroduce a standalone normalize package; keep helpers next to repository matching
 
 ---
 
@@ -383,8 +351,8 @@ func SortSources(sources []SourceItem) {
 - Examples: `FormatFileSize`, `FormatFontNameWithVariant`, `FindSimilarFonts`
 
 ### Is it specific to a particular domain/feature?
-→ **`internal/functions/`** or domain-specific package
-- Examples: `SortSources` (sources domain)
+→ **That domain package** (`internal/repo/`, `internal/config/`, …) or **`cmd/`** if CLI-only
+- Examples: `SortSources` → `cmd/sources_helpers.go`; archive policy → `internal/repo/`
 
 ### Is it UI-related (styling, tables, components)?
 → **`internal/ui/`** or **`internal/components/`**
@@ -408,7 +376,10 @@ func SortSources(sources []SourceItem) {
 → **`internal/network/`**
 
 ### Is it font-name normalization for matching only?
-→ **`internal/normalize/`**
+→ **`internal/repo/normalize.go`**
+
+### Is it a shared test fixture/helper?
+→ **`internal/testutil/`**
 
 ---
 
@@ -448,13 +419,12 @@ func FormatFileSize(bytes int64) string {
 }
 ```
 
-### Pattern 3: Domain-Specific Utility in `functions`
+### Pattern 3: CLI-Only Domain Helper in `cmd/`
 
 ```go
-// internal/functions/sort.go
+// cmd/sources_helpers.go
 func SortSources(sources []SourceItem) {
-    // Domain-specific: operates on SourceItem type
-    // Specific to sources management
+    // CLI/sources-manage helper; not a shared internal package
 }
 ```
 
@@ -488,18 +458,18 @@ func SortSources(sources []SourceItem) {
 
 | Package | Purpose | When to Use |
 |---------|---------|-------------|
-| `cmd/` | CLI commands | Command implementations |
+| `cmd/` | CLI commands | Command implementations and CLI-only helpers |
 | `internal/cmdutils/` | CLI-specific utilities | Code that needs CLI context, Cobra, or CLI error handling |
 | `internal/shared/` | General-purpose utilities | Pure utilities that could be used anywhere |
-| `internal/functions/` | Domain-specific utilities | Utilities specific to a feature domain |
-| `internal/ui/` | UI components | Styling, tables, UI rendering |
+| `internal/ui/` | UI styling / theme | Styling, theme load, table header helpers |
+| `internal/components/` | TUI widgets | Progress, tables, dialogs, switches, cards |
 | `internal/output/` | Output management | Verbose/debug/status output |
 | `internal/platform/` | Platform abstraction | Cross-platform or platform-specific code |
-| `internal/repo/` | Repository | Font repository and data access |
+| `internal/repo/` | Repository | Font repository, archives, downloads, name normalization |
 | `internal/installations/` | Install registry | `installation_registry.json` I/O and **`schema_version`** migrations |
 | `internal/sources/` | Built-in sources | FontGet-Sources URLs and default source rows / ordering |
 | `internal/network/` | HTTP downloads | Transport and resilience helpers for repo downloads |
-| `internal/normalize/` | Matching helpers | Pure font name / family string normalization |
+| `internal/testutil/` | Test helpers | Shared fixtures (`HOME`, minifont) |
 
-**Key Principle**: When in doubt, ask: "Could this code be used outside of a CLI context?" If yes → `shared`, if no → `cmdutils`.
+**Key Principle**: When in doubt, ask: "Could this code be used outside of a CLI context?" If yes → `shared` (or the owning domain package), if no → `cmdutils` or `cmd/`.
 

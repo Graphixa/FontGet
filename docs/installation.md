@@ -252,13 +252,21 @@ paru -R fontget
 
 ### Windows
 
-If you installed using the PowerShell script, FontGet is typically installed to `%USERPROFILE%\AppData\Local\Programs\FontGet`. To uninstall:
+If you installed using the PowerShell script, FontGet is typically installed to `%USERPROFILE%\AppData\Local\Programs\FontGet`. To uninstall paste the following into your Windows Terminal/Powershell and run:
 
 ```powershell
-Remove-Item "$env:USERPROFILE\AppData\Local\Programs\FontGet" -Recurse -Force
+$InstallDir = "$env:USERPROFILE\AppData\Local\Programs\FontGet"
+Remove-Item $InstallDir -Recurse -Force -ErrorAction SilentlyContinue
+
+# Remove from user PATH (added by install.ps1)
+$UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if ($UserPath) {
+    $NewPath = ($UserPath -split ';' | Where-Object { $_ -and $_ -ne $InstallDir }) -join ';'
+    [Environment]::SetEnvironmentVariable("Path", $NewPath, "User")
+}
 ```
 
-You may also need to remove it from your PATH manually via System Settings → Environment Variables.
+Restart the terminal (or sign out/in) so the updated PATH takes effect.
 
 If you installed via a package manager:
 
@@ -366,7 +374,16 @@ If you see permission errors:
 
 [!NOTE] User prompts are only shown when both stdin and stdout are terminals, `CI` is not set, and `FONTGET_NONINTERACTIVE` is not `1`.
 
-**`install.ps1` (Windows):** Only the **`FONTGET_VERSION`** environment variable is supported (default: `latest`). There are no flags. The installer places the binary in **`%USERPROFILE%\AppData\Local\Programs\FontGet`** and automatically adds this directory to your user **PATH** if not already present.
+**`install.ps1` (Windows):** No CLI flags. Environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `FONTGET_VERSION` | Version to install (default: `latest`). The `v` prefix is optional. |
+| `FONTGET_NONINTERACTIVE=1` | Skip the interactive Continue prompt. |
+| `CI` | Any non-empty value skips the Continue prompt (CI-friendly). |
+| `NO_COLOR=1` | Disable ANSI colors in installer messages. |
+
+The installer places the binary in **`%USERPROFILE%\AppData\Local\Programs\FontGet`** and automatically adds this directory to your user **PATH** if not already present.
 
 Common environment variables for non-interactive automation:
 

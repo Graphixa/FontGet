@@ -172,12 +172,14 @@ For a full list of commands refer to the [📖 Command Documentation](docs/usage
 |--------|--------------|---------|
 | `help` | Show all fontget commands | `fontget help` |
 | `search` | Search for fonts across sources | `fontget search "roboto"` |
+| `browse` | Browse the font catalog interactively | `fontget browse` |
 | `add` | Install a font from available sources | `fontget add "google.roboto"` |
 | `remove` | Uninstall fonts from the system | `fontget remove "google.roboto"` |
 | `list` | List installed fonts on the system | `fontget list` |
 | `info` | Show detailed info about a font | `fontget info "google.roboto"` |
 | `sources` | Manage font sources | `fontget sources` |
 | `config` | Manage configuration | `fontget config` |
+| `theme` | Pick a terminal theme interactively | `fontget theme` |
 | `export` | Export fonts to a manifest | `fontget export --output fonts.json` |
 | `import` | Import fonts from a manifest | `fontget import fonts.json` |
 | `backup` | Backup installed fonts files to a zip | `fontget backup --scope user` |
@@ -203,17 +205,17 @@ For a full list of commands refer to the [📖 Command Documentation](docs/usage
 
 ## Why did I make FontGet?
 
-It started out as a way for me to re-install fonts everytime I reinstal my computer or get a new machine. As a graphic designer it's a pain to have to reload all my fonts and keep track of everything. with fontGet I can just run `fontget import`, or a custom script and have all my font's reloaded. I've recently been assisting with deploying machines at my workplace and we always fonts loaded onto the machines before they were deployed to new users and so I kind of made fontget to help solve this as well for deploying fonts to a heap of machines via scripting.
+It started out as a way for me to re-install fonts every time I reinstalled my computer or get a new machine. As a graphic designer it's a pain to have to reload all my fonts and keep track of everything. With FontGet I can just run `fontget import`, or a custom script and have all my fonts reloaded. I've recently been assisting with deploying machines at my workplace and we always needed fonts loaded onto the machines before they were deployed to new users, so I kind of made FontGet to help solve the problem of deploying fonts to a heap of machines via scripting.
 
-I've also been getting into ricing linux and windows systems which always require different fonts so I wanted something that was light weight, cross platform and based in the terminal to quickly download the font I need. What started as a concept powershell script, expanded into a fully fledged Go project to support not just Windows but also Mac OS and Linux. From there I just kinda fell in love with the project and added all the features that I (and maybe others) could want.
+I've also been getting into ricing Linux and Windows systems which always require different fonts, so I wanted something that was lightweight, cross-platform, and based in the terminal to quickly download the font I need. What started as a concept PowerShell script expanded into a fully fledged Go project to support not just Windows but also macOS and Linux. From there I just kinda fell in love with the project and added all the features that I (and maybe others) could want.
 
 ### Where does it go from here?
 
-Honestly apart from some bug fixes and checking some things cross platform I don't think there are any features that I would want to add. There are a number of things that may not work 100% so I want to spend what spare time I have just improving the codebase and fixing up any little bugs that I've missed. Anyway this is my story. I hope you like it and please enjoy using FontGet!
+Honestly apart from some bug fixes and some other cross platform tests and some optimizations, I don't think there are any features that I would want to add. There are a number of things that may not work 100% so I want to spend what spare time I have just improving the codebase and fixing up any little bugs that I've missed. If you have a problem or find a bug please [file an issue](https://github.com/Graphixa/FontGet/issues/new). Anyway thats my story. I hope you love using FontGet and please star if you do and feel free to [buy me a coffee](https://ko-fi.com/B0B51V2JIV) if it somehow saves you time or if you wamt tp show your appreciation!
 
 ## Other Items
 
-- This tool is liceensed und ther [MIT License](LICENSE.md)
+- This tool is licensed under the [MIT License](LICENSE)
 - To contribute, please read the [contributing instructions](docs/contributing.md).
 
 ## Support me

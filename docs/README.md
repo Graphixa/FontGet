@@ -25,6 +25,7 @@
 | [Style guide](development/style-guide.md) | Theming, UI styles, theme config |
 | [Theming](development/theming.md) | Theme files, structure, and configuration |
 | [Component architecture](development/component-architecture.md) | TUI components and patterns |
+| [Bubble Tea layout patterns](development/bubbletea-layout-patterns.md) | Layout patterns for Bubble Tea TUIs |
 
 ### Development Guidelines
 | Doc | Description |

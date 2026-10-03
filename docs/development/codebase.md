@@ -11,7 +11,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - [Command Files (`cmd/`)](#command-files-cmd)
 - [Internal Packages](#internal-packages)
 - [Documentation Files](#documentation-files)
-- [Configuration Files](#configuration-files)
+- [Runtime data (not in the git tree)](#runtime-data-not-in-the-git-tree)
 - [Legacy/Deprecated Files](#legacydeprecated-files)
 
 ---
@@ -38,11 +38,10 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 - Specifies Go version 1.26.0 (toolchain `go1.26.6`)
 - Lists all required dependencies including:
   - Cobra (CLI framework)
-  - Bubble Tea (TUI framework)
+  - Bubble Tea / Bubbles (TUI framework and widgets)
   - Lipgloss (styling and terminal colors)
   - XZ (archive extraction)
-  - Pin (spinner/loading indicators)
-  - Various other utilities
+  - Various other utilities (spinners and progress UI live in `internal/ui` and `internal/components`)
 
 **Status**: ✅ Active - Essential for Go module system
 
@@ -153,7 +152,6 @@ Treat that output as **informational triage**, not as the same bar as CI.
 **Interfaces**:
 - Uses `internal/repo` for font data access
 - Uses `internal/config` for user preferences and result limiting
-- Uses `internal/functions` for search utilities
 - Uses `internal/output` for verbose/debug output
 
 **Status**: ✅ Active - Core functionality
@@ -165,7 +163,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - Matches installed fonts to repository entries to show Font IDs, License, Categories, and Source
 - Provides filtering and formatting options
 - Shows font details and metadata
-- Default scope is "all" (shows fonts from both user and machine scopes)
+- Default scope is both user and machine (omit `--scope`); valid values are `user` or `machine` only
 - Displays columns: Name, Font ID, License, Categories, Type, Scope, Source
 - **Font ID Filtering**: Query parameter can match either font family names (e.g., "Roboto") or Font IDs (e.g., "google.roboto")
 - **Performance Optimizations**:
@@ -191,9 +189,10 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - **Installation registry**: Merges **`internal/installations.Load`** into listed families when repository matching left **`FontID`** empty (path index, then family index; **`repo.MatchRepositoryFontByID`**)
 
 **Flags**:
-- `--scope, -s`: Filter by installation scope (user or machine)
+- `--scope, -s`: Filter by installation scope (`user` or `machine`; omit for both)
 - `--type, -t`: Filter by font type (TTF, OTF, etc.)
 - `--expand, -x`: Show all font variants in hierarchical view
+- `--fontget-installed`: Only fonts installed by FontGet (from the installation registry)
 
 **Interfaces**:
 - Uses `internal/platform` for OS-specific font detection
@@ -211,6 +210,9 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - Displays font metadata, variants, and source information
 - Provides comprehensive font details
 
+**Flags**:
+- `--license, -l`: Show license information
+
 **Key Functions**:
 - `infoCmd.RunE`: Main info execution
 - `showFontInfo`: Detailed information display
@@ -226,13 +228,12 @@ Treat that output as **informational triage**, not as the same bar as CI.
 **Functionality**:
 - Removes fonts from the system
 - Supports both font names (e.g., "Roboto") and Font IDs (e.g., "google.roboto")
-- Handles different removal scopes (user, machine, all)
-- When removing from "all" scopes, shows separate progress entries for each scope
+- Handles removal scopes via `--scope` (`user` or `machine`); when omitted, behaves according to elevation auto-detect
 - Extracts font names from installed font metadata (SFNT name table)
 - **Installation registry**: For Font IDs, prefers registry-resolved basenames in scope when present; drops the registry entry after a full successful registry-backed removal
 - Protects critical system fonts from removal
 - Provides consistent verbose/debug output matching add command
-- Auto-detects scope based on elevation (admin/sudo defaults to "all", user defaults to "user")
+- Auto-detects scope based on elevation (admin/sudo may cover both scopes; user defaults to `user`)
 
 **Key Functions**:
 - `removeCmd.RunE`: Main removal execution
@@ -397,7 +398,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 
 **Interfaces**:
 - Uses `internal/config` for manifest management
-- Uses `internal/functions` for source sorting
+- Uses `cmd/sources_helpers.go` for source sorting (`SortSources`)
 - Uses `internal/repo` for font data
 - Uses `internal/sources` for default source name ordering in `sources info`
 - Uses `internal/output` for verbose/debug output
@@ -405,9 +406,14 @@ Treat that output as **informational triage**, not as the same bar as CI.
 **Status**: ✅ Active - Core functionality
 
 ### `sources_cli.go`
-**Purpose**: Non-interactive sources subcommands (`add`, `remove`, `enable`, `disable`, `set`, `list`) for scripts and CI
+**Purpose**: Non-interactive sources subcommands (`add`, `remove`, `enable`, `disable`, `set`) for scripts and CI
 **Functionality**: Cobra wiring and flags for manifest-backed source changes without the TUI
 **Interfaces**: Uses `internal/config`, `internal/repo`, and related packages as appropriate per subcommand
+**Status**: ✅ Active
+
+### `sources_helpers.go`
+**Purpose**: Source list sorting/validation helpers shared by sources TUI and CLI
+**Functionality**: `SortSources`, `SourceItem`, and form validators used by sources management
 **Status**: ✅ Active
 
 ### `sources_manage.go`
@@ -438,7 +444,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 
 **Interfaces**:
 - Uses `internal/config` for manifest operations
-- Uses `internal/functions` for source utilities
+- Uses `cmd/sources_helpers.go` for source utilities (`SortSources`)
 - Uses `internal/ui` for TUI components and styling
 - Uses `internal/components` for reusable TUI components (CheckboxList, ButtonGroup)
 - Uses Bubble Tea for TUI framework
@@ -460,7 +466,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 
 **Interfaces**:
 - Uses `internal/config` for manifest operations
-- Uses `internal/functions` for source sorting
+- Uses `cmd/sources_helpers.go` for source sorting (`SortSources`)
 - Uses `internal/ui` for TUI components
 - Uses Bubble Tea for TUI framework
 
@@ -480,12 +486,14 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - `configEditCmd`: Open configuration file in editor
 - `configValidateCmd`: Validate configuration file integrity
 - `configResetCmd`: Reset configuration to defaults
+- `configSetCmd`: Set a single config key (via `internal/config.SetConfigKey`)
 
 **Subcommands**:
 - `info` - Display current configuration
 - `edit` - Open config file in editor
 - `validate` - Validate configuration file integrity
 - `reset` - Reset configuration to defaults
+- `set` - Set a configuration key
 
 **Interfaces**:
 - Uses `internal/config` for configuration operations
@@ -529,6 +537,14 @@ Treat that output as **informational triage**, not as the same bar as CI.
 **Purpose**: Shared install progress step identifiers used by add/import flows and UI
 **Status**: ✅ Active
 
+### `cancel_messages.go`
+**Purpose**: Cancellation user-facing copy and helpers (`IsCancelErr`, finish-cancel messaging) for install/remove flows
+**Status**: ✅ Active
+
+### `install_tracking.go`
+**Purpose**: Per-package install/remove progress persistence into the installation registry (`installTracker`, incomplete state)
+**Status**: ✅ Active
+
 ---
 
 ## Internal Packages
@@ -536,9 +552,13 @@ Treat that output as **informational triage**, not as the same bar as CI.
 ### `internal/cmdutils/`
 **Purpose**: CLI-specific utilities and helpers
 **Files**:
+- `doc.go`: Package docs
 - `init.go`: CLI initialization helpers (`EnsureManifestInitialized`, `CreateFontManager`)
-- `cobra.go`: Cobra integration (`CheckElevation`, `PrintElevationHelp`)
+- `cobra.go`: Cobra integration and elevation-required sentinel (`CheckElevation`, `PrintElevationHelp`)
 - `args.go`: CLI argument parsing (`ParseFontNames`)
+- `errors.go`: Standardized error/warning/info printers
+- `path.go`: Validate/normalize export and backup output paths
+- `scopes.go`: Detect accessible install scopes
 - `repository.go`: CLI wrappers for repository operations with logging
 
 **Key Features**:
@@ -557,12 +577,15 @@ Treat that output as **informational triage**, not as the same bar as CI.
 ### `internal/shared/`
 **Purpose**: General-purpose utilities that are domain-agnostic
 **Files**:
+- `doc.go`: Package docs
 - `font.go`: Font formatting utilities (`FormatFontNameWithVariant`, `GetFontDisplayName`, etc.)
 - `file.go`: File utilities (`FormatFileSize`, `SanitizeForZipPath`, `TruncateString`)
 - `matching.go`: Font matching utilities (`FindSimilarFonts`)
-- `errors.go`: Error types (`FontNotFoundError`, `FontInstallationError`, etc.)
+- `errors.go`: Error types (`FontNotFoundError`, `FontInstallationError`, cancel sentinel, etc.)
 - `system_fonts.go`: System font utilities (`IsCriticalSystemFont`)
 - `repository.go`: Font query resolution (`ResolveFontQuery`, `GetSourceNameFromID`)
+- `progress.go`: `Clamp01` progress helper
+- `textwrap.go`: Word-aware text wrapping
 
 **Key Features**:
 - **General-Purpose**: Pure utilities with no CLI dependencies
@@ -575,29 +598,6 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - ❌ Don't use for CLI-specific code (use `internal/cmdutils/` instead)
 
 **Status**: ✅ Active - General utilities
-
-### `internal/functions/`
-**Purpose**: Domain-specific utilities
-**Files**:
-- `sort.go`: Source sorting utilities (`SortSources`)
-- `validation.go`: Domain-specific validation utilities
-
-**Key Features**:
-- **Domain-Specific**: Utilities specific to a particular feature area
-- **Type-Specific**: Operates on domain-specific types (e.g., `SourceItem`)
-
-**Guidelines**:
-- ✅ Use for utilities specific to a feature domain
-- ❌ Don't use for general-purpose utilities (use `internal/shared/` instead)
-
-**Status**: ✅ Active - Domain utilities
-
-### `internal/normalize/`
-**Purpose**: Small string normalizers for font family matching (e.g. `FontKey`, `BaseFamilyName` for Nerd Fonts-style suffixes)
-**Files**:
-- `normalize.go`: Normalization helpers consumed by repository matching
-
-**Status**: ✅ Active
 
 ### `internal/config/`
 **Purpose**: Configuration management
@@ -616,6 +616,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
   - **Helper functions**: `ExpandLogPath()` (expands $home in log paths), `ParseMaxSize()` (parses "10MB" format)
 - `default_config.yaml`: Embedded default configuration template and schema used for initial config generation and as the baseline for migrations
 - `migrate.go`: Schema migration helpers (`NeedsSchemaMigration`, `MigrateToCurrentSchema`, `copyMatchingKeys`, `applyExplicitMigrationRules`)
+- `set.go`: `SetConfigKey` and settable key enumeration for `fontget config set`
 - `app_state.go`: Core application state types and functions
   - First-run state management
   - Source acceptance tracking
@@ -649,16 +650,27 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - `search.go`: Font search functionality
 - `font.go`: Font data structures, Font ID resolution, downloads, and `DownloadAndExtractFont` (including `DownloadFontOptions` such as `ArchiveSourcePrefix` for archive layout selection after extract)
 - `font_matches.go`: Font matching logic for installed fonts to repository entries
+- `normalize.go`: `FontKey` / `BaseFamilyName` string normalizers for family matching (e.g. Nerd Fonts-style suffixes)
 - `metadata.go`: Font metadata handling
-- `archive.go`: Archive operations
-- `archive_extract_selection.go`: Webfont-path filtering and static vs variable font install policy on extracted paths
-- `archive_install_pick.go`: Choosing installable paths inside archives (known upstream layouts when prefix matches, otherwise agnostic directory scoring with fallback)
+- `checksum.go`: SHA-256 expected-digest parsing/verification
+- `download_candidates.go`: Ranked download URL candidates from file maps
 - `download_headers.go`: HTTP response header parsing/inference helpers for downloads (e.g., detecting ZIP archives served behind `.ttf` URLs)
+- `progress_reader.go`: Throttled download progress reader
+- `source_cache.go`: Per-source JSON cache paths/IO
+- `archive.go`: Archive type detection and helpers (path safety, symlink skipping)
+- `archive_extract.go`: Extraction budget/size enforcement
+- `archive_extract_selection.go`: Webfont-path filtering and static vs variable font install policy on extracted paths
+- `archive_inspect.go`: ZIP central-directory inspection
+- `archive_install_pick.go`: Choosing installable paths inside archives (known upstream layouts when prefix matches, otherwise agnostic directory scoring with fallback)
+- `archive_policy.go`: Source-specific archive install policy (e.g. Nerd Fonts)
+- `archive_types.go`: `ArchiveEntry` types and safety sentinels
+- `archive_validate.go`: Font magic-byte format detection
 - `types.go`: Type definitions
 
 **Key Features**:
 - **Font Matching**: Optimized index-based matching of installed fonts to repository entries
 - **Font ID Resolution**: Resolves Font IDs (e.g., "google.roboto") to font names
+- **Name Normalization**: `FontKey` / `BaseFamilyName` live here (not a separate `internal/normalize` package)
 - **Source Priority**: Handles multiple repository matches using predefined source priority order
 - **Nerd Fonts Support**: Special handling for Nerd Fonts naming conventions and variants
 - **Robust Download/Archive Handling**:
@@ -670,12 +682,28 @@ Treat that output as **informational triage**, not as the same bar as CI.
 
 **Status**: ✅ Active - Core repository system
 
+### `internal/network/`
+**Purpose**: HTTP download clients, fallback runners, and process/stall helpers used by repository downloads
+**Files**:
+- `download_http_client.go`: Shared HTTP transports/clients for downloads
+- `download_fallbacks.go`: curl/wget/PowerShell fallback download runners (argv-only `exec.Command`)
+- `bot_challenge.go`: Detect WAF/bot-challenge HTTP responses
+- `classify.go`: Download retry/action classification sentinels
+- `exec.go`: Cancellable external process exec with stall detection
+- `exec_unix.go` / `exec_windows.go`: Platform process terminate/kill
+- `stall_detector.go`: `StallDetectingReader` inactivity watchdog
+
+**Status**: ✅ Active - Download networking layer
+
 ### `internal/installations/`
 **Purpose**: Persist FontGet install provenance beside the sources manifest (`installation_registry.json` under **`~/.fontget/`**, basename **`installations.FileName`**).
 **Files**:
 - `registry.go`: Types, **`Load`** / **`Save`**, **`RecordInstallation`** / **`RemoveInstallation`**, **`PathIndex`** / **`FamilyInstallationsIndex`**, **`BasenamesForDir`**, **`NormalizePathKey`**, **`RegistryPath`**
 - `registry_migrate.go`: **`schema_version`** migration — **`buildRegistryMigrations()`** lists allowed one-hop transitions from older on-disk labels to the current constant in **`registry.go`**; **`Load`** runs migrations after JSON decode and rewrites the file when any step applied; unknown versions fail **`Load`**
-- `registry_test.go`: Registry and migration tests
+- `registry_merge.go`: Merge registry metadata into list family groups
+- `registry_removal.go`: When/how remove consults the registry
+- `recovery.go`: Persist incomplete-rollback recovery records
+- `lock.go` / `lock_unix.go` / `lock_windows.go`: Registry file lock orchestration
 
 **Key Features**:
 - **`schema_version`** uses semver-style strings (e.g. **`1.0`**); bump **`schemaVersion`** and extend **`buildRegistryMigrations()`** when the persisted JSON contract changes
@@ -686,22 +714,25 @@ Treat that output as **informational triage**, not as the same bar as CI.
 ### `internal/platform/`
 **Purpose**: Cross-platform operations
 **Files**:
-- `platform.go`: Platform abstraction and font metadata extraction
+- `platform.go`: Platform abstraction, scopes, `FontManager` API, `OpenURL`, `ExtractFontMetadata`
 - `opentype_tables.go`: Lightweight SFNT table directory checks (e.g. `fvar` for variable fonts) used by repository archive install policy
-- `windows.go`: Windows-specific operations
-- `darwin.go`: macOS-specific operations
-- `linux.go`: Linux-specific operations
-- `elevation.go`: Privilege elevation
-- `temp.go`: Temporary file operations
-- `windows_utils.go`: Windows utilities
+- `windows.go`: Windows-specific `FontManager`
+- `darwin.go`: macOS-specific `FontManager`
+- `linux.go`: Linux-specific `FontManager`
+- `windows_utils.go`: Win32 GDI/registry font registration helpers
 - `scope.go`: Scope detection utilities (`AutoDetectScope`)
+- `temp.go`: FontGet temporary directory helpers
+- `mutation.go`: Place/rollback font file mutations
+- `mutation_windows.go` / `mutation_other.go`: Platform registration undo/restore
+- `machine_remove.go`: Machine-scope Fonts registry remove ops
 
 **Key Features**:
 - **Font Metadata Extraction**: `ExtractFontMetadata()` reads font family name, style name, and full name directly from font file SFNT name table
 - **Cross-platform Font Management**: Unified interface for font installation/removal across Windows, macOS, and Linux
-- **Elevation Detection**: Platform-specific privilege checking
+- **Elevation Detection**: Privilege checking lives in platform OS files and `internal/cmdutils` (there is no `elevation.go`)
 - **Font Directory Management**: Scope-aware font directory resolution
 - **Scope Detection**: Auto-detection of installation scope based on elevation
+- **Safe Mutations**: Place/rollback helpers for install/remove file operations
 
 **Status**: ✅ Active - Cross-platform support
 
@@ -802,62 +833,69 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - `apply.go`: Atomic binary replace with `.old` rollback
 - `archive.go`: GoReleaser archive naming for the current platform
 - `check.go`: Update checking logic (ShouldCheckForUpdates, PerformStartupCheck)
-- `config.go`: Update configuration types (UpdateConfig)
 
 **Key Features**:
 - **GitHub Releases**: Resolves the public `/releases/latest` redirect, validates its version tag, then uses immutable tagged download URLs
 - **No runtime credentials**: Public release downloads do not use the GitHub API, `GITHUB_TOKEN`, or `GH_TOKEN`
 - **Checksum verification**: Downloads `checksums.txt` and verifies the archive SHA-256 before install
-- **Auto-check on startup**: Checks config.yaml `AutoCheck` and `CheckInterval` settings
-- **Auto-update**: When `AutoUpdate: true` and update is available, automatically installs in background
-- **UTC timestamps**: `LastChecked` uses UTC timezone for consistency across timezones
+- **Startup check**: Reads `config.yaml` `CheckForUpdates` and `UpdateCheckInterval` (there is no `AutoUpdate` toggle)
+- **Timestamps**: `LastUpdateCheck` / `NextUpdateCheck` track when checks ran and when the next prompt is allowed
 - **Non-blocking**: Startup checks run in goroutine to avoid blocking application startup
 - **Error handling**: Graceful fallback if update check fails (silent failure during startup)
 
 **Status**: ✅ Active - Self-update system with config.yaml integration
 
 ### `internal/templates/`
-**Purpose**: Code templates
+**Purpose**: Embedded YAML theme templates for theme authoring / reset flows
 **Files**:
-- `command_template.go`: Command template for new commands
+- `dark-theme-template.yaml`: Dark theme template
+- `light-theme-template.yaml`: Light theme template
 
-**Status**: ✅ Active - Development templates
+**Status**: ✅ Active - Theme templates (no Go sources)
 
 ### `internal/components/`
-**Purpose**: Reusable UI components
+**Purpose**: Reusable Bubble Tea / CLI UI widgets
 **Files**:
-- `progress_bar.go`: Unified progress bar component with inline display and gradient rendering
-- `card.go`: Card components with integrated titles and flexible padding
-- `form.go`: Form input components for TUI interfaces
-- `confirm.go`: Confirmation dialog components
+- `progress_bar.go`: Multi-item progress display model
+- `card.go` / `card_sections.go`: Bordered card and multi-section card body layout
+- `confirm.go`: Confirmation dialog model
+- `dialog.go`: Modal dialog renderer
+- `overlay.go`: Overlay/modal compositing model
+- `preview.go`: Theme preview TUI model
+- `status_popup.go`: Centered install/status popup renderer
+- `switch.go`: Toggle switch widget
+- `checkbox.go`: Navigable checkbox list
+- `button.go`: Button / button-group widgets
+- `table_custom.go`: Viewport-controlled custom table
+- `table_interactive.go`: Bubble Tea interactive table model
+- `table_static.go`: Static CLI table renderer
+- `table_utils.go`: Table config/modes/column helpers
 
 **Key Features**:
-- **Unified Progress Bar**: Single component for all progress displays with inline title integration
-  - Inline progress bar with gradient color interpolation
-  - Compact single-line display (title + item count + progress bar)
-  - Manual gradient rendering using lipgloss for accurate color display
-  - Supports verbose/debug mode with title suppression
-- **Card System**: Modern card components with integrated titles in borders, configurable padding (vertical/horizontal), and consistent styling
-- **Form Components**: Reusable form elements for interactive TUI interfaces
-- **Confirmation Dialogs**: Standardized confirmation prompts with consistent styling
+- **Progress**: Shared progress model for add/remove/import/update flows
+- **Tables**: Static, interactive, and custom table paths with shared helpers
+- **Cards / dialogs / overlays**: Info display and modal confirmation UI
+- **Switches / checkboxes / buttons**: Onboarding and sources-manage controls
+- **Theme preview / status popup**: Theme picker and install status surfaces
 
 **Usage Examples**:
-- **Add/Remove Commands**: Uses progress bar for font installation/removal progress
-- **Info Command**: Uses card components for displaying font details, license info, and metadata
-- **Sources Management**: Uses form and confirmation components for interactive source editing
-- **Update Operations**: Uses progress components for showing update progress
+- **Add/Remove Commands**: Progress bar for font installation/removal
+- **Info Command**: Card components for font details and license info
+- **Sources Management / Onboarding**: CheckboxList, ButtonGroup, Switch
+- **Browse / Theme**: Interactive tables and preview models
 
 **Status**: ✅ Active - UI components
 
-### `internal/license/`
-**Purpose**: License management
+### `internal/testutil/`
+**Purpose**: Test helpers shared across packages
 **Files**:
-- `license.go`: License information
+- `home.go`: Set `HOME` / `USERPROFILE` for tests
+- `minifont.go`: Minimal TTF bytes for metadata tests
 
-**Status**: ✅ Active - License management
+**Status**: ✅ Active - Test utilities
 
 ### `internal/onboarding/`
-**Purpose**: First-run onboarding and setup wizard
+**Purpose**: First-run onboarding, Terms of Use, and setup wizard (there is no separate `internal/license` package)
 **Files**:
 - `terms_of_use.yaml`: Single source of truth for the Terms of Use screen. **Section-based**: `sections` is an ordered list; each section has `name`, `style` (e.g. PageTitle, Text, InfoText, SourceName), and either `content` (string) or `items` (list for bullets). No layout or colors are defined in code—reorder, add, or restyle by editing the file. Same structure would work as JSON.
 - `terms.go`: Embeds `terms_of_use.yaml`, unmarshals into `[]Section`, and exports `TermsOfUseSections()`, `StyleRenderer(styleName)` (maps style keys to ui renderers), plus backward-compat getters (`TermsOfUseTitle()`, `TermsOfUseIntroText()`, etc.) that look up by section name.
@@ -878,7 +916,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - **Terms of Use**: Text-based terms and disclaimer acceptance (continuing implies agreement)
 - **Wizard Choice**: User can choose to customize settings or accept defaults ("Let it ride")
 - **Source Selection**: Interactive source enable/disable with checkbox list
-- **Settings Configuration**: Update settings (auto-check, auto-update, popularity sort)
+- **Settings Configuration**: Update settings (`CheckForUpdates`, popularity sort, related prefs)
 - **Theme Selection**: Full theme picker TUI with preview (only shown if user chose to customize)
 - **Completion Screen**: Summary of selections and next steps
 - **State Management**: Tracks selections and saves to config on completion
@@ -907,68 +945,62 @@ Treat that output as **informational triage**, not as the same bar as CI.
 **Purpose**: Main project documentation
 **Status**: ✅ Active - Project documentation
 
-### `docs/usage.md`
-**Purpose**: Command reference documentation
-**Status**: ✅ Active - User documentation
-
-### `refactor.md`
-**Purpose**: Refactoring plans and documentation
-**Status**: ✅ Active - Development documentation
-
 ### `docs/`
 **Purpose**: User-facing documentation
 **Files**:
+- `README.md`: Documentation index
+- `usage.md`: Command reference
 - `installation.md`: Installation guide (includes Automation / CI for install scripts)
-- `terminal-setup.md`: Terminal setup instructions (includes shell completions)
+- `troubleshooting.md`: Common issues
+- `custom-sources.md`: Adding custom font sources
+- `terminal-setup.md`: Terminal setup and shell completions
 - `contributing.md`: Contributing guidelines
 
 **Status**: ✅ Active - User documentation
 
 ### `docs/development/`
-**Purpose**: Development documentation and guidelines
+**Purpose**: Development documentation
 **Files**:
-- `codebase.md`: This file - comprehensive codebase overview
-- `style-guide.md`: Code style guidelines
+- `codebase.md`: This file — comprehensive codebase overview
+- `build-guide.md`: Build and release steps
+- `style-guide.md`: Theming / UI style notes
+- `theming.md`: Theme files, structure, and configuration
+- `component-architecture.md`: TUI components and patterns
+- `bubbletea-layout-patterns.md`: Bubble Tea layout patterns
 
 **Status**: ✅ Active - Development documentation
 
 ### `docs/development/guidelines/`
 **Purpose**: Development guidelines and best practices
 **Files**:
-- `codebase-layout-guidelines.md`: Codebase organization guidelines
+- `codebase-layout-guidelines.md`: Where new code should go
 - `logging-guidelines.md`: Logging best practices
 - `spacing-guidelines.md`: Output spacing guidelines
 - `verbose-debug-guidelines.md`: Verbose and debug output guidelines
-- `versioning-guide.md`: Versioning and release guidelines
+- `versioning-guide.md`: Versioning guidelines
+- `release-guide.md`: Release process
 
 **Status**: ✅ Active - Development guidelines
 
 ### `docs/maintenance/documentation-sync.md`
-**Purpose**: Documentation synchronization
+**Purpose**: Documentation synchronization process and flag-audit stats
+**Related**: `docs/maintenance/audit-flags.go` scans `cmd/` for flag registrations
+
 **Status**: ✅ Active - Documentation management
 
 ---
 
-## Configuration Files
+## Runtime data (not in the git tree)
 
-### `sources/`
-**Purpose**: Local cache directory for FontGet-Sources JSON snapshots downloaded by the repo layer (filenames correspond to built-in `Filename` fields in `internal/sources.DefaultSources()`)
+### `~/.fontget/` (typical)
+**Purpose**: Per-user FontGet home — `config.yaml`, `manifest.json`, `installation_registry.json`, logs, themes, and downloaded FontGet-Sources JSON cache files (filenames correspond to built-in `Filename` fields in `internal/sources.DefaultSources()`). Exact paths are resolved by `internal/config` / `internal/repo` / `internal/installations`.
 
-**Status**: ✅ Active - Source data cache
+**Status**: ✅ Active - Runtime data (not committed)
 
 ---
 
 ## Legacy/Deprecated Files
 
-### Files to Review for Potential Cleanup:
-
-
-### Template Files:
-
-1. **`internal/templates/command_template.go`** - Command template
-   - **Purpose**: Template for creating new commands
-   - **Status**: ✅ Active template
-   - **Usage**: Reference for developers adding new commands
-   - **Features**: Includes verbose/debug scaffolding, error handling patterns, and best practices
+None currently tracked. Removed packages/paths that docs formerly referenced: `internal/functions/`, `internal/normalize/` (now `internal/repo/normalize.go`), `internal/license/` (terms live in `internal/onboarding/`), `internal/templates/command_template.go`, root `refactor.md`, and a repo-root `sources/` cache directory.
 
 ---

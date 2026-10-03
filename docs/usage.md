@@ -15,6 +15,7 @@ This document provides a comprehensive overview of all FontGet commands, their p
 | [Info](#info) | Show detailed info about a font | `fontget info "google.roboto"` |
 | [Sources](#sources) | Manage font sources | `fontget sources` |
 | [Config](#config) | Manage configuration | `fontget config` |
+| [Theme](#theme) | Pick a terminal theme interactively | `fontget theme` |
 | [Export](#export) | Export fonts to a manifest | `fontget export --output fonts.json` |
 | [Import](#import) | Import fonts from a manifest | `fontget import fonts.json` |
 | [Backup](#backup) | Backup installed fonts files to a zip | `fontget backup --scope user` |
@@ -130,13 +131,13 @@ sudo fontget add "roboto" --scope user
 Remove fonts from your system.
 
 ### Flags
-- `--scope, -s` - Removal scope (`user` default, `machine`, or `all`; system-wide requires admin)
-- `--force, -f` - Force removal even if protected
+- `--scope, -s` - Removal scope (`user`, `machine`, or `all`; system-wide requires admin). When omitted, scope is auto-detected from elevation.
 
 ### Notes
 - Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
 - Names with spaces must be quoted: "Open Sans".
 - You can remove multiple fonts in one command.
+- Critical system fonts are protected and cannot be removed.
 
 ### Examples
 ```bash
@@ -149,8 +150,8 @@ fontget remove "google.roboto" "google.open-sans" "nerd.jetbrains-mono"
 # Remove font from machine scope
 fontget remove "roboto" --scope machine
 
-# Force removal of protected fonts
-fontget remove "roboto" --force
+# Remove from both scopes
+fontget remove "roboto" --scope all
 ```
 
 ## List
@@ -159,16 +160,18 @@ fontget remove "roboto" --force
 List installed fonts.
 
 ### Flags
-- `--scope, -s` - Filter by installation scope (`user`, `machine`, or `all` default)
+- `--scope, -s` - Filter by installation scope (`user` or `machine`). Omit for both scopes.
 - `--type, -t` - Filter by font type (e.g., TTF, OTF)
 - `--expand, -x` - Show font styles in hierarchical view
+- `--fontget-installed` - Only fonts installed by FontGet
 
 ### Notes
 - Pass an optional query as a positional argument to filter by family name or Font ID (e.g., `fontget list "roboto"` or `fontget list "google.roboto"`).
+- `--scope all` is invalid for list; omit `--scope` to show both user and machine fonts.
 
 ### Examples
 ```bash
-# List all installed fonts
+# List all installed fonts (both scopes)
 fontget list
 
 # List fonts from specific scope
@@ -182,6 +185,9 @@ fontget list --type TTF
 
 # Show font styles in hierarchical view
 fontget list --expand
+
+# Only fonts installed by FontGet
+fontget list --fontget-installed
 ```
 
 ## Info
@@ -191,7 +197,6 @@ Display detailed information about a font.
 
 ### Flags
 - `--license, -l` - Show license information only
-- `--metadata, -m` - Show metadata only
 
 ### Notes
 - Shows font name, ID, source, available variants, license, categories, and tags.
@@ -203,9 +208,6 @@ fontget info "roboto"
 
 # Show only license information
 fontget info "roboto" --license
-
-# Show only metadata
-fontget info "roboto" --metadata
 ```
 
 ## Sources
@@ -277,6 +279,7 @@ Manage FontGet configuration settings
 - `edit` - Open config file in editor
 - `validate` - Validate configuration file integrity
 - `reset` - Reset configuration to defaults
+- `set` - Set a single configuration value by dotted key
 
 ### Examples
 ```bash
@@ -291,12 +294,34 @@ fontget config validate
 
 # Reset to defaults
 fontget config reset
+
+# Set a single key
+fontget config set theme.name catppuccin
+fontget config set search.resultlimit 50
 ```
 
 ### Notes
 - `config validate`: checks config integrity. If it fails, edit with `fontget config edit` or reset with `fontget config reset`.
 - `config reset`: replaces the config with defaults while preserving log files.
+- `config set`: uses dotted keys (`section.field`); run `fontget config set --help` for the settable key list.
 - **Network** (in `~/.fontget/config.yaml`): `RequestTimeout` and `DownloadTimeout` control HTTP and stall-based download behavior. `EnableExternalDownloadFallback` (default `true`) allows optional use of system tools (`curl`, `wget`, or PowerShell) when an upstream responds with a bot/WAF challenge instead of the file; set to `false` if you must avoid invoking external programs. `DownloadUserAgent` sets the `User-Agent` for downloads (same string is passed through external fallbacks when those run). With `--verbose`, successful retries report which external tool completed the download; with `--debug`, each candidate tool (skipped, failed, or ok) is listed in order.
+
+## Theme
+
+### Purpose
+Open an interactive theme selector with live preview.
+
+### Flags
+None (uses global flags only).
+
+### Examples
+```bash
+fontget theme
+```
+
+### Notes
+- Theme files live under `~/.fontget/themes/` (plus embedded themes).
+- You can also set `Theme.Name` via `fontget config set theme.name <name>` or `fontget config edit`.
 
 ## Export
 
@@ -448,7 +473,8 @@ Update FontGet to the latest version
 - Checksums are automatically verified for security
 - Binary replacement is atomic and safe across all platforms
 - Failed updates automatically roll back to the previous version
-- Startup update checks are non-blocking and respect the `CheckInterval` setting
+- Startup update checks are non-blocking and respect the `UpdateCheckInterval` setting
+- There is no automatic background install toggle; updates are applied via `fontget update` (or `--yes` to skip the prompt)
 
 ### Examples
 ```bash
@@ -471,10 +497,9 @@ Update behavior can be configured in `config.yaml`:
 
 ```yaml
 Update:
-  AutoCheck: true        # Check for updates on startup
-  AutoUpdate: false      # Automatically install updates (manual by default)
-  CheckInterval: 24      # Hours between update checks
-  LastChecked: ""         # ISO timestamp (automatically updated)
+  CheckForUpdates: true      # Check for updates on startup
+  UpdateCheckInterval: 24    # Hours between update checks
+  LastUpdateCheck: ""        # ISO timestamp (automatically updated)
 ```
 
 ## Completion
@@ -521,10 +546,11 @@ fontget completion powershell --install
 | Command / Subcommand | Purpose | Flags |
 |---------------------|---------|-------|
 | `add` | Install fonts | `--scope, -s`, `--force, -f` |
+| `browse` | Interactive font browser | `--scope, -s`, `--force, -f` |
 | `search` | Find fonts | `--category, -c`, `--source, -s` |
-| `list` | Show installed fonts | `--scope, -s`, `--type, -t`, `--expand, -x`, `[query]` |
-| `remove` | Uninstall fonts | `--scope, -s`, `--force, -f` |
-| `info` | Show font details | `--license, -l`, `--metadata, -m` |
+| `list` | Show installed fonts | `--scope, -s`, `--type, -t`, `--expand, -x`, `--fontget-installed`, `[query]` |
+| `remove` | Uninstall fonts | `--scope, -s` |
+| `info` | Show font details | `--license, -l` |
 | `sources` | Manage font sources |  |
 | &nbsp;&nbsp;&nbsp;- `info` | Show sources information |  |
 | &nbsp;&nbsp;&nbsp;- `update` | Refresh source configurations and font database | `--verbose, -v` |
@@ -540,6 +566,8 @@ fontget completion powershell --install
 | &nbsp;&nbsp;&nbsp;- `edit` | Open config file in editor |  |
 | &nbsp;&nbsp;&nbsp;- `validate` | Validate configuration |  |
 | &nbsp;&nbsp;&nbsp;- `reset` | Reset to defaults |  |
+| &nbsp;&nbsp;&nbsp;- `set` | Set a config key | `<key> <value>` |
+| `theme` | Interactive theme selector |  |
 | `export` | Export fonts to manifest | `--output, -o`, `--match, -m`, `--source, -s`, `--all, -a`, `--force, -f`, `--matched` |
 | `backup` | Backup font files to zip | `--force, -f`, `--scope, -s` |
 | `import` | Import fonts from manifest | `--scope, -s`, `--force, -f` |

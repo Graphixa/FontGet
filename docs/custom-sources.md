@@ -10,7 +10,7 @@ That JSON has two main parts:
 - `source_info` (metadata about your source)
 - `fonts` (font IDs, variants, and download URLs)
 
-Once your file is publicly accessible, add it with `fontget sources manage`.
+Once your file is publicly accessible, add it with `fontget sources add` (or the interactive `fontget sources manage` TUI).
 
 This example uses a custom GitHub repo, but you can host your source file and fonts anywhere public on the internet.
 
@@ -69,7 +69,7 @@ Now replace:
 
 - `<username>` with your GitHub username/org.
 - `<repo>` with your repository name.
-- `REPLACE_WITH_FONT_URL` with a real direct font URL or archive URL.
+- The sample `ttf` URL with a real direct font URL or archive URL.
 
 ---
 
@@ -130,7 +130,7 @@ Example:
 
 ---
 
-## Register the source in FontGet
+## Step 4: Publish and verify the raw URL
 
 1. Commit `fonts.json` (and optional `fonts/` files).
 2. Push to your default branch.

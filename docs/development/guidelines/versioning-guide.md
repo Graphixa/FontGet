@@ -251,26 +251,20 @@ FontGet dev+124d611
 - ✅ Self-update system recognizes "dev" builds and will always suggest updates
 - ✅ Standard practice in Go projects
 
-**Recommended: Use Build Scripts or Makefile**
+**Recommended: Use Build Scripts**
 
-For easier development, use the provided build tools that automatically detect version from git tags:
+For easier development, use the provided build scripts (there is no Makefile). Local builds get a `dev-…` version unless you pass `-v` / `-Version`. Details: [Build guide](../build-guide.md).
 
 ```bash
-# Using Makefile (cross-platform, requires make)
-make build              # Auto-detect version from git tag
-make build-dev          # Force dev build
-make version            # Show version info
-
-# Using build scripts
 # Windows (PowerShell)
-.\scripts\build.ps1              # Auto-detect version
-.\scripts\build.ps1 -Dev         # Dev build
+.\scripts\build.ps1                 # Dev version (timestamp + commit)
 .\scripts\build.ps1 -Version 2.1.0  # Specific version
+.\scripts\build.ps1 -Help
 
 # Linux/macOS
-./scripts/build.sh                # Auto-detect version
-./scripts/build.sh --dev          # Dev build
-./scripts/build.sh -v 2.1.0       # Specific version
+sh scripts/build.sh                 # Dev version → /tmp/fontget by default
+sh scripts/build.sh -v 2.1.0        # Specific version
+FONTGET_OUTPUT=./fontget sh scripts/build.sh   # Build in repo
 ```
 
 **Manual Build (if needed)**
@@ -620,6 +614,6 @@ git push origin v<MAJOR>.<MINOR>.<PATCH>
 
 ---
 
-**Last Updated**: 2025-01-XX  
+**Last Updated**: 2026-10-03  
 **Status**: Active Guide
 

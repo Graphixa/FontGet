@@ -21,11 +21,16 @@ FontGet follows a clean architecture pattern:
 
 - **`cmd/`** - CLI command implementations
 - **`internal/`** - Internal packages (not for external use)
+  - **`cmdutils/`**, **`shared/`** - CLI helpers and general utilities
   - **`config/`** - Configuration management
-  - **`repo/`** - Font repository operations
+  - **`repo/`**, **`network/`**, **`sources/`** - Repository, downloads, built-in sources
+  - **`installations/`** - Install provenance registry
   - **`platform/`** - OS-specific functionality
-  - **`ui/`** - User interface components
-  - **`output/`** - Output management (verbose/debug)
+  - **`ui/`**, **`components/`** - Styling/theme and reusable TUI widgets
+  - **`output/`**, **`logging/`** - Console output and file logging
+  - **`onboarding/`**, **`update/`**, **`templates/`**, **`testutil/`** - Wizard, self-update, theme YAML templates, test helpers
+
+For where new code should go, see [Codebase layout guidelines](development/guidelines/codebase-layout-guidelines.md) and the package map in [Codebase](development/codebase.md).
 
 ## Development Guidelines
 
@@ -36,10 +41,10 @@ FontGet follows a clean architecture pattern:
 - Keep functions focused and small
 
 ### Adding New Commands
-1. Create a new file in `cmd/` (e.g., `cmd/newcommand.go`)
-2. Use the template in `internal/templates/command_template.go`
-3. Register the command in `cmd/root.go`
-4. Add documentation to `docs/usage.md`
+1. Create a new file in `cmd/` (e.g., `cmd/newcommand.go`), mirroring patterns in an existing command such as `cmd/version.go` or `cmd/info.go`
+2. Register the command in `cmd/root.go`
+3. Add documentation to `docs/usage.md`
+4. See [Build guide](development/build-guide.md) for local builds
 
 ### Testing
 - Write tests for new functionality
@@ -48,7 +53,7 @@ FontGet follows a clean architecture pattern:
 
 ### Documentation
 - Update `docs/usage.md` for user-facing changes
-- Update `docs/codebase.md` for architectural changes
+- Update `docs/development/codebase.md` for architectural changes
 - Run the documentation audit: `go run docs/maintenance/audit-flags.go cmd/`
 
 ## Pull Request Process

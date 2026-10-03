@@ -52,7 +52,7 @@
 
 - Use **`--scope user`** or **`--scope machine`** on **`fontget add`**, **`fontget browse`**, **`fontget import`**, etc.
 - **Machine scope** usually needs elevation (Administrator / `sudo`).
-- Confirm where fonts landed: **`fontget list --scope all`** (or filter by scope).
+- Confirm where fonts landed: **`fontget list`** (both scopes) or filter with **`--scope user`** / **`--scope machine`**.
 
 ---
 

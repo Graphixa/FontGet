@@ -6,7 +6,7 @@ This guide provides a step-by-step process for creating releases in FontGet. It 
 
 **Related Documentation:**
 - [Versioning Guide](./versioning-guide.md) - Detailed explanation of semantic versioning and version decision logic
-- [Contributing Guide](../contributing.md) - General contribution guidelines
+- [Contributing Guide](../../contributing.md) - General contribution guidelines
 
 ---
 
@@ -586,6 +586,6 @@ git push origin v<MAJOR>.<MINOR>.<PATCH>
 
 ---
 
-**Last Updated**: 2025-01-XX  
+**Last Updated**: 2026-10-03  
 **Status**: Active Guide
 

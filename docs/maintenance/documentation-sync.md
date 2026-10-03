@@ -8,13 +8,13 @@ The FontGet CLI tool has many flags and commands that need to be accurately docu
 
 ## Current Status
 
-**Last Audit Date**: 2026-04-20 (from `go run docs/maintenance/audit-flags.go cmd/`)
+**Last Audit Date**: 2026-10-03 (from `go run docs/maintenance/audit-flags.go cmd/`)
 
 ### Summary Statistics
-- **Total Commands**: 18
-- **Total Flags**: 42
+- **Total Commands / subcommands scanned**: 30
+- **Total Flags**: 47
   - **Global Flags**: 6
-  - **Local Flags**: 36
+  - **Local Flags**: 41
 
 ## Audit Script
 
@@ -23,10 +23,11 @@ The FontGet CLI tool has many flags and commands that need to be accurately docu
 
 ### Purpose
 Automatically scans all command files in the `cmd/` directory and extracts:
-- All command definitions
-- All flag registrations (StringP, BoolP, IntP)
+- All command definitions (`*Cmd` variables)
+- All flag registrations: `String`/`Bool`/`Int`, `*P`, and `*Var` / `*VarP`
 - Flag types, short forms, defaults, and usage descriptions
 - Global vs local flag classification
+- Sync check against `docs/usage.md` (missing code flags + doc-only flag bullets)
 
 ### Usage
 ```bash
@@ -37,7 +38,7 @@ go run docs/maintenance/audit-flags.go cmd/
 ### Output
 The script provides:
 1. **Complete flag inventory** - Lists all commands and their flags
-2. **Documentation sync check** - Identifies flags missing from documentation
+2. **Documentation sync check** - Flags missing from `docs/usage.md`, and doc-only flag bullets not registered in `cmd/`
 3. **Summary statistics** - Total commands, flags, and global vs local counts
 
 ## Documentation Checklist
@@ -182,9 +183,9 @@ When adding new flags, use this template:
 - Flag usage validation
 
 ### Current Limitations
-- Manual flag extraction (could be improved with AST parsing)
+- Command section matching uses `## Title` headers in `docs/usage.md`; nested subcommand flags may fall back to whole-doc search
 - No automated example testing
-- No validation of flag descriptions against actual usage
+- No validation of flag descriptions against actual usage strings
 
 ## Contact
 

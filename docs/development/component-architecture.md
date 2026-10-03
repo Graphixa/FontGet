@@ -1,88 +1,72 @@
 # Component Architecture
 
-This document describes the architecture and design patterns of the FontGet components library.
+This document describes the architecture and design patterns of the FontGet components library (`internal/components`).
 
 ## Component Hierarchy
 
 ```
-Base Components (bubbletea primitives)
+Base Components (bubbletea / bubbles primitives)
     ↓
-Simple Components (Button, Checkbox, Switch, TextInput)
+Simple Components (Button, Checkbox, Switch, textinput.Model)
     ↓
 Composite Components (ButtonGroup, CheckboxList)
     ↓
-Form Components (UnifiedFormModel, FormModel, FormNavigation)
+Display / Layout (Card, Dialog, Overlay, Preview, StatusPopup, ProgressBar, Tables)
     ↓
-Command Models (backup, sources_manage, etc.)
+Command Models (browse, sources_manage, theme, onboarding, etc.)
 ```
+
+There is **no** form package (`UnifiedFormModel` / `FormModel` / `FormNavigation` were removed). Command models compose the widgets below directly.
 
 ## Component Categories
 
 ### 1. Input Components (User Input)
 
-These components handle direct user input:
-
 - **TextInput**: Use `textinput.Model` directly from `github.com/charmbracelet/bubbles/textinput`
-  - No wrapper component needed
+  - No wrapper component
   - Apply styles directly: `input.TextStyle = ui.FormInput`
   - Handle background styling at render time if needed
 
-- **CheckboxList**: List of checkboxes with navigation
+- **CheckboxList** (`checkbox.go`): List of checkboxes with navigation
   - `HasFocus`, `SetFocus()`, `HandleKey()`, `Render()`
-  - Well-designed, keep as-is
 
-- **Switch**: Toggle switch component
+- **Switch** (`switch.go`): Toggle switch
   - `HasFocus`, `SetFocus()`, `HandleKey()`, `Render()`
-  - Standardized interface
 
 ### 2. Action Components (User Actions)
 
-These components handle user actions:
-
-- **Button** / **ButtonGroup**: Button navigation and selection
+- **Button** / **ButtonGroup** (`button.go`): Button navigation and selection
   - `HasFocus`, `SetFocus()`, `HandleKey()`, `Render()`
-  - Well-designed, keep as-is
 
-- **ConfirmModel**: Confirmation dialog
+- **ConfirmModel** (`confirm.go`): Confirmation dialog
   - Uses ButtonGroup internally
   - Full `tea.Model` implementation
 
-### 3. Form Components (Composite)
+### 3. Display Components (Information)
 
-These components combine multiple input/action components:
+- **CardModel** / **card_sections.go**: Bordered cards and multi-section bodies
+- **PreviewModel** (`preview.go`): Theme preview TUI
+- **ProgressBarModel** (`progress_bar.go`): Multi-item progress display
+- **StatusPopup** (`status_popup.go`): Centered install/status popup renderer
+- **Dialog** (`dialog.go`): Modal dialog renderer
 
-- **UnifiedFormModel**: Comprehensive form component
-  - Supports mixed component types (text inputs, checkboxes, buttons)
-  - Unified navigation and validation
-  - Use for new forms
+### 4. Table Components
 
-- **FormModel**: Simple text-only form
-  - Deprecated in favor of UnifiedFormModel
-  - Keep for backward compatibility
+- **table_static.go**: Static CLI table renderer
+- **table_interactive.go**: Bubble Tea interactive table model
+- **table_custom.go**: Viewport-controlled custom table
+- **table_utils.go**: Shared table config, modes, and column helpers
 
-- **FormNavigation**: Navigation helper for list + buttons
-  - Handles Tab navigation between list and buttons
-  - Can be enhanced to work with UnifiedFormModel
-
-### 4. Display Components (Information)
-
-These components display information:
-
-- **CardModel**: Card display component
-- **PreviewModel**: Preview display component
-- **ProgressBarModel**: Progress indicator
-  - Well-designed, keep as-is
+Used by list/search output and interactive browse/theme flows.
 
 ### 5. Layout Components (Structure)
 
-These components provide layout structure:
-
-- **OverlayModel**: Overlay/modal layout
-- **BlankBackgroundModel**: Blank background for modals
+- **OverlayModel** (`overlay.go`): Overlay/modal compositing
+- Blank/background helpers as needed by command models
 
 ## Standard Component Interface
 
-All interactive components should implement:
+Interactive widgets should follow:
 
 ```go
 type Component interface {
@@ -95,9 +79,9 @@ type Component interface {
 
 ### Focus Management
 
-- `HasFocus`: Boolean indicating if component currently has focus
+- `HasFocus`: Whether the component currently has focus
 - `SetFocus(bool)`: Set focus state
-- Components should handle focus in `HandleKey()` when appropriate keys are pressed
+- Handle focus-related keys inside `HandleKey()` when appropriate
 
 ### Key Handling
 
@@ -107,37 +91,21 @@ type Component interface {
 
 ### Rendering
 
-- `Render()`: Return string representation of component
-- Should respect `HasFocus` state
-- Use UI styles from `internal/ui` package
+- `Render()`: String representation of the component
+- Should respect `HasFocus`
+- Use styles from `internal/ui`
 
 ## Design Principles
 
-### 1. Composition over Inheritance
-
-Prefer composition of simple components over complex inheritance hierarchies.
-
-### 2. Single Responsibility
-
-Each component should have a single, well-defined purpose.
-
-### 3. Consistent Interfaces
-
-All similar components should follow the same interface patterns.
-
-### 4. Direct Use of Primitives
-
-Use bubbletea primitives directly (e.g., `textinput.Model`) rather than wrapping unnecessarily.
-
-### 5. Focus Management
-
-Centralize focus management using integer-based indices rather than string-based states.
+1. **Composition over inheritance** — compose simple widgets in command models
+2. **Single responsibility** — one clear job per component
+3. **Consistent interfaces** — same focus/key/render pattern across interactive widgets
+4. **Direct use of primitives** — prefer raw `textinput.Model` over wrappers
+5. **Integer focus indices** — prefer `focusedComponent int` over string focus states
 
 ## Navigation Patterns
 
 ### Tab Navigation
-
-Use modulo arithmetic for wrapping navigation:
 
 ```go
 // Forward
@@ -149,42 +117,28 @@ focusedIdx = (focusedIdx - 1 + len(components)) % len(components)
 
 ### Focus Updates
 
-Centralize focus updates in a single method:
-
 ```go
 func (m *Model) updateFocus() {
-    // Blur all components
     for i := range m.components {
         m.blurComponent(i)
     }
-    // Focus current component
     m.focusComponent(m.focusedIdx)
 }
 ```
 
 ## Best Practices
 
-1. **Use raw `textinput.Model`**: Don't wrap unnecessarily
-2. **Integer-based focus**: Use `focusedComponent int` instead of `FocusState string`
-3. **Centralized focus management**: Single `updateFocus()` method
-4. **Simple navigation**: 2-line modulo arithmetic for Tab navigation
-5. **Consistent styling**: Use `internal/ui` styles
-6. **Type-safe**: Prefer enums/constants over strings for types
+1. Use raw `textinput.Model` — don't wrap unnecessarily
+2. Integer-based focus — `focusedComponent int` instead of `FocusState string`
+3. Centralized focus — single `updateFocus()` method
+4. Simple Tab navigation — modulo arithmetic
+5. Consistent styling — `internal/ui` styles
+6. Type-safe enums/constants over stringly-typed modes
 
-## Migration Guide
+## Migration Notes
 
 ### From TextInput Wrapper to Raw textinput.Model
 
-**Before:**
-```go
-pathInput := components.NewTextInput(components.TextInputOptions{
-    Placeholder:    defaultPath,
-    FixedWidth:     60,
-    WithBackground: true,
-})
-```
-
-**After:**
 ```go
 pathInput := textinput.New()
 pathInput.Placeholder = defaultPath
@@ -196,13 +150,6 @@ pathInput.PlaceholderStyle = ui.FormPlaceholder
 
 ### From String-Based Focus to Integer-Based
 
-**Before:**
-```go
-FocusState string // "path", "checkboxes", "buttons"
-if m.FocusState == "path" { ... }
-```
-
-**After:**
 ```go
 focusedComponent int // 0=path, 1=checkboxes, 2=buttons
 if m.focusedComponent == 0 { ... }
@@ -210,21 +157,6 @@ if m.focusedComponent == 0 { ... }
 
 ### From Manual Navigation to Modulo Arithmetic
 
-**Before:**
-```go
-if key == "tab" {
-    switch m.FocusState {
-    case "path":
-        m.FocusState = "checkboxes"
-    case "checkboxes":
-        m.FocusState = "buttons"
-    case "buttons":
-        m.FocusState = "path"
-    }
-}
-```
-
-**After:**
 ```go
 if key == "tab" {
     m.focusedComponent = (m.focusedComponent + 1) % 3
@@ -234,24 +166,20 @@ if key == "tab" {
 
 ## Component Lifecycle
 
-1. **Initialization**: Create component with `New*()` function
-2. **Focus**: Set initial focus with `SetFocus(true)` or `Focus()` for text inputs
-3. **Update**: Handle messages in `Update()` method
-4. **Render**: Display component in `View()` method
-5. **Cleanup**: Blur components when done
+1. **Initialization**: `New*()` constructor
+2. **Focus**: `SetFocus(true)` or `Focus()` for text inputs
+3. **Update**: Handle messages in `Update()`
+4. **Render**: Display in `View()` / `Render()`
+5. **Cleanup**: Blur when leaving the screen
 
 ## Testing
 
-All components should have comprehensive tests covering:
+Cover rendering states, key handling, focus, and edge cases (empty lists, out of bounds).
 
-- Rendering with different states
-- Key handling
-- Focus management
-- Edge cases (empty lists, out of bounds, etc.)
+Existing tests include:
 
-See existing test files for examples:
 - `button_test.go`
 - `checkbox_test.go`
 - `switch_test.go`
-- `unified_form_test.go`
-
+- `table_test.go`
+- `card_sections_test.go`

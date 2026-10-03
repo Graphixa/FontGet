@@ -19,8 +19,8 @@ Run the following from your terminal:
 sh scripts/build.sh
 ```
 
-- **Output:** `/tmp/fontget-dev` (so the binary runs on all drives, including cloud-synced ones).
-- **Run:** `/tmp/fontget-dev version` and `/tmp/fontget-dev search roboto`
+- **Output:** `/tmp/fontget` (so the binary runs on all drives, including cloud-synced ones).
+- **Run:** `/tmp/fontget version` and `/tmp/fontget search roboto`
 
 **Options:**
 
@@ -44,7 +44,7 @@ From the repo root in PowerShell:
 
 ## Dev vs release
 
-- **Local build:** Version is `dev-YYYYMMDDHHMMSS-<commit>` (e.g. `dev-20260228020445-6c41181`). Binary is at `/tmp/fontget-dev` (Linux/macOS) or in repo working directory (Windows).
+- **Local build:** Version is `dev-YYYYMMDDHHMMSS-<commit>` (e.g. `dev-20260228020445-6c41181`). Binary is at `/tmp/fontget` (Linux/macOS) or in the repo working directory (Windows).
 - **Release:** Tag and push: `git tag -a v2.1.0 -m "Release v2.1.0" && git push origin v2.1.0`. GitHub Actions builds and publishes; no local build required.
 
 ## Manual build (optional)
@@ -61,5 +61,5 @@ For version/commit/date in the binary, use the same ldflags as in `scripts/build
 
 - **Build fails:** Ensure Go 1.26+ (`go version`), you’re in the repo root (where `go.mod` is), and run `go mod tidy` if needed.
 - **Permission denied on script:** Run with `sh scripts/build.sh` (or `bash scripts/build.sh`), not `./scripts/build.sh`.
-- **Binary won’t run (e.g. on pCloud, onedrive etc):** Default output is already `/tmp/fontget-dev`; run `/tmp/fontget-dev`. If you used `FONTGET_OUTPUT=./fontget`, the filesystem may not allow execute — use the default or build to another local path.
-- **Windows:** Use the PowerShell script; Make is optional (e.g. via WSL or Chocolatey).
+- **Binary won’t run (e.g. on pCloud, onedrive etc):** Default output is already `/tmp/fontget`; run `/tmp/fontget`. If you used `FONTGET_OUTPUT=./fontget`, the filesystem may not allow execute — use the default or build to another local path.
+- **Windows:** Use the PowerShell script (`.\scripts\build.ps1`).
