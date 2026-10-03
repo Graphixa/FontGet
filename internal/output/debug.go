@@ -70,15 +70,6 @@ func (d *DebugLogger) Warning(format string, args ...interface{}) {
 	}
 }
 
-// Performance displays debug performance information when --debug flag is enabled
-// Shows timing, memory usage, and other performance metrics
-func (d *DebugLogger) Performance(format string, args ...interface{}) {
-	if isDebugEnabled() {
-		msg := fmt.Sprintf(format, args...)
-		fmt.Fprintf(os.Stderr, "%s %s\n", ui.Text.Render("[DEBUG PERF]"), msg)
-	}
-}
-
 // State displays debug state information when --debug flag is enabled
 // Shows variable states, configuration values, and system state
 func (d *DebugLogger) State(format string, args ...interface{}) {
