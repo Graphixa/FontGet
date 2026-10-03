@@ -43,7 +43,6 @@ type Logger struct {
 	maxSize       int64
 	maxBackups    int
 	maxAge        int
-	compress      bool
 	currentSize   int64
 	lastRotation  time.Time
 	rotationCount int
@@ -60,8 +59,6 @@ type Config struct {
 	MaxBackups int
 	// MaxAge is the maximum number of days to retain old log files
 	MaxAge int
-	// Compress determines if the rotated log files should be compressed
-	Compress bool
 	// ConsoleOutput mirrors timestamped file-log lines (INFO/DEBUG) to stdout. Off in normal CLI
 	// builds so file logging does not interleave with styled --verbose / --debug output.
 	ConsoleOutput bool
@@ -193,7 +190,6 @@ func NewWithPath(config Config, logFilePath string) (*Logger, error) {
 		maxSize:       int64(config.MaxSize * 1024 * 1024), // Convert MB to bytes
 		maxBackups:    config.MaxBackups,
 		maxAge:        config.MaxAge,
-		compress:      config.Compress,
 		currentSize:   fileInfo.Size(),
 		lastRotation:  time.Now(),
 		ConsoleOutput: config.ConsoleOutput,
