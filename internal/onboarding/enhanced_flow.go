@@ -1135,262 +1135,6 @@ func (s *SettingsStepEnhanced) Update(model *EnhancedOnboardingModel, msg tea.Ms
 	return model, nil
 }
 
-// LayoutConfig holds configuration for layout calculations (copied from cmd/theme_layout.go)
-type LayoutConfig struct {
-	TerminalWidth  int
-	TerminalHeight int
-	HeaderHeight   int
-	FooterHeight   int
-	MarginWidth    int
-	SeparatorWidth int
-}
-
-// PanelLayout holds calculated panel dimensions (copied from cmd/theme_layout.go)
-type PanelLayout struct {
-	LeftWidth       int
-	RightWidth      int
-	PanelHeight     int
-	AvailableWidth  int
-	AvailableHeight int
-}
-
-// CalculatePanelLayout calculates panel dimensions based on terminal size and layout config (copied from cmd/theme_layout.go)
-func CalculatePanelLayout(config LayoutConfig) PanelLayout {
-	// Calculate available space
-	marginWidth := config.MarginWidth
-	if marginWidth == 0 {
-		marginWidth = 2 // Default: 1 char on each side
-	}
-
-	separatorWidth := config.SeparatorWidth
-	if separatorWidth == 0 {
-		separatorWidth = 1 // Default separator width
-	}
-
-	availableWidth := config.TerminalWidth - marginWidth
-	availableHeight := config.TerminalHeight - config.HeaderHeight - config.FooterHeight
-
-	// Ensure minimum dimensions
-	if availableWidth < 40 {
-		availableWidth = 40
-	}
-	if availableHeight < 10 {
-		availableHeight = 10
-	}
-
-	// Calculate panel widths (30/70 split accounting for separator)
-	panelAreaWidth := availableWidth - separatorWidth
-	if panelAreaWidth < 0 {
-		panelAreaWidth = 0
-	}
-
-	// 30% for left, 70% for right
-	leftWidth := int(float64(panelAreaWidth) * 0.3)
-	rightWidth := panelAreaWidth - leftWidth
-
-	// Ensure minimum panel widths
-	if leftWidth < 20 {
-		leftWidth = 20
-	}
-	if rightWidth < 20 {
-		rightWidth = 20
-	}
-
-	// Safety check: ensure total doesn't exceed terminal width
-	maxTotalWidth := config.TerminalWidth
-	if leftWidth+rightWidth+separatorWidth > maxTotalWidth {
-		panelAreaWidth = maxTotalWidth - separatorWidth
-		if panelAreaWidth < 0 {
-			panelAreaWidth = 0
-		}
-		leftWidth = panelAreaWidth / 2
-		rightWidth = panelAreaWidth - leftWidth
-	}
-
-	return PanelLayout{
-		LeftWidth:       leftWidth,
-		RightWidth:      rightWidth,
-		PanelHeight:     availableHeight,
-		AvailableWidth:  availableWidth,
-		AvailableHeight: availableHeight,
-	}
-}
-
-// trimContent removes trailing newlines and whitespace from content (copied from cmd/theme_layout.go)
-func trimContent(content string) string {
-	content = strings.TrimRight(content, "\n")
-	lines := strings.Split(content, "\n")
-	trimmed := make([]string, len(lines))
-	for i, line := range lines {
-		trimmed[i] = strings.TrimRight(line, " \t")
-	}
-	return strings.Join(trimmed, "\n")
-}
-
-// renderCombinedPanels renders two panels side-by-side with a shared border (copied from cmd/theme_layout.go)
-func renderCombinedPanels(title string, leftWidth, rightWidth, height int, leftContent, rightContent string, _ lipgloss.Style, separatorColor, borderColor lipgloss.Color, titleStyle lipgloss.Style) string {
-	// Guard minimums
-	if leftWidth < 4 {
-		leftWidth = 4
-	}
-	if rightWidth < 4 {
-		rightWidth = 4
-	}
-	if height < 3 {
-		height = 3
-	}
-
-	leftContentWidth := leftWidth - 1
-	if leftContentWidth < 0 {
-		leftContentWidth = 0
-	}
-	rightContentWidth := rightWidth - 1
-	if rightContentWidth < 0 {
-		rightContentWidth = 0
-	}
-	contentHeight := height - 2
-	if contentHeight < 1 {
-		contentHeight = 1
-	}
-
-	leftTrimmed := trimContent(leftContent)
-	rightTrimmed := trimContent(rightContent)
-
-	leftConstrained := lipgloss.NewStyle().
-		Height(contentHeight).
-		Render(leftTrimmed)
-
-	rightConstrained := lipgloss.NewStyle().
-		Height(contentHeight).
-		Render(rightTrimmed)
-
-	topLeft := "╭"
-	topRight := "╮"
-	bottomLeft := "╰"
-	bottomRight := "╯"
-	topTee := "┬"
-	bottomTee := "┴"
-	vertical := "│"
-	horizontal := "─"
-
-	borderCharStyle := lipgloss.NewStyle().Foreground(borderColor)
-	separatorStyle := lipgloss.NewStyle().Foreground(separatorColor)
-
-	topLeftChar := borderCharStyle.Render(topLeft)
-	topRightChar := borderCharStyle.Render(topRight)
-	bottomLeftChar := borderCharStyle.Render(bottomLeft)
-	bottomRightChar := borderCharStyle.Render(bottomRight)
-	topTeeChar := borderCharStyle.Render(topTee)
-	bottomTeeChar := borderCharStyle.Render(bottomTee)
-	leftBorderChar := borderCharStyle.Render(vertical)
-	rightBorderChar := borderCharStyle.Render(vertical)
-	separatorChar := separatorStyle.Render(vertical)
-	horizontalChar := borderCharStyle.Render(horizontal)
-
-	titleRendered := titleStyle.Render(title)
-	titleWidth := lipgloss.Width(titleRendered)
-
-	totalBorderWidth := leftWidth + 1 + rightWidth
-
-	leftInner := leftWidth - 1
-	if leftInner < 0 {
-		leftInner = 0
-	}
-	rightInner := rightWidth - 1
-	if rightInner < 0 {
-		rightInner = 0
-	}
-
-	titleSectionWidth := 1 + 1 + titleWidth + 1 + 1
-	remainingLeft := leftInner - titleSectionWidth
-	if remainingLeft < 0 {
-		remainingLeft = 0
-	}
-
-	topBorderLeft := topLeftChar + horizontalChar + " " + titleRendered + " " + horizontalChar + strings.Repeat(horizontalChar, remainingLeft)
-
-	leftSegmentWidth := lipgloss.Width(topBorderLeft)
-	if leftSegmentWidth != leftWidth {
-		actualRemaining := leftWidth - lipgloss.Width(topLeftChar+horizontalChar+" "+titleRendered+" "+horizontalChar)
-		if actualRemaining < 0 {
-			actualRemaining = 0
-		}
-		topBorderLeft = topLeftChar + horizontalChar + " " + titleRendered + " " + horizontalChar + strings.Repeat(horizontalChar, actualRemaining)
-	}
-
-	topBorderRight := strings.Repeat(horizontalChar, rightInner) + topRightChar
-	topBorder := topBorderLeft + topTeeChar + topBorderRight
-
-	actualWidth := lipgloss.Width(topBorder)
-	if actualWidth != totalBorderWidth {
-		adjust := totalBorderWidth - actualWidth
-		newRightInner := rightInner + adjust
-		if newRightInner < 0 {
-			newRightInner = 0
-		}
-		topBorderRight = strings.Repeat(horizontalChar, newRightInner) + topRightChar
-		topBorder = topBorderLeft + topTeeChar + topBorderRight
-	}
-
-	bottomBorder := bottomLeftChar + strings.Repeat(horizontalChar, leftWidth-1) + bottomTeeChar + strings.Repeat(horizontalChar, rightWidth-1) + bottomRightChar
-
-	leftLines := strings.Split(strings.TrimRight(leftConstrained, "\n"), "\n")
-	rightLines := strings.Split(strings.TrimRight(rightConstrained, "\n"), "\n")
-
-	maxLines := contentHeight
-	if len(leftLines) < maxLines {
-		leftLines = append(leftLines, make([]string, maxLines-len(leftLines))...)
-	}
-	if len(rightLines) < maxLines {
-		rightLines = append(rightLines, make([]string, maxLines-len(rightLines))...)
-	}
-	if len(leftLines) > maxLines {
-		leftLines = leftLines[:maxLines]
-	}
-	if len(rightLines) > maxLines {
-		rightLines = rightLines[:maxLines]
-	}
-
-	var middleLines []string
-	for i := 0; i < maxLines; i++ {
-		leftLine := leftLines[i]
-		rightLine := rightLines[i]
-
-		leftLineWidth := lipgloss.Width(leftLine)
-		rightLineWidth := lipgloss.Width(rightLine)
-
-		var leftPadded string
-		if leftLineWidth < leftContentWidth {
-			leftPadded = leftLine + strings.Repeat(" ", leftContentWidth-leftLineWidth)
-		} else if leftLineWidth > leftContentWidth {
-			leftPadded = lipgloss.NewStyle().Width(leftContentWidth).MaxWidth(leftContentWidth).Render(leftLine)
-		} else {
-			leftPadded = leftLine
-		}
-
-		var rightPadded string
-		if rightLineWidth < rightContentWidth {
-			rightPadded = rightLine + strings.Repeat(" ", rightContentWidth-rightLineWidth)
-		} else if rightLineWidth > rightContentWidth {
-			rightPadded = lipgloss.NewStyle().Width(rightContentWidth).MaxWidth(rightContentWidth).Render(rightLine)
-		} else {
-			rightPadded = rightLine
-		}
-
-		middleLine := leftBorderChar + leftPadded + separatorChar + rightPadded + rightBorderChar
-		middleLines = append(middleLines, middleLine)
-	}
-
-	var result strings.Builder
-	result.WriteString(topBorder)
-	result.WriteString("\n")
-	result.WriteString(strings.Join(middleLines, "\n"))
-	result.WriteString("\n")
-	result.WriteString(bottomBorder)
-
-	return result.String()
-}
-
 // MenuLine represents a single line in the theme menu (copied from cmd/theme.go)
 type MenuLine struct {
 	Type       string // "header_blank", "header_text", "header_separator", or "theme"
@@ -1504,7 +1248,7 @@ func (s *ThemeSelectionStepEnhanced) View(model *EnhancedOnboardingModel) string
 	footerHeight := 3 // Help text (1) + blank line (1) + navigation buttons (1)
 
 	// Calculate layout
-	layoutConfig := LayoutConfig{
+	layoutConfig := ui.LayoutConfig{
 		TerminalWidth:  model.width,
 		TerminalHeight: model.height,
 		HeaderHeight:   headerHeight,
@@ -1513,7 +1257,7 @@ func (s *ThemeSelectionStepEnhanced) View(model *EnhancedOnboardingModel) string
 		SeparatorWidth: 1,
 	}
 
-	layout := CalculatePanelLayout(layoutConfig)
+	layout := ui.CalculatePanelLayout(layoutConfig)
 
 	// Build left panel content (theme list)
 	leftContent := s.renderLeftPanelContent(layout.LeftWidth, layout.PanelHeight)
@@ -1526,7 +1270,7 @@ func (s *ThemeSelectionStepEnhanced) View(model *EnhancedOnboardingModel) string
 	separatorColor := lipgloss.Color(colors.Placeholders)
 	borderColor := lipgloss.Color(colors.Placeholders)
 
-	combined := renderCombinedPanels(
+	combined := ui.RenderCombinedPanels(
 		titleText,
 		layout.LeftWidth,
 		layout.RightWidth,
@@ -1764,7 +1508,7 @@ func (s *ThemeSelectionStepEnhanced) adjustScrollForSelection() *ThemeSelectionS
 		return s
 	}
 
-	layoutConfig := LayoutConfig{
+	layoutConfig := ui.LayoutConfig{
 		TerminalWidth:  s.width,
 		TerminalHeight: s.height,
 		HeaderHeight:   0,
@@ -1772,7 +1516,7 @@ func (s *ThemeSelectionStepEnhanced) adjustScrollForSelection() *ThemeSelectionS
 		MarginWidth:    2,
 		SeparatorWidth: 1,
 	}
-	layout := CalculatePanelLayout(layoutConfig)
+	layout := ui.CalculatePanelLayout(layoutConfig)
 
 	availableHeight := layout.PanelHeight - 2 - 2
 	if availableHeight < 1 {
