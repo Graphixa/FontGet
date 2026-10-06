@@ -371,29 +371,6 @@ func resolveAndValidateFonts(fontNames []string) (fontsToInstall []FontToInstall
 	return fontsToInstall, notFoundFonts
 }
 
-// setupInstallationProgressBar creates operation items for the progress bar.
-func setupInstallationProgressBar(fontsToInstall []FontToInstall) []components.OperationItem {
-	var operationItems []components.OperationItem
-	for _, fontGroup := range fontsToInstall {
-		// Group variants by font name
-		fontName := fontGroup.Fonts[0].Name
-		var variantNames []string
-		for _, font := range fontGroup.Fonts {
-			variantNames = append(variantNames, font.Variant)
-		}
-
-		operationItems = append(operationItems, components.OperationItem{
-			Name:          fontName,
-			SourceName:    fontGroup.SourceName,
-			Status:        "pending",
-			StatusMessage: "Pending",
-			Variants:      variantNames,
-			Scope:         "",
-		})
-	}
-	return operationItems
-}
-
 // handleNotFoundFonts displays not found fonts with suggestions.
 func handleNotFoundFonts(notFoundFonts []string, isDebug bool) {
 	if len(notFoundFonts) == 0 {
@@ -698,32 +675,6 @@ Use --scope to set installation location:
 		}
 		return nil
 	},
-}
-
-// processInstallResult processes and categorizes install result details (installed/skipped/failed variants)
-func processInstallResult(result *InstallResult) (installedFiles, skippedFiles, failedFiles []string) {
-	if result == nil || len(result.Details) == 0 {
-		return nil, nil, nil
-	}
-
-	installedCount := result.Success
-	skippedCount := result.Skipped
-	failedCount := result.Failed
-
-	idx := 0
-	if installedCount > 0 && idx < len(result.Details) {
-		installedFiles = result.Details[idx : idx+installedCount]
-		idx += installedCount
-	}
-	if skippedCount > 0 && idx < len(result.Details) {
-		skippedFiles = result.Details[idx : idx+skippedCount]
-		idx += skippedCount
-	}
-	if failedCount > 0 && idx < len(result.Details) {
-		failedFiles = result.Details[idx : idx+failedCount]
-	}
-
-	return installedFiles, skippedFiles, failedFiles
 }
 
 // variantLinesForVerboseProgress returns one human-readable label per manifest variant for the progress TUI
