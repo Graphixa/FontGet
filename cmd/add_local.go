@@ -58,18 +58,6 @@ func classifyAddArg(arg string) addArgTarget {
 	return addArgTarget{Raw: arg, Kind: addArgCatalog}
 }
 
-func classifyAddArgs(args []string) (local []addArgTarget, catalog []string) {
-	for _, a := range args {
-		t := classifyAddArg(a)
-		if t.Kind == addArgLocal {
-			local = append(local, t)
-		} else {
-			catalog = append(catalog, t.Raw)
-		}
-	}
-	return local, catalog
-}
-
 func localFontID(family string) string {
 	key := repo.FontKey(family)
 	if key == "" {
@@ -82,35 +70,20 @@ type localFontGroup struct {
 	FontID     string
 	FamilyName string
 	SourceName string
+	InstallSrc string
 	Candidates []platform.LocalFontCandidate
 }
 
-type localInstallOutcome struct {
-	Installed int
-	Skipped   int
-	Failed    int
+type localPrepareResult struct {
+	Groups    []localFontGroup
 	Dupes     int
 	Conflicts int
-	Errors    []string
-	Groups    int
+	Path      string
 }
 
-// installLocalPath discovers, confirms, and installs fonts from a local file/folder/zip
-// using the same progress-bar UX as catalog add.
-func installLocalPath(
-	ctx context.Context,
-	path string,
-	fontManager platform.FontManager,
-	installScope platform.InstallationScope,
-	fontDir string,
-	force bool,
-	yes bool,
-	verbose bool,
-	debug bool,
-) (*localInstallOutcome, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
+// prepareLocalInstall discovers, dedupes, and optionally confirms a local path.
+// It does not install; callers add groups to a unified progress session.
+func prepareLocalInstall(path string, installScope platform.InstallationScope, yes bool) (*localPrepareResult, error) {
 	res, err := platform.DiscoverAndDedupeLocalFonts(path)
 	if err != nil {
 		return nil, err
@@ -124,11 +97,11 @@ func installLocalPath(
 		output.GetDebug().State("FontGet backup zip comment present on %s", path)
 	}
 
-	out := &localInstallOutcome{
+	out := &localPrepareResult{
 		Dupes:     res.HashDupesSkipped + res.FaceDupesSkipped,
 		Conflicts: res.ConflictsSkipped,
+		Path:      path,
 	}
-
 	kept := res.Kept
 	if len(kept) == 0 {
 		return out, fmt.Errorf("no font files to install after deduplication")
@@ -157,160 +130,93 @@ func installLocalPath(
 		sourceName = localBackupSourceName
 		installSrc = "fontget-backup"
 	}
-
-	groups := buildLocalFontGroups(kept, sourceName)
-	out.Groups = len(groups)
-	if len(groups) == 0 {
+	out.Groups = buildLocalFontGroups(kept, sourceName, installSrc)
+	if len(out.Groups) == 0 {
 		return out, fmt.Errorf("no font files to install after deduplication")
-	}
-
-	operationItems := setupLocalInstallationProgressBar(groups)
-
-	title := OpInstallingFonts
-	if installScope == platform.MachineScope {
-		title = OpInstallingFontsAllUsers
-	}
-
-	if !output.IsVerboseOutputEnabled() {
-		fmt.Println()
-	}
-
-	cancelled := false
-	progressErr := components.RunProgressBar(
-		title,
-		operationItems,
-		verbose,
-		debug,
-		func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
-			opCtx, cancel := context.WithCancel(ctx)
-			defer cancel()
-			go func() {
-				select {
-				case <-cancelChan:
-					cancel()
-				case <-opCtx.Done():
-				}
-			}()
-
-			unlockDest, lockErr := installations.LockDestination(opCtx, fontDir)
-			if lockErr != nil {
-				return lockErr
-			}
-			defer unlockDest()
-
-			for itemIndex, group := range groups {
-				if err := opCtx.Err(); err != nil {
-					cancelled = true
-					return shared.ErrOperationCancelled
-				}
-
-				send(components.ItemUpdateMsg{
-					Index:   itemIndex,
-					Status:  "in_progress",
-					Message: InstallingFromLocalMessage(group.SourceName),
-				})
-				send(components.ProgressUpdateMsg{Percent: float64(itemIndex) / float64(len(groups)) * 100})
-
-				result, ierr := installLocalFontGroup(
-					opCtx,
-					group,
-					fontManager,
-					installScope,
-					fontDir,
-					force,
-					installSrc,
-					func(u ProgressUpdate) {
-						pct := OverallWorkPercent(itemIndex, len(groups), u)
-						if msg := ProgressActivityLabel(u, group.SourceName); msg != "" {
-							send(components.ItemUpdateMsg{
-								Index:   itemIndex,
-								Status:  "in_progress",
-								Message: msg,
-							})
-						}
-						send(components.ProgressUpdateMsg{Percent: pct})
-					},
-				)
-				if ierr != nil {
-					if IsCancelErr(ierr) {
-						cancelled = true
-						if result != nil {
-							out.Installed += result.Success
-							out.Skipped += result.Skipped
-							out.Failed += result.Failed
-							out.Errors = append(out.Errors, result.Errors...)
-						}
-						send(components.ItemUpdateMsg{
-							Index:   itemIndex,
-							Status:  InstallStatusFailed,
-							Message: "Cancelled",
-						})
-						return shared.ErrOperationCancelled
-					}
-					if result != nil {
-						out.Installed += result.Success
-						out.Skipped += result.Skipped
-						out.Failed += result.Failed
-						out.Errors = append(out.Errors, result.Errors...)
-					} else {
-						out.Failed++
-						out.Errors = append(out.Errors, ierr.Error())
-					}
-					send(components.ItemUpdateMsg{
-						Index:        itemIndex,
-						Status:       InstallStatusFailed,
-						Message:      "Operation failed",
-						ErrorMessage: ierr.Error(),
-					})
-					continue
-				}
-
-				out.Installed += result.Success
-				out.Skipped += result.Skipped
-				out.Failed += result.Failed
-				out.Errors = append(out.Errors, result.Errors...)
-
-				finalStatus := result.Status
-				var errorMsg string
-				if finalStatus == InstallStatusFailed && len(result.Errors) > 0 {
-					errorMsg = result.Errors[0]
-				}
-				scopeLabel := InstallScopeLabelUser
-				if installScope == platform.MachineScope {
-					scopeLabel = InstallScopeLabelMachine
-				}
-				var variantsWithStatus []string
-				if verbose {
-					variantsWithStatus = localVariantLines(group.Candidates)
-				}
-				send(components.ItemUpdateMsg{
-					Index:        itemIndex,
-					Status:       finalStatus,
-					Message:      "Installed",
-					ErrorMessage: errorMsg,
-					Variants:     variantsWithStatus,
-					Scope:        scopeLabel,
-				})
-				send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(itemIndex, len(groups), ProgressUpdate{Phase: installStepCompleted})})
-			}
-			return nil
-		},
-	)
-
-	if progressErr != nil {
-		if errorsIsCancel(progressErr) || cancelled {
-			return out, shared.ErrOperationCancelled
-		}
-		return out, progressErr
 	}
 	return out, nil
 }
 
-func errorsIsCancel(err error) bool {
-	return err != nil && (IsCancelErr(err) || err == shared.ErrOperationCancelled)
+// installLocalPath prepares and installs a single local path in its own progress session.
+// Used by tests; add RunE uses prepareLocalInstall inside the unified session.
+func installLocalPath(
+	ctx context.Context,
+	path string,
+	fontManager platform.FontManager,
+	installScope platform.InstallationScope,
+	fontDir string,
+	force bool,
+	yes bool,
+	verbose bool,
+	debug bool,
+) (*localInstallOutcome, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	prep, err := prepareLocalInstall(path, installScope, yes)
+	if err != nil {
+		return &localInstallOutcome{Dupes: prepDupes(prep), Conflicts: prepConflicts(prep)}, err
+	}
+	out := &localInstallOutcome{
+		Dupes:     prep.Dupes,
+		Conflicts: prep.Conflicts,
+		Groups:    len(prep.Groups),
+	}
+
+	items := make([]addWorkItem, 0, len(prep.Groups))
+	for i := range prep.Groups {
+		g := prep.Groups[i]
+		items = append(items, addWorkItem{Kind: addWorkLocal, Local: &g})
+	}
+	status, runErr := runUnifiedAddSession(ctx, items, fontManager, installScope, fontDir, force, verbose, debug, nil)
+	if status != nil {
+		out.Installed = status.Installed
+		out.Skipped = status.Skipped
+		out.Failed = status.Failed
+		out.Errors = status.Errors
+	}
+	return out, runErr
 }
 
-func buildLocalFontGroups(kept []platform.LocalFontCandidate, sourceName string) []localFontGroup {
+func prepDupes(p *localPrepareResult) int {
+	if p == nil {
+		return 0
+	}
+	return p.Dupes
+}
+
+func prepConflicts(p *localPrepareResult) int {
+	if p == nil {
+		return 0
+	}
+	return p.Conflicts
+}
+
+type localInstallOutcome struct {
+	Installed int
+	Skipped   int
+	Failed    int
+	Dupes     int
+	Conflicts int
+	Errors    []string
+	Groups    int
+}
+
+type addWorkKind int
+
+const (
+	addWorkLocal addWorkKind = iota
+	addWorkCatalog
+)
+
+// addWorkItem is one row in a unified add progress session.
+type addWorkItem struct {
+	Kind    addWorkKind
+	Local   *localFontGroup
+	Catalog *FontToInstall
+}
+
+func buildLocalFontGroups(kept []platform.LocalFontCandidate, sourceName, installSrc string) []localFontGroup {
 	groups := map[string]*localFontGroup{}
 	order := []string{}
 	for _, c := range kept {
@@ -325,6 +231,7 @@ func buildLocalFontGroups(kept []platform.LocalFontCandidate, sourceName string)
 				FontID:     id,
 				FamilyName: familyName,
 				SourceName: sourceName,
+				InstallSrc: installSrc,
 			}
 			groups[id] = g
 			order = append(order, id)
@@ -338,27 +245,47 @@ func buildLocalFontGroups(kept []platform.LocalFontCandidate, sourceName string)
 	return out
 }
 
-func setupLocalInstallationProgressBar(groups []localFontGroup) []components.OperationItem {
-	items := make([]components.OperationItem, 0, len(groups))
-	for _, g := range groups {
-		variants := make([]string, 0, len(g.Candidates))
-		for _, c := range g.Candidates {
-			if style := strings.TrimSpace(c.Style); style != "" {
-				variants = append(variants, style)
-			} else {
-				variants = append(variants, c.Basename)
+func setupUnifiedAddProgressBar(items []addWorkItem) []components.OperationItem {
+	out := make([]components.OperationItem, 0, len(items))
+	for _, it := range items {
+		switch it.Kind {
+		case addWorkLocal:
+			g := it.Local
+			variants := make([]string, 0, len(g.Candidates))
+			for _, c := range g.Candidates {
+				if style := strings.TrimSpace(c.Style); style != "" {
+					variants = append(variants, style)
+				} else {
+					variants = append(variants, c.Basename)
+				}
 			}
+			out = append(out, components.OperationItem{
+				Name:          g.FamilyName,
+				SourceName:    g.SourceName,
+				Status:        "pending",
+				StatusMessage: "Pending",
+				Variants:      variants,
+			})
+		case addWorkCatalog:
+			fg := it.Catalog
+			fontName := fg.FontName
+			if len(fg.Fonts) > 0 && fg.Fonts[0].Name != "" {
+				fontName = fg.Fonts[0].Name
+			}
+			var variantNames []string
+			for _, f := range fg.Fonts {
+				variantNames = append(variantNames, f.Variant)
+			}
+			out = append(out, components.OperationItem{
+				Name:          fontName,
+				SourceName:    fg.SourceName,
+				Status:        "pending",
+				StatusMessage: "Pending",
+				Variants:      variantNames,
+			})
 		}
-		items = append(items, components.OperationItem{
-			Name:          g.FamilyName,
-			SourceName:    g.SourceName,
-			Status:        "pending",
-			StatusMessage: "Pending",
-			Variants:      variants,
-			Scope:         "",
-		})
 	}
-	return items
+	return out
 }
 
 func localVariantLines(cands []platform.LocalFontCandidate) []string {
@@ -387,6 +314,279 @@ func InstallingFromLocalMessage(sourceName string) string {
 	return "Installing from " + sourceName + "..."
 }
 
+// runUnifiedAddSession runs one progress bar for mixed local + catalog work items.
+// staging may be nil; catalog installs create one when needed via installFont.
+func runUnifiedAddSession(
+	ctx context.Context,
+	items []addWorkItem,
+	fontManager platform.FontManager,
+	installScope platform.InstallationScope,
+	fontDir string,
+	force bool,
+	verbose bool,
+	debug bool,
+	staging *platform.OperationStaging,
+) (*InstallationStatus, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	status := &InstallationStatus{Details: make([]string, 0)}
+	if len(items) == 0 {
+		return status, nil
+	}
+
+	operationItems := setupUnifiedAddProgressBar(items)
+	title := OpInstallingFonts
+	if installScope == platform.MachineScope {
+		title = OpInstallingFontsAllUsers
+	}
+	if !output.IsVerboseOutputEnabled() {
+		fmt.Println()
+	}
+
+	suppressVerboseDownloads := components.UseInteractiveRenderer() && !debug
+	cancelled := false
+	var incompleteCancelIDs []string
+
+	progressErr := components.RunProgressBar(
+		title,
+		operationItems,
+		verbose,
+		debug,
+		func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
+			opCtx, cancel := context.WithCancel(ctx)
+			defer cancel()
+			go func() {
+				select {
+				case <-cancelChan:
+					cancel()
+				case <-opCtx.Done():
+				}
+			}()
+
+			total := len(items)
+			for itemIndex, item := range items {
+				if err := opCtx.Err(); err != nil {
+					cancelled = true
+					for j := itemIndex; j < total; j++ {
+						if items[j].Kind == addWorkCatalog && items[j].Catalog != nil {
+							incompleteCancelIDs = append(incompleteCancelIDs, items[j].Catalog.FontID)
+						}
+					}
+					return shared.ErrOperationCancelled
+				}
+
+				switch item.Kind {
+				case addWorkLocal:
+					group := item.Local
+					send(components.ItemUpdateMsg{
+						Index:   itemIndex,
+						Status:  "in_progress",
+						Message: InstallingFromLocalMessage(group.SourceName),
+					})
+					send(components.ProgressUpdateMsg{Percent: float64(itemIndex) / float64(total) * 100})
+
+					var th progressThrottle
+					onProgress := func(u ProgressUpdate) {
+						pct := OverallWorkPercent(itemIndex, total, u)
+						if !th.ShouldSend(u, pct) {
+							return
+						}
+						if msg := ProgressActivityLabel(u, group.SourceName); msg != "" {
+							send(components.ItemUpdateMsg{
+								Index:   itemIndex,
+								Status:  "in_progress",
+								Message: msg,
+							})
+						}
+						send(components.ProgressUpdateMsg{Percent: pct})
+					}
+
+					result, ierr := installLocalFontGroup(opCtx, *group, fontManager, installScope, fontDir, force, group.InstallSrc, onProgress)
+					if ierr != nil {
+						if IsCancelErr(ierr) {
+							cancelled = true
+							if result != nil {
+								status.Installed += result.Success
+								status.Skipped += result.Skipped
+								status.Failed += result.Failed
+							}
+							send(components.ItemUpdateMsg{Index: itemIndex, Status: InstallStatusFailed, Message: "Cancelled"})
+							return shared.ErrOperationCancelled
+						}
+						if result != nil {
+							status.Installed += result.Success
+							status.Skipped += result.Skipped
+							status.Failed += result.Failed
+							status.Errors = append(status.Errors, result.Errors...)
+						} else {
+							status.Failed++
+							status.Errors = append(status.Errors, ierr.Error())
+						}
+						send(components.ItemUpdateMsg{
+							Index:        itemIndex,
+							Status:       InstallStatusFailed,
+							Message:      "Operation failed",
+							ErrorMessage: ierr.Error(),
+						})
+						continue
+					}
+					status.Installed += result.Success
+					status.Skipped += result.Skipped
+					status.Failed += result.Failed
+					status.Errors = append(status.Errors, result.Errors...)
+
+					finalStatus := result.Status
+					var errorMsg string
+					if finalStatus == InstallStatusFailed && len(result.Errors) > 0 {
+						errorMsg = result.Errors[0]
+					}
+					scopeLabel := InstallScopeLabelUser
+					if installScope == platform.MachineScope {
+						scopeLabel = InstallScopeLabelMachine
+					}
+					var variantsWithStatus []string
+					if verbose {
+						variantsWithStatus = localVariantLines(group.Candidates)
+					}
+					send(components.ItemUpdateMsg{
+						Index:        itemIndex,
+						Status:       finalStatus,
+						Message:      "Installed",
+						ErrorMessage: errorMsg,
+						Variants:     variantsWithStatus,
+						Scope:        scopeLabel,
+					})
+					send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(itemIndex, total, ProgressUpdate{Phase: installStepCompleted})})
+
+				case addWorkCatalog:
+					fontGroup := item.Catalog
+					send(components.ItemUpdateMsg{
+						Index:   itemIndex,
+						Status:  "in_progress",
+						Message: DownloadFromSourceMessage(fontGroup.SourceName),
+					})
+					send(components.ProgressUpdateMsg{Percent: float64(itemIndex) / float64(total) * 100})
+
+					var th progressThrottle
+					onProgress := func(u ProgressUpdate) {
+						pct := OverallWorkPercent(itemIndex, total, u)
+						if !th.ShouldSend(u, pct) {
+							return
+						}
+						if msg := ProgressActivityLabel(u, fontGroup.SourceName); msg != "" {
+							send(components.ItemUpdateMsg{
+								Index:   itemIndex,
+								Status:  "in_progress",
+								Message: msg,
+							})
+						}
+						send(components.ProgressUpdateMsg{Percent: pct})
+					}
+
+					result, err := installFont(
+						opCtx,
+						fontGroup.Fonts,
+						fontGroup.FontID,
+						fontManager,
+						installScope,
+						force,
+						fontDir,
+						staging,
+						suppressVerboseDownloads,
+						onProgress,
+						nil,
+					)
+					if err != nil {
+						if IsCancelErr(err) {
+							cancelled = true
+							incompleteCancelIDs = append(incompleteCancelIDs, fontGroup.FontID)
+							for j := itemIndex + 1; j < total; j++ {
+								if items[j].Kind == addWorkCatalog && items[j].Catalog != nil {
+									incompleteCancelIDs = append(incompleteCancelIDs, items[j].Catalog.FontID)
+								}
+							}
+							if result != nil {
+								status.Installed += result.Success
+								status.Skipped += result.Skipped
+								status.Failed += result.Failed
+							}
+							send(components.ItemUpdateMsg{Index: itemIndex, Status: InstallStatusFailed, Message: "Cancelled"})
+							return shared.ErrOperationCancelled
+						}
+						if result != nil {
+							if result.Failed == 0 && result.Success == 0 {
+								status.Failed++
+							} else {
+								status.Failed += result.Failed
+								status.Installed += result.Success
+								status.Skipped += result.Skipped
+							}
+							status.Errors = append(status.Errors, result.Errors...)
+						} else {
+							status.Failed++
+						}
+						send(components.ItemUpdateMsg{
+							Index:        itemIndex,
+							Status:       InstallStatusFailed,
+							Message:      "Operation failed",
+							ErrorMessage: err.Error(),
+						})
+						continue
+					}
+
+					status.Installed += result.Success
+					status.Skipped += result.Skipped
+					status.Failed += result.Failed
+					status.Errors = append(status.Errors, result.Errors...)
+
+					finalStatus := result.Status
+					var errorMsg string
+					if finalStatus == InstallStatusFailed && len(result.Errors) > 0 {
+						errorMsg = result.Errors[0]
+					}
+					scopeLabel := InstallScopeLabelUser
+					if installScope == platform.MachineScope {
+						scopeLabel = InstallScopeLabelMachine
+					}
+					var variantsWithStatus []string
+					if verbose {
+						variantsWithStatus = variantLinesForVerboseProgress(fontGroup.Fonts)
+					}
+					send(components.ItemUpdateMsg{
+						Index:        itemIndex,
+						Status:       finalStatus,
+						Message:      "Installed",
+						ErrorMessage: errorMsg,
+						Variants:     variantsWithStatus,
+						Scope:        scopeLabel,
+					})
+					send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(itemIndex, total, ProgressUpdate{Phase: installStepCompleted})})
+				}
+			}
+			return nil
+		},
+	)
+
+	if progressErr != nil {
+		if errorsIsCancel(progressErr) || cancelled {
+			if err := FinishInstallationCancel(incompleteCancelIDs, string(installScope), force); err != nil {
+				return status, err
+			}
+			return status, shared.ErrOperationCancelled
+		}
+		return status, progressErr
+	}
+	if cancelled {
+		return status, shared.ErrOperationCancelled
+	}
+	return status, nil
+}
+
+func errorsIsCancel(err error) bool {
+	return err != nil && (IsCancelErr(err) || err == shared.ErrOperationCancelled)
+}
+
 func installLocalFontGroup(
 	ctx context.Context,
 	group localFontGroup,
@@ -397,6 +597,12 @@ func installLocalFontGroup(
 	installSrc string,
 	onProgress ProgressFunc,
 ) (*InstallResult, error) {
+	unlockDest, lockErr := installations.LockDestination(ctx, fontDir)
+	if lockErr != nil {
+		return buildInstallResult(InstallStatusFailed, "Failed to lock destination", 0, 0, 0, nil, nil, 0), lockErr
+	}
+	defer unlockDest()
+
 	if force {
 		existing := packageBasenamesFromRegistry(group.FontID, fontDir)
 		if len(existing) > 0 {

@@ -18,7 +18,6 @@ import (
 	"fontget/internal/shared"
 	"fontget/internal/ui"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -567,11 +566,6 @@ Use --scope to set installation location:
 			return fmt.Errorf("unable to verify system permissions: %v", err)
 		}
 
-		// Process font names from arguments
-		localTargets, catalogNames := classifyAddArgs(args)
-
-		GetLogger().Info("Processing %d local path(s) and %d catalog font(s)", len(localTargets), len(catalogNames))
-
 		// Get font directory for the specified scope
 		fontDir := fontManager.GetFontDir(installScope)
 		GetLogger().Debug("Using font directory: %s", fontDir)
@@ -584,69 +578,44 @@ Use --scope to set installation location:
 		verbose, _ := cmd.Flags().GetBool("verbose")
 		debug, _ := cmd.Flags().GetBool("debug")
 
-		localHadWork := false
-		for _, lt := range localTargets {
-			output.GetVerbose().Info("Installing from local path: %s", lt.Path)
-			localOut, localErr := installLocalPath(opCtx, lt.Path, fontManager, installScope, fontDir, force, yes, verbose, debug)
-			if localOut != nil {
-				localHadWork = true
-				showSummary := output.IsVerboseOutputEnabled() || localOut.Failed > 0 || !components.UseInteractiveRenderer()
-				output.PrintStatusReport(output.StatusReport{
-					Success:      localOut.Installed,
-					Skipped:      localOut.Skipped,
-					Failed:       localOut.Failed,
-					SuccessLabel: "Installed",
-					SkippedLabel: "Skipped",
-					FailedLabel:  "Failed",
-				}, showSummary)
-				GetLogger().Info("Local installation complete - Installed: %d, Skipped: %d, Failed: %d (path: %s)",
-					localOut.Installed, localOut.Skipped, localOut.Failed, lt.Path)
-				if localOut.Failed > 0 && localErr == nil {
-					return shared.AlreadyPrinted(&shared.FontInstallationError{
-						FailedCount: localOut.Failed,
-						TotalCount:  localOut.Installed + localOut.Skipped + localOut.Failed,
-					})
+		// Build one work list in arg order (local families + catalog fonts) for a unified progress session.
+		var workItems []addWorkItem
+		var notFoundFonts []string
+		localPaths := 0
+		catalogResolved := 0
+
+		for _, arg := range args {
+			target := classifyAddArg(arg)
+			if target.Kind == addArgLocal {
+				output.GetVerbose().Info("Preparing local path: %s", target.Path)
+				prep, prepErr := prepareLocalInstall(target.Path, installScope, yes)
+				if prepErr != nil {
+					return prepErr
 				}
-			}
-			if localErr != nil {
-				if errors.Is(localErr, shared.ErrOperationCancelled) || IsCancelErr(localErr) {
-					return localErr
+				localPaths++
+				for i := range prep.Groups {
+					g := prep.Groups[i]
+					workItems = append(workItems, addWorkItem{Kind: addWorkLocal, Local: &g})
 				}
-				return localErr
+				continue
+			}
+
+			names := cmdutils.ParseFontNames([]string{target.Raw})
+			fonts, nf := resolveAndValidateFonts(names)
+			if fonts == nil {
+				return shared.AlreadyPrinted(fmt.Errorf("multiple fonts match; specify a font ID"))
+			}
+			notFoundFonts = append(notFoundFonts, nf...)
+			for i := range fonts {
+				f := fonts[i]
+				workItems = append(workItems, addWorkItem{Kind: addWorkCatalog, Catalog: &f})
+				catalogResolved++
 			}
 		}
 
-		if len(catalogNames) == 0 {
-			if !localHadWork {
-				fmt.Printf("%s\n", ui.ErrorText.Render("No fonts specified or found."))
-				return shared.AlreadyPrinted(fmt.Errorf("no fonts specified or found"))
-			}
-			return nil
-		}
+		GetLogger().Info("Unified add session: %d item(s) (%d local path(s), %d catalog font(s))", len(workItems), localPaths, catalogResolved)
 
-		fontNames := cmdutils.ParseFontNames(catalogNames)
-
-		GetLogger().Info("Processing %d catalog font(s): %v", len(fontNames), fontNames)
-
-		// Get all available fonts for suggestions (use cached version for speed)
-		allFonts := repo.GetAllFontsCached()
-		if len(allFonts) == 0 {
-			GetLogger().Warn("Could not get list of available fonts for suggestions")
-			// Note: Suppressed to avoid TUI interference
-			// fmt.Println(ui.RenderError("Warning: Could not get list of available fonts for suggestions"))
-		}
-
-		// Collect all fonts first
-		fontsToInstall, notFoundFonts := resolveAndValidateFonts(fontNames)
-
-		// Check for multiple matches (would have been handled in resolveAndValidateFonts)
-		if fontsToInstall == nil {
-			return shared.AlreadyPrinted(fmt.Errorf("multiple fonts match; specify a font ID"))
-		}
-
-		// If no fonts to install, show not found message with suggestions and exit
-		// Do this BEFORE verbose output to avoid extra blank lines
-		if len(fontsToInstall) == 0 {
+		if len(workItems) == 0 {
 			if len(notFoundFonts) > 0 {
 				if IsDebug() {
 					output.GetDebug().Error("No fonts found to install. The following font(s) were not found in any source:")
@@ -654,12 +623,6 @@ Use --scope to set installation location:
 						output.GetDebug().Error(" - %s", fontName)
 					}
 				} else {
-					defer func() {
-						if r := recover(); r != nil {
-							fmt.Fprintf(os.Stdout, "Font(s) not found: %v\n", notFoundFonts)
-							fmt.Fprintf(os.Stdout, "Try using the search command to find available fonts.\n")
-						}
-					}()
 					os.Stdout.Sync()
 					showGroupedFontNotFoundWithSuggestions(notFoundFonts)
 					os.Stdout.Sync()
@@ -670,29 +633,16 @@ Use --scope to set installation location:
 			return shared.AlreadyPrinted(fmt.Errorf("no fonts specified or found"))
 		}
 
-		// Verbose-level information for users - show operational details before progress bar
-		// Format scope label for display
 		scopeDisplay := scope
 		if scope == "" {
 			scopeDisplay = "user"
 		}
 		output.GetVerbose().Info("Scope: %s", scopeDisplay)
 		output.GetVerbose().Info("Force mode: %v", force)
-		output.GetVerbose().Info("Installing %d font(s)", len(fontNames))
-		// Verbose section ends with blank line per spacing framework (only if verbose was shown)
+		output.GetVerbose().Info("Installing %d item(s)", len(workItems))
 		if output.IsVerboseOutputEnabled() {
 			fmt.Println()
 		}
-
-		// Initialize status tracking
-		status := &InstallationStatus{
-			Details: make([]string, 0),
-		}
-
-		// Track detailed operations for each font (for verbose mode)
-		var operationDetails []FontOperationDetails
-
-		// No need for separate header - the progress bar will show the title
 
 		staging, err := platform.NewOperationStaging()
 		if err != nil {
@@ -704,197 +654,28 @@ Use --scope to set installation location:
 			}
 		}()
 
-		packagesFailed := 0
-		cancelled := false
-		var incompleteCancelIDs []string
-
-		operationItems := setupInstallationProgressBar(fontsToInstall)
-
-		title := OpInstallingFonts
-		if installScope == platform.MachineScope {
-			title = OpInstallingFontsAllUsers
-		}
-
-		if !output.IsVerboseOutputEnabled() {
-			fmt.Println()
-		}
-
-		suppressVerboseDownloads := components.UseInteractiveRenderer() && !IsDebug()
-
-		progressErr := components.RunProgressBar(
-			title,
-			operationItems,
-			verbose,
-			debug,
-			func(send func(msg tea.Msg), cancelChan <-chan struct{}) error {
-				ctx, cancel := context.WithCancel(opCtx)
-				defer cancel()
-				go func() {
-					select {
-					case <-cancelChan:
-						cancel()
-					case <-ctx.Done():
-					}
-				}()
-
-				for itemIndex, fontGroup := range fontsToInstall {
-					if err := ctx.Err(); err != nil {
-						cancelled = true
-						for j := itemIndex; j < len(fontsToInstall); j++ {
-							incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
-						}
-						return shared.ErrOperationCancelled
-					}
-
-					send(components.ItemUpdateMsg{
-						Index:   itemIndex,
-						Status:  "in_progress",
-						Message: DownloadFromSourceMessage(fontGroup.SourceName),
-					})
-
-					percent := float64(itemIndex) / float64(len(fontsToInstall)) * 100
-					send(components.ProgressUpdateMsg{Percent: percent})
-
-					var th progressThrottle
-					onProgress := func(u ProgressUpdate) {
-						pct := OverallWorkPercent(itemIndex, len(fontsToInstall), u)
-						if !th.ShouldSend(u, pct) {
-							return
-						}
-						if msg := ProgressActivityLabel(u, fontGroup.SourceName); msg != "" {
-							send(components.ItemUpdateMsg{
-								Index:   itemIndex,
-								Status:  "in_progress",
-								Message: msg,
-							})
-						}
-						send(components.ProgressUpdateMsg{Percent: pct})
-					}
-					result, err := installFont(
-						ctx,
-						fontGroup.Fonts,
-						fontGroup.FontID,
-						fontManager,
-						installScope,
-						force,
-						fontDir,
-						staging,
-						suppressVerboseDownloads,
-						onProgress,
-						nil,
-					)
-
-					if err != nil {
-						isCancel := IsCancelErr(err)
-						if isCancel {
-							cancelled = true
-							incompleteCancelIDs = append(incompleteCancelIDs, fontGroup.FontID)
-							for j := itemIndex + 1; j < len(fontsToInstall); j++ {
-								incompleteCancelIDs = append(incompleteCancelIDs, fontsToInstall[j].FontID)
-							}
-							if result != nil {
-								status.Installed += result.Success
-								status.Skipped += result.Skipped
-								status.Failed += result.Failed
-							}
-							send(components.ItemUpdateMsg{
-								Index:   itemIndex,
-								Status:  InstallStatusFailed,
-								Message: "Cancelled",
-							})
-							return shared.ErrOperationCancelled
-						}
-						packagesFailed++
-						if result != nil {
-							if result.Status != InstallStatusFailed {
-								result.Status = InstallStatusFailed
-							}
-							if result.Failed == 0 && result.Success == 0 {
-								status.Failed++
-							} else {
-								status.Failed += result.Failed
-								status.Installed += result.Success
-								status.Skipped += result.Skipped
-							}
-							status.Errors = append(status.Errors, result.Errors...)
-						} else {
-							status.Failed++
-						}
-						GetLogger().Error("Failed to process font %s: %v", fontGroup.FontName, err)
-						errorMsg := err.Error()
-						send(components.ItemUpdateMsg{
-							Index:        itemIndex,
-							Status:       InstallStatusFailed,
-							Message:      "Operation failed",
-							ErrorMessage: errorMsg,
-						})
-						continue
-					}
-
-					if result.Status == InstallStatusFailed {
-						packagesFailed++
-					}
-
-					status.Installed += result.Success
-					status.Skipped += result.Skipped
-					status.Failed += result.Failed
-					status.Errors = append(status.Errors, result.Errors...)
-
-					installedFiles, skippedFiles, failedFiles := processInstallResult(result)
-					fontDetails := FontOperationDetails{
-						FontName:       fontGroup.FontName,
-						SourceName:     fontGroup.SourceName,
-						TotalVariants:  len(fontGroup.Fonts),
-						InstalledFiles: installedFiles,
-						SkippedFiles:   skippedFiles,
-						FailedFiles:    failedFiles,
-						DownloadSize:   result.DownloadSize,
-					}
-					operationDetails = append(operationDetails, fontDetails)
-
-					finalStatus := result.Status
-					var variantsWithStatus []string
-					if verbose {
-						variantsWithStatus = variantLinesForVerboseProgress(fontGroup.Fonts)
-					}
-					var errorMsg string
-					if finalStatus == InstallStatusFailed && len(result.Errors) > 0 {
-						errorMsg = result.Errors[0]
-					}
-					scopeLabel := InstallScopeLabelUser
-					if installScope == platform.MachineScope {
-						scopeLabel = InstallScopeLabelMachine
-					}
-
-					send(components.ItemUpdateMsg{
-						Index:        itemIndex,
-						Status:       finalStatus,
-						Message:      "Installed",
-						ErrorMessage: errorMsg,
-						Variants:     variantsWithStatus,
-						Scope:        scopeLabel,
-					})
-
-					send(components.ProgressUpdateMsg{Percent: OverallWorkPercent(itemIndex, len(fontsToInstall), ProgressUpdate{Phase: installStepCompleted})})
-				}
-
-				return nil
-			},
-		)
-
+		status, progressErr := runUnifiedAddSession(opCtx, workItems, fontManager, installScope, fontDir, force, verbose, debug, staging)
 		if progressErr != nil {
-			if errors.Is(progressErr, shared.ErrOperationCancelled) || cancelled {
-				if err := FinishInstallationCancel(incompleteCancelIDs, string(installScope), force); err != nil {
-					return err
-				}
-				// Cancellation after all requested work finished — report completion below.
+			if errors.Is(progressErr, shared.ErrOperationCancelled) || IsCancelErr(progressErr) {
+				// Cancellation helper already ran inside runUnifiedAddSession when needed.
 			} else {
 				GetLogger().Error("Failed to install fonts: %v", progressErr)
 				return progressErr
 			}
 		}
+		if status == nil {
+			status = &InstallationStatus{}
+		}
 
 		handleNotFoundFonts(notFoundFonts, IsDebug())
+
+		packagesFailed := 0
+		if status.Failed > 0 {
+			packagesFailed = status.Failed
+		}
+		if len(notFoundFonts) > 0 {
+			packagesFailed++
+		}
 
 		showSummary := output.IsVerboseOutputEnabled() || packagesFailed > 0 || status.Failed > 0 || len(notFoundFonts) > 0 || !components.UseInteractiveRenderer()
 		output.PrintStatusReport(output.StatusReport{
@@ -909,13 +690,10 @@ Use --scope to set installation location:
 		GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d",
 			status.Installed, status.Skipped, status.Failed)
 
-		if len(notFoundFonts) > 0 {
-			packagesFailed++
-		}
 		if packagesFailed > 0 || status.Failed > 0 {
 			return shared.AlreadyPrinted(&shared.FontInstallationError{
 				FailedCount: packagesFailed,
-				TotalCount:  len(fontsToInstall) + len(notFoundFonts),
+				TotalCount:  len(workItems) + len(notFoundFonts),
 			})
 		}
 		return nil

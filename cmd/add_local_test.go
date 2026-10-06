@@ -260,6 +260,47 @@ func TestInstallLocalPath_LargeBatchRequiresYes(t *testing.T) {
 	}
 }
 
+func TestRunUnifiedAddSession_MixedLocalItemsOneBar(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	fm := &copyFontManager{dir: fontDir}
+
+	a := filepath.Join(t.TempDir(), "Alpha-Regular.ttf")
+	b := filepath.Join(t.TempDir(), "Beta-Regular.ttf")
+	writeLocalTTF(t, a, "Alpha", "Regular")
+	writeLocalTTF(t, b, "Beta", "Regular")
+
+	prepA, err := prepareLocalInstall(a, platform.UserScope, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	prepB, err := prepareLocalInstall(b, platform.UserScope, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gA := prepA.Groups[0]
+	gB := prepB.Groups[0]
+	items := []addWorkItem{
+		{Kind: addWorkLocal, Local: &gA},
+		{Kind: addWorkLocal, Local: &gB},
+	}
+
+	status, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, false, false, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Installed != 2 {
+		t.Fatalf("installed=%d status=%+v", status.Installed, status)
+	}
+	if _, err := os.Stat(filepath.Join(fontDir, "Alpha-Regular.ttf")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(fontDir, "Beta-Regular.ttf")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestInstallDownloadedFonts_DeleteSourcesFalse(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
