@@ -468,12 +468,15 @@ func showMultipleMatchesAndExit(fontName string, matches []repo.FontMatch) {
 }
 
 var addCmd = &cobra.Command{
-	Use:           "add <font-id> [<font-id2> <font-id3> ...]",
+	Use:           "add <font-id|path> [<font-id|path> ...]",
 	Aliases:       []string{"install"},
-	Short:         "Install fonts from configured sources",
+	Short:         "Install fonts from sources or local files",
 	SilenceUsage:  true,
 	SilenceErrors: true,
-	Long: `Install fonts by name or Font ID (e.g. "Roboto", "google.roboto").
+	Long: `Install fonts by name, Font ID, or local path.
+
+Local paths may be a font file (.ttf/.otf/.ttc/.otc), a folder of fonts,
+or a zip archive (including FontGet backups from 'fontget backup').
 
 Use --scope to set installation location:
   user (default)   Current user
@@ -483,14 +486,17 @@ Use --scope to set installation location:
   fontget add "google.roboto"
   fontget add "google.roboto" "nerd.hack"
   fontget add "google.open-sans" -s machine
-  fontget add "roboto" --force`,
+  fontget add "roboto" --force
+  fontget add ./MyFonts
+  fontget add fontget-backup-2026-10-05.zip
+  fontget add ./OpenSans-Regular.ttf`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Only handle empty query case
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			fmt.Printf("%s\n", ui.RenderError("A font ID is required"))
+			fmt.Printf("%s\n", ui.RenderError("A font ID or local path is required"))
 			fmt.Printf("%s\n", ui.Text.Render("Use 'fontget add --help' for more information."))
 			fmt.Println()
-			return shared.AlreadyPrinted(fmt.Errorf("a font ID is required"))
+			return shared.AlreadyPrinted(fmt.Errorf("a font ID or local path is required"))
 		}
 		return nil
 	},
@@ -508,7 +514,7 @@ Use --scope to set installation location:
 
 		// Double check args to prevent panic
 		if len(args) == 0 || strings.TrimSpace(args[0]) == "" {
-			return shared.AlreadyPrinted(fmt.Errorf("a font ID is required"))
+			return shared.AlreadyPrinted(fmt.Errorf("a font ID or local path is required"))
 		}
 
 		// Create font manager
@@ -520,9 +526,10 @@ Use --scope to set installation location:
 		// Get scope from flag
 		scope, _ := cmd.Flags().GetString("scope")
 		force, _ := cmd.Flags().GetBool("force")
+		yes, _ := cmd.Flags().GetBool("yes")
 
 		// Log installation parameters (always log to file)
-		GetLogger().Info("Installation parameters - Scope: %s, Force: %v", scope, force)
+		GetLogger().Info("Installation parameters - Scope: %s, Force: %v, Yes: %v", scope, force, yes)
 
 		// Debug-level information for developers
 		// Note: Suppressed to avoid TUI interference
@@ -561,13 +568,65 @@ Use --scope to set installation location:
 		}
 
 		// Process font names from arguments
-		fontNames := cmdutils.ParseFontNames(args)
+		localTargets, catalogNames := classifyAddArgs(args)
 
-		GetLogger().Info("Processing %d font(s): %v", len(fontNames), fontNames)
+		GetLogger().Info("Processing %d local path(s) and %d catalog font(s)", len(localTargets), len(catalogNames))
 
 		// Get font directory for the specified scope
 		fontDir := fontManager.GetFontDir(installScope)
 		GetLogger().Debug("Using font directory: %s", fontDir)
+
+		opCtx := cmd.Context()
+		if opCtx == nil {
+			opCtx = context.Background()
+		}
+
+		verbose, _ := cmd.Flags().GetBool("verbose")
+		debug, _ := cmd.Flags().GetBool("debug")
+
+		localHadWork := false
+		for _, lt := range localTargets {
+			output.GetVerbose().Info("Installing from local path: %s", lt.Path)
+			localOut, localErr := installLocalPath(opCtx, lt.Path, fontManager, installScope, fontDir, force, yes, verbose, debug)
+			if localOut != nil {
+				localHadWork = true
+				showSummary := output.IsVerboseOutputEnabled() || localOut.Failed > 0 || !components.UseInteractiveRenderer()
+				output.PrintStatusReport(output.StatusReport{
+					Success:      localOut.Installed,
+					Skipped:      localOut.Skipped,
+					Failed:       localOut.Failed,
+					SuccessLabel: "Installed",
+					SkippedLabel: "Skipped",
+					FailedLabel:  "Failed",
+				}, showSummary)
+				GetLogger().Info("Local installation complete - Installed: %d, Skipped: %d, Failed: %d (path: %s)",
+					localOut.Installed, localOut.Skipped, localOut.Failed, lt.Path)
+				if localOut.Failed > 0 && localErr == nil {
+					return shared.AlreadyPrinted(&shared.FontInstallationError{
+						FailedCount: localOut.Failed,
+						TotalCount:  localOut.Installed + localOut.Skipped + localOut.Failed,
+					})
+				}
+			}
+			if localErr != nil {
+				if errors.Is(localErr, shared.ErrOperationCancelled) || IsCancelErr(localErr) {
+					return localErr
+				}
+				return localErr
+			}
+		}
+
+		if len(catalogNames) == 0 {
+			if !localHadWork {
+				fmt.Printf("%s\n", ui.ErrorText.Render("No fonts specified or found."))
+				return shared.AlreadyPrinted(fmt.Errorf("no fonts specified or found"))
+			}
+			return nil
+		}
+
+		fontNames := cmdutils.ParseFontNames(catalogNames)
+
+		GetLogger().Info("Processing %d catalog font(s): %v", len(fontNames), fontNames)
 
 		// Get all available fonts for suggestions (use cached version for speed)
 		allFonts := repo.GetAllFontsCached()
@@ -584,10 +643,6 @@ Use --scope to set installation location:
 		if fontsToInstall == nil {
 			return shared.AlreadyPrinted(fmt.Errorf("multiple fonts match; specify a font ID"))
 		}
-
-		// Check if flags are set
-		verbose, _ := cmd.Flags().GetBool("verbose")
-		debug, _ := cmd.Flags().GetBool("debug")
 
 		// If no fonts to install, show not found message with suggestions and exit
 		// Do this BEFORE verbose output to avoid extra blank lines
@@ -648,11 +703,6 @@ Use --scope to set installation location:
 				output.GetDebug().State("Failed to cleanup operation staging: %v", cleanupErr)
 			}
 		}()
-
-		opCtx := cmd.Context()
-		if opCtx == nil {
-			opCtx = context.Background()
-		}
 
 		packagesFailed := 0
 		cancelled := false
@@ -1059,7 +1109,7 @@ func downloadFontVariants(ctx context.Context, fontFiles []repo.FontFile, stagin
 // installDownloadedFonts installs downloaded font files to system.
 // Cancellation stops before the next file after finishing the current file's place/register/track steps.
 // Successfully completed files are kept; package-wide rollback is not performed.
-func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress ProgressFunc, tc *installTestControl, track *installTracker) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
+func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager platform.FontManager, installScope platform.InstallationScope, fontDir string, force bool, onProgress ProgressFunc, tc *installTestControl, track *installTracker, deleteSources bool) (installed, skipped, failed int, details []string, errs []string, downloadSize int64, mutations []platform.FileMutation, err error) {
 	start := time.Now()
 	var installedFiles []string
 	var skippedFiles []string
@@ -1084,6 +1134,12 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 			return 0, 0, 0, nil, []string{recErr.Error()}, 0, nil, recErr
 		}
 		present = retained
+	}
+
+	removeSource := func(p string) {
+		if deleteSources {
+			_ = os.Remove(p)
+		}
 	}
 
 	batchOpts := &platform.InstallFontOptions{SkipPostInstallCacheRefresh: true}
@@ -1118,7 +1174,7 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 			if _, statErr := os.Stat(expectedPath); statErr == nil {
 				output.GetDebug().State("Font already installed, skipping: %s", fontDisplayName)
 				skipped++
-				_ = os.Remove(fontPath)
+				removeSource(fontPath)
 				skippedFiles = append(skippedFiles, fontDisplayName)
 				present = append(present, fontDisplayName)
 				if track != nil {
@@ -1147,7 +1203,7 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		installErr := fontManager.InstallFont(fontPath, installScope, force, batchOpts)
 
 		if installErr != nil {
-			_ = os.Remove(fontPath)
+			removeSource(fontPath)
 			if mut.DestPath != "" {
 				_ = platform.RollbackMutation(mut)
 			}
@@ -1166,7 +1222,7 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		installedPath := filepath.Join(fontDir, fontDisplayName)
 		if _, statErr := os.Stat(installedPath); statErr == nil {
 			if _, metaErr := platform.ExtractFontMetadata(installedPath); metaErr != nil {
-				_ = os.Remove(fontPath)
+				removeSource(fontPath)
 				_ = platform.RollbackMutation(mut)
 				failed++
 				errorMsg := makeUserFriendlyError(fontDisplayName, fmt.Errorf("installed file is not a valid font: %w", metaErr))
@@ -1182,7 +1238,7 @@ func installDownloadedFonts(ctx context.Context, fontPaths []string, fontManager
 		}
 
 		output.GetDebug().State("Successfully installed font: %s", fontDisplayName)
-		_ = os.Remove(fontPath)
+		removeSource(fontPath)
 		installed++
 		installedFiles = append(installedFiles, fontDisplayName)
 		present = append(present, fontDisplayName)
@@ -1418,7 +1474,7 @@ func installFont(
 	}
 
 	installed, skipped, failed, details, instErrs, downloadSize, _, installErr := installDownloadedFonts(
-		ctx, allFontPaths, fontManager, installScope, fontDir, force, onProgress, tc, track)
+		ctx, allFontPaths, fontManager, installScope, fontDir, force, onProgress, tc, track, true)
 
 	if installErr != nil {
 		status := InstallStatusFailed
@@ -1587,4 +1643,5 @@ func init() {
 	rootCmd.AddCommand(addCmd)
 	addCmd.Flags().StringP("scope", "s", "", "Installation scope (user or machine)")
 	addCmd.Flags().BoolP("force", "f", false, "Reinstall even if already installed")
+	addCmd.Flags().BoolP("yes", "y", false, "Skip confirmation for large local installs")
 }

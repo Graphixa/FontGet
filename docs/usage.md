@@ -9,7 +9,7 @@ This document provides a comprehensive overview of all FontGet commands, their p
 | [Help](#help) | Show all FontGet commands | `fontget help` |
 | [Search](#search) | Search for fonts across sources | `fontget search "roboto"` |
 | [Browse](#browse) | Browse the font catalog interactively in the terminal | `fontget browse` |
-| [Add](#add) | Install a font from available sources | `fontget add "google.roboto"` |
+| [Add](#add) | Install fonts from sources or local files/folders/zips | `fontget add "google.roboto"` |
 | [Remove](#remove) | Uninstall fonts from the system | `fontget remove "google.roboto"` |
 | [List](#list) | List installed fonts on the system | `fontget list` |
 | [Info](#info) | Show detailed info about a font | `fontget info "google.roboto"` |
@@ -95,12 +95,18 @@ fontget browse --force
 ### Purpose
 Install fonts from configured sources. You can install one or multiple fonts in a single command.
 
+Fonts can also be installed from a local font file, folder, or zip archive (including FontGet backups).
+
 ### Flags
 - `--scope, -s` - Installation scope: `user` (default) or `machine` (admin required)
 - `--force, -f` - Overwrite existing fonts
+- `--yes, -y` - Skip confirmation when installing a large local folder/zip (50+ fonts)
 
 ### Notes
 - Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
+- Local paths: a `.ttf`/`.otf`/`.ttc`/`.otc` file, a folder of fonts, or a `.zip` (including `fontget backup` archives).
+- Local installs deduplicate identical files (including leftover zips next to extracts) and skip same-filename conflicts when SFNT metadata differs.
+- Reinstall a backup with `fontget add my-backup.zip` (no separate restore command).
 - Names with spaces must be quoted: "Open Sans".
 - You can pass multiple font names or IDs in one command.
 - **Scope (`--scope`):** By default, fonts are installed for your user only. With `sudo` or from an elevated terminal, FontGet will install fonts system-wide unless you add `--scope user`. Use `--scope machine` to specifically install fonts system-wide (so long as you have the write permissions).
@@ -121,6 +127,15 @@ fontget add "roboto" --force
 
 # User scope only (e.g. you used sudo but want fonts under your account, not system-wide)
 sudo fontget add "roboto" --scope user
+
+# Install from a local font file
+fontget add ./OpenSans-Regular.ttf
+
+# Install all fonts within folder
+fontget add ./MyFonts
+
+# Reinstall fonts from a FontGet backup zip
+fontget add fontget-backup-2026-10-05.zip
 ```
 
 ## Remove
@@ -409,6 +424,7 @@ Backup installed font files to a zip archive organized by source and family name
 - Fonts are deduplicated across scopes
 - System fonts are always excluded
 - Prompts before overwriting existing backup files (unless `--force` is used)
+- Archives are marked with a zip comment (`FontGet backup;format=1`); reinstall with `fontget add <backup.zip>`
 
 ### Usage Example
 ```bash
@@ -545,7 +561,7 @@ fontget completion powershell --install
 
 | Command / Subcommand | Purpose | Flags |
 |---------------------|---------|-------|
-| `add` | Install fonts | `--scope, -s`, `--force, -f` |
+| `add` | Install fonts | `--scope, -s`, `--force, -f`, `--yes, -y` |
 | `browse` | Interactive font browser | `--scope, -s`, `--force, -f` |
 | `search` | Find fonts | `--category, -c`, `--source, -s` |
 | `list` | Show installed fonts | `--scope, -s`, `--type, -t`, `--expand, -x`, `--fontget-installed`, `[query]` |

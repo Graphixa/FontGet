@@ -440,6 +440,10 @@ func createBackupZipArchive(sourceFamilyMap map[string]map[string][]fontFileInfo
 	}()
 
 	zipWriter = zip.NewWriter(zipFile)
+	if err := zipWriter.SetComment(shared.BackupZipComment); err != nil {
+		GetLogger().Error("Failed to set backup zip comment: %v", err)
+		return nil, fmt.Errorf("unable to mark backup archive: %w", err)
+	}
 
 	// Sort sources and families for consistent processing
 	sourceNames := make([]string, 0, len(sourceFamilyMap))

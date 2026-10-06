@@ -31,7 +31,7 @@ func TestAddMissingFontIDExitNonZero(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "font ID is required") {
+	if !strings.Contains(err.Error(), "font ID or local path is required") {
 		t.Fatalf("unexpected err: %v", err)
 	}
 }
@@ -215,7 +215,7 @@ func TestInstallKeepsCompletedFileAfterInjectedFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	installed, _, _, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 1}, nil)
+	installed, _, _, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 1}, nil, true)
 	if err == nil {
 		t.Fatal("expected injected failure")
 	}
@@ -285,7 +285,7 @@ func TestInstallKeepsCompletedFilesAfterLaterInjectedFailure(t *testing.T) {
 	if err := os.WriteFile(pathB, testutil.MinimalTTF("Beta", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	installed, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 2}, nil)
+	installed, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failAfterMutations: 2}, nil, true)
 	if err == nil {
 		t.Fatal("expected injected failure")
 	}
@@ -311,7 +311,7 @@ func TestInstallRegisterFailRollsBack(t *testing.T) {
 	if err := os.WriteFile(src, testutil.MinimalTTF("Face", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{src}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failRegister: true}, nil)
+	_, _, _, _, _, _, mutations, err := installDownloadedFonts(context.Background(), []string{src}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failRegister: true}, nil, true)
 	if err == nil {
 		t.Fatal("expected register failure")
 	}

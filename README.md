@@ -173,7 +173,7 @@ For a full list of commands refer to the [📖 Command Documentation](docs/usage
 | `help` | Show all fontget commands | `fontget help` |
 | `search` | Search for fonts across sources | `fontget search "roboto"` |
 | `browse` | Browse the font catalog interactively | `fontget browse` |
-| `add` | Install a font from available sources | `fontget add "google.roboto"` |
+| `add` | Install fonts from sources or local files/folders/zips | `fontget add "google.roboto"` |
 | `remove` | Uninstall fonts from the system | `fontget remove "google.roboto"` |
 | `list` | List installed fonts on the system | `fontget list` |
 | `info` | Show detailed info about a font | `fontget info "google.roboto"` |

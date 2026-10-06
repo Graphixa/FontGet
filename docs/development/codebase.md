@@ -97,6 +97,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 **Functionality**:
 - Installs fonts from enabled built-in sources (see `internal/sources` defaults) and custom sources
 - Supports both font names (e.g., "Roboto") and Font IDs (e.g., "google.roboto")
+- **Local install**: also accepts a font file, folder, or zip (including FontGet backups); see `add_local.go`
 - Handles font search and fuzzy matching
 - Manages font installation with progress tracking
 - Supports different installation scopes (user/system)
@@ -104,24 +105,27 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - Uses in-command types and helpers (`FontOperationDetails`, `installFont`, progress integration) together with shared internal packages for consistent behavior
 - **Architecture**: Installation orchestration lives in this file and `internal/*` packages; there are no `cmd/operations.go` or `cmd/handlers.go` sources
 - **Pre-installation Check**: Checks if fonts are already installed before downloading to save bandwidth and time
-- **Installation registry**: After a fully successful install, writes provenance to **`~/.fontget/installation_registry.json`** via **`internal/installations.RecordInstallation`** (grouped families/files, optional **`installation_source`** from cached manifest lookup)
+- **Installation registry**: After a fully successful install, writes provenance to **`~/.fontget/installation_registry.json`** via **`internal/installations.RecordInstallation`** (grouped families/files, optional **`installation_source`** from cached manifest lookup). Local installs use Font IDs `local.<family>` with source `local` or `fontget-backup`.
 
 **Key Functions**:
-- `addCmd.RunE`: Main command execution
+- `addCmd.RunE`: Main command execution (classifies local vs catalog args)
 - `installFontsInDebugMode`: Debug mode installation (plain text output)
 - `installFont`: Core font installation logic (includes pre-download check for already-installed fonts)
+- `installDownloadedFonts`: Shared per-file install loop (`deleteSources` protects user paths for local adds)
 - `getSourceName`: Source name resolution
 - `showFontNotFoundWithSuggestions`: Error handling with suggestions
+
+**Related**: `add_local.go` — `classifyAddArg`, `installLocalPath`, local confirm/`--yes`
 
 **Interfaces**:
 - Uses `internal/cmdutils` for CLI helpers (manifest checks, elevation, file existence, argument handling)
 - Uses `internal/repo` for font data
 - Uses `internal/installations` for **`installation_registry.json`** (record after successful install)
-- Uses `internal/platform` for OS-specific operations
+- Uses `internal/platform` for OS-specific operations and local discover/dedupe (`local_candidates.go`)
 - Uses `internal/output` for verbose/debug output
 - Uses `internal/ui` for user interface styling and spinners
 - Uses `internal/components` for progress bar and operation UI
-- Uses `internal/shared` for shared utilities (matching, formatting, errors)
+- Uses `internal/shared` for shared utilities (matching, formatting, errors, backup zip comment)
 
 **Status**: ✅ Active - Core functionality
 
@@ -267,6 +271,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - Uses progress bar for backup operation with smooth per-file progress updates
 - **Date-based Filenames**: Default filename format is `font-backup-YYYY-MM-DD.zip` (e.g., `font-backup-2024-01-15.zip`)
 - **Overwrite Confirmation**: Prompts user before overwriting existing backup files
+- **Zip comment marker**: Writes `FontGet backup;format=1` (`shared.BackupZipComment`) so `fontget add` can detect FontGet backups
 
 **Key Functions**:
 - `backupCmd.RunE`: Main backup execution
@@ -291,11 +296,10 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - Uses `internal/repo` for font matching and repository access
 - Uses `internal/components` for progress bar and confirmation dialogs
 - Uses `internal/ui` for user interface styling
-- Uses `internal/shared` for protected font checking
+- Uses `internal/shared` for protected font checking and backup zip comment constant
 
 **Status**: ✅ Active - Core functionality
 
-### `export.go`
 **Purpose**: Font export command
 **Functionality**:
 - Exports installed fonts to a JSON manifest file

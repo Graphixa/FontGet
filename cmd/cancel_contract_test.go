@@ -59,7 +59,7 @@ func TestInstallCancelKeepsCompletedFileAndRecordsIncomplete(t *testing.T) {
 	}
 
 	track := newInstallTracker("test.cancel", nil, platform.UserScope, fontDir, []string{"Alpha-Regular.ttf", "Beta-Regular.ttf"})
-	installed, _, _, _, _, _, _, err := installDownloadedFonts(ctx, []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, nil, track)
+	installed, _, _, _, _, _, _, err := installDownloadedFonts(ctx, []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, nil, track, true)
 	if err == nil {
 		t.Fatal("expected cancel error")
 	}
@@ -278,7 +278,7 @@ func TestTrackingFailureStopsBeforeNextFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	track := newInstallTracker("test.trackfail", nil, platform.UserScope, fontDir, []string{"Alpha-Regular.ttf", "Beta-Regular.ttf"})
-	installed, _, _, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failProvenance: true}, track)
+	installed, _, _, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB}, fm, platform.UserScope, fontDir, false, nil, &installTestControl{failProvenance: true}, track, true)
 	if err == nil {
 		t.Fatal("expected tracking failure")
 	}
@@ -342,7 +342,7 @@ func TestInstallRetryPreservesRetainedInventory(t *testing.T) {
 		afterTrackedSkip: cancel, // fire only after A's skip+persist; B must not start
 	}
 	_, skipped, _, _, _, _, _, err := installDownloadedFonts(
-		ctx, []string{stageA, stageB, stageC}, fm, platform.UserScope, fontDir, false, nil, tc, track)
+		ctx, []string{stageA, stageB, stageC}, fm, platform.UserScope, fontDir, false, nil, tc, track, true)
 	if err == nil {
 		t.Fatal("expected cancellation after skipping A")
 	}
@@ -461,7 +461,7 @@ func TestInstallRetryReconcilesExternallyDeletedTrackedFile(t *testing.T) {
 
 	fm := &copyFontManager{dir: fontDir}
 	track := newInstallTracker("test.ext", nil, platform.UserScope, fontDir, []string{"Alpha-Regular.ttf", "Beta-Regular.ttf", "Gamma-Regular.ttf"})
-	installed, skipped, failed, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB, pathC}, fm, platform.UserScope, fontDir, false, nil, nil, track)
+	installed, skipped, failed, _, _, _, _, err := installDownloadedFonts(context.Background(), []string{pathA, pathB, pathC}, fm, platform.UserScope, fontDir, false, nil, nil, track, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -497,7 +497,7 @@ func TestInstallCancelOnFinalFileStillSucceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	track := newInstallTracker("test.last", nil, platform.UserScope, fontDir, []string{"Only-Regular.ttf"})
-	installed, _, _, _, _, _, _, err := installDownloadedFonts(ctx, []string{pathA}, fm, platform.UserScope, fontDir, false, nil, nil, track)
+	installed, _, _, _, _, _, _, err := installDownloadedFonts(ctx, []string{pathA}, fm, platform.UserScope, fontDir, false, nil, nil, track, true)
 	if err != nil {
 		t.Fatalf("late cancel after final file must not fail: %v", err)
 	}

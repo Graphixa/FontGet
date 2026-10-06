@@ -13,6 +13,9 @@ func TestDownloadFromSourceMessage(t *testing.T) {
 	if got := DownloadFromSourceMessage("  "); got != "Downloading..." {
 		t.Fatalf("empty source got %q", got)
 	}
+	if got := InstallingFromLocalMessage("Local"); got != "Installing from Local..." {
+		t.Fatalf("local msg got %q", got)
+	}
 	if !isInstallPrepPhase(installStepDownload) || !isInstallPrepPhase(installStepExtract) {
 		t.Fatal("prep phases")
 	}
