@@ -52,7 +52,7 @@ func classifyAddArg(arg string) addArgTarget {
 		return addArgTarget{Raw: arg, Kind: addArgLocal, Path: abs}
 	}
 	ext := strings.ToLower(filepath.Ext(abs))
-	if ext == ".zip" || platform.IsLocalInstallFontExt(ext) {
+	if ext == ".zip" || platform.IsLocalInstallFontExt(ext) || platform.IsLocalCollectionFontExt(ext) {
 		return addArgTarget{Raw: arg, Kind: addArgLocal, Path: abs}
 	}
 	return addArgTarget{Raw: arg, Kind: addArgCatalog}
@@ -72,6 +72,7 @@ type localFontGroup struct {
 	SourceName string
 	InstallSrc string
 	Candidates []platform.LocalFontCandidate
+	RetryPaths []string // original user args that contributed to this family
 }
 
 type localPrepareResult struct {
@@ -83,7 +84,7 @@ type localPrepareResult struct {
 
 // prepareLocalInstall discovers, dedupes, and optionally confirms a local path.
 // It does not install; callers add groups to a unified progress session.
-func prepareLocalInstall(path string, installScope platform.InstallationScope, yes bool) (*localPrepareResult, error) {
+func prepareLocalInstall(path, rawArg string, installScope platform.InstallationScope, yes bool) (*localPrepareResult, error) {
 	res, err := platform.DiscoverAndDedupeLocalFonts(path)
 	if err != nil {
 		return nil, err
@@ -131,10 +132,87 @@ func prepareLocalInstall(path string, installScope platform.InstallationScope, y
 		installSrc = "fontget-backup"
 	}
 	out.Groups = buildLocalFontGroups(kept, sourceName, installSrc)
+	retry := strings.TrimSpace(rawArg)
+	if retry == "" {
+		retry = path
+	}
+	for i := range out.Groups {
+		out.Groups[i].RetryPaths = []string{retry}
+	}
 	if len(out.Groups) == 0 {
 		return out, fmt.Errorf("no font files to install after deduplication")
 	}
 	return out, nil
+}
+
+// mergeLocalWorkItems merges local groups that share a Font ID into one work item each,
+// preserving first-seen family order and catalog item positions. Candidates are deduped after merge.
+func mergeLocalWorkItems(items []addWorkItem) ([]addWorkItem, error) {
+	if len(items) == 0 {
+		return items, nil
+	}
+	out := make([]addWorkItem, 0, len(items))
+	localAt := make(map[string]int) // FontID -> index in out
+	for _, it := range items {
+		if it.Kind != addWorkLocal || it.Local == nil {
+			out = append(out, it)
+			continue
+		}
+		g := *it.Local
+		if idx, ok := localAt[g.FontID]; ok {
+			existing := out[idx].Local
+			existing.Candidates = append(existing.Candidates, g.Candidates...)
+			existing.RetryPaths = append(existing.RetryPaths, g.RetryPaths...)
+			if existing.SourceName == localSourceName && g.SourceName == localBackupSourceName {
+				existing.SourceName = g.SourceName
+				existing.InstallSrc = g.InstallSrc
+			}
+			continue
+		}
+		copied := g
+		localAt[g.FontID] = len(out)
+		out = append(out, addWorkItem{Kind: addWorkLocal, Local: &copied})
+	}
+	for _, it := range out {
+		if it.Kind != addWorkLocal || it.Local == nil {
+			continue
+		}
+		kept, _, _, _, warnings, err := platform.DedupeLocalCandidates(it.Local.Candidates)
+		if err != nil {
+			return nil, err
+		}
+		for _, w := range warnings {
+			output.GetVerbose().Warning("%s", w)
+		}
+		it.Local.Candidates = kept
+		it.Local.RetryPaths = dedupePackageIDs(it.Local.RetryPaths)
+		if len(it.Local.Candidates) == 0 {
+			return nil, fmt.Errorf("no font files to install after deduplication")
+		}
+	}
+	return out, nil
+}
+
+// stageLocalWorkItems copies/extracts every local candidate into staging before force removal.
+func stageLocalWorkItems(items []addWorkItem, staging *platform.OperationStaging) error {
+	if staging == nil {
+		return fmt.Errorf("operation staging is required for local install")
+	}
+	for _, it := range items {
+		if it.Kind != addWorkLocal || it.Local == nil {
+			continue
+		}
+		staged := make([]platform.LocalFontCandidate, 0, len(it.Local.Candidates))
+		for _, c := range it.Local.Candidates {
+			sc, err := platform.StageLocalCandidate(staging, c)
+			if err != nil {
+				return fmt.Errorf("stage local font %s: %w", platform.CandidateLabel(c), err)
+			}
+			staged = append(staged, sc)
+		}
+		it.Local.Candidates = staged
+	}
+	return nil
 }
 
 // installLocalPath prepares and installs a single local path in its own progress session.
@@ -153,7 +231,7 @@ func installLocalPath(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	prep, err := prepareLocalInstall(path, installScope, yes)
+	prep, err := prepareLocalInstall(path, path, installScope, yes)
 	if err != nil {
 		return &localInstallOutcome{Dupes: prepDupes(prep), Conflicts: prepConflicts(prep)}, err
 	}
@@ -168,12 +246,25 @@ func installLocalPath(
 		g := prep.Groups[i]
 		items = append(items, addWorkItem{Kind: addWorkLocal, Local: &g})
 	}
-	status, runErr := runUnifiedAddSession(ctx, items, fontManager, installScope, fontDir, force, verbose, debug, nil)
+	items, err = mergeLocalWorkItems(items)
+	if err != nil {
+		return out, err
+	}
+	staging, stErr := platform.NewOperationStaging()
+	if stErr != nil {
+		return out, stErr
+	}
+	defer func() { _ = staging.Cleanup() }()
+	if err := stageLocalWorkItems(items, staging); err != nil {
+		return out, err
+	}
+	status, _, runErr := runUnifiedAddSession(ctx, items, fontManager, installScope, fontDir, force, verbose, debug, staging)
 	if status != nil {
 		out.Installed = status.Installed
 		out.Skipped = status.Skipped
 		out.Failed = status.Failed
 		out.Errors = status.Errors
+		out.Groups = len(items)
 	}
 	return out, runErr
 }
@@ -314,8 +405,75 @@ func InstallingFromLocalMessage(sourceName string) string {
 	return "Installing from " + sourceName + "..."
 }
 
+// addSessionCompletion is the terminal state of a unified add session.
+type addSessionCompletion int
+
+const (
+	addCompleted addSessionCompletion = iota
+	addCancelledRemaining
+	addCancelledDone
+)
+
+func recordItemFailure(status *InstallationStatus, result *InstallResult, err error) {
+	status.FailedItems++
+	if result != nil {
+		status.Installed += result.Success
+		status.Skipped += result.Skipped
+		status.Failed += result.Failed
+		status.Errors = append(status.Errors, result.Errors...)
+	}
+	if err != nil {
+		msg := err.Error()
+		found := false
+		for _, e := range status.Errors {
+			if e == msg {
+				found = true
+				break
+			}
+		}
+		if !found {
+			status.Errors = append(status.Errors, msg)
+		}
+	}
+}
+
+func retryTokensFromItems(items []addWorkItem, fromIndex int) []string {
+	var out []string
+	for j := fromIndex; j < len(items); j++ {
+		switch items[j].Kind {
+		case addWorkCatalog:
+			if items[j].Catalog != nil {
+				out = append(out, items[j].Catalog.FontID)
+			}
+		case addWorkLocal:
+			if items[j].Local == nil {
+				continue
+			}
+			for _, p := range items[j].Local.RetryPaths {
+				if _, err := os.Stat(p); err == nil {
+					out = append(out, p)
+				}
+			}
+		}
+	}
+	return dedupePackageIDs(out)
+}
+
+func finishAddCancel(retryTokens []string, scope string, force bool, workRemaining bool) error {
+	if !workRemaining {
+		return nil
+	}
+	ids := dedupePackageIDs(retryTokens)
+	if len(ids) == 0 {
+		printCancelledText(msgInstallationCancelledIncomplete + "\nProvide the original local font files and run fontget add again.")
+		return shared.AlreadyPrinted(shared.ErrOperationCancelled)
+	}
+	return FinishInstallationCancel(ids, scope, force)
+}
+
 // runUnifiedAddSession runs one progress bar for mixed local + catalog work items.
 // staging may be nil; catalog installs create one when needed via installFont.
+// Local candidates must already be staged when present.
 func runUnifiedAddSession(
 	ctx context.Context,
 	items []addWorkItem,
@@ -326,13 +484,13 @@ func runUnifiedAddSession(
 	verbose bool,
 	debug bool,
 	staging *platform.OperationStaging,
-) (*InstallationStatus, error) {
+) (*InstallationStatus, addSessionCompletion, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	status := &InstallationStatus{Details: make([]string, 0)}
 	if len(items) == 0 {
-		return status, nil
+		return status, addCompleted, nil
 	}
 
 	operationItems := setupUnifiedAddProgressBar(items)
@@ -346,7 +504,7 @@ func runUnifiedAddSession(
 
 	suppressVerboseDownloads := components.UseInteractiveRenderer() && !debug
 	cancelled := false
-	var incompleteCancelIDs []string
+	cancelFrom := -1 // first unfinished item index when cancelled; -1 = after all items
 
 	progressErr := components.RunProgressBar(
 		title,
@@ -368,11 +526,7 @@ func runUnifiedAddSession(
 			for itemIndex, item := range items {
 				if err := opCtx.Err(); err != nil {
 					cancelled = true
-					for j := itemIndex; j < total; j++ {
-						if items[j].Kind == addWorkCatalog && items[j].Catalog != nil {
-							incompleteCancelIDs = append(incompleteCancelIDs, items[j].Catalog.FontID)
-						}
-					}
+					cancelFrom = itemIndex
 					return shared.ErrOperationCancelled
 				}
 
@@ -406,6 +560,7 @@ func runUnifiedAddSession(
 					if ierr != nil {
 						if IsCancelErr(ierr) {
 							cancelled = true
+							cancelFrom = itemIndex
 							if result != nil {
 								status.Installed += result.Success
 								status.Skipped += result.Skipped
@@ -414,15 +569,7 @@ func runUnifiedAddSession(
 							send(components.ItemUpdateMsg{Index: itemIndex, Status: InstallStatusFailed, Message: "Cancelled"})
 							return shared.ErrOperationCancelled
 						}
-						if result != nil {
-							status.Installed += result.Success
-							status.Skipped += result.Skipped
-							status.Failed += result.Failed
-							status.Errors = append(status.Errors, result.Errors...)
-						} else {
-							status.Failed++
-							status.Errors = append(status.Errors, ierr.Error())
-						}
+						recordItemFailure(status, result, ierr)
 						send(components.ItemUpdateMsg{
 							Index:        itemIndex,
 							Status:       InstallStatusFailed,
@@ -500,12 +647,7 @@ func runUnifiedAddSession(
 					if err != nil {
 						if IsCancelErr(err) {
 							cancelled = true
-							incompleteCancelIDs = append(incompleteCancelIDs, fontGroup.FontID)
-							for j := itemIndex + 1; j < total; j++ {
-								if items[j].Kind == addWorkCatalog && items[j].Catalog != nil {
-									incompleteCancelIDs = append(incompleteCancelIDs, items[j].Catalog.FontID)
-								}
-							}
+							cancelFrom = itemIndex
 							if result != nil {
 								status.Installed += result.Success
 								status.Skipped += result.Skipped
@@ -514,18 +656,7 @@ func runUnifiedAddSession(
 							send(components.ItemUpdateMsg{Index: itemIndex, Status: InstallStatusFailed, Message: "Cancelled"})
 							return shared.ErrOperationCancelled
 						}
-						if result != nil {
-							if result.Failed == 0 && result.Success == 0 {
-								status.Failed++
-							} else {
-								status.Failed += result.Failed
-								status.Installed += result.Success
-								status.Skipped += result.Skipped
-							}
-							status.Errors = append(status.Errors, result.Errors...)
-						} else {
-							status.Failed++
-						}
+						recordItemFailure(status, result, err)
 						send(components.ItemUpdateMsg{
 							Index:        itemIndex,
 							Status:       InstallStatusFailed,
@@ -570,17 +701,32 @@ func runUnifiedAddSession(
 
 	if progressErr != nil {
 		if errorsIsCancel(progressErr) || cancelled {
-			if err := FinishInstallationCancel(incompleteCancelIDs, string(installScope), force); err != nil {
-				return status, err
+			workRemaining := cancelFrom >= 0 && cancelFrom < len(items)
+			retry := []string{}
+			if workRemaining {
+				retry = retryTokensFromItems(items, cancelFrom)
 			}
-			return status, shared.ErrOperationCancelled
+			err := finishAddCancel(retry, string(installScope), force, workRemaining)
+			if workRemaining {
+				return status, addCancelledRemaining, err
+			}
+			return status, addCancelledDone, nil
 		}
-		return status, progressErr
+		return status, addCompleted, progressErr
 	}
 	if cancelled {
-		return status, shared.ErrOperationCancelled
+		workRemaining := cancelFrom >= 0 && cancelFrom < len(items)
+		retry := []string{}
+		if workRemaining {
+			retry = retryTokensFromItems(items, cancelFrom)
+		}
+		err := finishAddCancel(retry, string(installScope), force, workRemaining)
+		if workRemaining {
+			return status, addCancelledRemaining, err
+		}
+		return status, addCancelledDone, nil
 	}
-	return status, nil
+	return status, addCompleted, nil
 }
 
 func errorsIsCancel(err error) bool {
@@ -638,43 +784,18 @@ func installLocalFontGroup(
 	}
 
 	basenames := make([]string, 0, len(group.Candidates))
-	for _, c := range group.Candidates {
-		basenames = append(basenames, c.Basename)
-	}
-	track := newInstallTracker(group.FontID, nil, installScope, fontDir, basenames)
-	track.catalogName = group.FamilyName
-	track.installSrc = installSrc
-
 	paths := make([]string, 0, len(group.Candidates))
-	var tmpDirs []string
-	defer func() {
-		for _, d := range tmpDirs {
-			_ = os.RemoveAll(d)
-		}
-	}()
-
 	for _, c := range group.Candidates {
 		if err := ctx.Err(); err != nil {
 			return buildInstallResult(InstallStatusFailed, msgInstallationCancelledShort, 0, 0, 0, nil, nil, 0), err
 		}
-		if c.FromZip {
-			if onProgress != nil {
-				onProgress(ProgressUpdate{Phase: installStepExtract, Kind: ProgressFlag, Done: 0, Total: 1})
-			}
-			p, xerr := platform.ExtractZipEntryToTemp(c.ZipPath, c.ZipEntry, c.Basename)
-			if xerr != nil {
-				res := buildInstallResult(InstallStatusFailed, "Extract failed", 0, 0, 1, nil, []string{fmt.Sprintf("%s: %v", c.Basename, xerr)}, 0)
-				return res, xerr
-			}
-			paths = append(paths, p)
-			tmpDirs = append(tmpDirs, filepath.Dir(p))
-			if onProgress != nil {
-				onProgress(ProgressUpdate{Phase: installStepExtract, Kind: ProgressFlag, Done: 1, Total: 1})
-			}
-			continue
-		}
+		basenames = append(basenames, c.Basename)
+		// Candidates are staged to loose files before the session; install only from staged paths.
 		paths = append(paths, c.DiskPath)
 	}
+	track := newInstallTracker(group.FontID, nil, installScope, fontDir, basenames)
+	track.catalogName = group.FamilyName
+	track.installSrc = installSrc
 
 	installed, skipped, failed, details, errs, downloadSize, _, ierr := installDownloadedFonts(
 		ctx, paths, fontManager, installScope, fontDir, force, onProgress, nil, track, false,

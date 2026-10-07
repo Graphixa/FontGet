@@ -47,14 +47,32 @@ type LocalIngestResult struct {
 	Warnings          []string
 }
 
+// ErrLocalCollectionUnsupported is returned for a direct .ttc/.otc local add path.
+var ErrLocalCollectionUnsupported = fmt.Errorf("Font collections (.ttc and .otc) are not supported for local installation.")
+
 // IsLocalInstallFontExt reports whether ext is an installable font for local add.
 func IsLocalInstallFontExt(ext string) bool {
 	switch strings.ToLower(ext) {
-	case ".ttf", ".otf", ".ttc", ".otc":
+	case ".ttf", ".otf":
 		return true
 	default:
 		return false
 	}
+}
+
+// IsLocalCollectionFontExt reports whether ext is a font collection (not supported for local add).
+func IsLocalCollectionFontExt(ext string) bool {
+	switch strings.ToLower(ext) {
+	case ".ttc", ".otc":
+		return true
+	default:
+		return false
+	}
+}
+
+// DedupeLocalCandidates applies hash, face, and basename conflict dedupe to candidates.
+func DedupeLocalCandidates(cands []LocalFontCandidate) (kept []LocalFontCandidate, hashSkip, faceSkip, conflictSkip int, warnings []string, err error) {
+	return dedupeLocalCandidates(cands)
 }
 
 // DiscoverAndDedupeLocalFonts discovers fonts under path (file, dir, or zip) and dedupes them.
@@ -75,12 +93,15 @@ func DiscoverAndDedupeLocalFonts(path string) (*LocalIngestResult, error) {
 		warnings      []string
 	)
 
+	ext := filepath.Ext(abs)
 	switch {
 	case info.IsDir():
 		cands, nestedZip, warnings, err = discoverLocalDir(abs)
-	case strings.EqualFold(filepath.Ext(abs), ".zip"):
+	case strings.EqualFold(ext, ".zip"):
 		cands, fontGetBackup, warnings, err = discoverLocalZip(abs, false)
-	case IsLocalInstallFontExt(filepath.Ext(abs)):
+	case IsLocalCollectionFontExt(ext):
+		return nil, ErrLocalCollectionUnsupported
+	case IsLocalInstallFontExt(ext):
 		cands = []LocalFontCandidate{{
 			DiskPath:  abs,
 			Basename:  filepath.Base(abs),
@@ -162,6 +183,10 @@ func discoverLocalDir(root string) ([]LocalFontCandidate, int, []string, error) 
 			cands = append(cands, zipCands...)
 			return nil
 		}
+		if IsLocalCollectionFontExt(ext) {
+			warnings = append(warnings, fmt.Sprintf("skipped unsupported file %s", path))
+			return nil
+		}
 		if !IsLocalInstallFontExt(ext) {
 			return nil
 		}
@@ -214,6 +239,10 @@ func discoverLocalZip(zipPath string, nestedFromFolder bool) ([]LocalFontCandida
 			if !nestedFromFolder {
 				warnings = append(warnings, fmt.Sprintf("skipped nested zip member %s", name))
 			}
+			continue
+		}
+		if IsLocalCollectionFontExt(ext) {
+			warnings = append(warnings, fmt.Sprintf("skipped unsupported file %s", name))
 			continue
 		}
 		if !IsLocalInstallFontExt(ext) {
@@ -366,11 +395,16 @@ func sortLocalCandidates(cands []LocalFontCandidate) {
 	})
 }
 
-func candidateLabel(c LocalFontCandidate) string {
+// CandidateLabel returns a human-readable path for a local candidate.
+func CandidateLabel(c LocalFontCandidate) string {
 	if c.LooseFile {
 		return c.DiskPath
 	}
 	return c.ZipPath + "!" + c.ZipEntry
+}
+
+func candidateLabel(c LocalFontCandidate) string {
+	return CandidateLabel(c)
 }
 
 func faceIdentityKey(family, style string) string {
@@ -448,7 +482,7 @@ func metadataForLocalCandidate(c LocalFontCandidate) (*FontMetadata, error) {
 	if c.LooseFile {
 		return ExtractFontMetadata(c.DiskPath)
 	}
-	tmp, err := extractZipEntryToTemp(c.ZipPath, c.ZipEntry, c.Basename)
+	tmp, err := ExtractZipEntryToTemp(c.ZipPath, c.ZipEntry, c.Basename)
 	if err != nil {
 		return nil, err
 	}
@@ -459,10 +493,89 @@ func metadataForLocalCandidate(c LocalFontCandidate) (*FontMetadata, error) {
 // ExtractZipEntryToTemp extracts one zip member to a temp file for install.
 // Caller must remove the returned path.
 func ExtractZipEntryToTemp(zipPath, entry, basename string) (string, error) {
-	return extractZipEntryToTemp(zipPath, entry, basename)
+	dir, err := os.MkdirTemp("", "fontget-local-*")
+	if err != nil {
+		return "", err
+	}
+	named, err := extractZipEntryIntoDir(zipPath, entry, basename, dir)
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return "", err
+	}
+	return named, nil
 }
 
-func extractZipEntryToTemp(zipPath, entry, basename string) (string, error) {
+// StageLocalCandidate copies or extracts a candidate into operation staging.
+// The returned candidate always points at a loose staged file (FromZip=false).
+func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (LocalFontCandidate, error) {
+	if staging == nil {
+		return LocalFontCandidate{}, fmt.Errorf("nil operation staging")
+	}
+	dir, err := staging.LocalStageDir(c.Basename)
+	if err != nil {
+		return LocalFontCandidate{}, err
+	}
+	var staged string
+	if c.FromZip {
+		staged, err = extractZipEntryIntoDir(c.ZipPath, c.ZipEntry, c.Basename, dir)
+	} else {
+		staged, err = copyFileIntoDir(c.DiskPath, c.Basename, dir)
+	}
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return LocalFontCandidate{}, err
+	}
+	info, err := os.Stat(staged)
+	if err != nil {
+		_ = os.RemoveAll(dir)
+		return LocalFontCandidate{}, err
+	}
+	md, merr := ExtractFontMetadata(staged)
+	if merr != nil {
+		_ = os.RemoveAll(dir)
+		return LocalFontCandidate{}, merr
+	}
+	out := LocalFontCandidate{
+		DiskPath:  CanonicalPath(staged),
+		Basename:  filepath.Base(staged),
+		Size:      info.Size(),
+		LooseFile: true,
+		FromZip:   false,
+		Depth:     0,
+		SHA256:    c.SHA256,
+		Family:    preferredFamily(md),
+		Style:     preferredStyle(md),
+		FullName:  strings.TrimSpace(md.FullName),
+	}
+	return out, nil
+}
+
+func copyFileIntoDir(srcPath, basename, dir string) (string, error) {
+	base := basename
+	if base == "" {
+		base = filepath.Base(srcPath)
+	}
+	named := filepath.Join(dir, base)
+	in, err := os.Open(srcPath)
+	if err != nil {
+		return "", err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(named, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return "", err
+	}
+	if _, err := io.Copy(out, io.LimitReader(in, localIngestMaxFileBytes+1)); err != nil {
+		_ = out.Close()
+		return "", err
+	}
+	if err := out.Close(); err != nil {
+		return "", err
+	}
+	return named, nil
+}
+
+func extractZipEntryIntoDir(zipPath, entry, basename, dir string) (string, error) {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return "", err
@@ -488,23 +601,16 @@ func extractZipEntryToTemp(zipPath, entry, basename string) (string, error) {
 	if base == "" {
 		base = filepath.Base(entry)
 	}
-	dir, err := os.MkdirTemp("", "fontget-local-*")
-	if err != nil {
-		return "", err
-	}
 	named := filepath.Join(dir, base)
 	out, err := os.OpenFile(named, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 	if err != nil {
-		_ = os.RemoveAll(dir)
 		return "", err
 	}
 	if _, err := io.Copy(out, io.LimitReader(rc, localIngestMaxFileBytes+1)); err != nil {
 		_ = out.Close()
-		_ = os.RemoveAll(dir)
 		return "", err
 	}
 	if err := out.Close(); err != nil {
-		_ = os.RemoveAll(dir)
 		return "", err
 	}
 	return named, nil

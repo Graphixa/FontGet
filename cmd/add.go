@@ -36,11 +36,12 @@ const (
 // This is kept separate from OperationStatus for command-specific clarity and backward compatibility.
 // It provides clearer field names (Installed vs Success) for the add command context.
 type InstallationStatus struct {
-	Installed int
-	Skipped   int
-	Failed    int
-	Details   []string
-	Errors    []string // Track individual error messages
+	Installed   int
+	Skipped     int
+	Failed      int // failed font files
+	FailedItems int // failed work items (families/packages)
+	Details     []string
+	Errors      []string // Track individual error messages
 }
 
 // FontOperationDetails tracks detailed information about each font operation
@@ -451,7 +452,7 @@ var addCmd = &cobra.Command{
 	SilenceErrors: true,
 	Long: `Install fonts by name, Font ID, or local path.
 
-Local paths may be a font file (.ttf/.otf/.ttc/.otc), a folder of fonts,
+Local paths may be a font file (.ttf/.otf), a folder of fonts,
 or a zip archive (including FontGet backups from 'fontget backup').
 
 Use --scope to set installation location:
@@ -565,7 +566,7 @@ Use --scope to set installation location:
 			target := classifyAddArg(arg)
 			if target.Kind == addArgLocal {
 				output.GetVerbose().Info("Preparing local path: %s", target.Path)
-				prep, prepErr := prepareLocalInstall(target.Path, installScope, yes)
+				prep, prepErr := prepareLocalInstall(target.Path, target.Raw, installScope, yes)
 				if prepErr != nil {
 					return prepErr
 				}
@@ -588,6 +589,12 @@ Use --scope to set installation location:
 				workItems = append(workItems, addWorkItem{Kind: addWorkCatalog, Catalog: &f})
 				catalogResolved++
 			}
+		}
+
+		var mergeErr error
+		workItems, mergeErr = mergeLocalWorkItems(workItems)
+		if mergeErr != nil {
+			return mergeErr
 		}
 
 		GetLogger().Info("Unified add session: %d item(s) (%d local path(s), %d catalog font(s))", len(workItems), localPaths, catalogResolved)
@@ -631,14 +638,20 @@ Use --scope to set installation location:
 			}
 		}()
 
-		status, progressErr := runUnifiedAddSession(opCtx, workItems, fontManager, installScope, fontDir, force, verbose, debug, staging)
-		if progressErr != nil {
-			if errors.Is(progressErr, shared.ErrOperationCancelled) || IsCancelErr(progressErr) {
-				// Cancellation helper already ran inside runUnifiedAddSession when needed.
-			} else {
-				GetLogger().Error("Failed to install fonts: %v", progressErr)
+		if stageErr := stageLocalWorkItems(workItems, staging); stageErr != nil {
+			return stageErr
+		}
+
+		status, completion, progressErr := runUnifiedAddSession(opCtx, workItems, fontManager, installScope, fontDir, force, verbose, debug, staging)
+		if completion == addCancelledRemaining {
+			if progressErr != nil {
 				return progressErr
 			}
+			return shared.AlreadyPrinted(shared.ErrOperationCancelled)
+		}
+		if progressErr != nil && !IsCancelErr(progressErr) && !errors.Is(progressErr, shared.ErrOperationCancelled) {
+			GetLogger().Error("Failed to install fonts: %v", progressErr)
+			return progressErr
 		}
 		if status == nil {
 			status = &InstallationStatus{}
@@ -646,15 +659,12 @@ Use --scope to set installation location:
 
 		handleNotFoundFonts(notFoundFonts, IsDebug())
 
-		packagesFailed := 0
-		if status.Failed > 0 {
-			packagesFailed = status.Failed
-		}
+		itemFailures := status.FailedItems
 		if len(notFoundFonts) > 0 {
-			packagesFailed++
+			itemFailures++
 		}
 
-		showSummary := output.IsVerboseOutputEnabled() || packagesFailed > 0 || status.Failed > 0 || len(notFoundFonts) > 0 || !components.UseInteractiveRenderer()
+		showSummary := output.IsVerboseOutputEnabled() || itemFailures > 0 || status.Failed > 0 || len(notFoundFonts) > 0 || !components.UseInteractiveRenderer()
 		output.PrintStatusReport(output.StatusReport{
 			Success:      status.Installed,
 			Skipped:      status.Skipped,
@@ -664,12 +674,16 @@ Use --scope to set installation location:
 			FailedLabel:  "Failed",
 		}, showSummary)
 
-		GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d",
-			status.Installed, status.Skipped, status.Failed)
+		GetLogger().Info("Installation complete - Installed: %d, Skipped: %d, Failed: %d, FailedItems: %d",
+			status.Installed, status.Skipped, status.Failed, status.FailedItems)
 
-		if packagesFailed > 0 || status.Failed > 0 {
+		if itemFailures > 0 {
+			failedCount := itemFailures
+			if status.Failed > failedCount {
+				failedCount = status.Failed
+			}
 			return shared.AlreadyPrinted(&shared.FontInstallationError{
-				FailedCount: packagesFailed,
+				FailedCount: failedCount,
 				TotalCount:  len(workItems) + len(notFoundFonts),
 			})
 		}

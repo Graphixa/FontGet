@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"fontget/internal/installations"
 	"fontget/internal/platform"
@@ -271,11 +272,11 @@ func TestRunUnifiedAddSession_MixedLocalItemsOneBar(t *testing.T) {
 	writeLocalTTF(t, a, "Alpha", "Regular")
 	writeLocalTTF(t, b, "Beta", "Regular")
 
-	prepA, err := prepareLocalInstall(a, platform.UserScope, true)
+	prepA, err := prepareLocalInstall(a, a, platform.UserScope, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepB, err := prepareLocalInstall(b, platform.UserScope, true)
+	prepB, err := prepareLocalInstall(b, b, platform.UserScope, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,8 +286,20 @@ func TestRunUnifiedAddSession_MixedLocalItemsOneBar(t *testing.T) {
 		{Kind: addWorkLocal, Local: &gA},
 		{Kind: addWorkLocal, Local: &gB},
 	}
+	items, err = mergeLocalWorkItems(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+	if err := stageLocalWorkItems(items, staging); err != nil {
+		t.Fatal(err)
+	}
 
-	status, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, false, false, false, nil)
+	status, _, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, false, false, false, staging)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,5 +333,336 @@ func TestInstallDownloadedFonts_DeleteSourcesFalse(t *testing.T) {
 	}
 	if _, err := os.Stat(src); err != nil {
 		t.Fatalf("source removed despite deleteSources=false: %v", err)
+	}
+}
+
+func prepareMergedStagedLocals(t *testing.T, paths []string, forceYes bool) ([]addWorkItem, *platform.OperationStaging) {
+	t.Helper()
+	var items []addWorkItem
+	for _, p := range paths {
+		prep, err := prepareLocalInstall(p, p, platform.UserScope, forceYes)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range prep.Groups {
+			g := prep.Groups[i]
+			items = append(items, addWorkItem{Kind: addWorkLocal, Local: &g})
+		}
+	}
+	items, err := mergeLocalWorkItems(items)
+	if err != nil {
+		t.Fatal(err)
+	}
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+	if err := stageLocalWorkItems(items, staging); err != nil {
+		t.Fatal(err)
+	}
+	return items, staging
+}
+
+func TestMergeLocalForce_SeparateArgsBothRemain(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	fm := &copyFontManager{dir: fontDir}
+
+	srcDir := t.TempDir()
+	regPath := filepath.Join(srcDir, "MergeFam-Regular.ttf")
+	boldPath := filepath.Join(srcDir, "MergeFam-Bold.ttf")
+	writeLocalTTF(t, regPath, "MergeFam", "Regular")
+	writeLocalTTF(t, boldPath, "MergeFam", "Bold")
+
+	items, staging := prepareMergedStagedLocals(t, []string{regPath, boldPath}, true)
+	if len(items) != 1 {
+		t.Fatalf("want 1 merged family item, got %d", len(items))
+	}
+	if len(items[0].Local.Candidates) != 2 {
+		t.Fatalf("want 2 candidates, got %d", len(items[0].Local.Candidates))
+	}
+
+	status, _, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, true, false, false, staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Installed != 2 {
+		t.Fatalf("installed=%d status=%+v", status.Installed, status)
+	}
+	if _, err := os.Stat(filepath.Join(fontDir, "MergeFam-Regular.ttf")); err != nil {
+		t.Fatalf("regular missing: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(fontDir, "MergeFam-Bold.ttf")); err != nil {
+		t.Fatalf("bold missing: %v", err)
+	}
+}
+
+func TestMergeLocalForce_ExistingTrackedRemovedOnce(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	fm := &recordingFontManager{copyFontManager: &copyFontManager{dir: fontDir}}
+
+	oldPath := filepath.Join(fontDir, "MergeFam-Old.ttf")
+	writeLocalTTF(t, oldPath, "MergeFam", "Light")
+	if err := installations.RecordInstallation(installations.RecordParams{
+		FontID: "local.mergefam",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: oldPath, SFNT: installations.SFNTSnapshot{Family: "MergeFam", Style: "Light"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	srcDir := t.TempDir()
+	regPath := filepath.Join(srcDir, "MergeFam-Regular.ttf")
+	boldPath := filepath.Join(srcDir, "MergeFam-Bold.ttf")
+	writeLocalTTF(t, regPath, "MergeFam", "Regular")
+	writeLocalTTF(t, boldPath, "MergeFam", "Bold")
+
+	items, staging := prepareMergedStagedLocals(t, []string{regPath, boldPath}, true)
+	status, _, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, true, false, false, staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Installed != 2 {
+		t.Fatalf("installed=%d", status.Installed)
+	}
+	if _, err := os.Stat(oldPath); !os.IsNotExist(err) {
+		t.Fatal("old tracked file must be removed")
+	}
+	removeOps := 0
+	for _, op := range fm.ops {
+		if strings.HasPrefix(op, "remove:") {
+			removeOps++
+		}
+	}
+	if removeOps != 1 {
+		t.Fatalf("want one force-remove, got %d ops=%v", removeOps, fm.ops)
+	}
+	if _, err := os.Stat(filepath.Join(fontDir, "MergeFam-Regular.ttf")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(fontDir, "MergeFam-Bold.ttf")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMergeLocal_SameFileTwiceInstalledOnce(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	fm := &copyFontManager{dir: fontDir}
+
+	src := filepath.Join(t.TempDir(), "Once-Regular.ttf")
+	writeLocalTTF(t, src, "Once", "Regular")
+	items, staging := prepareMergedStagedLocals(t, []string{src, src}, true)
+	if len(items) != 1 || len(items[0].Local.Candidates) != 1 {
+		t.Fatalf("want 1 item / 1 candidate, got items=%d cands=%d", len(items), len(items[0].Local.Candidates))
+	}
+	status, _, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Installed != 1 {
+		t.Fatalf("installed=%d", status.Installed)
+	}
+}
+
+func TestStageLocal_ForceFromFontDirectory(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	fm := &copyFontManager{dir: fontDir}
+
+	src := filepath.Join(fontDir, "InPlace-Regular.ttf")
+	payload := testutil.MinimalTTF("InPlace", "Regular")
+	if err := os.WriteFile(src, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installations.RecordInstallation(installations.RecordParams{
+		FontID: "local.inplace",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: src, SFNT: installations.SFNTSnapshot{Family: "InPlace", Style: "Regular"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+	status, _, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, true, false, false, staging)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Installed != 1 {
+		t.Fatalf("installed=%d", status.Installed)
+	}
+	got, err := os.ReadFile(filepath.Join(fontDir, "InPlace-Regular.ttf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != string(payload) {
+		t.Fatal("installed bytes must match staged original")
+	}
+}
+
+func TestStageLocal_CleanupOnFailure(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+
+	outside := filepath.Join(t.TempDir(), "Outside-Regular.ttf")
+	writeLocalTTF(t, outside, "Outside", "Regular")
+	outsideBytes, err := os.ReadFile(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	items, staging := prepareMergedStagedLocals(t, []string{outside}, true)
+	root := staging.Root
+	if _, err := os.Stat(root); err != nil {
+		t.Fatal(err)
+	}
+	// Inject install failure by using a font manager that cannot place files.
+	fm := &failInstallFM{dir: fontDir}
+	status, _, runErr := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	if runErr == nil && (status == nil || status.FailedItems == 0) {
+		t.Fatal("expected install failure")
+	}
+	_ = staging.Cleanup()
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("staging must be cleaned: %v", err)
+	}
+	got, err := os.ReadFile(outside)
+	if err != nil {
+		t.Fatalf("outside source must remain: %v", err)
+	}
+	if string(got) != string(outsideBytes) {
+		t.Fatal("outside source modified")
+	}
+}
+
+func TestStageLocal_CancelAfterStagingPreservesInput(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+
+	src := filepath.Join(t.TempDir(), "CancelStage-Regular.ttf")
+	writeLocalTTF(t, src, "CancelStage", "Regular")
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+	root := staging.Root
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before install loop
+	fm := &copyFontManager{dir: fontDir}
+	_, completion, err := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	if completion != addCancelledRemaining {
+		t.Fatalf("completion=%v err=%v", completion, err)
+	}
+	if _, err := os.Stat(src); err != nil {
+		t.Fatalf("input deleted: %v", err)
+	}
+	_ = staging.Cleanup()
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("staging must be cleaned: %v", err)
+	}
+}
+
+type failInstallFM struct {
+	dir string
+}
+
+func (m *failInstallFM) FlushFontCache(scope platform.InstallationScope) error { return nil }
+func (m *failInstallFM) InstallFont(fontPath string, scope platform.InstallationScope, force bool, opts *platform.InstallFontOptions) error {
+	return os.ErrPermission
+}
+func (m *failInstallFM) RemoveFont(fontName string, scope platform.InstallationScope, opts *platform.RemoveFontOptions) error {
+	return nil
+}
+func (m *failInstallFM) GetFontDir(scope platform.InstallationScope) string { return m.dir }
+func (m *failInstallFM) RequiresElevation(scope platform.InstallationScope) bool {
+	return false
+}
+func (m *failInstallFM) IsElevated() (bool, error) { return true, nil }
+func (m *failInstallFM) GetElevationCommand() (string, []string, error) {
+	return "", nil, nil
+}
+
+func TestFailedItems_LockFailure(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	fm := &copyFontManager{dir: fontDir}
+
+	src := filepath.Join(t.TempDir(), "LockFail-Regular.ttf")
+	writeLocalTTF(t, src, "LockFail", "Regular")
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+
+	// Hold destination lock so installLocalFontGroup fails before placing files.
+	unlock, err := installations.LockDestination(context.Background(), fontDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	status, _, runErr := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	if runErr == nil && (status == nil || status.FailedItems == 0) {
+		// Lock wait may cancel via context — still must not look like success with zero failures.
+		if status != nil && status.FailedItems == 0 && status.Installed > 0 {
+			t.Fatal("unexpected success under held lock")
+		}
+	}
+	if status != nil && status.FailedItems == 0 && !IsCancelErr(runErr) {
+		t.Fatalf("want FailedItems or cancel, status=%+v err=%v", status, runErr)
+	}
+	if status != nil && status.FailedItems > 0 {
+		if len(status.Errors) == 0 {
+			t.Fatal("expected error text preserved")
+		}
+	}
+}
+
+func TestClassifyAddArg_CollectionIsLocal(t *testing.T) {
+	dir := t.TempDir()
+	ttc := filepath.Join(dir, "x.ttc")
+	if err := os.WriteFile(ttc, []byte("ttcf"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := classifyAddArg(ttc); got.Kind != addArgLocal {
+		t.Fatalf("ttc should classify as local: %+v", got)
+	}
+}
+
+func TestStageLocal_BadZipEntryFails(t *testing.T) {
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+	_, err = platform.StageLocalCandidate(staging, platform.LocalFontCandidate{
+		ZipPath:  filepath.Join(t.TempDir(), "missing.zip"),
+		ZipEntry: "gone.ttf",
+		Basename: "gone.ttf",
+		FromZip:  true,
+	})
+	if err == nil {
+		t.Fatal("expected zip stage failure")
+	}
+}
+
+func TestFailedItems_CatalogZeroFileFailure(t *testing.T) {
+	status := &InstallationStatus{}
+	recordItemFailure(status, buildInstallResult(InstallStatusFailed, "Download failed", 0, 0, 0, nil, nil, 0), os.ErrNotExist)
+	if status.FailedItems != 1 {
+		t.Fatalf("FailedItems=%d", status.FailedItems)
+	}
+	if len(status.Errors) == 0 {
+		t.Fatal("expected preserved error")
 	}
 }

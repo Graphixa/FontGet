@@ -107,6 +107,37 @@ func (s *OperationStaging) Cleanup() error {
 	return nil
 }
 
+// LocalStageDir returns a dedicated directory for one staged local candidate.
+func (s *OperationStaging) LocalStageDir(label string) (string, error) {
+	if s == nil || s.Root == "" {
+		return "", fmt.Errorf("nil operation staging")
+	}
+	part := SanitizePathPart(label)
+	if part == "" {
+		part = "font"
+	}
+	dir, err := os.MkdirTemp(s.Root, "local-"+part+"-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create local staging directory: %w", err)
+	}
+	return dir, nil
+}
+
+// CanonicalPath returns Clean + Abs + EvalSymlinks when available.
+func CanonicalPath(p string) string {
+	p = filepath.Clean(strings.TrimSpace(p))
+	if p == "" {
+		return ""
+	}
+	if abs, err := filepath.Abs(p); err == nil {
+		p = abs
+	}
+	if sy, err := filepath.EvalSymlinks(p); err == nil && sy != "" {
+		p = filepath.Clean(sy)
+	}
+	return p
+}
+
 // SanitizePathPart returns a filesystem-safe fragment for staging and recovery filenames.
 func SanitizePathPart(s string) string {
 	s = strings.TrimSpace(s)

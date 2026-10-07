@@ -220,3 +220,42 @@ func TestExtractZipEntryToTemp_Basename(t *testing.T) {
 		t.Fatal("content mismatch")
 	}
 }
+
+func TestDiscoverAndDedupe_DirectCollectionRejected(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"face.ttc", "face.otc"} {
+		p := filepath.Join(dir, name)
+		if err := os.WriteFile(p, []byte("ttcf"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, err := DiscoverAndDedupeLocalFonts(p)
+		if err == nil || !strings.Contains(err.Error(), "Font collections (.ttc and .otc) are not supported") {
+			t.Fatalf("%s: err=%v", name, err)
+		}
+	}
+}
+
+func TestDiscoverAndDedupe_ZipOnlyCollections(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "cols.zip")
+	writeZip(t, zipPath, "", map[string][]byte{
+		"a.ttc": []byte("ttcf"),
+		"b.otc": []byte("otcf"),
+	})
+	_, err := DiscoverAndDedupeLocalFonts(zipPath)
+	if err == nil || !strings.Contains(err.Error(), "no font files") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func TestIsLocalInstallFontExt_NoCollections(t *testing.T) {
+	if IsLocalInstallFontExt(".ttc") || IsLocalInstallFontExt(".otc") {
+		t.Fatal("collections must not be local install extensions")
+	}
+	if !IsLocalInstallFontExt(".ttf") || !IsLocalInstallFontExt(".otf") {
+		t.Fatal("ttf/otf must remain installable")
+	}
+	if !IsLocalCollectionFontExt(".ttc") || !IsLocalCollectionFontExt(".otc") {
+		t.Fatal("expected collection helpers")
+	}
+}

@@ -104,7 +104,7 @@ Fonts can also be installed from a local font file, folder, or zip archive (incl
 
 ### Notes
 - Fonts can be specified by name (e.g., "Roboto") or Font ID (e.g., "google.roboto").
-- Local paths: a `.ttf`/`.otf`/`.ttc`/`.otc` file, a folder of fonts, or a `.zip` (including `fontget backup` archives).
+- Local paths: a `.ttf`/`.otf` file, a folder of fonts, or a `.zip` (including `fontget backup` archives).
 - Local installs deduplicate identical files (including leftover zips next to extracts) and skip same-filename conflicts when SFNT metadata differs.
 - Reinstall a backup with `fontget add my-backup.zip` (no separate restore command).
 - Names with spaces must be quoted: "Open Sans".

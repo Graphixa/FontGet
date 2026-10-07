@@ -2,29 +2,7 @@ package installations
 
 import "testing"
 
-func TestResolveInstallationForCatalogMerge_ambiguousFamilySkipped(t *testing.T) {
-	reg := &Registry{
-		Installations: map[string]*Installation{
-			"id.one": {
-				FontID: "id.one",
-				Families: GroupInstalledFiles([]InstalledFontFile{
-					{Path: "/tmp/one.ttf", SFNT: SFNTSnapshot{Family: "DupFam"}},
-				}),
-			},
-			"id.two": {
-				FontID: "id.two",
-				Families: GroupInstalledFiles([]InstalledFontFile{
-					{Path: "/tmp/two.ttf", SFNT: SFNTSnapshot{Family: "DupFam"}},
-				}),
-			},
-		},
-	}
-	if got := ResolveInstallationForCatalogMerge(reg, "", "DupFam"); got != nil {
-		t.Fatalf("ambiguous SFNT family: expected nil, got %q", got.FontID)
-	}
-}
-
-func TestResolveInstallationForCatalogMerge_pathWins(t *testing.T) {
+func TestResolveInstallationForCatalogMergeWithIndexes(t *testing.T) {
 	reg := &Registry{
 		Installations: map[string]*Installation{
 			"id.one": {
@@ -33,10 +11,36 @@ func TestResolveInstallationForCatalogMerge_pathWins(t *testing.T) {
 					{Path: "/tmp/one.ttf", SFNT: SFNTSnapshot{Family: "Fam"}},
 				}),
 			},
+			"id.dup.a": {
+				FontID: "id.dup.a",
+				Families: GroupInstalledFiles([]InstalledFontFile{
+					{Path: "/tmp/dup-a.ttf", SFNT: SFNTSnapshot{Family: "DupFam"}},
+				}),
+			},
+			"id.dup.b": {
+				FontID: "id.dup.b",
+				Families: GroupInstalledFiles([]InstalledFontFile{
+					{Path: "/tmp/dup-b.ttf", SFNT: SFNTSnapshot{Family: "DupFam"}},
+				}),
+			},
+			"id.unique": {
+				FontID: "id.unique",
+				Families: GroupInstalledFiles([]InstalledFontFile{
+					{Path: "/tmp/unique.ttf", SFNT: SFNTSnapshot{Family: "OnlyFam"}},
+				}),
+			},
 		},
 	}
-	got := ResolveInstallationForCatalogMerge(reg, "/tmp/one.ttf", "Fam")
-	if got == nil || got.FontID != "id.one" {
-		t.Fatalf("path lookup: got %#v", got)
+	byPath := reg.PathIndex()
+	byFamily := reg.FamilyInstallationsIndex()
+
+	if got := ResolveInstallationForCatalogMergeWithIndexes(byPath, byFamily, "/tmp/one.ttf", "Other"); got == nil || got.FontID != "id.one" {
+		t.Fatalf("path match: got %#v", got)
+	}
+	if got := ResolveInstallationForCatalogMergeWithIndexes(byPath, byFamily, "", "OnlyFam"); got == nil || got.FontID != "id.unique" {
+		t.Fatalf("unique family: got %#v", got)
+	}
+	if got := ResolveInstallationForCatalogMergeWithIndexes(byPath, byFamily, "", "DupFam"); got != nil {
+		t.Fatalf("ambiguous family: expected nil, got %q", got.FontID)
 	}
 }

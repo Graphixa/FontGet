@@ -741,12 +741,14 @@ func mergeInstallationRegistryIntoFamilies(families map[string][]ParsedFont, reg
 	if reg == nil {
 		return
 	}
+	byPath := reg.PathIndex()
+	byFamily := reg.FamilyInstallationsIndex()
 	for familyName, group := range families {
 		for i := range group {
 			if strings.TrimSpace(group[i].FontID) != "" {
 				continue
 			}
-			inst := installations.ResolveInstallationForCatalogMerge(reg, group[i].Path, group[i].Family)
+			inst := installations.ResolveInstallationForCatalogMergeWithIndexes(byPath, byFamily, group[i].Path, group[i].Family)
 			if inst == nil {
 				continue
 			}

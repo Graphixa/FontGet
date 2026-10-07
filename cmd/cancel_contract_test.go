@@ -546,3 +546,148 @@ func TestRemoveCancelOnFinalFileStillSucceeds(t *testing.T) {
 		t.Fatalf("removed=%d", removed)
 	}
 }
+
+func TestUnifiedAddSession_CancelBeforeFirstItem(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	src := filepath.Join(t.TempDir(), "PreCancel-Regular.ttf")
+	writeLocalTTF(t, src, "PreCancel", "Regular")
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, completion, err := runUnifiedAddSession(ctx, items, &copyFontManager{dir: fontDir}, platform.UserScope, fontDir, false, false, false, staging)
+	if completion != addCancelledRemaining {
+		t.Fatalf("completion=%v err=%v", completion, err)
+	}
+	if err == nil {
+		t.Fatal("expected non-nil cancel error")
+	}
+	if !errors.Is(err, shared.ErrOperationCancelled) {
+		t.Fatalf("want ErrOperationCancelled, got %v", err)
+	}
+}
+
+func TestUnifiedAddSession_CancelMidCatalogIncludesUnfinishedIDs(t *testing.T) {
+	items := []addWorkItem{
+		{Kind: addWorkCatalog, Catalog: &FontToInstall{FontID: "test.first", FontName: "First", SourceName: "test"}},
+		{Kind: addWorkCatalog, Catalog: &FontToInstall{FontID: "test.second", FontName: "Second", SourceName: "test"}},
+	}
+	retry := retryTokensFromItems(items, 0)
+	if len(retry) != 2 || retry[0] != "test.first" || retry[1] != "test.second" {
+		t.Fatalf("retry=%v", retry)
+	}
+	text := FormatInstallationCancelledText(retry, "user", false)
+	if !strings.Contains(text, "test.first") || !strings.Contains(text, "test.second") {
+		t.Fatalf("retry guidance missing IDs: %s", text)
+	}
+	if err := FinishInstallationCancel(retry, "user", false); err == nil {
+		t.Fatal("incomplete catalog cancel must be non-nil")
+	}
+}
+
+func TestUnifiedAddSession_CancelMidLocalNoCatalogID(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+
+	a := filepath.Join(t.TempDir(), "MidA-Regular.ttf")
+	b := filepath.Join(t.TempDir(), "MidB-Regular.ttf")
+	writeLocalTTF(t, a, "MidA", "Regular")
+	writeLocalTTF(t, b, "MidB", "Regular")
+	items, staging := prepareMergedStagedLocals(t, []string{a, b}, true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	fm := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel}
+	_, completion, err := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	if completion != addCancelledRemaining {
+		t.Fatalf("completion=%v err=%v", completion, err)
+	}
+	if err == nil {
+		t.Fatal("expected non-zero cancel path")
+	}
+	text := FormatInstallationCancelledText(retryTokensFromItems(items, 0), "user", false)
+	if strings.Contains(text, "local.") {
+		t.Fatalf("must not invent catalog-style local IDs: %s", text)
+	}
+}
+
+func TestUnifiedAddSession_CancelAfterFinalItemSucceeds(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	src := filepath.Join(t.TempDir(), "FinalOnly-Regular.ttf")
+	writeLocalTTF(t, src, "FinalOnly", "Regular")
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	fm := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel}
+	status, completion, err := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	// Single item completes; cancel after install may leave remaining=false if cancel fires after item returns.
+	if completion == addCancelledRemaining && err == nil {
+		t.Fatal("remaining cancel must return error")
+	}
+	if completion == addCompleted || completion == addCancelledDone {
+		if status.Installed != 1 {
+			t.Fatalf("installed=%d", status.Installed)
+		}
+	}
+}
+
+func TestFailedItems_PartialLocalFamily(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	fm := &copyFontManager{dir: fontDir}
+
+	srcDir := t.TempDir()
+	a := filepath.Join(srcDir, "PartFam-Regular.ttf")
+	b := filepath.Join(srcDir, "PartFam-Bold.ttf")
+	writeLocalTTF(t, a, "PartFam", "Regular")
+	writeLocalTTF(t, b, "PartFam", "Bold")
+	items, _ := prepareMergedStagedLocals(t, []string{a, b}, true)
+	if len(items) != 1 || len(items[0].Local.Candidates) != 2 {
+		t.Fatalf("items=%d", len(items))
+	}
+
+	// Fail after first mutation inside installDownloadedFonts via installLocalFontGroup path.
+	paths := []string{items[0].Local.Candidates[0].DiskPath, items[0].Local.Candidates[1].DiskPath}
+	track := newInstallTracker(items[0].Local.FontID, nil, platform.UserScope, fontDir, []string{
+		filepath.Base(paths[0]), filepath.Base(paths[1]),
+	})
+	installed, _, failed, _, _, _, _, err := installDownloadedFonts(
+		context.Background(), paths, fm, platform.UserScope, fontDir, false, nil,
+		&installTestControl{failAfterMutations: 1}, track, false,
+	)
+	if err == nil {
+		t.Fatal("expected partial failure")
+	}
+	if installed != 1 {
+		t.Fatalf("installed=%d", installed)
+	}
+	// Injected mid-family failure may leave remaining files unattempted (failed==0).
+	fileFailed := failed
+	if fileFailed == 0 {
+		fileFailed = 1 // remaining candidate not installed
+	}
+
+	status := &InstallationStatus{}
+	recordItemFailure(status, buildInstallResult(InstallStatusFailed, "Installation failed", installed, 0, fileFailed, nil, nil, 0), err)
+	if status.FailedItems != 1 {
+		t.Fatalf("FailedItems=%d", status.FailedItems)
+	}
+	if status.Failed != fileFailed {
+		t.Fatalf("Failed=%d want %d", status.Failed, fileFailed)
+	}
+}
+
+func TestFinishAddCancel_LocalPathsGone(t *testing.T) {
+	err := finishAddCancel(nil, "user", false, true)
+	if err == nil {
+		t.Fatal("work remaining with no retry tokens must be non-nil")
+	}
+	if !errors.Is(err, shared.ErrOperationCancelled) {
+		t.Fatalf("got %v", err)
+	}
+}
