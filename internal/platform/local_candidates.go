@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -218,7 +219,9 @@ func discoverLocalZip(zipPath string, nestedFromFolder bool) ([]LocalFontCandida
 		if !IsLocalInstallFontExt(ext) {
 			continue
 		}
-		if int64(f.UncompressedSize64) > localIngestMaxFileBytes {
+		// Guard before uint64->int64 (same pattern as repo.sizeExceedsLimit).
+		uSize := f.UncompressedSize64
+		if uSize > math.MaxInt64 || int64(uSize) > localIngestMaxFileBytes {
 			warnings = append(warnings, fmt.Sprintf("skipped oversized zip entry %s", name))
 			continue
 		}
@@ -227,7 +230,7 @@ func discoverLocalZip(zipPath string, nestedFromFolder bool) ([]LocalFontCandida
 			ZipPath:   zipPath,
 			ZipEntry:  name,
 			Basename:  base,
-			Size:      int64(f.UncompressedSize64),
+			Size:      int64(uSize),
 			LooseFile: false,
 			FromZip:   true,
 			Depth:     depth,
