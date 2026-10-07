@@ -111,7 +111,7 @@ func TestCollectFontGetManagedFonts_RegistryOnlySkipsVanished(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID:             "google.roboto",
 		CatalogName:        "Roboto",
 		InstallationSource: "Google Fonts",
@@ -129,7 +129,7 @@ func TestCollectFontGetManagedFonts_RegistryOnlySkipsVanished(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID:             "nerd.jetbrains-mono",
 		CatalogName:        "JetBrains Mono",
 		InstallationSource: "Nerd Fonts",

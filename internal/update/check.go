@@ -1,7 +1,6 @@
 package update
 
 import (
-	"fmt"
 	"time"
 
 	"fontget/internal/version"
@@ -77,11 +76,6 @@ func PerformStartupCheck(checkForUpdates bool, checkInterval int, lastChecked st
 	if callback != nil {
 		callback(checkResult)
 	}
-}
-
-// FormatUpdateNotification formats an update notification message
-func FormatUpdateNotification(currentVersion, latestVersion string) string {
-	return fmt.Sprintf("FontGet v%s is available (you have v%s).\nRun 'fontget update' to upgrade.", latestVersion, currentVersion)
 }
 
 // GetLastCheckedTimestamp returns the current time as an ISO timestamp string in UTC

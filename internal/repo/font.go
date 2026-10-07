@@ -100,36 +100,6 @@ func fallbackHeadersFromRequest(req *http.Request) map[string]string {
 	return fb
 }
 
-// FetchURLContent fetches content from a URL with cross-platform compatibility
-func FetchURLContent(url string) (string, error) {
-	// Create HTTP client with timeout
-	appConfig := config.GetUserPreferences()
-	generalTimeout := config.ParseDuration(appConfig.Network.RequestTimeout, 10*time.Second)
-	client := &http.Client{
-		Timeout: generalTimeout,
-	}
-
-	// Make request
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("failed to fetch content: %w", err)
-	}
-	defer resp.Body.Close()
-
-	// Check response status
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("content not found (HTTP %d)", resp.StatusCode)
-	}
-
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read content: %w", err)
-	}
-
-	return string(body), nil
-}
-
 // Font represents a font file from the Google Fonts repository
 type FontFile struct {
 	Name        string

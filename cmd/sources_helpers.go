@@ -104,14 +104,6 @@ func (vr *ValidationResult) GetFirstError() string {
 	return vr.Errors[0].Message
 }
 
-// ValidateRequired validates that a field is not empty
-func ValidateRequired(value, fieldName string) error {
-	if strings.TrimSpace(value) == "" {
-		return ValidationError{Field: fieldName, Message: fieldName + " is required"}
-	}
-	return nil
-}
-
 // ValidateSourceName validates a custom source display name.
 // Allows letters, numbers, spaces, hyphens, and underscores. Rejects quotes,
 // path separators, and other special characters that break filenames or UX.

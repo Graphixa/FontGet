@@ -30,9 +30,19 @@ func InvalidateCachedManifests() {
 	manifestMemoMu.Unlock()
 }
 
-// GetManifest returns the font manifest, loading it if necessary
-func GetManifest(cache *Cache, progress ProgressCallback) (*FontManifest, error) {
-	return GetManifestWithRefresh(cache, progress, false)
+// GetManifest loads the font manifest from configured sources (respecting on-disk cache).
+func GetManifest() (*FontManifest, error) {
+	manifest, err := config.LoadManifest()
+	if err != nil {
+		return nil, fmt.Errorf("failed to load manifest configuration: %w", err)
+	}
+
+	fontManifest, err := loadAllSourcesWithCache(manifest, nil, false)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load sources: %w", err)
+	}
+
+	return fontManifest, nil
 }
 
 // GetCachedManifest returns the full font manifest from on-disk source caches
@@ -95,22 +105,5 @@ func getCachedManifest(matchingOnly bool) (*FontManifest, error) {
 		}
 	}
 	manifestMemoMu.Unlock()
-	return fontManifest, nil
-}
-
-// GetManifestWithRefresh returns the font manifest with optional cache refresh
-func GetManifestWithRefresh(cache *Cache, progress ProgressCallback, forceRefresh bool) (*FontManifest, error) {
-	// Load manifest configuration
-	manifest, err := config.LoadManifest()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load manifest configuration: %w", err)
-	}
-
-	// Load all enabled sources from FontGet-Sources
-	fontManifest, err := loadAllSourcesWithCache(manifest, progress, forceRefresh)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load sources: %w", err)
-	}
-
 	return fontManifest, nil
 }

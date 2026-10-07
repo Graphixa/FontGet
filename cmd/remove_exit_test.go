@@ -59,7 +59,7 @@ func TestRemoveFontLockFailureSurfacesWithoutDebug(t *testing.T) {
 	if err := os.WriteFile(a, testutil.MinimalTTF("Alpha", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "test.lockfail",
 		Scope:  "user",
 		Files:  []installations.InstalledFontFile{{Path: a, SFNT: installations.SFNTSnapshot{Family: "Alpha", Style: "Regular"}}},
@@ -97,7 +97,7 @@ func TestRemoveFontFilesTrackingFailureSurfacesWithoutDebug(t *testing.T) {
 	if err := os.WriteFile(a, testutil.MinimalTTF("Alpha", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "test.trackrm",
 		Scope:  "user",
 		Files:  []installations.InstalledFontFile{{Path: a, SFNT: installations.SFNTSnapshot{Family: "Alpha", Style: "Regular"}}},

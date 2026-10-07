@@ -254,16 +254,6 @@ func saveUnlocked(reg *Registry) error {
 	return nil
 }
 
-// RecordParams describes a successful install to persist.
-type RecordParams struct {
-	FontID               string
-	CatalogName          string // catalog display name at install time
-	InstallationSource   string // manifest Sources map key (repository bundle), if known
-	Scope                string // "user" or "machine"
-	FontGetVersion       string
-	Files                []InstalledFontFile // one row per installed file (grouped on save)
-}
-
 // UpsertParams describes a full or partial install/remove record to persist.
 type UpsertParams struct {
 	FontID               string
@@ -275,18 +265,6 @@ type UpsertParams struct {
 	Status               string              // empty = complete; incomplete_install | incomplete_remove
 	Remaining            []string            // basenames still to install or remove
 	LastErrors           []string
-}
-
-// RecordInstallation upserts one completed installation keyed by lowercase Font ID.
-func RecordInstallation(p RecordParams) error {
-	return UpsertInstallation(UpsertParams{
-		FontID:             p.FontID,
-		CatalogName:        p.CatalogName,
-		InstallationSource: p.InstallationSource,
-		Scope:              p.Scope,
-		FontGetVersion:     p.FontGetVersion,
-		Files:              p.Files,
-	})
 }
 
 // UpsertInstallation writes a complete or incomplete installation record.
@@ -365,7 +343,7 @@ func normalizeInstalledFiles(in []InstalledFontFile) []InstalledFontFile {
 }
 
 // GroupInstalledFiles buckets flat rows by PreferredFamily and sorts families/files deterministically.
-// Exported for maintenance generators; RecordInstallation uses this after normalization.
+// Exported for maintenance generators; UpsertInstallation uses this after normalization.
 func GroupInstalledFiles(flat []InstalledFontFile) []FamilyGroup {
 	return groupFlatInstalledFiles(flat)
 }

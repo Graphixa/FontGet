@@ -164,54 +164,6 @@ func TestFontRemovalError(t *testing.T) {
 	}
 }
 
-func TestGetFontFamilyNameFromFilename(t *testing.T) {
-	tests := []struct {
-		name     string
-		filename string
-		expected string
-	}{
-		{
-			name:     "simple font name",
-			filename: "Roboto-Regular.ttf",
-			expected: "Roboto",
-		},
-		{
-			name:     "font with variant",
-			filename: "ABeeZee-Italic.ttf",
-			expected: "ABeeZee",
-		},
-		{
-			name:     "font with multiple hyphens",
-			filename: "RobotoMono-Bold-Italic.ttf",
-			expected: "RobotoMono",
-		},
-		{
-			name:     "font without variant",
-			filename: "Arial.ttf",
-			expected: "Arial",
-		},
-		{
-			name:     "font with path",
-			filename: "/path/to/fonts/OpenSans-Regular.ttf",
-			expected: "OpenSans",
-		},
-		{
-			name:     "font with underscore",
-			filename: "Font_Name-Regular.ttf",
-			expected: "Font_Name",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := shared.GetFontFamilyNameFromFilename(tt.filename)
-			if result != tt.expected {
-				t.Errorf("GetFontFamilyNameFromFilename(%q) = %q, expected %q", tt.filename, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestGetDisplayNameFromFilename(t *testing.T) {
 	tests := []struct {
 		name     string

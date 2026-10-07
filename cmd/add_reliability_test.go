@@ -399,7 +399,7 @@ func TestInstallFontForceReplaceTrackedPackageUnderSingleLock(t *testing.T) {
 	if err := os.WriteFile(existing, oldPayload, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "test.force-lock",
 		Scope:  "user",
 		Files: []installations.InstalledFontFile{

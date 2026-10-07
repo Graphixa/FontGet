@@ -16,17 +16,12 @@ import (
 
 type CommandRunner interface {
 	LookPath(file string) (string, error)
-	CombinedOutput(name string, args ...string) ([]byte, error)
 	CombinedOutputContext(ctx context.Context, opts ExecOptions, name string, args ...string) ([]byte, error)
 }
 
 type execRunner struct{}
 
 func (execRunner) LookPath(file string) (string, error) { return exec.LookPath(file) }
-func (execRunner) CombinedOutput(name string, args ...string) ([]byte, error) {
-	cmd := exec.Command(name, args...)
-	return cmd.CombinedOutput()
-}
 
 // DownloadFallbackOptions controls how external download tools are invoked.
 type DownloadFallbackOptions struct {

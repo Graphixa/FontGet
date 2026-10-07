@@ -45,9 +45,6 @@ func (e *FontRemovalError) Error() string {
 var (
 	// ErrOperationCancelled is a sentinel error used to indicate that an operation was cancelled by the user.
 	ErrOperationCancelled = errors.New("operation cancelled")
-
-	// ErrRecoveryRequired is returned when installation rollback could not fully restore prior state.
-	ErrRecoveryRequired = errors.New("installation recovery required")
 )
 
 // DisplayedError wraps an error whose user-facing message has already been printed.

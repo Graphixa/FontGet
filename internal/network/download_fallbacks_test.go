@@ -27,7 +27,7 @@ func (r *fakeRunner) LookPath(file string) (string, error) {
 	return "", errors.New("not found")
 }
 
-func (r *fakeRunner) CombinedOutput(name string, args ...string) ([]byte, error) {
+func (r *fakeRunner) fakeCombinedOutput(name string, args ...string) ([]byte, error) {
 	r.calls = append(r.calls, name+" "+strings.Join(args, " "))
 	if res, ok := r.results[name]; ok {
 		// Simulate successful tools creating the output file.
@@ -60,7 +60,7 @@ func (r *fakeRunner) CombinedOutputContext(ctx context.Context, _ ExecOptions, n
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return r.CombinedOutput(name, args...)
+	return r.fakeCombinedOutput(name, args...)
 }
 
 func TestDownloadWithFallbacks_NoTools(t *testing.T) {

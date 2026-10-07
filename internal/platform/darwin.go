@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -176,7 +177,7 @@ func (m *darwinFontManager) updateFontCache(_ InstallationScope) error {
 		// This is not necessarily an error - fontd may not be running
 		// Check if the error is "no process found" vs actual failure
 		errStr := string(output)
-		if !contains(errStr, "No matching processes") && !contains(errStr, "no process found") {
+		if !strings.Contains(strings.ToLower(errStr), "no matching processes") && !strings.Contains(strings.ToLower(errStr), "no process found") {
 			// If pkill fails for other reasons, try killall as fallback
 			cmd = exec.Command("killall", "fontd")
 			if output, err := cmd.CombinedOutput(); err != nil {
@@ -192,31 +193,6 @@ func (m *darwinFontManager) updateFontCache(_ InstallationScope) error {
 	time.Sleep(500 * time.Millisecond)
 
 	return nil
-}
-
-// contains checks if a string contains a substring (case-insensitive)
-func contains(s, substr string) bool {
-	s = toLower(s)
-	substr = toLower(substr)
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// toLower converts a string to lowercase (simple implementation)
-func toLower(s string) string {
-	result := make([]byte, len(s))
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		result[i] = c
-	}
-	return string(result)
 }
 
 // CreateHiddenDirectory creates a directory and sets it as hidden on macOS

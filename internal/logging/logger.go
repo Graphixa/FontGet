@@ -115,19 +115,6 @@ func ActiveLogDir() (string, error) {
 	return dir, nil
 }
 
-// LogFilePath returns the absolute path to the active log file, or empty string if not file-backed.
-func LogFilePath() string {
-	globalMu.RLock()
-	l := globalLogger
-	globalMu.RUnlock()
-	if l == nil {
-		return ""
-	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.logFilePath
-}
-
 func (l *Logger) activeLogDir() (string, error) {
 	l.mu.Lock()
 	path := l.logFilePath
@@ -405,9 +392,3 @@ func getLogDirectory() (string, error) {
 	}
 }
 
-// GetLogDirectory returns the OS-default log directory for FontGet (used when LogPath is unset
-// or as a fallback when constructing the logger). Prefer ActiveLogDir() for the directory that
-// actually contains the current log file after the CLI has initialized logging.
-func GetLogDirectory() (string, error) {
-	return getLogDirectory()
-}

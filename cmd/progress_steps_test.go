@@ -16,12 +16,6 @@ func TestDownloadFromSourceMessage(t *testing.T) {
 	if got := InstallingFromLocalMessage("Local"); got != "Installing from Local..." {
 		t.Fatalf("local msg got %q", got)
 	}
-	if !isInstallPrepPhase(installStepDownload) || !isInstallPrepPhase(installStepExtract) {
-		t.Fatal("prep phases")
-	}
-	if isInstallPrepPhase(installStepInstall) {
-		t.Fatal("install is not prep")
-	}
 }
 
 func TestProgressActivityLabel(t *testing.T) {
@@ -46,21 +40,6 @@ func TestProgressActivityLabel(t *testing.T) {
 		if got := ProgressActivityLabel(tc.u, tc.src); got != tc.want {
 			t.Fatalf("phase %q: got %q want %q", tc.u.Phase, got, tc.want)
 		}
-	}
-}
-
-func TestFormatProgressActivity(t *testing.T) {
-	if got := FormatProgressActivity("Installing", ""); got != "Installing..." {
-		t.Fatalf("got %q", got)
-	}
-	if got := FormatProgressActivity("Installing", "variants (12 of 399)"); got != "Installing variants (12 of 399)" {
-		t.Fatalf("got %q", got)
-	}
-}
-
-func TestCountDetail(t *testing.T) {
-	if got := CountDetail(2, 10, `/tmp/dir/Foo.ttf`); got != "2/10 Foo.ttf" {
-		t.Fatalf("got %q", got)
 	}
 }
 
@@ -165,27 +144,6 @@ func TestForceRemoveFinalizeDoesNotCompleteBar(t *testing.T) {
 	}
 	if startInstall+0.01 < mappedFinalize {
 		t.Fatalf("install must not restart below force end: finalize=%v install=%v", mappedFinalize, startInstall)
-	}
-}
-
-func TestOverallInstallPercent_Bounds(t *testing.T) {
-	if got := OverallInstallPercent(0, 0, installStepDownload, 0.5); got != 0 {
-		t.Fatalf("got %v want 0", got)
-	}
-	if got := OverallInstallPercent(-1, 2, installStepDownload, -1); got < 0 || got > 100 {
-		t.Fatalf("out of bounds: %v", got)
-	}
-	if got := OverallInstallPercent(99, 2, installStepCompleted, 1); got != 100 {
-		t.Fatalf("got %v want 100", got)
-	}
-}
-
-func TestOverallRemovePercent_Bounds(t *testing.T) {
-	if got := OverallRemovePercent(0, 0, removeStepScan, 0.5); got != 0 {
-		t.Fatalf("got %v want 0", got)
-	}
-	if got := OverallRemovePercent(99, 2, removeStepCompleted, 1); got != 100 {
-		t.Fatalf("got %v want 100", got)
 	}
 }
 

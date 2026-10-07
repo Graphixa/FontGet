@@ -1,8 +1,6 @@
 package repo
 
 import (
-	"os"
-	"path/filepath"
 	"time"
 )
 
@@ -137,22 +135,4 @@ type FontInfo struct {
 type BasicFontInfo struct {
 	Name  string            `json:"name"`
 	Files map[string]string `json:"files"`
-}
-
-// Cache represents the font cache
-type Cache struct {
-	Dir string
-}
-
-// NewCache creates a new cache in the user's home directory
-func NewCache() (*Cache, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, err
-	}
-	cacheDir := filepath.Join(home, ".fontget", "cache")
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return nil, err
-	}
-	return &Cache{Dir: cacheDir}, nil
 }

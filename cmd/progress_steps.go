@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"fontget/internal/shared"
@@ -142,36 +141,6 @@ func ProgressActivityLabel(u ProgressUpdate, sourceName string) string {
 	}
 }
 
-// isInstallPrepPhase reports download or extract (shared prep band).
-func isInstallPrepPhase(phase string) bool {
-	return phase == installStepDownload || phase == installStepExtract
-}
-
-// FormatProgressActivity builds a generic status line (legacy helpers / tests).
-func FormatProgressActivity(phase, detail string) string {
-	phase = strings.TrimSpace(phase)
-	detail = strings.TrimSpace(detail)
-	if phase == "" {
-		if detail == "" {
-			return ""
-		}
-		return detail
-	}
-	if detail == "" {
-		return phase + "..."
-	}
-	return phase + " " + detail
-}
-
-// CountDetail formats "i/n name" for count-based phases.
-func CountDetail(i, n int, name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return fmt.Sprintf("%d/%d", i, n)
-	}
-	return fmt.Sprintf("%d/%d %s", i, n, filepath.Base(name))
-}
-
 // prepDownloadUnitFrac is progress within one download/extract unit during download [0, prepDownloadWeight].
 // Unknown Content-Length returns 0 (activity via label only); never invents completion.
 func prepDownloadUnitFrac(doneBytes, totalBytes int64) float64 {
@@ -287,26 +256,6 @@ func remapForceInstallProgress(u ProgressUpdate) ProgressUpdate {
 	default:
 		return u
 	}
-}
-
-// OverallInstallPercent maps a simple phase fraction for install (used by thin callers).
-func OverallInstallPercent(itemIndex, itemCount int, phase string, phasePct float64) float64 {
-	return OverallWorkPercent(itemIndex, itemCount, ProgressUpdate{
-		Phase: phase,
-		Kind:  ProgressFlag,
-		Done:  shared.Clamp01(phasePct),
-		Total: 1,
-	})
-}
-
-// OverallRemovePercent maps a simple phase fraction for remove (used by thin callers).
-func OverallRemovePercent(itemIndex, itemCount int, phase string, phasePct float64) float64 {
-	return OverallWorkPercent(itemIndex, itemCount, ProgressUpdate{
-		Phase: phase,
-		Kind:  ProgressFlag,
-		Done:  shared.Clamp01(phasePct),
-		Total: 1,
-	})
 }
 
 // OverallExportPercent maps export work to 0..100 for a single-command bar.

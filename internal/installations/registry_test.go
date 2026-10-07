@@ -101,7 +101,7 @@ func TestRecord_roundTripAndUpsert(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 
-	err := RecordInstallation(RecordParams{
+	err := UpsertInstallation(UpsertParams{
 		FontID:         "nerd.testfont",
 		CatalogName:    "Test Font",
 		Scope:          "user",
@@ -122,7 +122,7 @@ func TestRecord_roundTripAndUpsert(t *testing.T) {
 		t.Fatalf("FindByFontID: %#v", inst)
 	}
 
-	err = RecordInstallation(RecordParams{
+	err = UpsertInstallation(UpsertParams{
 		FontID:         "nerd.testfont",
 		CatalogName:    "Test Font",
 		Scope:          "user",
@@ -207,7 +207,7 @@ func TestLoad_corruptJSON(t *testing.T) {
 func TestRemoveInstallation(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
-	if err := RecordInstallation(RecordParams{
+	if err := UpsertInstallation(UpsertParams{
 		FontID:      "a.b",
 		CatalogName: "B",
 		Scope:       "user",

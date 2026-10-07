@@ -18,7 +18,7 @@ func TestCheckInstalledViaRegistry_allFilesPresent(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID:      "nerd.noto",
 		CatalogName: "Noto",
 		Scope:       "user",
@@ -44,7 +44,7 @@ func TestCheckInstalledViaRegistry_missingFile(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 	missing := filepath.Join(t.TempDir(), "gone.ttf")
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "nerd.noto",
 		Scope:  "user",
 		Files: []installations.InstalledFontFile{
@@ -68,7 +68,7 @@ func TestCheckInstalledViaRegistry_wrongScope(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "nerd.noto",
 		Scope:  "user",
 		Files: []installations.InstalledFontFile{
@@ -102,7 +102,7 @@ func TestCheckFontsAlreadyInstalled_registryShortCircuit(t *testing.T) {
 	if err := os.WriteFile(file, []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "nerd.pack",
 		Scope:  "user",
 		Files: []installations.InstalledFontFile{

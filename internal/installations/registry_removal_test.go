@@ -29,7 +29,7 @@ func TestInstallationHasBasenamesUnderDir(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 	userFonts := filepath.Join(home, "Library", "Fonts")
-	if err := RecordInstallation(RecordParams{
+	if err := UpsertInstallation(UpsertParams{
 		FontID:      "nerd.meslo",
 		CatalogName: "Meslo",
 		Scope:       "user",
@@ -59,7 +59,7 @@ func TestInstallationRegistryResolvable(t *testing.T) {
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 	userFonts := filepath.Join(home, "Library", "Fonts")
-	if err := RecordInstallation(RecordParams{
+	if err := UpsertInstallation(UpsertParams{
 		FontID:      "nerd.x",
 		CatalogName: "X",
 		Scope:       "user",

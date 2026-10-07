@@ -516,7 +516,7 @@ func GetRepository() (*Repository, error) {
 		manifest, err := GetCachedManifest()
 		if err != nil {
 			// If no cache available, load with refresh
-			manifest, err = GetManifest(nil, nil)
+			manifest, err = GetManifest()
 			if err != nil {
 				return nil, err
 			}
@@ -537,7 +537,7 @@ func GetRepository() (*Repository, error) {
 		// Sources are stale, run spinner while refreshing and building
 		var manifest *FontManifest
 		err := ui.RunSpinner("Updating Sources...", "Sources Updated", func() error {
-			m, e := GetManifest(nil, nil)
+			m, e := GetManifest()
 			if e != nil {
 				return e
 			}
@@ -566,7 +566,7 @@ func GetRepository() (*Repository, error) {
 	manifest, err := GetCachedManifest()
 	if err != nil {
 		// If no cache available, load with refresh (no spinner for this case)
-		manifest, err = GetManifest(nil, nil)
+		manifest, err = GetManifest()
 		if err != nil {
 			return nil, err
 		}
@@ -600,7 +600,7 @@ func GetRepositoryWithRefresh() (*Repository, error) {
 	// Force refresh of sources with spinner
 	var manifest *FontManifest
 	err := ui.RunSpinner("Updating Sources...", "Sources Updated", func() error {
-		m, e := GetManifest(nil, nil)
+		m, e := GetManifest()
 		if e != nil {
 			return e
 		}
