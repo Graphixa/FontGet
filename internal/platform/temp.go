@@ -30,35 +30,24 @@ func GetTempDir() (string, error) {
 	return fontgetTempDir, nil
 }
 
-// CleanupTempDir removes the shared Fontget temp container if it is empty.
-// It never deletes unrelated sibling directories. Prefer OperationStaging.Cleanup.
-func CleanupTempDir() error {
-	tempDir, err := GetTempDir()
-	if err != nil {
-		return err
-	}
-	if err := os.Remove(tempDir); err != nil && !os.IsNotExist(err) {
-		// Non-empty container is expected while other operations are running.
-		if isNotEmptyDirErr(err) {
-			return nil
-		}
-		return fmt.Errorf("failed to cleanup temp directory: %w", err)
-	}
-	return nil
-}
-
-func isNotEmptyDirErr(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "directory not empty") || strings.Contains(msg, "not empty")
-}
-
 // OperationStaging owns a unique temporary directory for one add/install command.
 // Cleanup removes only this directory, never the shared Fontget root or siblings.
 type OperationStaging struct {
-	Root string
+	Root   string
+	retain bool // when true, Cleanup leaves Root in place for manual recovery
+}
+
+// Retain prevents Cleanup from deleting Root. Used when staged bytes are the only
+// surviving copy of an overlapping local input after a failed recovery.
+func (s *OperationStaging) Retain() {
+	if s != nil {
+		s.retain = true
+	}
+}
+
+// Retained reports whether Cleanup will leave Root on disk.
+func (s *OperationStaging) Retained() bool {
+	return s != nil && s.retain
 }
 
 // NewOperationStaging allocates a unique operation directory under the shared Fontget temp root.
@@ -95,8 +84,12 @@ func (s *OperationStaging) VariantDir(packageID, variant string) (string, error)
 }
 
 // Cleanup removes this operation's disposable staging tree only.
+// When Retain was called, Root is left on disk and remains readable via Root/Retained.
 func (s *OperationStaging) Cleanup() error {
 	if s == nil || s.Root == "" {
+		return nil
+	}
+	if s.retain {
 		return nil
 	}
 	root := s.Root

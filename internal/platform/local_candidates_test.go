@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"fontget/internal/backupmeta"
 	"fontget/internal/testutil"
 )
 
@@ -161,7 +162,7 @@ func TestDiscoverAndDedupe_TopLevelZipBackupComment(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "backup.zip")
 	data := testutil.MinimalTTF("BackupFam", "Regular")
-	writeZip(t, zipPath, fontGetBackupZipComment, map[string][]byte{
+	writeZip(t, zipPath, backupmeta.ZipComment, map[string][]byte{
 		"Google Fonts/BackupFam/BackupFam-Regular.ttf": data,
 		"nested/inner.zip": []byte("PK\x03\x04dummy"),
 	})

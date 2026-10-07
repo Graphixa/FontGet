@@ -185,12 +185,41 @@ func mergeLocalWorkItems(items []addWorkItem) ([]addWorkItem, error) {
 			output.GetVerbose().Warning("%s", w)
 		}
 		it.Local.Candidates = kept
-		it.Local.RetryPaths = dedupePackageIDs(it.Local.RetryPaths)
+		it.Local.RetryPaths = dedupeExactStrings(it.Local.RetryPaths)
 		if len(it.Local.Candidates) == 0 {
 			return nil, fmt.Errorf("no font files to install after deduplication")
 		}
 	}
+	if err := validateLocalDestinationCollisions(out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// validateLocalDestinationCollisions rejects EqualFold basename clashes across different local families.
+func validateLocalDestinationCollisions(items []addWorkItem) error {
+	type hit struct {
+		family string
+		label  string
+	}
+	seen := map[string]hit{}
+	for _, it := range items {
+		if it.Kind != addWorkLocal || it.Local == nil {
+			continue
+		}
+		for _, c := range it.Local.Candidates {
+			key := strings.ToLower(c.Basename)
+			label := platform.CandidateLabel(c)
+			if prev, ok := seen[key]; ok {
+				return fmt.Errorf(
+					"destination filename collision: %s (%s) and %s (%s) both install as %s",
+					prev.label, prev.family, label, it.Local.FamilyName, c.Basename,
+				)
+			}
+			seen[key] = hit{family: it.Local.FamilyName, label: label}
+		}
+	}
+	return nil
 }
 
 // stageLocalWorkItems copies/extracts every local candidate into staging before force removal.
@@ -213,84 +242,6 @@ func stageLocalWorkItems(items []addWorkItem, staging *platform.OperationStaging
 		it.Local.Candidates = staged
 	}
 	return nil
-}
-
-// installLocalPath prepares and installs a single local path in its own progress session.
-// Used by tests; add RunE uses prepareLocalInstall inside the unified session.
-func installLocalPath(
-	ctx context.Context,
-	path string,
-	fontManager platform.FontManager,
-	installScope platform.InstallationScope,
-	fontDir string,
-	force bool,
-	yes bool,
-	verbose bool,
-	debug bool,
-) (*localInstallOutcome, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	prep, err := prepareLocalInstall(path, path, installScope, yes)
-	if err != nil {
-		return &localInstallOutcome{Dupes: prepDupes(prep), Conflicts: prepConflicts(prep)}, err
-	}
-	out := &localInstallOutcome{
-		Dupes:     prep.Dupes,
-		Conflicts: prep.Conflicts,
-		Groups:    len(prep.Groups),
-	}
-
-	items := make([]addWorkItem, 0, len(prep.Groups))
-	for i := range prep.Groups {
-		g := prep.Groups[i]
-		items = append(items, addWorkItem{Kind: addWorkLocal, Local: &g})
-	}
-	items, err = mergeLocalWorkItems(items)
-	if err != nil {
-		return out, err
-	}
-	staging, stErr := platform.NewOperationStaging()
-	if stErr != nil {
-		return out, stErr
-	}
-	defer func() { _ = staging.Cleanup() }()
-	if err := stageLocalWorkItems(items, staging); err != nil {
-		return out, err
-	}
-	status, _, runErr := runUnifiedAddSession(ctx, items, fontManager, installScope, fontDir, force, verbose, debug, staging)
-	if status != nil {
-		out.Installed = status.Installed
-		out.Skipped = status.Skipped
-		out.Failed = status.Failed
-		out.Errors = status.Errors
-		out.Groups = len(items)
-	}
-	return out, runErr
-}
-
-func prepDupes(p *localPrepareResult) int {
-	if p == nil {
-		return 0
-	}
-	return p.Dupes
-}
-
-func prepConflicts(p *localPrepareResult) int {
-	if p == nil {
-		return 0
-	}
-	return p.Conflicts
-}
-
-type localInstallOutcome struct {
-	Installed int
-	Skipped   int
-	Failed    int
-	Dupes     int
-	Conflicts int
-	Errors    []string
-	Groups    int
 }
 
 type addWorkKind int
@@ -437,13 +388,19 @@ func recordItemFailure(status *InstallationStatus, result *InstallResult, err er
 	}
 }
 
-func retryTokensFromItems(items []addWorkItem, fromIndex int) []string {
-	var out []string
+type addCancelRetry struct {
+	CatalogIDs   []string
+	LocalPaths   []string
+	MissingLocal []string
+}
+
+func collectCancelRetry(items []addWorkItem, fromIndex int) addCancelRetry {
+	var r addCancelRetry
 	for j := fromIndex; j < len(items); j++ {
 		switch items[j].Kind {
 		case addWorkCatalog:
 			if items[j].Catalog != nil {
-				out = append(out, items[j].Catalog.FontID)
+				r.CatalogIDs = append(r.CatalogIDs, items[j].Catalog.FontID)
 			}
 		case addWorkLocal:
 			if items[j].Local == nil {
@@ -451,24 +408,26 @@ func retryTokensFromItems(items []addWorkItem, fromIndex int) []string {
 			}
 			for _, p := range items[j].Local.RetryPaths {
 				if _, err := os.Stat(p); err == nil {
-					out = append(out, p)
+					r.LocalPaths = append(r.LocalPaths, p)
+				} else {
+					r.MissingLocal = append(r.MissingLocal, p)
 				}
 			}
 		}
 	}
-	return dedupePackageIDs(out)
+	r.CatalogIDs = dedupePackageIDs(r.CatalogIDs)
+	r.LocalPaths = dedupeExactStrings(r.LocalPaths)
+	r.MissingLocal = dedupeExactStrings(r.MissingLocal)
+	return r
 }
 
-func finishAddCancel(retryTokens []string, scope string, force bool, workRemaining bool) error {
+func finishAddCancel(retry addCancelRetry, scope string, force bool, workRemaining bool) error {
 	if !workRemaining {
 		return nil
 	}
-	ids := dedupePackageIDs(retryTokens)
-	if len(ids) == 0 {
-		printCancelledText(msgInstallationCancelledIncomplete + "\nProvide the original local font files and run fontget add again.")
-		return shared.AlreadyPrinted(shared.ErrOperationCancelled)
-	}
-	return FinishInstallationCancel(ids, scope, force)
+	text := FormatInstallationCancelledTextMixed(retry.CatalogIDs, retry.LocalPaths, retry.MissingLocal, scope, force)
+	printCancelledText(text)
+	return shared.AlreadyPrinted(shared.ErrOperationCancelled)
 }
 
 // runUnifiedAddSession runs one progress bar for mixed local + catalog work items.
@@ -556,7 +515,7 @@ func runUnifiedAddSession(
 						send(components.ProgressUpdateMsg{Percent: pct})
 					}
 
-					result, ierr := installLocalFontGroup(opCtx, *group, fontManager, installScope, fontDir, force, group.InstallSrc, onProgress)
+					result, ierr := installLocalFontGroup(opCtx, *group, fontManager, installScope, fontDir, force, group.InstallSrc, onProgress, staging)
 					if ierr != nil {
 						if IsCancelErr(ierr) {
 							cancelled = true
@@ -702,9 +661,9 @@ func runUnifiedAddSession(
 	if progressErr != nil {
 		if errorsIsCancel(progressErr) || cancelled {
 			workRemaining := cancelFrom >= 0 && cancelFrom < len(items)
-			retry := []string{}
+			var retry addCancelRetry
 			if workRemaining {
-				retry = retryTokensFromItems(items, cancelFrom)
+				retry = collectCancelRetry(items, cancelFrom)
 			}
 			err := finishAddCancel(retry, string(installScope), force, workRemaining)
 			if workRemaining {
@@ -716,9 +675,9 @@ func runUnifiedAddSession(
 	}
 	if cancelled {
 		workRemaining := cancelFrom >= 0 && cancelFrom < len(items)
-		retry := []string{}
+		var retry addCancelRetry
 		if workRemaining {
-			retry = retryTokensFromItems(items, cancelFrom)
+			retry = collectCancelRetry(items, cancelFrom)
 		}
 		err := finishAddCancel(retry, string(installScope), force, workRemaining)
 		if workRemaining {
@@ -742,6 +701,7 @@ func installLocalFontGroup(
 	force bool,
 	installSrc string,
 	onProgress ProgressFunc,
+	staging *platform.OperationStaging,
 ) (*InstallResult, error) {
 	unlockDest, lockErr := installations.LockDestination(ctx, fontDir)
 	if lockErr != nil {
@@ -749,9 +709,38 @@ func installLocalFontGroup(
 	}
 	defer unlockDest()
 
+	overlaps := localOverlapsForFontDir(group.Candidates, fontDir)
+	prior := snapshotInstallation(group.FontID)
+	mutatedOverlap := false
+
+	finishWithRecovery := func(res *InstallResult, opErr error) (*InstallResult, error) {
+		if opErr == nil {
+			return res, nil
+		}
+		needRecover := mutatedOverlap
+		if !needRecover {
+			for _, o := range overlaps {
+				if _, err := os.Stat(o.Origin); os.IsNotExist(err) {
+					needRecover = true
+					break
+				}
+			}
+		}
+		if !needRecover || len(overlaps) == 0 {
+			return res, opErr
+		}
+		if rerr := recoverLocalOverlaps(overlaps, fontManager, installScope, fontDir, group, prior, true); rerr != nil {
+			return res, wrapLocalRecoveryError(opErr, staging, rerr)
+		}
+		return res, opErr
+	}
+
 	if force {
 		existing := packageBasenamesFromRegistry(group.FontID, fontDir)
 		if len(existing) > 0 {
+			if overlapBasenameHit(overlaps, existing) {
+				mutatedOverlap = true
+			}
 			forceProgress := onProgress
 			if onProgress != nil {
 				forceProgress = func(u ProgressUpdate) {
@@ -776,9 +765,9 @@ func installLocalFontGroup(
 				}
 				res := buildInstallResult(InstallStatusFailed, msg, 0, 0, remFailed, existing, remErrs, 0)
 				if remErr != nil {
-					return res, remErr
+					return finishWithRecovery(res, remErr)
 				}
-				return res, fmt.Errorf("force install: removal incomplete for %s", group.FontID)
+				return finishWithRecovery(res, fmt.Errorf("force install: removal incomplete for %s", group.FontID))
 			}
 		}
 	}
@@ -787,11 +776,19 @@ func installLocalFontGroup(
 	paths := make([]string, 0, len(group.Candidates))
 	for _, c := range group.Candidates {
 		if err := ctx.Err(); err != nil {
-			return buildInstallResult(InstallStatusFailed, msgInstallationCancelledShort, 0, 0, 0, nil, nil, 0), err
+			res := buildInstallResult(InstallStatusFailed, msgInstallationCancelledShort, 0, 0, 0, nil, nil, 0)
+			return finishWithRecovery(res, err)
 		}
 		basenames = append(basenames, c.Basename)
-		// Candidates are staged to loose files before the session; install only from staged paths.
 		paths = append(paths, c.DiskPath)
+	}
+	// Installing into fontDir with the same basename as an overlapping origin mutates that input.
+	for _, o := range overlaps {
+		dest := filepath.Join(fontDir, o.Base)
+		if strings.EqualFold(platform.CanonicalPath(dest), platform.CanonicalPath(o.Origin)) {
+			mutatedOverlap = true
+			break
+		}
 	}
 	track := newInstallTracker(group.FontID, nil, installScope, fontDir, basenames)
 	track.catalogName = group.FamilyName
@@ -806,11 +803,12 @@ func installLocalFontGroup(
 		if IsCancelErr(ierr) {
 			message = msgInstallationCancelledShort
 		}
-		return buildInstallResult(status, message, installed, skipped, failed, details, errs, downloadSize), ierr
+		res := buildInstallResult(status, message, installed, skipped, failed, details, errs, downloadSize)
+		return finishWithRecovery(res, ierr)
 	}
 	if failed > 0 {
 		res := buildInstallResult(InstallStatusFailed, "Installation failed", installed, skipped, failed, details, errs, downloadSize)
-		return res, fmt.Errorf("package install incomplete")
+		return finishWithRecovery(res, fmt.Errorf("package install incomplete"))
 	}
 	status := InstallStatusCompleted
 	message := "Installed"

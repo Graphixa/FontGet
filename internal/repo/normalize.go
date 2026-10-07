@@ -1,15 +1,15 @@
 package repo
 
-import "strings"
+import (
+	"strings"
+
+	"fontget/internal/fontkey"
+)
 
 // FontKey normalizes a font family/name string for stable comparisons.
-// It lowercases and removes common separators (spaces, hyphens, underscores).
+// It trims surrounding whitespace, lowercases, and removes spaces, hyphens and underscores.
 func FontKey(s string) string {
-	s = strings.ToLower(s)
-	s = strings.ReplaceAll(s, " ", "")
-	s = strings.ReplaceAll(s, "-", "")
-	s = strings.ReplaceAll(s, "_", "")
-	return s
+	return fontkey.Key(s)
 }
 
 // BaseFamilyName removes common suffix patterns from an installed font family name so it can

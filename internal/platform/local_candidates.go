@@ -11,6 +11,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"fontget/internal/backupmeta"
+	"fontget/internal/fontkey"
 )
 
 const (
@@ -21,7 +24,7 @@ const (
 
 // LocalFontCandidate is one font file discovered for local add ingest.
 type LocalFontCandidate struct {
-	DiskPath  string // absolute path for loose files
+	DiskPath  string // absolute path for loose files (staged path after StageLocalCandidate)
 	ZipPath   string // archive path when FromZip
 	ZipEntry  string // entry name inside ZipPath (forward slashes)
 	Basename  string
@@ -29,6 +32,10 @@ type LocalFontCandidate struct {
 	FromZip   bool
 	LooseFile bool
 	Depth     int
+
+	// OriginDiskPath is the pre-stage loose-file path. Empty for zip-sourced candidates.
+	// Used to restore destination-overlapping inputs after failed force install.
+	OriginDiskPath string
 
 	SHA256   string
 	Family   string
@@ -103,12 +110,13 @@ func DiscoverAndDedupeLocalFonts(path string) (*LocalIngestResult, error) {
 		return nil, ErrLocalCollectionUnsupported
 	case IsLocalInstallFontExt(ext):
 		cands = []LocalFontCandidate{{
-			DiskPath:  abs,
-			Basename:  filepath.Base(abs),
-			Size:      info.Size(),
-			LooseFile: true,
-			FromZip:   false,
-			Depth:     0,
+			DiskPath:       abs,
+			OriginDiskPath: abs,
+			Basename:       filepath.Base(abs),
+			Size:           info.Size(),
+			LooseFile:      true,
+			FromZip:        false,
+			Depth:          0,
 		}}
 	default:
 		return nil, fmt.Errorf("not a font file, folder, or zip: %s", abs)
@@ -200,12 +208,13 @@ func discoverLocalDir(root string) ([]LocalFontCandidate, int, []string, error) 
 			return nil
 		}
 		cands = append(cands, LocalFontCandidate{
-			DiskPath:  path,
-			Basename:  name,
-			Size:      info.Size(),
-			LooseFile: true,
-			FromZip:   false,
-			Depth:     depth,
+			DiskPath:       path,
+			OriginDiskPath: path,
+			Basename:       name,
+			Size:           info.Size(),
+			LooseFile:      true,
+			FromZip:        false,
+			Depth:          depth,
 		})
 		return nil
 	})
@@ -219,7 +228,7 @@ func discoverLocalZip(zipPath string, nestedFromFolder bool) ([]LocalFontCandida
 	}
 	defer r.Close()
 
-	fontGetBackup := isFontGetBackupComment(r.Comment)
+	fontGetBackup := backupmeta.IsBackupComment(r.Comment)
 	var warnings []string
 	var cands []LocalFontCandidate
 	if len(r.File) > localIngestMaxZipMembers {
@@ -286,14 +295,6 @@ func shouldSkipLocalFile(name string) bool {
 	}
 }
 
-// Must match shared.BackupZipComment (platform cannot import shared).
-const fontGetBackupZipComment = "FontGet backup;format=1"
-
-func isFontGetBackupComment(s string) bool {
-	s = strings.TrimSpace(s)
-	return s == fontGetBackupZipComment || strings.HasPrefix(s, fontGetBackupZipComment)
-}
-
 func dedupeLocalCandidates(cands []LocalFontCandidate) (kept []LocalFontCandidate, hashSkip, faceSkip, conflictSkip int, warnings []string, err error) {
 	sortLocalCandidates(cands)
 
@@ -314,7 +315,7 @@ func dedupeLocalCandidates(cands []LocalFontCandidate) (kept []LocalFontCandidat
 		for _, i := range idxs {
 			sum, herr := hashLocalCandidate(cands[i])
 			if herr != nil {
-				warnings = append(warnings, fmt.Sprintf("hash failed for %s: %v", candidateLabel(cands[i]), herr))
+				warnings = append(warnings, fmt.Sprintf("hash failed for %s: %v", CandidateLabel(cands[i]), herr))
 				continue
 			}
 			cands[i].SHA256 = sum
@@ -339,7 +340,7 @@ func dedupeLocalCandidates(cands []LocalFontCandidate) (kept []LocalFontCandidat
 	for _, c := range afterHash {
 		md, merr := metadataForLocalCandidate(c)
 		if merr != nil {
-			warnings = append(warnings, fmt.Sprintf("skipped unreadable font %s: %v", candidateLabel(c), merr))
+			warnings = append(warnings, fmt.Sprintf("skipped unreadable font %s: %v", CandidateLabel(c), merr))
 			continue
 		}
 		c.Family = preferredFamily(md)
@@ -371,7 +372,7 @@ func dedupeLocalCandidates(cands []LocalFontCandidate) (kept []LocalFontCandidat
 			conflictSkip++
 			warnings = append(warnings, fmt.Sprintf(
 				"skipped %s (SFNT %q %q) conflicts with kept %s (SFNT %q %q): same filename, different font",
-				candidateLabel(c), c.Family, c.Style, candidateLabel(prev), prev.Family, prev.Style,
+				CandidateLabel(c), c.Family, c.Style, CandidateLabel(prev), prev.Family, prev.Style,
 			))
 			continue
 		}
@@ -390,7 +391,7 @@ func sortLocalCandidates(cands []LocalFontCandidate) {
 		if a.Depth != b.Depth {
 			return a.Depth < b.Depth
 		}
-		la, lb := candidateLabel(a), candidateLabel(b)
+		la, lb := CandidateLabel(a), CandidateLabel(b)
 		return la < lb
 	})
 }
@@ -403,20 +404,8 @@ func CandidateLabel(c LocalFontCandidate) string {
 	return c.ZipPath + "!" + c.ZipEntry
 }
 
-func candidateLabel(c LocalFontCandidate) string {
-	return CandidateLabel(c)
-}
-
 func faceIdentityKey(family, style string) string {
-	return localFontKey(family) + "|" + localFontKey(style)
-}
-
-func localFontKey(s string) string {
-	s = strings.ToLower(strings.TrimSpace(s))
-	s = strings.ReplaceAll(s, " ", "")
-	s = strings.ReplaceAll(s, "-", "")
-	s = strings.ReplaceAll(s, "_", "")
-	return s
+	return fontkey.Key(family) + "|" + fontkey.Key(style)
 }
 
 func preferredFamily(md *FontMetadata) string {
@@ -439,6 +428,22 @@ func preferredStyle(md *FontMetadata) string {
 	return strings.TrimSpace(md.StyleName)
 }
 
+// openZipMember opens zipPath and returns the archive reader plus the named entry.
+// Caller must close the returned *zip.ReadCloser (which also closes the archive).
+func openZipMember(zipPath, entry string) (*zip.ReadCloser, *zip.File, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, f := range r.File {
+		if filepath.ToSlash(f.Name) == entry {
+			return r, f, nil
+		}
+	}
+	_ = r.Close()
+	return nil, nil, fmt.Errorf("zip entry not found: %s", entry)
+}
+
 func hashLocalCandidate(c LocalFontCandidate) (string, error) {
 	h := sha256.New()
 	if c.LooseFile {
@@ -452,21 +457,11 @@ func hashLocalCandidate(c LocalFontCandidate) (string, error) {
 		}
 		return hex.EncodeToString(h.Sum(nil)), nil
 	}
-	r, err := zip.OpenReader(c.ZipPath)
+	zr, zf, err := openZipMember(c.ZipPath, c.ZipEntry)
 	if err != nil {
 		return "", err
 	}
-	defer r.Close()
-	var zf *zip.File
-	for _, f := range r.File {
-		if filepath.ToSlash(f.Name) == c.ZipEntry {
-			zf = f
-			break
-		}
-	}
-	if zf == nil {
-		return "", fmt.Errorf("zip entry not found: %s", c.ZipEntry)
-	}
+	defer zr.Close()
 	rc, err := zf.Open()
 	if err != nil {
 		return "", err
@@ -535,17 +530,22 @@ func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (Local
 		_ = os.RemoveAll(dir)
 		return LocalFontCandidate{}, merr
 	}
+	origin := strings.TrimSpace(c.OriginDiskPath)
+	if origin == "" && c.LooseFile && !c.FromZip {
+		origin = c.DiskPath
+	}
 	out := LocalFontCandidate{
-		DiskPath:  CanonicalPath(staged),
-		Basename:  filepath.Base(staged),
-		Size:      info.Size(),
-		LooseFile: true,
-		FromZip:   false,
-		Depth:     0,
-		SHA256:    c.SHA256,
-		Family:    preferredFamily(md),
-		Style:     preferredStyle(md),
-		FullName:  strings.TrimSpace(md.FullName),
+		DiskPath:       CanonicalPath(staged),
+		OriginDiskPath: origin,
+		Basename:       filepath.Base(staged),
+		Size:           info.Size(),
+		LooseFile:      true,
+		FromZip:        false,
+		Depth:          0,
+		SHA256:         c.SHA256,
+		Family:         preferredFamily(md),
+		Style:          preferredStyle(md),
+		FullName:       strings.TrimSpace(md.FullName),
 	}
 	return out, nil
 }
@@ -576,21 +576,11 @@ func copyFileIntoDir(srcPath, basename, dir string) (string, error) {
 }
 
 func extractZipEntryIntoDir(zipPath, entry, basename, dir string) (string, error) {
-	r, err := zip.OpenReader(zipPath)
+	zr, zf, err := openZipMember(zipPath, entry)
 	if err != nil {
 		return "", err
 	}
-	defer r.Close()
-	var zf *zip.File
-	for _, f := range r.File {
-		if filepath.ToSlash(f.Name) == entry {
-			zf = f
-			break
-		}
-	}
-	if zf == nil {
-		return "", fmt.Errorf("zip entry not found: %s", entry)
-	}
+	defer zr.Close()
 	rc, err := zf.Open()
 	if err != nil {
 		return "", err

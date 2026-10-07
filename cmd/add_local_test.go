@@ -26,6 +26,83 @@ func writeLocalTTF(t *testing.T, path, family, style string) {
 	}
 }
 
+// installLocalPath prepares and installs a single local path in its own progress session.
+func installLocalPath(
+	ctx context.Context,
+	path string,
+	fontManager platform.FontManager,
+	installScope platform.InstallationScope,
+	fontDir string,
+	force bool,
+	yes bool,
+	verbose bool,
+	debug bool,
+) (*localInstallOutcome, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	prep, err := prepareLocalInstall(path, path, installScope, yes)
+	if err != nil {
+		return &localInstallOutcome{Dupes: prepDupes(prep), Conflicts: prepConflicts(prep)}, err
+	}
+	out := &localInstallOutcome{
+		Dupes:     prep.Dupes,
+		Conflicts: prep.Conflicts,
+		Groups:    len(prep.Groups),
+	}
+
+	items := make([]addWorkItem, 0, len(prep.Groups))
+	for i := range prep.Groups {
+		g := prep.Groups[i]
+		items = append(items, addWorkItem{Kind: addWorkLocal, Local: &g})
+	}
+	items, err = mergeLocalWorkItems(items)
+	if err != nil {
+		return out, err
+	}
+	staging, stErr := platform.NewOperationStaging()
+	if stErr != nil {
+		return out, stErr
+	}
+	defer func() { _ = staging.Cleanup() }()
+	if err := stageLocalWorkItems(items, staging); err != nil {
+		return out, err
+	}
+	status, _, runErr := runUnifiedAddSession(ctx, items, fontManager, installScope, fontDir, force, verbose, debug, staging)
+	if status != nil {
+		out.Installed = status.Installed
+		out.Skipped = status.Skipped
+		out.Failed = status.Failed
+		out.Errors = status.Errors
+		out.Groups = len(items)
+	}
+	return out, runErr
+}
+
+func prepDupes(p *localPrepareResult) int {
+	if p == nil {
+		return 0
+	}
+	return p.Dupes
+}
+
+func prepConflicts(p *localPrepareResult) int {
+	if p == nil {
+		return 0
+	}
+	return p.Conflicts
+}
+
+type localInstallOutcome struct {
+	Installed int
+	Skipped   int
+	Failed    int
+	Dupes     int
+	Conflicts int
+	Errors    []string
+	Groups    int
+}
+
 func writeLocalZip(t *testing.T, zipPath, comment string, files map[string][]byte) {
 	t.Helper()
 	f, err := os.Create(zipPath)
@@ -407,7 +484,7 @@ func TestMergeLocalForce_ExistingTrackedRemovedOnce(t *testing.T) {
 
 	oldPath := filepath.Join(fontDir, "MergeFam-Old.ttf")
 	writeLocalTTF(t, oldPath, "MergeFam", "Light")
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "local.mergefam",
 		Scope:  "user",
 		Files: []installations.InstalledFontFile{
@@ -483,7 +560,7 @@ func TestStageLocal_ForceFromFontDirectory(t *testing.T) {
 	if err := os.WriteFile(src, payload, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "local.inplace",
 		Scope:  "user",
 		Files: []installations.InstalledFontFile{
@@ -609,22 +686,18 @@ func TestFailedItems_LockFailure(t *testing.T) {
 	}
 	defer unlock()
 
+	// Short deadline: LockDestination returns context error (not cancel-of-operation path).
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
-	status, _, runErr := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
-	if runErr == nil && (status == nil || status.FailedItems == 0) {
-		// Lock wait may cancel via context — still must not look like success with zero failures.
-		if status != nil && status.FailedItems == 0 && status.Installed > 0 {
-			t.Fatal("unexpected success under held lock")
-		}
+	status, completion, runErr := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	if completion == addCancelledRemaining {
+		t.Fatalf("lock timeout must count as item failure, not cancel-remaining: %v", runErr)
 	}
-	if status != nil && status.FailedItems == 0 && !IsCancelErr(runErr) {
-		t.Fatalf("want FailedItems or cancel, status=%+v err=%v", status, runErr)
+	if status == nil || status.FailedItems < 1 {
+		t.Fatalf("want FailedItems>=1, status=%+v err=%v", status, runErr)
 	}
-	if status != nil && status.FailedItems > 0 {
-		if len(status.Errors) == 0 {
-			t.Fatal("expected error text preserved")
-		}
+	if len(status.Errors) == 0 {
+		t.Fatal("expected error text preserved")
 	}
 }
 
@@ -664,5 +737,231 @@ func TestFailedItems_CatalogZeroFileFailure(t *testing.T) {
 	}
 	if len(status.Errors) == 0 {
 		t.Fatal("expected preserved error")
+	}
+}
+
+type failNInstallsAfterRemoveFM struct {
+	*copyFontManager
+	removed         bool
+	installFailsLeft int
+}
+
+func (m *failNInstallsAfterRemoveFM) RemoveFont(name string, scope platform.InstallationScope, opts *platform.RemoveFontOptions) error {
+	m.removed = true
+	return m.copyFontManager.RemoveFont(name, scope, opts)
+}
+
+func (m *failNInstallsAfterRemoveFM) InstallFont(fontPath string, scope platform.InstallationScope, force bool, opts *platform.InstallFontOptions) error {
+	if m.removed && m.installFailsLeft > 0 {
+		m.installFailsLeft--
+		return os.ErrPermission
+	}
+	return m.copyFontManager.InstallFont(fontPath, scope, force, opts)
+}
+
+type cancelAfterRemoveFM struct {
+	*copyFontManager
+	cancel context.CancelFunc
+}
+
+func (m *cancelAfterRemoveFM) RemoveFont(name string, scope platform.InstallationScope, opts *platform.RemoveFontOptions) error {
+	err := m.copyFontManager.RemoveFont(name, scope, opts)
+	if m.cancel != nil {
+		m.cancel()
+	}
+	return err
+}
+
+func TestOverlapRecover_ForceFailRestoresOrigin(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	src := filepath.Join(fontDir, "Recover-Regular.ttf")
+	payload := testutil.MinimalTTF("Recover", "Regular")
+	if err := os.WriteFile(src, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installations.UpsertInstallation(installations.UpsertParams{
+		FontID: "local.recover",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: src, SFNT: installations.SFNTSnapshot{Family: "Recover", Style: "Regular"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+	fm := &failNInstallsAfterRemoveFM{copyFontManager: &copyFontManager{dir: fontDir}, installFailsLeft: 1}
+	status, _, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, true, false, false, staging)
+	if err == nil && (status == nil || status.FailedItems == 0) {
+		t.Fatal("expected failure")
+	}
+	got, readErr := os.ReadFile(src)
+	if readErr != nil {
+		t.Fatalf("origin must be restored: %v", readErr)
+	}
+	if string(got) != string(payload) {
+		t.Fatal("restored bytes mismatch")
+	}
+	root := staging.Root
+	_ = staging.Cleanup()
+	if staging.Retained() {
+		t.Fatal("successful recovery must not retain staging")
+	}
+	if _, err := os.Stat(root); !os.IsNotExist(err) {
+		t.Fatalf("staging must be cleaned after successful recovery: %v", err)
+	}
+	reg, _ := installations.Load()
+	if inst := reg.FindByFontID("local.recover"); inst == nil || !inst.IsComplete() {
+		t.Fatalf("registry must be restored: %+v", inst)
+	}
+}
+
+func TestOverlapRecover_CancelAfterRemoveRestores(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	src := filepath.Join(fontDir, "CancelRec-Regular.ttf")
+	payload := testutil.MinimalTTF("CancelRec", "Regular")
+	if err := os.WriteFile(src, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installations.UpsertInstallation(installations.UpsertParams{
+		FontID: "local.cancelrec",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: src, SFNT: installations.SFNTSnapshot{Family: "CancelRec", Style: "Regular"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	fm := &cancelAfterRemoveFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel}
+	_, completion, err := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, true, false, false, staging)
+	if completion != addCancelledRemaining {
+		t.Fatalf("completion=%v err=%v", completion, err)
+	}
+	if err == nil {
+		t.Fatal("incomplete cancel must be non-nil")
+	}
+	got, readErr := os.ReadFile(src)
+	if readErr != nil {
+		t.Fatalf("origin must be restored: %v", readErr)
+	}
+	if string(got) != string(payload) {
+		t.Fatal("restored bytes mismatch")
+	}
+}
+
+func TestOverlapRecover_FailureRetainsStaging(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+	src := filepath.Join(fontDir, "Retain-Regular.ttf")
+	payload := testutil.MinimalTTF("Retain", "Regular")
+	if err := os.WriteFile(src, payload, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installations.UpsertInstallation(installations.UpsertParams{
+		FontID: "local.retain",
+		Scope:  "user",
+		Files: []installations.InstalledFontFile{
+			{Path: src, SFNT: installations.SFNTSnapshot{Family: "Retain", Style: "Regular"}},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	items, staging := prepareMergedStagedLocals(t, []string{src}, true)
+	// Fail install and recovery re-registration.
+	fm := &failNInstallsAfterRemoveFM{copyFontManager: &copyFontManager{dir: fontDir}, installFailsLeft: 2}
+	status, _, err := runUnifiedAddSession(context.Background(), items, fm, platform.UserScope, fontDir, true, false, false, staging)
+	if status == nil || status.FailedItems < 1 {
+		t.Fatalf("expected failed item, status=%+v err=%v", status, err)
+	}
+	joined := strings.Join(status.Errors, "\n")
+	if err != nil {
+		joined += "\n" + err.Error()
+	}
+	if !strings.Contains(joined, "preserved staged copy") && !strings.Contains(joined, "recovery failed") {
+		t.Fatalf("want recovery failure diagnostic, got %q", joined)
+	}
+	root := staging.Root
+	_ = staging.Cleanup()
+	if !staging.Retained() {
+		t.Fatal("staging must be retained when recovery fails")
+	}
+	if _, err := os.Stat(root); err != nil {
+		t.Fatalf("staged tree must remain: %v", err)
+	}
+	if got, err := os.ReadFile(src); err == nil && string(got) != string(payload) {
+		t.Fatal("if origin exists it must match original payload")
+	}
+}
+
+func TestMergeLocal_CrossFamilyBasenameCollision(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+
+	a := filepath.Join(t.TempDir(), "FamilyA", "Regular.ttf")
+	b := filepath.Join(t.TempDir(), "FamilyB", "Regular.ttf")
+	writeLocalTTF(t, a, "FamilyA", "Regular")
+	writeLocalTTF(t, b, "FamilyB", "Regular")
+
+	var items []addWorkItem
+	for _, p := range []string{a, b} {
+		prep, err := prepareLocalInstall(p, p, platform.UserScope, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range prep.Groups {
+			g := prep.Groups[i]
+			items = append(items, addWorkItem{Kind: addWorkLocal, Local: &g})
+		}
+	}
+	_, err := mergeLocalWorkItems(items)
+	if err == nil || !strings.Contains(err.Error(), "destination filename collision") {
+		t.Fatalf("want collision, got %v", err)
+	}
+
+	// Case-only basename clash
+	c := filepath.Join(t.TempDir(), "regular.ttf")
+	writeLocalTTF(t, c, "FamilyC", "Bold")
+	items = nil
+	for _, p := range []string{a, c} {
+		prep, err := prepareLocalInstall(p, p, platform.UserScope, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range prep.Groups {
+			g := prep.Groups[i]
+			items = append(items, addWorkItem{Kind: addWorkLocal, Local: &g})
+		}
+	}
+	_, err = mergeLocalWorkItems(items)
+	if err == nil || !strings.Contains(err.Error(), "destination filename collision") {
+		t.Fatalf("want case collision, got %v", err)
+	}
+}
+
+func TestRetryPaths_CaseSensitiveExact(t *testing.T) {
+	cmd := FormatRetryAddCommandMixed(
+		[]string{"Google.Roboto", "google.roboto"},
+		[]string{"A.ttf", "a.ttf", "A.ttf"},
+		"user",
+		false,
+	)
+	if !strings.Contains(cmd, "A.ttf") || !strings.Contains(cmd, "a.ttf") {
+		t.Fatalf("both case-distinct paths required: %s", cmd)
+	}
+	if strings.Count(cmd, "A.ttf") != 1 {
+		t.Fatalf("exact dup should collapse once: %s", cmd)
+	}
+	// Catalog IDs collapse case-insensitively to first seen.
+	if strings.Count(strings.ToLower(cmd), "google.roboto") != 1 {
+		t.Fatalf("catalog ids should dedupe case-insensitively: %s", cmd)
 	}
 }

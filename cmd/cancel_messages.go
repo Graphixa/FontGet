@@ -61,9 +61,27 @@ func dedupePackageIDs(ids []string) []string {
 	return out
 }
 
-func formatRetryCommand(verb string, packageIDs []string, scope string, force bool) string {
+// dedupeExactStrings preserves order and case; identical strings collapse once.
+func dedupeExactStrings(ids []string) []string {
+	seen := make(map[string]struct{})
+	var out []string
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		out = append(out, id)
+	}
+	return out
+}
+
+func formatRetryCommand(verb string, args []string, scope string, force bool) string {
 	parts := []string{"fontget", verb}
-	for _, id := range dedupePackageIDs(packageIDs) {
+	for _, id := range args {
 		parts = append(parts, shellQuoteArg(id))
 	}
 	scope = strings.TrimSpace(scope)
@@ -77,13 +95,21 @@ func formatRetryCommand(verb string, packageIDs []string, scope string, force bo
 }
 
 // FormatRetryAddCommand builds the suggested fontget add command for incomplete installs.
+// Catalog Font IDs are deduped case-insensitively.
 func FormatRetryAddCommand(packageIDs []string, scope string, force bool) string {
-	return formatRetryCommand("add", packageIDs, scope, force)
+	return formatRetryCommand("add", dedupePackageIDs(packageIDs), scope, force)
+}
+
+// FormatRetryAddCommandMixed builds a retry command with catalog IDs (case-insensitive)
+// and local paths (exact case preserved).
+func FormatRetryAddCommandMixed(catalogIDs, localPaths []string, scope string, force bool) string {
+	args := append(dedupePackageIDs(catalogIDs), dedupeExactStrings(localPaths)...)
+	return formatRetryCommand("add", args, scope, force)
 }
 
 // FormatRetryRemoveCommand builds the suggested fontget remove command for incomplete removals.
 func FormatRetryRemoveCommand(packageIDs []string, scope string) string {
-	return formatRetryCommand("remove", packageIDs, scope, false)
+	return formatRetryCommand("remove", dedupePackageIDs(packageIDs), scope, false)
 }
 
 // FormatInstallationCancelledText returns the full cancellation + retry text for installs / force installs.
@@ -94,6 +120,28 @@ func FormatInstallationCancelledText(packageIDs []string, scope string, force bo
 	}
 	return fmt.Sprintf("%s\nRun `%s` again to complete the installation.",
 		msgInstallationCancelledIncomplete, FormatRetryAddCommand(ids, scope, force))
+}
+
+// FormatInstallationCancelledTextMixed formats cancel guidance for mixed catalog + local retries.
+func FormatInstallationCancelledTextMixed(catalogIDs, localPaths, missingLocal []string, scope string, force bool) string {
+	catalogIDs = dedupePackageIDs(catalogIDs)
+	localPaths = dedupeExactStrings(localPaths)
+	missingLocal = dedupeExactStrings(missingLocal)
+	if len(catalogIDs) == 0 && len(localPaths) == 0 {
+		msg := msgInstallationCancelledIncomplete
+		if len(missingLocal) > 0 {
+			msg += "\nProvide the original local font files and run fontget add again."
+		} else {
+			return msgInstallationCancelledShort
+		}
+		return msg
+	}
+	cmd := FormatRetryAddCommandMixed(catalogIDs, localPaths, scope, force)
+	text := fmt.Sprintf("%s\nRun `%s` again to complete the installation.", msgInstallationCancelledIncomplete, cmd)
+	if len(missingLocal) > 0 {
+		text += "\nSome original local inputs are no longer available and must be supplied again."
+	}
+	return text
 }
 
 // FormatRemovalCancelledText returns the full cancellation + retry text for removals.

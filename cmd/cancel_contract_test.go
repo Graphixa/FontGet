@@ -3,6 +3,8 @@ package cmd
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 
 	"fontget/internal/installations"
 	"fontget/internal/platform"
+	"fontget/internal/repo"
 	"fontget/internal/shared"
 	"fontget/internal/testutil"
 	"fontget/internal/ui"
@@ -112,7 +115,7 @@ func TestRemoveCancelKeepsRemainingFiles(t *testing.T) {
 	if err := os.WriteFile(b, testutil.MinimalTTF("Beta", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "test.rm",
 		Scope:  "user",
 		Files: []installations.InstalledFontFile{
@@ -233,7 +236,7 @@ func TestForceRemovePhaseStopsBeforeInstallOnCancel(t *testing.T) {
 	if err := os.WriteFile(a, testutil.MinimalTTF("Old", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "test.force",
 		Scope:  "user",
 		Files:  []installations.InstalledFontFile{{Path: a, SFNT: installations.SFNTSnapshot{Family: "Old", Style: "Regular"}}},
@@ -519,7 +522,7 @@ func TestRemoveCancelOnFinalFileStillSucceeds(t *testing.T) {
 	if err := os.WriteFile(a, testutil.MinimalTTF("Only", "Regular"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installations.RecordInstallation(installations.RecordParams{
+	if err := installations.UpsertInstallation(installations.UpsertParams{
 		FontID: "test.rmlast",
 		Scope:  "user",
 		Files:  []installations.InstalledFontFile{{Path: a, SFNT: installations.SFNTSnapshot{Family: "Only", Style: "Regular"}}},
@@ -570,20 +573,46 @@ func TestUnifiedAddSession_CancelBeforeFirstItem(t *testing.T) {
 }
 
 func TestUnifiedAddSession_CancelMidCatalogIncludesUnfinishedIDs(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	fontDir := t.TempDir()
+
+	payload := testutil.MinimalTTF("CatA", "Regular")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "font/ttf")
+		_, _ = w.Write(payload)
+	}))
+	t.Cleanup(srv.Close)
+
 	items := []addWorkItem{
-		{Kind: addWorkCatalog, Catalog: &FontToInstall{FontID: "test.first", FontName: "First", SourceName: "test"}},
-		{Kind: addWorkCatalog, Catalog: &FontToInstall{FontID: "test.second", FontName: "Second", SourceName: "test"}},
+		{Kind: addWorkCatalog, Catalog: &FontToInstall{
+			FontID: "test.first", FontName: "First", SourceName: "test",
+			Fonts: []repo.FontFile{{Name: "First", Variant: "Regular", Path: "First.ttf", DownloadURL: srv.URL + "/First.ttf"}},
+		}},
+		{Kind: addWorkCatalog, Catalog: &FontToInstall{
+			FontID: "test.second", FontName: "Second", SourceName: "test",
+			Fonts: []repo.FontFile{{Name: "Second", Variant: "Regular", Path: "Second.ttf", DownloadURL: srv.URL + "/Second.ttf"}},
+		}},
 	}
-	retry := retryTokensFromItems(items, 0)
-	if len(retry) != 2 || retry[0] != "test.first" || retry[1] != "test.second" {
-		t.Fatalf("retry=%v", retry)
+	staging, err := platform.NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
 	}
-	text := FormatInstallationCancelledText(retry, "user", false)
-	if !strings.Contains(text, "test.first") || !strings.Contains(text, "test.second") {
-		t.Fatalf("retry guidance missing IDs: %s", text)
+	t.Cleanup(func() { _ = staging.Cleanup() })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	fm := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel}
+	_, completion, runErr := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
+	if completion != addCancelledRemaining {
+		t.Fatalf("completion=%v err=%v", completion, runErr)
 	}
-	if err := FinishInstallationCancel(retry, "user", false); err == nil {
-		t.Fatal("incomplete catalog cancel must be non-nil")
+	if runErr == nil || !errors.Is(runErr, shared.ErrOperationCancelled) {
+		t.Fatalf("want ErrOperationCancelled, got %v", runErr)
+	}
+	retry := collectCancelRetry(items, 0)
+	text := FormatInstallationCancelledTextMixed(retry.CatalogIDs, retry.LocalPaths, retry.MissingLocal, "user", false)
+	if !strings.Contains(text, "test.second") && !strings.Contains(text, "test.first") {
+		t.Fatalf("retry guidance missing unfinished catalog IDs: %s (retry=%+v)", text, retry)
 	}
 }
 
@@ -607,7 +636,8 @@ func TestUnifiedAddSession_CancelMidLocalNoCatalogID(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-zero cancel path")
 	}
-	text := FormatInstallationCancelledText(retryTokensFromItems(items, 0), "user", false)
+	retry := collectCancelRetry(items, 0)
+	text := FormatInstallationCancelledTextMixed(retry.CatalogIDs, retry.LocalPaths, retry.MissingLocal, "user", false)
 	if strings.Contains(text, "local.") {
 		t.Fatalf("must not invent catalog-style local IDs: %s", text)
 	}
@@ -624,14 +654,17 @@ func TestUnifiedAddSession_CancelAfterFinalItemSucceeds(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	fm := &cancelAfterInstallFM{copyFontManager: &copyFontManager{dir: fontDir}, cancel: cancel}
 	status, completion, err := runUnifiedAddSession(ctx, items, fm, platform.UserScope, fontDir, false, false, false, staging)
-	// Single item completes; cancel after install may leave remaining=false if cancel fires after item returns.
-	if completion == addCancelledRemaining && err == nil {
-		t.Fatal("remaining cancel must return error")
+	if completion == addCancelledRemaining {
+		t.Fatalf("final-item cancel must not report remaining work: err=%v", err)
 	}
-	if completion == addCompleted || completion == addCancelledDone {
-		if status.Installed != 1 {
-			t.Fatalf("installed=%d", status.Installed)
-		}
+	if completion != addCompleted && completion != addCancelledDone {
+		t.Fatalf("completion=%v", completion)
+	}
+	if err != nil {
+		t.Fatalf("want nil err, got %v", err)
+	}
+	if status == nil || status.Installed != 1 {
+		t.Fatalf("installed=%v", status)
 	}
 }
 
@@ -666,24 +699,18 @@ func TestFailedItems_PartialLocalFamily(t *testing.T) {
 	if installed != 1 {
 		t.Fatalf("installed=%d", installed)
 	}
-	// Injected mid-family failure may leave remaining files unattempted (failed==0).
-	fileFailed := failed
-	if fileFailed == 0 {
-		fileFailed = 1 // remaining candidate not installed
-	}
-
 	status := &InstallationStatus{}
-	recordItemFailure(status, buildInstallResult(InstallStatusFailed, "Installation failed", installed, 0, fileFailed, nil, nil, 0), err)
+	recordItemFailure(status, buildInstallResult(InstallStatusFailed, "Installation failed", installed, 0, failed, nil, nil, 0), err)
 	if status.FailedItems != 1 {
 		t.Fatalf("FailedItems=%d", status.FailedItems)
 	}
-	if status.Failed != fileFailed {
-		t.Fatalf("Failed=%d want %d", status.Failed, fileFailed)
+	if status.Failed != failed {
+		t.Fatalf("Failed=%d want actual file failure count %d", status.Failed, failed)
 	}
 }
 
 func TestFinishAddCancel_LocalPathsGone(t *testing.T) {
-	err := finishAddCancel(nil, "user", false, true)
+	err := finishAddCancel(addCancelRetry{MissingLocal: []string{"gone.ttf"}}, "user", false, true)
 	if err == nil {
 		t.Fatal("work remaining with no retry tokens must be non-nil")
 	}

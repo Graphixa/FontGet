@@ -38,20 +38,6 @@ func TestOperationStagingCleanupLeavesSibling(t *testing.T) {
 	if string(got) != "keep" {
 		t.Fatalf("sibling contents = %q", got)
 	}
-
-	root, err := GetTempDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := CleanupTempDir(); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(root); err != nil {
-		t.Fatalf("shared temp root must survive occupied cleanup: %v", err)
-	}
-	if _, err := os.Stat(marker); err != nil {
-		t.Fatalf("occupied child must survive shared-root cleanup: %v", err)
-	}
 }
 
 func TestOperationStagingConcurrentCleanup(t *testing.T) {
