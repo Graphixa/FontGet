@@ -229,7 +229,7 @@ func TestDiscoverAndDedupe_DirectCollectionRejected(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err := DiscoverAndDedupeLocalFonts(p)
-		if err == nil || !strings.Contains(err.Error(), "Font collections (.ttc and .otc) are not supported") {
+		if err == nil || !strings.Contains(err.Error(), "font collections (.ttc and .otc) are not supported") {
 			t.Fatalf("%s: err=%v", name, err)
 		}
 	}

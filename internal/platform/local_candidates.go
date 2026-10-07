@@ -48,7 +48,7 @@ type LocalIngestResult struct {
 }
 
 // ErrLocalCollectionUnsupported is returned for a direct .ttc/.otc local add path.
-var ErrLocalCollectionUnsupported = fmt.Errorf("Font collections (.ttc and .otc) are not supported for local installation.")
+var ErrLocalCollectionUnsupported = fmt.Errorf("font collections (.ttc and .otc) are not supported for local installation")
 
 // IsLocalInstallFontExt reports whether ext is an installable font for local add.
 func IsLocalInstallFontExt(ext string) bool {
