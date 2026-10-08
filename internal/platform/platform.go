@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -65,6 +66,9 @@ type FileMutation struct {
 
 // InstallFontOptions configures InstallFont. A nil opts value keeps legacy behavior (run post-install cache/notify after each InstallFont).
 type InstallFontOptions struct {
+	// Context bounds recovery cache commands. Nil uses a background context.
+	// File operations and native registration remain synchronous.
+	Context context.Context
 	// SkipPostInstallCacheRefresh skips the per-install OS font cache update / Windows WM_FONTCHANGE notification.
 	// Use with FlushFontCache(scope) once after installing multiple files in one batch.
 	SkipPostInstallCacheRefresh bool
@@ -704,4 +708,11 @@ func titleFirst(s string) string {
 	r := []rune(s)
 	r[0] = unicode.ToUpper(r[0])
 	return string(r)
+}
+
+func installContext(opts *InstallFontOptions) context.Context {
+	if opts != nil && opts.Context != nil {
+		return opts.Context
+	}
+	return context.Background()
 }

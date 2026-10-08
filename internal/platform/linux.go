@@ -4,10 +4,12 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"time"
 )
 
 type linuxFontManager struct {
@@ -59,6 +61,9 @@ func (m *linuxFontManager) FlushFontCache(scope InstallationScope) error {
 
 // InstallFont installs a font file to the specified font directory
 func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope, force bool, opts *InstallFontOptions) error {
+	if err := installContext(opts).Err(); err != nil {
+		return err
+	}
 	fontName := getFontName(fontPath)
 	var targetDir string
 
@@ -93,7 +98,7 @@ func (m *linuxFontManager) InstallFont(fontPath string, scope InstallationScope,
 
 	skipCache := opts != nil && opts.SkipPostInstallCacheRefresh
 	if !skipCache {
-		if err := m.updateFontCache(scope); err != nil {
+		if err := m.updateFontCacheContext(installContext(opts), scope); err != nil {
 			_ = RollbackMutation(mut)
 			return fmt.Errorf("failed to update font cache: %w", err)
 		}
@@ -157,20 +162,29 @@ func (m *linuxFontManager) RequiresElevation(scope InstallationScope) bool {
 
 // updateFontCache runs fc-cache to update the font cache
 func (m *linuxFontManager) updateFontCache(scope InstallationScope) error {
+	return m.updateFontCacheContext(context.Background(), scope)
+}
+
+func (m *linuxFontManager) updateFontCacheContext(ctx context.Context, scope InstallationScope) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	var cmd *exec.Cmd
 
 	switch scope {
 	case UserScope:
 		// Update user font cache
-		cmd = exec.Command("fc-cache", "-f", "-v", m.userFontDir)
+		cmd = exec.CommandContext(ctx, "fc-cache", "-f", "-v", m.userFontDir)
 	case MachineScope:
 		// Update system font cache
-		cmd = exec.Command("fc-cache", "-f", "-v", m.systemFontDir)
+		cmd = exec.CommandContext(ctx, "fc-cache", "-f", "-v", m.systemFontDir)
 	default:
 		return fmt.Errorf("invalid installation scope: %s", scope)
 	}
 
 	if output, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return fmt.Errorf("fc-cache failed: %v\nOutput: %s", err, string(output))
 	}
 

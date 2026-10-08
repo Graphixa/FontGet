@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -121,8 +122,8 @@ func copyFileViaRead(src, dest string) error {
 	return os.WriteFile(dest, data, 0o644)
 }
 
-// recoverLocalOverlaps restores destination-overlapping inputs from staged copies under the
-// destination lock. Uses a non-cancelled context so user cancel cannot abort recovery.
+// recoverLocalOverlaps runs synchronously under the destination lock. It must
+// finish before staging cleanup, even when the user cancelled the install.
 func recoverLocalOverlaps(
 	overlaps []localOverlap,
 	fontManager platform.FontManager,
@@ -130,121 +131,146 @@ func recoverLocalOverlaps(
 	fontDir string,
 	group localFontGroup,
 	prior *installations.Installation,
-	mutated bool,
+	opErr error,
 ) error {
-	if len(overlaps) == 0 || !mutated {
-		return nil
+	// Never inherit the cancelled operation context. No background worker is
+	// left mutating files after the destination lock is released.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	reg, registryErr := installations.Load()
+	var recoveryErrors []error
+	var current *installations.Installation
+	if registryErr != nil {
+		recoveryErrors = append(recoveryErrors, fmt.Errorf("load recovery registry: %w", registryErr))
+	} else {
+		current = reg.FindByFontID(group.FontID)
 	}
-	recoverCtx := context.Background()
-	_ = recoverCtx
-
-	var first error
 	var restoredFiles []installations.InstalledFontFile
+	var registrationPending []string
 	for _, o := range overlaps {
-		if _, err := os.Stat(o.Staged); err != nil {
-			if first == nil {
-				first = fmt.Errorf("staged copy missing for %s: %w", o.Origin, err)
-			}
-			continue
-		}
 		if err := copyFileExact(o.Staged, o.Origin); err != nil {
-			if first == nil {
-				first = fmt.Errorf("restore %s: %w", o.Origin, err)
-			}
+			recoveryErrors = append(recoveryErrors, fmt.Errorf("restore %s: %w", o.Origin, err))
+			registrationPending = append(registrationPending, filepath.Base(o.Origin))
 			continue
 		}
-		if err := fontManager.InstallFont(o.Origin, installScope, true, nil); err != nil {
-			// File bytes are restored; registration may still fail on some platforms.
-			if first == nil {
-				first = fmt.Errorf("re-register %s: %w", o.Origin, err)
-			}
+		if err := fontManager.InstallFont(o.Origin, installScope, true, &platform.InstallFontOptions{Context: ctx}); err != nil {
+			recoveryErrors = append(recoveryErrors, fmt.Errorf("re-register %s: %w", o.Origin, err))
+			registrationPending = append(registrationPending, filepath.Base(o.Origin))
 		}
-		face := installations.InstalledFontFile{
-			Path: o.Origin,
-			SFNT: installations.SFNTSnapshot{Family: group.FamilyName},
-		}
-		if md, err := platform.ExtractFontMetadata(o.Origin); err == nil && md != nil {
-			fam := strings.TrimSpace(md.TypographicFamily)
-			if fam == "" {
-				fam = strings.TrimSpace(md.FamilyName)
-			}
-			style := strings.TrimSpace(md.TypographicStyle)
-			if style == "" {
-				style = strings.TrimSpace(md.StyleName)
-			}
-			face.SFNT = installations.SFNTSnapshot{
-				Family:   fam,
-				Style:    style,
-				FullName: strings.TrimSpace(md.FullName),
-			}
+		face, err := installedFaceFromPath(o.Origin, "")
+		if err != nil {
+			recoveryErrors = append(recoveryErrors, fmt.Errorf("restored font metadata: %w", err))
+			registrationPending = append(registrationPending, filepath.Base(o.Origin))
+			continue
 		}
 		restoredFiles = append(restoredFiles, face)
 	}
-	if len(restoredFiles) == 0 && first != nil {
-		return first
-	}
 
-	catalogName := group.FamilyName
-	installSrc := group.InstallSrc
+	// Keep both earlier files and files completed by this attempt. Upsert replaces
+	// the entire record, so restoring only the old snapshot would lose new faces.
+	var files []installations.InstalledFontFile
+	byPath := map[string]int{}
+	addFace := func(f installations.InstalledFontFile) {
+		if !installations.DirContainsFontFile(fontDir, f.Path) {
+			return
+		}
+		info, err := os.Stat(f.Path)
+		if err != nil || !info.Mode().IsRegular() {
+			return
+		}
+		f.Path = platform.CanonicalPath(f.Path)
+		if i, ok := byPath[f.Path]; ok {
+			files[i] = f
+			return
+		}
+		byPath[f.Path] = len(files)
+		files = append(files, f)
+	}
+	var expected, lastErrors []string
+	catalogName, installSrc := group.FamilyName, group.InstallSrc
 	fontGetVer := version.GetVersion()
-	if prior != nil {
-		if prior.CatalogName != "" {
-			catalogName = prior.CatalogName
+	priorIncomplete := prior != nil && prior.IsIncomplete()
+	for _, inst := range []*installations.Installation{prior, current} {
+		if inst == nil {
+			continue
 		}
-		if prior.InstallationSource != "" {
-			installSrc = prior.InstallationSource
+		if inst.CatalogName != "" {
+			catalogName = inst.CatalogName
 		}
-		if prior.FontGetVersion != "" {
-			fontGetVer = prior.FontGetVersion
+		if inst.InstallationSource != "" {
+			installSrc = inst.InstallationSource
 		}
-		// Prefer prior face list for files we restored by basename match; keep other prior faces that still exist.
-		byBase := map[string]installations.InstalledFontFile{}
-		for _, f := range restoredFiles {
-			byBase[strings.ToLower(filepath.Base(f.Path))] = f
-		}
-		var merged []installations.InstalledFontFile
-		for _, f := range prior.FlatFiles() {
-			base := strings.ToLower(filepath.Base(f.Path))
-			if rep, ok := byBase[base]; ok {
-				merged = append(merged, rep)
-				delete(byBase, base)
-				continue
-			}
-			if _, err := os.Stat(f.Path); err == nil {
-				merged = append(merged, f)
+		for _, f := range inst.FlatFiles() {
+			if installations.DirContainsFontFile(fontDir, f.Path) {
+				expected = append(expected, filepath.Base(f.Path))
+				addFace(f)
 			}
 		}
-		for _, f := range byBase {
-			merged = append(merged, f)
-		}
-		restoredFiles = merged
+		expected = append(expected, inst.Remaining...)
+		lastErrors = append(lastErrors, inst.LastErrors...)
 	}
-	if len(restoredFiles) > 0 {
-		if err := installations.UpsertInstallation(installations.UpsertParams{
-			FontID:             group.FontID,
-			CatalogName:        catalogName,
-			InstallationSource: installSrc,
-			Scope:              string(installScope),
-			FontGetVersion:     fontGetVer,
-			Files:              restoredFiles,
-		}); err != nil && first == nil {
-			first = fmt.Errorf("restore installation registry: %w", err)
+	for _, c := range group.Candidates {
+		expected = append(expected, c.Basename)
+	}
+	for _, f := range restoredFiles {
+		addFace(f)
+	}
+	var present []string
+	for _, f := range files {
+		present = append(present, filepath.Base(f.Path))
+	}
+	remaining := remainingBasenames(dedupeBasenameList(expected), present)
+	remaining = dedupeBasenameList(append(remaining, registrationPending...))
+	status := ""
+	if len(remaining) > 0 || len(recoveryErrors) > 0 || priorIncomplete {
+		status = installations.StatusIncompleteInstall
+		if opErr != nil {
+			lastErrors = append(lastErrors, opErr.Error())
+		}
+		for _, err := range recoveryErrors {
+			lastErrors = append(lastErrors, err.Error())
 		}
 	}
-	return first
+	// Restore bytes even if the registry is unreadable, but never overwrite it
+	// with a guessed record. The returned error retains staging for manual repair.
+	if registryErr != nil {
+		return errors.Join(recoveryErrors...)
+	}
+	if err := installations.UpsertInstallation(installations.UpsertParams{
+		FontID: group.FontID, CatalogName: catalogName, InstallationSource: installSrc,
+		Scope: string(installScope), FontGetVersion: fontGetVer, Files: files,
+		Status: status, Remaining: remaining, LastErrors: lastErrors,
+	}); err != nil {
+		recoveryErrors = append(recoveryErrors, fmt.Errorf("restore installation registry: %w", err))
+	}
+	return errors.Join(recoveryErrors...)
 }
+
+// localRecoveryError must survive cancellation handling: the retained bytes and
+// manual recovery instructions are more urgent than normal retry advice.
+type localRecoveryError struct {
+	operation  error
+	recovery   error
+	stagedRoot string
+}
+
+func (e *localRecoveryError) Error() string {
+	if e.stagedRoot == "" {
+		return fmt.Sprintf("%v; recovery failed: %v (manual recovery required)", e.operation, e.recovery)
+	}
+	return fmt.Sprintf("%v; recovery failed: %v; preserved staged copy at %s (manual recovery required)", e.operation, e.recovery, e.stagedRoot)
+}
+
+func (e *localRecoveryError) Unwrap() []error { return []error{e.operation, e.recovery} }
 
 func wrapLocalRecoveryError(opErr error, staging *platform.OperationStaging, recoverErr error) error {
 	if recoverErr == nil {
 		return opErr
 	}
-	preserved := ""
+	e := &localRecoveryError{operation: opErr, recovery: recoverErr}
 	if staging != nil {
 		staging.Retain()
-		preserved = staging.Root
+		e.stagedRoot = staging.Root
 	}
-	if preserved == "" {
-		return fmt.Errorf("%w; recovery failed: %v (manual recovery required)", opErr, recoverErr)
-	}
-	return fmt.Errorf("%w; recovery failed: %v; preserved staged copy at %s (manual recovery required)", opErr, recoverErr, preserved)
+	return e
 }

@@ -20,11 +20,6 @@ const (
 	WM_FONTCHANGE = 0x001D
 )
 
-// Windows API functions
-var (
-	sendMessage = syscall.NewLazyDLL("user32.dll").NewProc("SendMessageW")
-)
-
 type windowsFontManager struct {
 	systemFontDir string
 	userFontDir   string
@@ -58,6 +53,9 @@ func (m *windowsFontManager) FlushFontCache(scope InstallationScope) error {
 
 // InstallFont installs a font file to the specified font directory
 func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScope, force bool, opts *InstallFontOptions) error {
+	if err := installContext(opts).Err(); err != nil {
+		return err
+	}
 	logger := logging.GetLogger()
 	logger.Debug("Starting font installation for: %s (scope: %s)", fontPath, scope)
 
@@ -194,7 +192,7 @@ func (m *windowsFontManager) InstallFont(fontPath string, scope InstallationScop
 	if !skipNotify {
 		// Notify other applications about the new font
 		logger.Debug("Notifying system about font change...")
-		if err := NotifyFontChange(); err != nil {
+		if err := notifyFontChangeContext(installContext(opts)); err != nil {
 			logger.Error("Failed to notify font change: %v", err)
 			if scope == MachineScope && mut.RegistryAdded {
 				_ = m.removeFontFromRegistry(fontName)
@@ -573,15 +571,4 @@ func (m *windowsFontManager) deleteRegistryValue(key syscall.Handle, valueName s
 		return fmt.Errorf("failed to delete registry value: %w", err)
 	}
 	return nil
-}
-
-// SendMessage wraps the Windows SendMessage function
-func SendMessage(hwnd uintptr, msg uint32, wParam, lParam uintptr) uintptr {
-	ret, _, _ := sendMessage.Call(
-		hwnd,
-		uintptr(msg),
-		wParam,
-		lParam,
-	)
-	return ret
 }
