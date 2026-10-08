@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -336,10 +337,28 @@ func extractFontMetadataHeaderOnly(fontPath string) (*FontMetadata, error) {
 		return nil, fmt.Errorf("failed to open font file: %w", err)
 	}
 	defer file.Close()
+	return extractFontMetadataAt(file)
+}
 
+// fontMetadataFromBytes reads SFNT names from an in-memory font (zip members).
+func fontMetadataFromBytes(data []byte, filename string) (*FontMetadata, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("%w: file is empty", ErrInvalidFontFile)
+	}
+	metadata, err := extractFontMetadataAt(bytes.NewReader(data))
+	if err == nil {
+		return metadata, nil
+	}
+	if isInvalidFontError(err) {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidFontFile, err)
+	}
+	return extractFontMetadataFromData(data, filename)
+}
+
+func extractFontMetadataAt(r io.ReaderAt) (*FontMetadata, error) {
 	// Read SFNT header (first 12 bytes)
 	header := make([]byte, 12)
-	if _, err := file.ReadAt(header, 0); err != nil {
+	if _, err := r.ReadAt(header, 0); err != nil {
 		return nil, fmt.Errorf("failed to read SFNT header: %w", err)
 	}
 
@@ -357,7 +376,7 @@ func extractFontMetadataHeaderOnly(fontPath string) (*FontMetadata, error) {
 	// Read table directory (16 bytes per table)
 	tableDirSize := numTables * 16
 	tableDir := make([]byte, tableDirSize)
-	if _, err := file.ReadAt(tableDir, 12); err != nil {
+	if _, err := r.ReadAt(tableDir, 12); err != nil {
 		return nil, fmt.Errorf("failed to read table directory: %w", err)
 	}
 
@@ -382,7 +401,7 @@ func extractFontMetadataHeaderOnly(fontPath string) (*FontMetadata, error) {
 
 	// Read the name table
 	nameTableData := make([]byte, nameTableLength)
-	if _, err := file.ReadAt(nameTableData, int64(nameTableOffset)); err != nil {
+	if _, err := r.ReadAt(nameTableData, int64(nameTableOffset)); err != nil {
 		return nil, fmt.Errorf("failed to read name table: %w", err)
 	}
 
@@ -392,22 +411,20 @@ func extractFontMetadataHeaderOnly(fontPath string) (*FontMetadata, error) {
 
 // extractFontMetadataFullFile falls back to reading the entire font file
 func extractFontMetadataFullFile(fontPath string) (*FontMetadata, error) {
-	// Read the font file
 	fontData, err := os.ReadFile(fontPath)
 	if err != nil {
 		return nil, fmt.Errorf("%w: failed to read font file: %w", ErrInvalidFontFile, err)
 	}
+	return extractFontMetadataFromData(fontData, filepath.Base(fontPath))
+}
 
-	// Check if file is empty
+func extractFontMetadataFromData(fontData []byte, filename string) (*FontMetadata, error) {
 	if len(fontData) == 0 {
 		return nil, fmt.Errorf("%w: file is empty", ErrInvalidFontFile)
 	}
 
-	// Parse the font using SFNT (supports both TTF and OTF)
 	font, err := sfnt.Parse(fontData)
 	if err != nil {
-		// If font parsing fails, the file is likely invalid/corrupted
-		// Don't fall back to filename parsing for invalid fonts
 		return nil, fmt.Errorf("%w: failed to parse font file: %w", ErrInvalidFontFile, err)
 	}
 
@@ -418,7 +435,6 @@ func extractFontMetadataFullFile(fontPath string) (*FontMetadata, error) {
 	familyName, err := font.Name(&buf, sfnt.NameIDFamily)
 	if err != nil || familyName == "" {
 		// If we can't get the family name, fall back to filename parsing
-		filename := filepath.Base(fontPath)
 		family, _ := parseFontNameImproved(filename)
 		metadata.FamilyName = family
 	} else {
@@ -429,7 +445,6 @@ func extractFontMetadataFullFile(fontPath string) (*FontMetadata, error) {
 	styleName, err := font.Name(&buf, sfnt.NameIDSubfamily)
 	if err != nil || styleName == "" {
 		// If we can't get the style name, fall back to filename parsing
-		filename := filepath.Base(fontPath)
 		_, style := parseFontNameImproved(filename)
 		metadata.StyleName = style
 	} else {

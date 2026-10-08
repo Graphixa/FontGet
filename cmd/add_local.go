@@ -228,19 +228,27 @@ func stageLocalWorkItems(items []addWorkItem, staging *platform.OperationStaging
 	if staging == nil {
 		return fmt.Errorf("operation staging is required for local install")
 	}
-	for _, it := range items {
+	type span struct{ idx, n int }
+	var flat []platform.LocalFontCandidate
+	var spans []span
+	for i, it := range items {
 		if it.Kind != addWorkLocal || it.Local == nil {
 			continue
 		}
-		staged := make([]platform.LocalFontCandidate, 0, len(it.Local.Candidates))
-		for _, c := range it.Local.Candidates {
-			sc, err := platform.StageLocalCandidate(staging, c)
-			if err != nil {
-				return fmt.Errorf("stage local font %s: %w", platform.CandidateLabel(c), err)
-			}
-			staged = append(staged, sc)
-		}
-		it.Local.Candidates = staged
+		spans = append(spans, span{i, len(it.Local.Candidates)})
+		flat = append(flat, it.Local.Candidates...)
+	}
+	if len(flat) == 0 {
+		return nil
+	}
+	staged, err := platform.StageLocalCandidates(staging, flat)
+	if err != nil {
+		return err
+	}
+	off := 0
+	for _, sp := range spans {
+		items[sp.idx].Local.Candidates = append([]platform.LocalFontCandidate(nil), staged[off:off+sp.n]...)
+		off += sp.n
 	}
 	return nil
 }

@@ -42,6 +42,8 @@ type LocalFontCandidate struct {
 	Family   string
 	Style    string
 	FullName string
+	// MetaReady means Family/Style/FullName were already read, so later passes must not reopen the file.
+	MetaReady bool
 }
 
 // LocalIngestResult is the outcome of discover + dedupe for one local path.
@@ -336,10 +338,16 @@ func dedupeLocalCandidates(cands []LocalFontCandidate) (kept []LocalFontCandidat
 		afterHash = append(afterHash, c)
 	}
 
-	// SFNT face metadata for survivors.
+	// SFNT face metadata for survivors. One zip stays open for every member.
 	withMeta := make([]LocalFontCandidate, 0, len(afterHash))
+	zips := newZipCache()
+	defer zips.Close()
 	for _, c := range afterHash {
-		md, merr := metadataForLocalCandidate(c)
+		if c.MetaReady {
+			withMeta = append(withMeta, c)
+			continue
+		}
+		md, merr := metadataForLocalCandidate(c, zips)
 		if merr != nil {
 			warnings = append(warnings, fmt.Sprintf("skipped unreadable font %s: %v", CandidateLabel(c), merr))
 			continue
@@ -347,6 +355,7 @@ func dedupeLocalCandidates(cands []LocalFontCandidate) (kept []LocalFontCandidat
 		c.Family = preferredFamily(md)
 		c.Style = preferredStyle(md)
 		c.FullName = strings.TrimSpace(md.FullName)
+		c.MetaReady = true
 		withMeta = append(withMeta, c)
 	}
 
@@ -474,16 +483,78 @@ func hashLocalCandidate(c LocalFontCandidate) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func metadataForLocalCandidate(c LocalFontCandidate) (*FontMetadata, error) {
+func metadataForLocalCandidate(c LocalFontCandidate, zips *zipCache) (*FontMetadata, error) {
 	if c.LooseFile {
 		return ExtractFontMetadata(c.DiskPath)
 	}
-	tmp, err := ExtractZipEntryToTemp(c.ZipPath, c.ZipEntry, c.Basename)
+	zf, err := zips.entry(c.ZipPath, c.ZipEntry)
 	if err != nil {
 		return nil, err
 	}
-	defer os.RemoveAll(filepath.Dir(tmp))
-	return ExtractFontMetadata(tmp)
+	data, err := readZipFile(zf)
+	if err != nil {
+		return nil, err
+	}
+	return fontMetadataFromBytes(data, c.Basename)
+}
+
+// zipCache opens each archive once and reuses its central directory.
+type zipCache struct {
+	open  map[string]*zip.ReadCloser
+	files map[string]map[string]*zip.File
+}
+
+func newZipCache() *zipCache {
+	return &zipCache{
+		open:  map[string]*zip.ReadCloser{},
+		files: map[string]map[string]*zip.File{},
+	}
+}
+
+func (z *zipCache) Close() {
+	if z == nil {
+		return
+	}
+	for _, r := range z.open {
+		_ = r.Close()
+	}
+}
+
+func (z *zipCache) entry(zipPath, name string) (*zip.File, error) {
+	files := z.files[zipPath]
+	if files == nil {
+		r, err := zip.OpenReader(zipPath)
+		if err != nil {
+			return nil, err
+		}
+		z.open[zipPath] = r
+		files = make(map[string]*zip.File, len(r.File))
+		for _, f := range r.File {
+			files[filepath.ToSlash(f.Name)] = f
+		}
+		z.files[zipPath] = files
+	}
+	f := files[name]
+	if f == nil {
+		return nil, fmt.Errorf("zip entry not found: %s", name)
+	}
+	return f, nil
+}
+
+func readZipFile(zf *zip.File) ([]byte, error) {
+	rc, err := zf.Open()
+	if err != nil {
+		return nil, err
+	}
+	defer rc.Close()
+	data, err := io.ReadAll(io.LimitReader(rc, localIngestMaxFileBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > localIngestMaxFileBytes {
+		return nil, fmt.Errorf("zip entry exceeds size limit")
+	}
+	return data, nil
 }
 
 // ExtractZipEntryToTemp extracts one zip member to a temp file for install.
@@ -501,9 +572,31 @@ func ExtractZipEntryToTemp(zipPath, entry, basename string) (string, error) {
 	return named, nil
 }
 
+// StageLocalCandidates extracts every candidate, opening each zip once.
+func StageLocalCandidates(staging *OperationStaging, cands []LocalFontCandidate) ([]LocalFontCandidate, error) {
+	if staging == nil {
+		return nil, fmt.Errorf("nil operation staging")
+	}
+	zips := newZipCache()
+	defer zips.Close()
+	out := make([]LocalFontCandidate, len(cands))
+	for i, c := range cands {
+		sc, err := stageLocalCandidate(staging, c, zips)
+		if err != nil {
+			return nil, fmt.Errorf("stage local font %s: %w", CandidateLabel(c), err)
+		}
+		out[i] = sc
+	}
+	return out, nil
+}
+
 // StageLocalCandidate copies or extracts a candidate into operation staging.
 // The returned candidate always points at a loose staged file (FromZip=false).
 func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (LocalFontCandidate, error) {
+	return stageLocalCandidate(staging, c, nil)
+}
+
+func stageLocalCandidate(staging *OperationStaging, c LocalFontCandidate, zips *zipCache) (LocalFontCandidate, error) {
 	if staging == nil {
 		return LocalFontCandidate{}, fmt.Errorf("nil operation staging")
 	}
@@ -513,7 +606,16 @@ func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (Local
 	}
 	var staged string
 	if c.FromZip {
-		staged, err = extractZipEntryIntoDir(c.ZipPath, c.ZipEntry, c.Basename, dir)
+		if zips == nil {
+			zips = newZipCache()
+			defer zips.Close()
+		}
+		zf, zerr := zips.entry(c.ZipPath, c.ZipEntry)
+		if zerr != nil {
+			_ = os.RemoveAll(dir)
+			return LocalFontCandidate{}, zerr
+		}
+		staged, err = extractOpenZipEntry(zf, c.Basename, dir)
 	} else {
 		staged, err = copyFileIntoDir(c.DiskPath, c.Basename, dir)
 	}
@@ -526,10 +628,16 @@ func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (Local
 		_ = os.RemoveAll(dir)
 		return LocalFontCandidate{}, err
 	}
-	md, merr := ExtractFontMetadata(staged)
-	if merr != nil {
-		_ = os.RemoveAll(dir)
-		return LocalFontCandidate{}, merr
+	family, style, full := c.Family, c.Style, c.FullName
+	if !c.MetaReady {
+		md, merr := ExtractFontMetadata(staged)
+		if merr != nil {
+			_ = os.RemoveAll(dir)
+			return LocalFontCandidate{}, merr
+		}
+		family = preferredFamily(md)
+		style = preferredStyle(md)
+		full = strings.TrimSpace(md.FullName)
 	}
 	origin := strings.TrimSpace(c.OriginDiskPath)
 	if origin == "" && c.LooseFile && !c.FromZip {
@@ -549,7 +657,7 @@ func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (Local
 			return LocalFontCandidate{}, err
 		}
 	}
-	out := LocalFontCandidate{
+	return LocalFontCandidate{
 		DiskPath:       CanonicalPath(staged),
 		OriginDiskPath: origin,
 		Basename:       filepath.Base(staged),
@@ -558,11 +666,11 @@ func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (Local
 		FromZip:        false,
 		Depth:          0,
 		SHA256:         c.SHA256,
-		Family:         preferredFamily(md),
-		Style:          preferredStyle(md),
-		FullName:       strings.TrimSpace(md.FullName),
-	}
-	return out, nil
+		Family:         family,
+		Style:          style,
+		FullName:       full,
+		MetaReady:      true,
+	}, nil
 }
 
 func copyFileIntoDir(srcPath, basename, dir string) (string, error) {
@@ -596,6 +704,10 @@ func extractZipEntryIntoDir(zipPath, entry, basename, dir string) (string, error
 		return "", err
 	}
 	defer zr.Close()
+	return extractOpenZipEntry(zf, basename, dir)
+}
+
+func extractOpenZipEntry(zf *zip.File, basename, dir string) (string, error) {
 	rc, err := zf.Open()
 	if err != nil {
 		return "", err
@@ -604,7 +716,7 @@ func extractZipEntryIntoDir(zipPath, entry, basename, dir string) (string, error
 
 	base := basename
 	if base == "" {
-		base = filepath.Base(entry)
+		base = filepath.Base(zf.Name)
 	}
 	named := filepath.Join(dir, base)
 	out, err := os.OpenFile(named, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)

@@ -260,3 +260,42 @@ func TestIsLocalInstallFontExt_NoCollections(t *testing.T) {
 		t.Fatal("expected collection helpers")
 	}
 }
+
+func TestDedupeSkipsZipWhenMetadataReady(t *testing.T) {
+	c := LocalFontCandidate{
+		FromZip: true, ZipPath: filepath.Join(t.TempDir(), "missing.zip"), ZipEntry: "A.ttf",
+		Basename: "A.ttf", Family: "A", Style: "Regular", FullName: "A Regular", MetaReady: true,
+	}
+	kept, _, _, _, _, err := DedupeLocalCandidates([]LocalFontCandidate{c})
+	if err != nil || len(kept) != 1 || !kept[0].MetaReady {
+		t.Fatalf("kept=%v err=%v", kept, err)
+	}
+}
+
+func TestStageLocalCandidates_OneZipOpen(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "fonts.zip")
+	writeZip(t, zipPath, "", map[string][]byte{
+		"A.ttf": testutil.MinimalTTF("Alpha", "Regular"),
+		"B.ttf": testutil.MinimalTTF("Beta", "Bold"),
+	})
+	res, err := DiscoverAndDedupeLocalFonts(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Kept) != 2 {
+		t.Fatalf("kept=%d", len(res.Kept))
+	}
+	staging, err := NewOperationStaging()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = staging.Cleanup() })
+	staged, err := StageLocalCandidates(staging, res.Kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(staged) != 2 || staged[0].FromZip || staged[0].Family == "" || staged[1].Family == "" {
+		t.Fatalf("staged=%+v", staged)
+	}
+}
