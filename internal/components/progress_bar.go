@@ -14,6 +14,7 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -42,12 +43,11 @@ type ProgressBarModel struct {
 	cancelled     bool // Track if operation was cancelled
 	err           error
 	program       *tea.Program
-	statusReport  *StatusReportData
-	cancelChan    chan struct{} // Channel to signal cancellation
-	opDone        chan struct{}
-	// printed items were written above the live view so they stay in scrollback.
-	// The live view is capped at the terminal height and would otherwise drop them.
-	printed map[int]bool
+	statusReport *StatusReportData
+	cancelChan   chan struct{} // Channel to signal cancellation
+	opDone       chan struct{}
+	width        int // terminal columns; 0 until known
+	height       int // terminal rows; 0 until known
 }
 
 // Message types for communication
@@ -120,9 +120,8 @@ func NewProgressBar(title string, items []OperationItem, verboseMode bool, debug
 		DebugMode:   debugMode,
 		ProgressBar: prog,
 		Spinner:     spin,
-		cancelChan:  make(chan struct{}),
-		opDone:      make(chan struct{}),
-		printed:     map[int]bool{},
+		cancelChan: make(chan struct{}),
+		opDone:     make(chan struct{}),
 	}
 }
 
@@ -192,6 +191,8 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
 		m.ProgressBar.Width = msg.Width - 8
 		if m.ProgressBar.Width > 80 {
 			m.ProgressBar.Width = 80
@@ -199,8 +200,6 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case ItemUpdateMsg:
-		// Update item status
-		var cmd tea.Cmd
 		if msg.Index >= 0 && msg.Index < len(m.Items) {
 			if msg.Name != "" {
 				m.Items[msg.Index].Name = msg.Name
@@ -221,18 +220,8 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.SourceName != "" {
 				m.Items[msg.Index].SourceName = msg.SourceName
 			}
-			// Bubble Tea drops view lines above the terminal height. Commit finished
-			// rows above the live region so a long install stays fully scrollable.
-			item := m.Items[msg.Index]
-			if m.printed == nil {
-				m.printed = map[int]bool{}
-			}
-			if item.Name != "" && settledItemStatus(item.Status) && !m.printed[msg.Index] {
-				m.printed[msg.Index] = true
-				cmd = tea.Println(strings.TrimRight(m.itemBlock(item), "\n"))
-			}
 		}
-		return m, cmd
+		return m, nil
 
 	case ProgressUpdateMsg:
 		// Don't process progress updates after operation completes
@@ -336,15 +325,6 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
-func settledItemStatus(status string) bool {
-	switch status {
-	case "completed", "failed", "skipped":
-		return true
-	default:
-		return false
-	}
-}
-
 // itemBlock is one result row, including verbose variant lines. Trailing newline included.
 func (m ProgressBarModel) itemBlock(item OperationItem) string {
 	var styledIcon string
@@ -425,86 +405,90 @@ func (m ProgressBarModel) itemBlock(item OperationItem) string {
 	return b.String()
 }
 
+// viewportMargin keeps the live View off the last terminal rows so Windows
+// does not scroll. Older item rows are clipped (not printed to scrollback).
+const viewportMargin = 3
+
 func (m ProgressBarModel) View() string {
-	// Always show the progress bar, don't hide it
+	return strings.Join(m.viewLines(), "\n")
+}
 
-	var b strings.Builder
+func (m ProgressBarModel) viewLines() []string {
+	idxs := m.clippedItemIndices()
+	var lines []string
+	if !m.VerboseMode && !m.DebugMode {
+		lines = append(lines, m.fitLine(m.headerLine()))
+		if len(idxs) > 0 {
+			lines = append(lines, "")
+		}
+	}
+	for _, i := range idxs {
+		block := strings.TrimRight(m.itemBlock(m.Items[i]), "\n")
+		for _, line := range strings.Split(block, "\n") {
+			lines = append(lines, m.fitLine(line))
+		}
+	}
+	return lines
+}
 
-	// Title with count - count all items that are done (completed, failed, or skipped)
+func (m ProgressBarModel) headerLine() string {
 	completed := 0
 	for _, item := range m.Items {
 		if item.Status == "completed" || item.Status == "failed" || item.Status == "skipped" {
 			completed++
 		}
 	}
+	return fmt.Sprintf("%s (%d of %d) %s", m.Title, completed, m.TotalItems, m.renderInlineProgressBar())
+}
 
-	// Build inline title with progress bar (skip in verbose/debug mode)
-	if !m.VerboseMode && !m.DebugMode {
-		// Format: "Title (X of Y) [████████░░] 50%" - plain text except for progress bar gradient
-		// Hide count text when TotalItems is 0 (used for simple progress bars without item tracking)
-		titleText := m.Title
-		progressBar := m.renderInlineProgressBar()
-
-		// Check if any items will be displayed (not pending and not empty name)
-		hasDisplayableItems := false
-		for i, item := range m.Items {
-			if item.Status != "pending" && item.Name != "" && !m.printed[i] {
-				hasDisplayableItems = true
-				break
-			}
-		}
-
-		var titleLine string
-		// Always show count text to prevent layout jumping when count is updated
-		// Show "(0 of 0)" as placeholder when TotalItems is 0
-		countText := fmt.Sprintf("(%d of %d)", completed, m.TotalItems)
-		if hasDisplayableItems {
-			titleLine = fmt.Sprintf("%s %s %s\n\n", titleText, countText, progressBar)
-		} else {
-			// No items to display - only one newline to avoid extra blank line
-			titleLine = fmt.Sprintf("%s %s %s\n", titleText, countText, progressBar)
-		}
-
-		// Combine into single line - no styling on text, only progress bar has gradient
-		// Title ends with \n\n to create blank line before items (if items will be shown), otherwise just \n
-		// No leading \n - commands already start with a blank line per spacing framework
-		b.WriteString(titleLine)
-	} else {
-		// For verbose/debug, don't show title line at all (redundant with verbose output)
-		// No newline here - let the command handle spacing to avoid double spacing
-	}
-
-	// Finished rows are printed above this view (see ItemUpdateMsg). The live
-	// region only keeps the row in progress; Bubble Tea clips anything taller
-	// than the terminal, which used to drop every line but the last screen.
+// clippedItemIndices keeps the newest started rows that fit under the bar.
+func (m ProgressBarModel) clippedItemIndices() []int {
+	var idxs []int
 	for i, item := range m.Items {
-		if item.Status == "pending" || item.Name == "" || m.printed[i] {
+		if item.Status == "pending" || item.Name == "" {
 			continue
 		}
-		b.WriteString(m.itemBlock(item))
+		idxs = append(idxs, i)
 	}
+	budget := m.itemLineBudget()
+	for len(idxs) > 1 && m.itemLines(idxs) > budget {
+		idxs = idxs[1:]
+	}
+	return idxs
+}
 
-	// Progress bar output ends with \n for spacing before next message
-	// Check if any items were actually displayed (not just empty placeholder items)
-	hasDisplayedItems := false
-	for i, item := range m.Items {
-		if item.Status != "pending" && item.Name != "" && !m.printed[i] {
-			hasDisplayedItems = true
-			break
+func (m ProgressBarModel) itemLineBudget() int {
+	if m.height <= viewportMargin {
+		return 1 << 20
+	}
+	header := 2 // title + blank under it
+	if m.VerboseMode || m.DebugMode {
+		header = 0
+	}
+	room := m.height - viewportMargin - header
+	if room < 1 {
+		room = 1
+	}
+	return room
+}
+
+func (m ProgressBarModel) itemLines(idxs []int) int {
+	n := 0
+	for _, i := range idxs {
+		block := strings.TrimRight(m.itemBlock(m.Items[i]), "\n")
+		if block == "" {
+			continue
 		}
+		n += strings.Count(block, "\n") + 1
 	}
+	return n
+}
 
-	// Always add a trailing newline to create blank line before next message
-	// (either after items if displayed, or after progress bar if no items)
-	if hasDisplayedItems {
-		b.WriteString("\n")
-	} else {
-		// No items displayed, but we still want a blank line after the progress bar
-		// The titleLine already has one \n, so add another to create blank line
-		b.WriteString("\n")
+func (m ProgressBarModel) fitLine(line string) string {
+	if m.width <= 1 {
+		return line
 	}
-
-	return b.String()
+	return ansi.Truncate(line, m.width-1, "")
 }
 
 // InlineProgressBarView renders the same gradient block + percent label used by the CLI progress UI.
@@ -687,6 +671,10 @@ func runPlainProgressBar(items []OperationItem, operation func(send func(msg tea
 
 func runInteractiveProgressBar(title string, items []OperationItem, verboseMode bool, debugMode bool, operation func(send func(msg tea.Msg), cancelChan <-chan struct{}) error) error {
 	model := NewProgressBar(title, items, verboseMode, debugMode)
+	if w, h, err := term.GetSize(os.Stdout.Fd()); err == nil {
+		model.width = w
+		model.height = h
+	}
 	p := tea.NewProgram(model)
 	model.program = p
 	var workStarted atomic.Bool
