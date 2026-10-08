@@ -45,6 +45,9 @@ type ProgressBarModel struct {
 	statusReport  *StatusReportData
 	cancelChan    chan struct{} // Channel to signal cancellation
 	opDone        chan struct{}
+	// printed items were written above the live view so they stay in scrollback.
+	// The live view is capped at the terminal height and would otherwise drop them.
+	printed map[int]bool
 }
 
 // Message types for communication
@@ -119,6 +122,7 @@ func NewProgressBar(title string, items []OperationItem, verboseMode bool, debug
 		Spinner:     spin,
 		cancelChan:  make(chan struct{}),
 		opDone:      make(chan struct{}),
+		printed:     map[int]bool{},
 	}
 }
 
@@ -196,6 +200,7 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ItemUpdateMsg:
 		// Update item status
+		var cmd tea.Cmd
 		if msg.Index >= 0 && msg.Index < len(m.Items) {
 			if msg.Name != "" {
 				m.Items[msg.Index].Name = msg.Name
@@ -216,8 +221,18 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.SourceName != "" {
 				m.Items[msg.Index].SourceName = msg.SourceName
 			}
+			// Bubble Tea drops view lines above the terminal height. Commit finished
+			// rows above the live region so a long install stays fully scrollable.
+			item := m.Items[msg.Index]
+			if m.printed == nil {
+				m.printed = map[int]bool{}
+			}
+			if item.Name != "" && settledItemStatus(item.Status) && !m.printed[msg.Index] {
+				m.printed[msg.Index] = true
+				cmd = tea.Println(strings.TrimRight(m.itemBlock(item), "\n"))
+			}
 		}
-		return m, nil
+		return m, cmd
 
 	case ProgressUpdateMsg:
 		// Don't process progress updates after operation completes
@@ -321,6 +336,95 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 }
 
+func settledItemStatus(status string) bool {
+	switch status {
+	case "completed", "failed", "skipped":
+		return true
+	default:
+		return false
+	}
+}
+
+// itemBlock is one result row, including verbose variant lines. Trailing newline included.
+func (m ProgressBarModel) itemBlock(item OperationItem) string {
+	var styledIcon string
+	switch item.Status {
+	case "completed":
+		styledIcon = ui.SuccessText.Render("✓")
+	case "failed":
+		styledIcon = ui.ErrorText.Render("✗")
+	case "skipped":
+		styledIcon = ui.SuccessText.Render("✓")
+	case "in_progress":
+		if m.VerboseMode || m.DebugMode {
+			styledIcon = "○"
+		} else {
+			styledIcon = strings.TrimSpace(m.Spinner.View())
+			var spinnerColor lipgloss.TerminalColor
+			if ui.SpinnerColor == "" {
+				spinnerColor = lipgloss.NoColor{}
+			} else {
+				spinnerColor = lipgloss.Color(ui.SpinnerColor)
+			}
+			styledIcon = lipgloss.NewStyle().Foreground(spinnerColor).Render(styledIcon)
+		}
+	default:
+		styledIcon = " "
+	}
+
+	var sourcePart string
+	if item.SourceName != "" {
+		sourcePart = " " + ui.InfoText.Render(fmt.Sprintf("[%s]", item.SourceName))
+	}
+
+	var statusText string
+	switch item.Status {
+	case "completed":
+		actionWord := item.StatusMessage
+		if actionWord == "" {
+			actionWord = "Installed"
+		}
+		if strings.EqualFold(actionWord, "Removed") {
+			if item.Scope != "" {
+				statusText = fmt.Sprintf("%s from %s", actionWord, item.Scope)
+			} else {
+				statusText = actionWord
+			}
+		} else {
+			statusText = actionWord
+		}
+	case "skipped":
+		statusText = "Skipped... already installed"
+	case "failed":
+		if item.ErrorMessage != "" {
+			statusText = ui.ErrorText.Render(item.ErrorMessage)
+		} else {
+			statusText = "Installation failed"
+		}
+	case "in_progress":
+		if item.StatusMessage != "" {
+			statusText = item.StatusMessage
+		} else {
+			statusText = "Installing..."
+		}
+	default:
+		if item.StatusMessage != "" {
+			statusText = item.StatusMessage
+		} else {
+			statusText = "Pending..."
+		}
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "  %s %s%s - %s\n", styledIcon, item.Name, sourcePart, statusText)
+	if m.VerboseMode && len(item.Variants) > 0 {
+		for _, variant := range item.Variants {
+			fmt.Fprintf(&b, "      ↳ %s\n", variant)
+		}
+	}
+	return b.String()
+}
+
 func (m ProgressBarModel) View() string {
 	// Always show the progress bar, don't hide it
 
@@ -343,8 +447,8 @@ func (m ProgressBarModel) View() string {
 
 		// Check if any items will be displayed (not pending and not empty name)
 		hasDisplayableItems := false
-		for _, item := range m.Items {
-			if item.Status != "pending" && item.Name != "" {
+		for i, item := range m.Items {
+			if item.Status != "pending" && item.Name != "" && !m.printed[i] {
 				hasDisplayableItems = true
 				break
 			}
@@ -370,125 +474,21 @@ func (m ProgressBarModel) View() string {
 		// No newline here - let the command handle spacing to avoid double spacing
 	}
 
-	// Items - show only items that have started (not pending) for line-by-line streaming display
-	for _, item := range m.Items {
-		// Skip pending items - only show items that have started or completed
-		if item.Status == "pending" {
+	// Finished rows are printed above this view (see ItemUpdateMsg). The live
+	// region only keeps the row in progress; Bubble Tea clips anything taller
+	// than the terminal, which used to drop every line but the last screen.
+	for i, item := range m.Items {
+		if item.Status == "pending" || item.Name == "" || m.printed[i] {
 			continue
 		}
-		// Skip items with empty names - these are used for count tracking only
-		if item.Name == "" {
-			continue
-		}
-
-		// Get icon based on status - ensure all icons are the same width for alignment
-		var styledIcon string
-		switch item.Status {
-		case "completed":
-			styledIcon = ui.SuccessText.Render("✓")
-		case "failed":
-			styledIcon = ui.ErrorText.Render("✗")
-		case "skipped":
-			// Skipped items also use checkmark but green (since font is installed)
-			styledIcon = ui.SuccessText.Render("✓")
-		case "in_progress":
-			// Use spinner for in_progress status (unless in verbose/debug mode which uses static display)
-			if m.VerboseMode || m.DebugMode {
-				styledIcon = "○" // Static circle for verbose/debug mode
-			} else {
-				// Get spinner character, trim whitespace, and apply styling using theme color
-				// For system theme (empty color), use NoColor to respect terminal defaults
-				styledIcon = strings.TrimSpace(m.Spinner.View())
-				var spinnerColor lipgloss.TerminalColor
-				if ui.SpinnerColor == "" {
-					spinnerColor = lipgloss.NoColor{}
-				} else {
-					spinnerColor = lipgloss.Color(ui.SpinnerColor)
-				}
-				styledIcon = lipgloss.NewStyle().Foreground(spinnerColor).Render(styledIcon)
-			}
-		default:
-			// Other statuses - use a space to maintain alignment
-			styledIcon = " "
-		}
-
-		// Format font name (plain text, no styling)
-		fontName := item.Name
-
-		// Format source name in brackets with purple color (if available)
-		var sourcePart string
-		if item.SourceName != "" {
-			sourcePart = " " + ui.InfoText.Render(fmt.Sprintf("[%s]", item.SourceName))
-		}
-
-		// Format the status message
-		var statusText string
-		switch item.Status {
-		case "completed":
-			// For install operations: show "Installed" (no scope info)
-			// For remove operations: show "Removed from <scope>" (scope info needed)
-			actionWord := item.StatusMessage
-			if actionWord == "" {
-				actionWord = "Installed" // Default fallback
-			}
-			// Determine the preposition based on the action
-			preposition := "to"
-			if strings.EqualFold(actionWord, "Removed") {
-				preposition = "from"
-				// For remove operations, include scope
-				if item.Scope != "" {
-					statusText = fmt.Sprintf("%s %s %s", actionWord, preposition, item.Scope)
-				} else {
-					statusText = actionWord
-				}
-			} else {
-				// For install operations, don't show scope (cleaner output)
-				statusText = actionWord
-			}
-		case "skipped":
-			// Show "Skipped... already installed" (no scope info for cleaner output)
-			statusText = "Skipped... already installed"
-		case "failed":
-			// Show full error message in error color (if available), otherwise show generic message
-			if item.ErrorMessage != "" {
-				statusText = ui.ErrorText.Render(item.ErrorMessage)
-			} else {
-				// Fallback to generic message
-				statusText = "Installation failed"
-			}
-		case "in_progress":
-			// Use status message if available, otherwise default
-			if item.StatusMessage != "" {
-				statusText = item.StatusMessage
-			} else {
-				statusText = "Installing..."
-			}
-		default:
-			// Other statuses
-			if item.StatusMessage != "" {
-				statusText = item.StatusMessage
-			} else {
-				statusText = "Pending..."
-			}
-		}
-
-		// Format the font item: "  ✓ Font Name [Source] - Status text"
-		// Counter is shown in the progress bar title, not on individual items
-		b.WriteString(fmt.Sprintf("  %s %s%s - %s\n", styledIcon, fontName, sourcePart, statusText))
-
-		// Show variants if verbose mode is enabled
-		if m.VerboseMode && len(item.Variants) > 0 {
-			for _, variant := range item.Variants {
-				b.WriteString(fmt.Sprintf("      ↳ %s\n", variant))
-			}
-		}
+		b.WriteString(m.itemBlock(item))
 	}
 
 	// Progress bar output ends with \n for spacing before next message
 	// Check if any items were actually displayed (not just empty placeholder items)
 	hasDisplayedItems := false
-	for _, item := range m.Items {
-		if item.Status != "pending" && item.Name != "" {
+	for i, item := range m.Items {
+		if item.Status != "pending" && item.Name != "" && !m.printed[i] {
 			hasDisplayedItems = true
 			break
 		}
