@@ -477,7 +477,14 @@ Use --scope to set installation location:
 		}
 		return nil
 	},
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: addRunE(func() (platform.FontManager, error) {
+		return cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
+	}),
+}
+
+// addRunE keeps the actual command boundary testable without OS font mutations.
+func addRunE(createFontManager func() (platform.FontManager, error)) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
 		GetLogger().Info("Starting font installation operation")
 
 		// Always start with a blank line for consistent spacing from command prompt
@@ -495,7 +502,7 @@ Use --scope to set installation location:
 		}
 
 		// Create font manager
-		fontManager, err := cmdutils.CreateFontManager(func() cmdutils.Logger { return GetLogger() })
+		fontManager, err := createFontManager()
 		if err != nil {
 			return err
 		}
@@ -643,6 +650,10 @@ Use --scope to set installation location:
 		}
 
 		status, completion, progressErr := runUnifiedAddSession(opCtx, workItems, fontManager, installScope, fontDir, force, verbose, debug, staging)
+		var recoveryFailure *localRecoveryError
+		if errors.As(progressErr, &recoveryFailure) {
+			return progressErr
+		}
 		if completion == addCancelledRemaining {
 			if progressErr != nil {
 				return progressErr
@@ -688,7 +699,7 @@ Use --scope to set installation location:
 			})
 		}
 		return nil
-	},
+	}
 }
 
 // variantLinesForVerboseProgress returns one human-readable label per manifest variant for the progress TUI

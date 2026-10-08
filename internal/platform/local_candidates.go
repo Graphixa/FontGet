@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	localIngestMaxDepth       = 16
-	localIngestMaxZipMembers  = 10000
-	localIngestMaxFileBytes   = 200 << 20 // 200 MiB
+	localIngestMaxDepth      = 16
+	localIngestMaxZipMembers = 10000
+	localIngestMaxFileBytes  = 200 << 20 // 200 MiB
 )
 
 // LocalFontCandidate is one font file discovered for local add ingest.
@@ -33,7 +33,8 @@ type LocalFontCandidate struct {
 	LooseFile bool
 	Depth     int
 
-	// OriginDiskPath is the pre-stage loose-file path. Empty for zip-sourced candidates.
+	// OriginDiskPath is the loose-file origin, resolved to its canonical target on staging.
+	// Empty for zip-sourced candidates.
 	// Used to restore destination-overlapping inputs after failed force install.
 	OriginDiskPath string
 
@@ -45,13 +46,13 @@ type LocalFontCandidate struct {
 
 // LocalIngestResult is the outcome of discover + dedupe for one local path.
 type LocalIngestResult struct {
-	Kept              []LocalFontCandidate
-	HashDupesSkipped  int
-	FaceDupesSkipped  int
-	ConflictsSkipped  int
-	NestedZipFonts    int
-	FontGetBackup     bool
-	Warnings          []string
+	Kept             []LocalFontCandidate
+	HashDupesSkipped int
+	FaceDupesSkipped int
+	ConflictsSkipped int
+	NestedZipFonts   int
+	FontGetBackup    bool
+	Warnings         []string
 }
 
 // ErrLocalCollectionUnsupported is returned for a direct .ttc/.otc local add path.
@@ -533,6 +534,20 @@ func StageLocalCandidate(staging *OperationStaging, c LocalFontCandidate) (Local
 	origin := strings.TrimSpace(c.OriginDiskPath)
 	if origin == "" && c.LooseFile && !c.FromZip {
 		origin = c.DiskPath
+	}
+	// Resolve aliases while the origin still exists; recovery must never replace
+	// the user's symlink or try to resolve it after force removal.
+	if origin != "" {
+		origin, err = filepath.EvalSymlinks(origin)
+		if err != nil {
+			_ = os.RemoveAll(dir)
+			return LocalFontCandidate{}, fmt.Errorf("resolve recovery origin: %w", err)
+		}
+		origin, err = filepath.Abs(origin)
+		if err != nil {
+			_ = os.RemoveAll(dir)
+			return LocalFontCandidate{}, err
+		}
 	}
 	out := LocalFontCandidate{
 		DiskPath:       CanonicalPath(staged),

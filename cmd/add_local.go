@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -463,6 +464,7 @@ func runUnifiedAddSession(
 
 	suppressVerboseDownloads := components.UseInteractiveRenderer() && !debug
 	cancelled := false
+	var recoveryFailure *localRecoveryError
 	cancelFrom := -1 // first unfinished item index when cancelled; -1 = after all items
 
 	progressErr := components.RunProgressBar(
@@ -517,6 +519,10 @@ func runUnifiedAddSession(
 
 					result, ierr := installLocalFontGroup(opCtx, *group, fontManager, installScope, fontDir, force, group.InstallSrc, onProgress, staging)
 					if ierr != nil {
+						if errors.As(ierr, &recoveryFailure) {
+							recordItemFailure(status, result, ierr)
+							return ierr
+						}
 						if IsCancelErr(ierr) {
 							cancelled = true
 							cancelFrom = itemIndex
@@ -658,6 +664,12 @@ func runUnifiedAddSession(
 		},
 	)
 
+	// The interactive renderer may suppress worker messages after cancellation.
+	// Print recovery failures only after it has joined the worker and closed.
+	if recoveryFailure != nil {
+		fmt.Println(recoveryFailure.Error())
+		return status, addCompleted, shared.AlreadyPrinted(recoveryFailure)
+	}
 	if progressErr != nil {
 		if errorsIsCancel(progressErr) || cancelled {
 			workRemaining := cancelFrom >= 0 && cancelFrom < len(items)
@@ -729,7 +741,7 @@ func installLocalFontGroup(
 		if !needRecover || len(overlaps) == 0 {
 			return res, opErr
 		}
-		if rerr := recoverLocalOverlaps(overlaps, fontManager, installScope, fontDir, group, prior, true); rerr != nil {
+		if rerr := recoverLocalOverlaps(overlaps, fontManager, installScope, fontDir, group, prior, opErr); rerr != nil {
 			return res, wrapLocalRecoveryError(opErr, staging, rerr)
 		}
 		return res, opErr

@@ -4,9 +4,11 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"fontget/internal/logging"
@@ -79,6 +81,25 @@ func RemoveFontResource(fontPath string) error {
 
 // NotifyFontChange notifies the system about font changes
 func NotifyFontChange() error {
+	return notifyFontChangeContext(context.Background())
+}
+
+func notifyFontChangeContext(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	timeout := 5 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return context.DeadlineExceeded
+		}
+		if remaining < timeout {
+			timeout = remaining
+		}
+	}
+	// Round up: SMTO_ABORTIFHUNG with a zero timeout can block indefinitely.
+	timeoutMS := uintptr((timeout + time.Millisecond - 1) / time.Millisecond)
 	logger := logging.GetLogger()
 	logger.Debug("Sending font change notification...")
 
@@ -86,9 +107,14 @@ func NotifyFontChange() error {
 	// Enumerating all windows can hang or be extremely slow on some systems.
 	desktopHwnd, _, _ := getDesktopWindow.Call()
 	if desktopHwnd != 0 {
-		ret := SendMessage(desktopHwnd, WM_FONTCHANGE, 0, 0)
+		ret, _, _ := user32.NewProc("SendMessageTimeoutW").Call(
+			desktopHwnd, WM_FONTCHANGE, 0, 0, 0x0002, timeoutMS, 0,
+		)
 		if ret == 0 {
-			logger.Warn("Failed to notify desktop window about font change")
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			return fmt.Errorf("font change notification failed or timed out")
 		}
 	}
 

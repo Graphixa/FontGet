@@ -4,6 +4,7 @@
 package platform
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -61,6 +62,9 @@ func (m *darwinFontManager) FlushFontCache(scope InstallationScope) error {
 
 // InstallFont installs a font file to the specified font directory
 func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope, force bool, opts *InstallFontOptions) error {
+	if err := installContext(opts).Err(); err != nil {
+		return err
+	}
 	fontName := getFontName(fontPath)
 	var targetDir string
 
@@ -97,7 +101,7 @@ func (m *darwinFontManager) InstallFont(fontPath string, scope InstallationScope
 	if !skipCache {
 		// Cache refresh failure is non-critical - font is already installed.
 		// Do not roll back committed files for a best-effort discovery-cache refresh.
-		if err := m.updateFontCache(scope); err != nil {
+		if err := m.updateFontCacheContext(installContext(opts), scope); err != nil {
 			return fmt.Errorf("font installed successfully, but cache refresh failed (non-critical): %w", err)
 		}
 	}
@@ -165,22 +169,34 @@ func (m *darwinFontManager) RequiresElevation(scope InstallationScope) bool {
 // updateFontCache refreshes the font cache on macOS
 // Uses modern method compatible with macOS 14+ (Sonoma)
 // On macOS 14+, atsutil was removed, so we use pkill fontd instead
-func (m *darwinFontManager) updateFontCache(_ InstallationScope) error {
+func (m *darwinFontManager) updateFontCache(scope InstallationScope) error {
+	return m.updateFontCacheContext(context.Background(), scope)
+}
+
+func (m *darwinFontManager) updateFontCacheContext(ctx context.Context, scope InstallationScope) error {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	// Modern approach: restart fontd service to refresh cache
 	// fontd automatically restarts and picks up new fonts
 	// This works on both older macOS versions and macOS 14+
 
 	// Try pkill first (more reliable and available on all macOS versions)
-	cmd := exec.Command("pkill", "fontd")
+	cmd := exec.CommandContext(ctx, "pkill", "fontd")
 	if output, err := cmd.CombinedOutput(); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		// pkill returns non-zero exit code if no process was found
 		// This is not necessarily an error - fontd may not be running
 		// Check if the error is "no process found" vs actual failure
 		errStr := string(output)
 		if !strings.Contains(strings.ToLower(errStr), "no matching processes") && !strings.Contains(strings.ToLower(errStr), "no process found") {
 			// If pkill fails for other reasons, try killall as fallback
-			cmd = exec.Command("killall", "fontd")
+			cmd = exec.CommandContext(ctx, "killall", "fontd")
 			if output, err := cmd.CombinedOutput(); err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
 				// Both methods failed, but this is non-critical
 				// macOS will auto-detect fonts in ~/Library/Fonts and /Library/Fonts
 				// Fonts will be available after app restart or system refresh
@@ -190,7 +206,11 @@ func (m *darwinFontManager) updateFontCache(_ InstallationScope) error {
 	}
 
 	// Small delay to allow fontd to restart
-	time.Sleep(500 * time.Millisecond)
+	select {
+	case <-time.After(500 * time.Millisecond):
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	return nil
 }
