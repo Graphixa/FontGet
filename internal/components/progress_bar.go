@@ -191,11 +191,16 @@ func (m ProgressBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		m.ProgressBar.Width = msg.Width - 8
-		if m.ProgressBar.Width > 80 {
-			m.ProgressBar.Width = 80
+		// Ignore zero dims so a bad resize cannot wipe a valid GetSize seed.
+		if msg.Width > 0 {
+			m.width = msg.Width
+			m.ProgressBar.Width = msg.Width - 8
+			if m.ProgressBar.Width > 80 {
+				m.ProgressBar.Width = 80
+			}
+		}
+		if msg.Height > 0 {
+			m.height = msg.Height
 		}
 		return m, nil
 
@@ -409,26 +414,51 @@ func (m ProgressBarModel) itemBlock(item OperationItem) string {
 // does not scroll. Older item rows are clipped (not printed to scrollback).
 const viewportMargin = 3
 
-func (m ProgressBarModel) View() string {
-	return strings.Join(m.viewLines(), "\n")
-}
+// defaultViewportHeight is used when the terminal size is unknown so clipping
+// never falls back to an uncapped budget.
+const defaultViewportHeight = 24
 
-func (m ProgressBarModel) viewLines() []string {
-	idxs := m.clippedItemIndices()
+func (m ProgressBarModel) View() string {
+	budget := m.itemLineBudget()
+	// Newest first: take rows until the line budget under the bar is full.
+	var blocks []string
+	used := 0
+	for i := len(m.Items) - 1; i >= 0; i-- {
+		item := m.Items[i]
+		if item.Status == "pending" || item.Name == "" {
+			continue
+		}
+		block := strings.TrimRight(m.itemBlock(item), "\n")
+		n := 0
+		if block != "" {
+			n = strings.Count(block, "\n") + 1
+		}
+		if used > 0 && used+n > budget {
+			break
+		}
+		blocks = append(blocks, block)
+		used += n
+		if used >= budget {
+			break
+		}
+	}
+	for i, j := 0, len(blocks)-1; i < j; i, j = i+1, j-1 {
+		blocks[i], blocks[j] = blocks[j], blocks[i]
+	}
+
 	var lines []string
 	if !m.VerboseMode && !m.DebugMode {
 		lines = append(lines, m.fitLine(m.headerLine()))
-		if len(idxs) > 0 {
+		if len(blocks) > 0 {
 			lines = append(lines, "")
 		}
 	}
-	for _, i := range idxs {
-		block := strings.TrimRight(m.itemBlock(m.Items[i]), "\n")
+	for _, block := range blocks {
 		for _, line := range strings.Split(block, "\n") {
 			lines = append(lines, m.fitLine(line))
 		}
 	}
-	return lines
+	return strings.Join(lines, "\n")
 }
 
 func (m ProgressBarModel) headerLine() string {
@@ -441,47 +471,23 @@ func (m ProgressBarModel) headerLine() string {
 	return fmt.Sprintf("%s (%d of %d) %s", m.Title, completed, m.TotalItems, m.renderInlineProgressBar())
 }
 
-// clippedItemIndices keeps the newest started rows that fit under the bar.
-func (m ProgressBarModel) clippedItemIndices() []int {
-	var idxs []int
-	for i, item := range m.Items {
-		if item.Status == "pending" || item.Name == "" {
-			continue
-		}
-		idxs = append(idxs, i)
+func (m ProgressBarModel) effectiveHeight() int {
+	if m.height > viewportMargin {
+		return m.height
 	}
-	budget := m.itemLineBudget()
-	for len(idxs) > 1 && m.itemLines(idxs) > budget {
-		idxs = idxs[1:]
-	}
-	return idxs
+	return defaultViewportHeight
 }
 
 func (m ProgressBarModel) itemLineBudget() int {
-	if m.height <= viewportMargin {
-		return 1 << 20
-	}
 	header := 2 // title + blank under it
 	if m.VerboseMode || m.DebugMode {
 		header = 0
 	}
-	room := m.height - viewportMargin - header
+	room := m.effectiveHeight() - viewportMargin - header
 	if room < 1 {
 		room = 1
 	}
 	return room
-}
-
-func (m ProgressBarModel) itemLines(idxs []int) int {
-	n := 0
-	for _, i := range idxs {
-		block := strings.TrimRight(m.itemBlock(m.Items[i]), "\n")
-		if block == "" {
-			continue
-		}
-		n += strings.Count(block, "\n") + 1
-	}
-	return n
 }
 
 func (m ProgressBarModel) fitLine(line string) string {
