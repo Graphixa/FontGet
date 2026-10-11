@@ -35,7 +35,7 @@ This document provides a comprehensive overview of the FontGet codebase, explain
 **Purpose**: Go module definition and dependency management
 **Functionality**:
 - Defines module name as `fontget`
-- Specifies Go version 1.26.0 (toolchain `go1.26.6`)
+- Specifies Go version 1.26.0 (toolchain `go1.26.9`)
 - Lists all required dependencies including:
   - Cobra (CLI framework)
   - Bubble Tea / Bubbles (TUI framework and widgets)

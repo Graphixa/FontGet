@@ -21,7 +21,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.26.6"
+          go-version: "1.26.9"
           cache-dependency-path: go.sum
 
       # go-winres runs in GoReleaser's before hooks; it works on Linux and generates .syso for the Windows binary (icon + version info).
