@@ -9,7 +9,7 @@ func undoFontRegistration(mut FileMutation) error {
 		fm, err := NewFontManager()
 		if err == nil {
 			if wm, ok := fm.(*windowsFontManager); ok {
-				if rerr := wm.removeFontFromRegistry(mut.FontName); rerr != nil {
+				if rerr := wm.removeFontFromRegistry(mut.FontName, mut.Scope); rerr != nil {
 					return fmt.Errorf("remove registry entry %s: %w", mut.FontName, rerr)
 				}
 			}
