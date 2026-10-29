@@ -13,7 +13,7 @@ import (
 // ErrRegistryValueAbsent means the Fonts registry value was already gone (idempotent OK).
 var ErrRegistryValueAbsent = errors.New("registry font value absent")
 
-// registryFontValue is a captured machine-scope Fonts registry entry (raw bytes + type).
+// registryFontValue is a captured Fonts registry entry (raw bytes + type).
 type registryFontValue struct {
 	Name  string
 	Raw   []byte
@@ -21,8 +21,8 @@ type registryFontValue struct {
 	Found bool
 }
 
-// machineRemoveOps are narrow seams for machine-scope removal (tests inject fakes).
-type machineRemoveOps struct {
+// fontRemoveOps are narrow seams for registered-font removal (tests inject fakes).
+type fontRemoveOps struct {
 	RemoveGDI      func(path string) error
 	AddGDI         func(path string) error
 	CaptureReg     func(fontName string) (registryFontValue, error)
@@ -52,9 +52,9 @@ func joinRemoveRepairErr(primary error, repair error) error {
 	return fmt.Errorf("%w (also failed to restore registration: %v)", primary, repair)
 }
 
-// removeMachineScopedFont removes GDI + registry then the file, restoring prior
+// removeRegisteredFont removes GDI + registry then the file, restoring prior
 // registration when deletion fails. Registry removal failure stops before delete.
-func removeMachineScopedFont(fontName, fontPath string, ops machineRemoveOps) error {
+func removeRegisteredFont(fontName, fontPath string, ops fontRemoveOps) error {
 	gdiRemoved := false
 	if err := ops.RemoveGDI(fontPath); err != nil {
 		if !isBenignGDIRemoveErr(err) {

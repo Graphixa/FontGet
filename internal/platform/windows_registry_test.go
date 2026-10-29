@@ -13,7 +13,7 @@ func TestFontRegistryRoot(t *testing.T) {
 	for _, tc := range []struct {
 		scope InstallationScope
 		want  uintptr
-	}{{UserScope, 0x80000001}, {MachineScope, HKEY_LOCAL_MACHINE}} {
+	}{{UserScope, HKEY_CURRENT_USER}, {MachineScope, HKEY_LOCAL_MACHINE}} {
 		got, err := fontRegistryRoot(tc.scope)
 		if err != nil || got != tc.want {
 			t.Fatalf("scope %s: got %x, %v; want %x", tc.scope, got, err, tc.want)
@@ -27,7 +27,7 @@ func TestFontRegistryRoot(t *testing.T) {
 func TestUserFontRegistryLifecycle(t *testing.T) {
 	m := &windowsFontManager{}
 	path := filepath.Join(t.TempDir(), "FontGet-test.ttf")
-	name := "FontGet-test-" + filepath.Base(filepath.Dir(filepath.Dir(path)))
+	name := t.Name()
 	prior, err := m.captureFontRegistryValue(name, UserScope)
 	if err != nil {
 		t.Fatal(err)

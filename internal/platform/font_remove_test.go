@@ -48,7 +48,7 @@ func TestUint16SliceAsBytesMatchesUTF16FromString(t *testing.T) {
 	}
 }
 
-func TestRemoveMachineScopedFont_DeleteFailRestoresExactRegistryBytes(t *testing.T) {
+func TestRemoveRegisteredFont_DeleteFailRestoresExactRegistryBytes(t *testing.T) {
 	u16, err := syscall.UTF16FromString("カフェ.ttf")
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +56,7 @@ func TestRemoveMachineScopedFont_DeleteFailRestoresExactRegistryBytes(t *testing
 	priorRaw := uint16SliceAsBytes(u16)
 	prior := registryFontValue{Name: "Face.ttf (TrueType)", Raw: priorRaw, Type: REG_SZ, Found: true}
 	var restored registryFontValue
-	err = removeMachineScopedFont("Face.ttf", `C:\Fonts\Face.ttf`, machineRemoveOps{
+	err = removeRegisteredFont("Face.ttf", `C:\Fonts\Face.ttf`, fontRemoveOps{
 		RemoveGDI:  func(string) error { return nil },
 		AddGDI:     func(string) error { return nil },
 		CaptureReg: func(string) (registryFontValue, error) { return prior, nil },
@@ -76,9 +76,9 @@ func TestRemoveMachineScopedFont_DeleteFailRestoresExactRegistryBytes(t *testing
 	}
 }
 
-func TestRemoveMachineScopedFont_RegistryDeleteFailStopsAndRestoresGDI(t *testing.T) {
+func TestRemoveRegisteredFont_RegistryDeleteFailStopsAndRestoresGDI(t *testing.T) {
 	var gdiAdded, deletedFile bool
-	err := removeMachineScopedFont("Face.ttf", `C:\Fonts\Face.ttf`, machineRemoveOps{
+	err := removeRegisteredFont("Face.ttf", `C:\Fonts\Face.ttf`, fontRemoveOps{
 		RemoveGDI: func(string) error { return nil },
 		AddGDI: func(string) error {
 			gdiAdded = true
@@ -109,8 +109,8 @@ func TestRemoveMachineScopedFont_RegistryDeleteFailStopsAndRestoresGDI(t *testin
 	}
 }
 
-func TestRemoveMachineScopedFont_DeleteFailSurfacesRepairError(t *testing.T) {
-	err := removeMachineScopedFont("Face.ttf", `C:\Fonts\Face.ttf`, machineRemoveOps{
+func TestRemoveRegisteredFont_DeleteFailSurfacesRepairError(t *testing.T) {
+	err := removeRegisteredFont("Face.ttf", `C:\Fonts\Face.ttf`, fontRemoveOps{
 		RemoveGDI: func(string) error { return nil },
 		AddGDI:    func(string) error { return errors.New("gdi restore boom") },
 		CaptureReg: func(string) (registryFontValue, error) {
@@ -130,8 +130,8 @@ func TestRemoveMachineScopedFont_DeleteFailSurfacesRepairError(t *testing.T) {
 	}
 }
 
-func TestRemoveMachineScopedFont_AbsentRegistryIsIdempotent(t *testing.T) {
-	err := removeMachineScopedFont("Face.ttf", `C:\Fonts\Face.ttf`, machineRemoveOps{
+func TestRemoveRegisteredFont_AbsentRegistryIsIdempotent(t *testing.T) {
+	err := removeRegisteredFont("Face.ttf", `C:\Fonts\Face.ttf`, fontRemoveOps{
 		RemoveGDI: func(string) error { return nil },
 		AddGDI:    func(string) error { return fmt.Errorf("should not restore") },
 		CaptureReg: func(string) (registryFontValue, error) {

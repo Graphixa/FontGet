@@ -241,7 +241,7 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 
 	unregisterOnly := opts != nil && opts.UnregisterOnly
 	skipNotify := opts != nil && opts.SkipPostRemoveCacheRefresh
-	ops := machineRemoveOps{
+	ops := fontRemoveOps{
 		RemoveGDI:      RemoveFontResource,
 		AddGDI:         AddFontResource,
 		RemoveFile:     os.Remove,
@@ -255,7 +255,7 @@ func (m *windowsFontManager) RemoveFont(fontName string, scope InstallationScope
 	ops.DeleteReg = func(name string) error { return m.removeFontFromRegistry(name, scope) }
 	ops.RestoreReg = func(v registryFontValue) error { return m.restoreFontRegistryValue(v, scope) }
 
-	if err := removeMachineScopedFont(fontName, fontPath, ops); err != nil {
+	if err := removeRegisteredFont(fontName, fontPath, ops); err != nil {
 		logger.Error("Font removal failed for %s: %v", fontName, err)
 		return err
 	}

@@ -728,7 +728,7 @@ Treat that output as **informational triage**, not as the same bar as CI.
 - `temp.go`: FontGet temporary directory helpers
 - `mutation.go`: Place/rollback font file mutations
 - `mutation_windows.go` / `mutation_other.go`: Platform registration undo/restore
-- `machine_remove.go`: Machine-scope Fonts registry remove ops
+- `font_remove.go`: Registered-font GDI/registry remove ops
 
 **Key Features**:
 - **Font Metadata Extraction**: `ExtractFontMetadata()` reads font family name, style name, and full name directly from font file SFNT name table

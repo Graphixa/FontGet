@@ -52,7 +52,7 @@ type FileMutation struct {
 	ResourceRegistered bool
 	// PriorResourceRemoved is true when an existing registration was cleared before replacement.
 	PriorResourceRemoved bool
-	// RegistryAdded is true after a successful machine-scope registry write for FontName.
+	// RegistryAdded is true after a successful Fonts registry write for FontName.
 	RegistryAdded bool
 
 	// ArtifactPaths are unique disposable staging files owned by this mutation.
