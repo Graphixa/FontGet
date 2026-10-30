@@ -2,7 +2,7 @@ module fontget
 
 go 1.26.0
 
-toolchain go1.26.9
+toolchain go1.26.10
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
