@@ -109,11 +109,12 @@ homebrew_casks:
       - fontget
     # Remove quarantine attribute to allow execution on macOS
     # This is required for unsigned binaries from GitHub releases
+    # install_steps (not deprecated install) — declarative Homebrew DSL since GoReleaser ~v2.19
     hooks:
       post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/fontget"]
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/fontget"]
           end
 
 # Scoop bucket (Windows)
