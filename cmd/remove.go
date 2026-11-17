@@ -185,39 +185,10 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 			normalizedFileName := normalizeFontName(baseFileName)
 
 			// Quick check: does filename suggest a potential match?
-			potentialMatch := false
-			if strings.Contains(normalizedFileName, normalizedQuery) ||
-				strings.Contains(normalizedQuery, normalizedFileName) ||
-				normalizedFileName == normalizedQuery {
-				potentialMatch = true
-			}
+			readMetadata := strings.Contains(normalizedFileName, normalizedQuery) ||
+				strings.Contains(normalizedQuery, normalizedFileName)
 
-			// Phase 2: Extract metadata only for potential matches
-			var familyName string
-			if potentialMatch {
-				// Try to extract family name from font metadata (accurate but expensive)
-				if metadata, err := platform.ExtractFontMetadata(path); err == nil {
-					// Prefer TypographicFamily over FamilyName for accuracy
-					if metadata.TypographicFamily != "" {
-						familyName = metadata.TypographicFamily
-					} else if metadata.FamilyName != "" {
-						familyName = metadata.FamilyName
-					}
-				}
-			}
-
-			// Fallback to filename parsing if metadata extraction failed or wasn't attempted
-			if familyName == "" {
-				familyName, _ = parseFontName(fileName)
-			}
-
-			// Extract base name from installed font (removes "Nerd Font" suffixes, etc.)
-			baseFamilyName := extractBaseFontName(familyName)
-			// Normalize the extracted family name for comparison
-			normalizedFamily := normalizeFontName(baseFamilyName)
-
-			// Match if the normalized base names are equal
-			if normalizedFamily == normalizedQuery {
+			if familyNameMatchesQuery(path, fileName, normalizedQuery, readMetadata) {
 				matchingFonts = append(matchingFonts, info.Name())
 			}
 
@@ -236,12 +207,40 @@ func findFontFamilyFiles(fontFamily string, fontManager platform.FontManager, sc
 		return nil, fmt.Errorf("scan font directory %q: %w", fontDir, err)
 	}
 
+	// ponytail: name-table pass only on a filename miss; a filename false-hit still wins
+	if len(matchingFonts) == 0 {
+		for _, path := range fontFiles {
+			if familyNameMatchesQuery(path, filepath.Base(path), normalizedQuery, true) {
+				matchingFonts = append(matchingFonts, filepath.Base(path))
+			}
+		}
+	}
+
 	// Send final progress update (50%) if callback provided
 	if progressCb != nil {
 		progressCb(50.0)
 	}
 
 	return matchingFonts, nil
+}
+
+// familyNameMatchesQuery reports whether path's family equals normalizedQuery.
+// readMetadata false uses the filename only.
+func familyNameMatchesQuery(path, fileName, normalizedQuery string, readMetadata bool) bool {
+	var familyName string
+	if readMetadata {
+		if metadata, err := platform.ExtractFontMetadata(path); err == nil {
+			if metadata.TypographicFamily != "" {
+				familyName = metadata.TypographicFamily
+			} else if metadata.FamilyName != "" {
+				familyName = metadata.FamilyName
+			}
+		}
+	}
+	if familyName == "" {
+		familyName, _ = parseFontName(fileName)
+	}
+	return normalizeFontName(extractBaseFontName(familyName)) == normalizedQuery
 }
 
 // normalizeFontName normalizes a font name for comparison

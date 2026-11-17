@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"fontget/internal/platform"
+	"fontget/internal/testutil"
 )
 
 type removeTrackingFM struct {
@@ -25,7 +26,7 @@ func (m *removeTrackingFM) GetFontDir(platform.InstallationScope) string { retur
 func (m *removeTrackingFM) RequiresElevation(platform.InstallationScope) bool {
 	return false
 }
-func (m *removeTrackingFM) IsElevated() (bool, error)                   { return true, nil }
+func (m *removeTrackingFM) IsElevated() (bool, error)                       { return true, nil }
 func (m *removeTrackingFM) FlushFontCache(platform.InstallationScope) error { return nil }
 func (m *removeTrackingFM) GetElevationCommand() (string, []string, error) {
 	return "", nil, nil
@@ -68,5 +69,32 @@ func TestRemoveFontFiles_presentStillCallsRemove(t *testing.T) {
 	// one RemoveFont call for the present file (absent file skipped)
 	if len(fm.calls) != 1 || fm.calls[0] != "Lekton.ttf" {
 		t.Fatalf("calls=%v", fm.calls)
+	}
+}
+
+func TestFindFontFamilyFiles_nameTableWhenFilenameMisses(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "1942-webfont.ttf"), testutil.MinimalTTF("1942 report", "Regular"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Other.ttf"), testutil.MinimalTTF("Other", "Regular"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fm := &removeTrackingFM{dir: dir}
+
+	got, err := findFontFamilyFiles("1942 report", fm, platform.UserScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "1942-webfont.ttf" {
+		t.Fatalf("exact family: got %v", got)
+	}
+
+	short, err := findFontFamilyFiles("1942", fm, platform.UserScope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(short) != 0 {
+		t.Fatalf("short query matched %v", short)
 	}
 }
