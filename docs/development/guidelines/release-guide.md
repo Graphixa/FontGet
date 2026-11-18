@@ -203,6 +203,7 @@ git push origin --tags
 - GitHub Release is created automatically
 - Binaries and checksums are uploaded
 - Self-update system can now detect the new version
+- After that workflow succeeds, **Chocolatey Release** starts on its own and pushes the package
 
 ### **Step 7: Monitor CI/CD Pipeline**
 
@@ -222,29 +223,31 @@ gh release view v1.3.0
 fontget update
 ```
 
-### **Step 9: Run Chocolatey Workflow**
+### **Step 9: Confirm Chocolatey**
 
-Chocolatey publication is handled by a dedicated workflow (`Chocolatey Release`) after the main release completes.
+`release.yml` skips Chocolatey. When the **Release** workflow finishes successfully, `chocolatey-release.yml` starts via `workflow_run`, reads the tag on that commit, and pushes the package.
 
-1. Open GitHub Actions and run **Chocolatey Release** (`workflow_dispatch`).
-2. Enter the release version (for example: `1.3.0` or `v1.3.0`).
-3. Confirm preflight checks pass:
-   - Release tag exists and is public (not draft)
-   - Required assets exist (`fontget_<version>_windows_amd64.zip`, `checksums.txt`)
-   - Checksum placeholder in `chocolateyInstall.ps1` is replaced before packing
-   - Generated nupkg contains `tools/chocolateyInstall.ps1` and `tools/chocolateyUninstall.ps1`
-4. Confirm the push step succeeds (`dotnet nuget push ... --skip-duplicate`).
+Confirm the **Chocolatey Release** run:
+
+- Release tag exists and is public (not a draft)
+- Required assets exist (`fontget_<version>_windows_amd64.zip`, `checksums.txt`)
+- Checksum placeholder in `chocolateyInstall.ps1` is replaced before packing
+- Generated nupkg contains `tools/chocolateyInstall.ps1` and `tools/chocolateyUninstall.ps1`
+- Push step succeeds (`dotnet nuget push ... --skip-duplicate`)
+
+Run **Chocolatey Release** yourself only to retry or dry-run. `workflow_dispatch` still asks for a version. **Push package to Chocolatey** defaults to off, so a manual run does not publish unless you turn that on.
 
 ### **Release Orchestration (Current)**
 
-1. **Release workflow** (`release.yml`)
+1. **Release workflow** (`release.yml`), on tag `v*`
    - Runs tests and `goreleaser check`
    - Publishes GitHub release assets
    - Publishes Winget, AUR, Homebrew, and Scoop
-   - Skips Chocolatey
+   - Skips Chocolatey (`--skip=chocolatey`)
 2. **Chocolatey Release workflow** (`chocolatey-release.yml`)
-   - Runs strict preflight validations
-   - Packs and pushes Chocolatey package independently
+   - Starts automatically after **Release** succeeds
+   - Runs the preflight checks above, packs, and pushes
+   - Manual dispatch is the retry path and does not push unless publish is enabled
 
 ---
 
@@ -586,6 +589,6 @@ git push origin v<MAJOR>.<MINOR>.<PATCH>
 
 ---
 
-**Last Updated**: 2026-10-03  
+**Last Updated**: 2026-11-18  
 **Status**: Active Guide
 
